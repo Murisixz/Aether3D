@@ -27,3 +27,48 @@ def test_first_scene_example_runs(tmp_path):
 def test_committed_example_project_is_valid():
     scene = Scene.load(EXAMPLES / "first_scene.aether")
     assert [o.name for o in scene] == ["Cube", "Sphere", "Ground", "Pivot", "Moon"]
+
+
+def test_gltf_roundtrip_example_runs(tmp_path):
+    result = subprocess.run(
+        [sys.executable, str(EXAMPLES / "gltf_roundtrip.py"), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "all checks passed" in result.stdout
+    assert (tmp_path / "town.glb").is_file()
+
+
+def test_gltf_roundtrip_verifier_detects_corruption(tmp_path):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("gltf_roundtrip", EXAMPLES / "gltf_roundtrip.py")
+    example = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(example)
+    scene = example.build_scene()
+    scene.export(tmp_path / "t.glb")
+    assert example.verify(scene, Scene.import_file(tmp_path / "t.glb")) == []
+    tampered = Scene.import_file(tmp_path / "t.glb")
+    tampered.get_by_name("Beacon").position = (0, 0, 0.56)
+    failures = example.verify(scene, tampered)
+    assert any("Beacon: local transform changed" in f for f in failures)
+    assert any("Antenna: world matrix changed" in f for f in failures)
+
+
+V010 = Path(__file__).resolve().parent / "data" / "v0.1.0" / "first_scene.aether"
+
+
+def test_v010_project_still_loads_and_exports(tmp_path):
+    """A project written by Aether3D 0.1.0 loads unchanged and exports to glTF."""
+    scene = Scene.load(V010)
+    assert [o.name for o in scene] == ["Cube", "Sphere", "Ground", "Pivot", "Moon"]
+    scene.save(tmp_path / "resaved.aether")
+    assert Scene.load(tmp_path / "resaved.aether").to_dict()["scene"] == scene.to_dict()["scene"]
+    scene.export(tmp_path / "v010.glb")
+    back = Scene.import_file(tmp_path / "v010.glb")
+    assert [o.id for o in back] == [o.id for o in scene]
+    # 0.1.0 spheres have a ~1e-16 seam gap that exact welding reports as open.
+    sphere = scene.inspect_geometry().meshes[1]
+    assert not sphere.topology["closed"] and sphere.status == "ok"
