@@ -221,9 +221,11 @@ class BevelMixin:
         chamfer_loops: dict[int, list[int]] = {}
         chamfer_ends: dict[int, tuple] = {}  # edge -> (original direction a->b, chamfer ends)
         chamfer_corners: dict[int, list[dict]] = {}
+        edge_faces = self._edge_faces_index(fans)
+        directed = self._directed_index(fans)
         for e in eids:
-            f, g = self._edge_faces_before(e, fans)
-            a, b = self._directed_in(e, f, fans)  # f ran a -> b
+            f, g = edge_faces[e]
+            a, b = directed[(e, f)]  # f ran a -> b
             xf_a, xf_b = (
                 self._point_in(a, f, replacement),
                 self._point_in(b, f, replacement, last=False),
@@ -305,7 +307,7 @@ class BevelMixin:
                     elements={"edges": [e]},
                 )
         for e in eids:
-            f, g = self._edge_faces_before(e, fans)
+            f, g = edge_faces[e]
             chamfers[e] = self._new_face(
                 chamfer_loops[e],
                 self._split_corners(chamfer_corners[e]),
@@ -415,23 +417,32 @@ class BevelMixin:
         return fan
 
     @staticmethod
-    def _edge_faces_before(e: int, fans) -> tuple[int, int]:
+    def _edge_faces_index(fans) -> dict[int, tuple[int, int]]:
+        """For each edge, its two faces in fan order (from the first fan listing both).
+
+        Built once per bevel (``fans`` is not modified afterwards), so lookups are
+        constant-time instead of a scan over every fan.
+        """
+        index: dict[int, tuple[int, int]] = {}
         for fan in fans.values():
-            faces = [f for f, e_in, e_out, *_ in fan if e in (e_in, e_out)]
-            if len(faces) == 2:
-                return faces[0], faces[1]
-        raise AssertionError("bevelled edge not found in fans")  # pragma: no cover
+            per_edge: dict[int, list[int]] = {}
+            for f, e_in, e_out, *_ in fan:
+                for e in dict.fromkeys((e_in, e_out)):
+                    per_edge.setdefault(e, []).append(f)
+            for e, faces in per_edge.items():
+                if len(faces) == 2 and e not in index:
+                    index[e] = (faces[0], faces[1])
+        return index
 
     @staticmethod
-    def _directed_in(e: int, f: int, fans) -> tuple[int, int]:
-        """Endpoints ``(a, b)`` of bevelled edge ``e`` such that face ``f`` ran ``a -> b``."""
+    def _directed_index(fans) -> dict[tuple[int, int], tuple[int, int]]:
+        """``(edge, face) -> (a, b)``: the endpoints of the edge with face ``f`` running a -> b."""
+        index: dict[tuple[int, int], tuple[int, int]] = {}
         for v, fan in fans.items():
             for face, e_in, e_out, p, q in fan:
-                if face == f and e == e_out:
-                    return v, q
-                if face == f and e == e_in:
-                    return p, v
-        raise AssertionError("edge not adjacent to face")  # pragma: no cover
+                index.setdefault((e_out, face), (v, q))
+                index.setdefault((e_in, face), (p, v))
+        return index
 
     @staticmethod
     def _point_in(v: int, f: int, replacement, last: bool = True) -> int:
