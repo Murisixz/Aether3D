@@ -2,6 +2,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from aether3d import Scene
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
@@ -72,3 +74,21 @@ def test_v010_project_still_loads_and_exports(tmp_path):
     # 0.1.0 spheres have a ~1e-16 seam gap that exact welding reports as open.
     sphere = scene.inspect_geometry().meshes[1]
     assert not sphere.topology["closed"] and sphere.status == "ok"
+
+
+def test_minecraft_castle_example_runs(tmp_path):
+    pytest.importorskip("manifold3d")
+    result = subprocess.run(
+        [sys.executable, str(EXAMPLES / "minecraft_castle.py"), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "All checks passed." in result.stdout
+    assert "towers: 6 (tower_count = 6)" in result.stdout
+    assert "towers: 8 (tower_count = 8)" in result.stdout
+    scene = Scene.load(tmp_path / "castle.aether")
+    assert scene.procedural.parameters["tower_count"].value == 8
+    assert all(o.is_procedural for o in scene)
+    assert (tmp_path / "castle.glb").is_file()
