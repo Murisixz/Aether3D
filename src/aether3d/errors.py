@@ -83,3 +83,39 @@ class UnsupportedFeatureError(AetherError, ValueError):
 
 class ResourceLimitError(AetherError, ValueError):
     """Input exceeds a configured safety limit (file size, vertex count, ...)."""
+
+
+class EditError(AetherError, ValueError):
+    """A mesh-editing operation cannot be applied; nothing was changed.
+
+    ``code`` is a stable identifier (e.g. ``"NOT_MANIFOLD"``, ``"EMPTY_SELECTION"``),
+    ``elements`` maps element kinds (``"vertices"``, ``"edges"``, ``"faces"``) to the
+    offending ids, and ``hint`` suggests how to proceed.
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        elements: dict[str, list[int]] | None = None,
+        hint: str | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.elements = {k: sorted(v) for k, v in (elements or {}).items() if v}
+        self.hint = hint
+        text = f"[{code}] {message}"
+        if self.elements:
+            text += " (" + "; ".join(f"{k}: {v[:20]}" for k, v in self.elements.items()) + ")"
+        if hint:
+            text += f". Hint: {hint}"
+        super().__init__(text)
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "elements": {k: list(v) for k, v in self.elements.items()},
+            "hint": self.hint,
+        }
