@@ -1,8 +1,10 @@
 """Command-line interface.
 
 Commands: ``new``, ``validate``, ``inspect``, ``geometry``, ``import``,
-``export``, ``topology``, ``edit`` and ``procedural`` (with the subcommands
-``types``, ``inspect``, ``validate``, ``run``, ``set`` and ``bake``).
+``export``, ``topology``, ``edit``, ``procedural`` (``types``, ``inspect``,
+``validate``, ``run``, ``set``, ``bake``), ``render``, ``camera`` (``add``,
+``set``, ``list``, ``frame``, ``activate``), ``light`` (``add``, ``set``,
+``list``), ``object`` (``set``, ``remove``) and ``scene`` (``set``, ``run``).
 
 Every command accepts ``--json`` to emit a single machine-readable JSON
 object on stdout, both on success (``"ok": true``) and on failure
@@ -203,6 +205,11 @@ def _object_info(obj: SceneObject, depth: int) -> dict[str, Any]:
         "geometry": None
         if obj.geometry is None
         else {"id": obj.geometry.id, "name": obj.geometry.name},
+        "kind": obj.kind,
+        "camera": None if obj.camera is None else obj.camera.to_dict(),
+        "light": None if obj.light is None else obj.light.to_dict(),
+        "appearance": obj.appearance.to_dict(),
+        "visible": obj.visible,
     }
 
 
@@ -273,6 +280,13 @@ def cmd_inspect(args: argparse.Namespace) -> CommandOutput:
             details.append(f"mesh={obj.mesh.vertex_count}v/{obj.mesh.triangle_count}t")
         if obj.geometry is not None:
             details.append(f"procedural={obj.geometry.name}")
+        if obj.camera is not None:
+            active = " active" if scene.active_camera is obj else ""
+            details.append(f"camera={obj.camera.projection}{active}")
+        if obj.light is not None:
+            details.append(f"light={obj.light.type}")
+        if not obj.visible:
+            details.append("hidden")
         lines.append(f"{prefix}{branch}{obj.name}  [{obj.id}]  " + "  ".join(details))
         kids = obj.children
         for i, child in enumerate(kids):
@@ -672,6 +686,369 @@ def cmd_procedural_bake(args: argparse.Namespace) -> CommandOutput:
 
 
 # --------------------------------------------------------------------------- #
+# Rendering: render, camera, light, object, scene
+# --------------------------------------------------------------------------- #
+
+
+def _render_error(exc: BaseException) -> CommandError:
+    from .errors import RenderError
+
+    if isinstance(exc, RenderError):
+        details: dict[str, Any] = {"code": exc.code}
+        if exc.hint:
+            details["hint"] = exc.hint
+        if exc.details:
+            details["details"] = exc.details
+        return CommandError("RenderError", exc.message, exc.location, details)
+    raise exc
+
+
+def cmd_render(args: argparse.Namespace) -> CommandOutput:
+    from .errors import RenderError
+    from .rendering import render
+
+    path = Path(args.path)
+    output = Path(args.output) if args.output else path.with_suffix(".png")
+    if output.suffix.lower() != ".png":
+        raise CommandError("ValidationError", f"output must be a .png file, got {output}")
+    _check_destination(output, args.force)
+    scene, info = _load_scene(path, args.allow_lossy)
+    try:
+        if args.background is not None:
+            scene.world.background = args.background
+        result = render(
+            scene,
+            camera=args.camera,
+            width=args.width,
+            height=args.height,
+            samples=args.samples,
+            exposure=args.exposure,
+            cull=args.cull,
+            default_lights=False if args.no_default_lights else None,
+            frame=args.frame,
+            margin=args.margin,
+        )
+        written = result.save(output)
+    except RenderError as exc:
+        raise _render_error(exc) from None
+    data = {"path": str(path), **info, **result.to_dict()}
+    stats = result.stats
+    lines = [
+        f"Rendered {path} -> {written} ({result.width}x{result.height}, "
+        f"{result.settings['samples']}x{result.settings['samples']} samples per pixel, "
+        f"camera {result.camera['name']!r}, {stats['triangles']} triangles, "
+        f"{stats['timings']['total']:.2f} s)",
+        *_diagnostic_lines([d.to_dict() for d in result.diagnostics]),
+    ]
+    return data, "\n".join(lines), EXIT_OK
+
+
+def _run_scene(args: argparse.Namespace, operations: list[dict[str, Any]], command: str):
+    from .editing.script import ScriptError
+    from .rendering.script import run_scene_script
+
+    path = Path(args.path)
+    _project_only(path, command)
+    scene, _ = _load_scene(path)
+    script = {"format": "aether3d.scene-script", "version": 1, "operations": operations}
+    try:
+        result = run_scene_script(scene, script)
+    except ScriptError as exc:
+        details = {k: v for k, v in exc.to_dict().items() if k not in ("message", "location")}
+        raise CommandError("ScriptError", exc.message, exc.location, details) from None
+    written = None
+    if getattr(args, "dry_run", False) is False:
+        written = _write_or_dry_run(scene, path, args)
+    data = {
+        "path": str(path),
+        "output": written,
+        "dry_run": bool(getattr(args, "dry_run", False)),
+        **result,
+    }
+    return scene, data, written
+
+
+def _saved(data: dict[str, Any]) -> str:
+    return "dry run: nothing written" if data["dry_run"] else f"saved {data['output']}"
+
+
+def _vec(values: Sequence[float] | None) -> list[float] | None:
+    return None if values is None else [float(v) for v in values]
+
+
+def _look_target(args: argparse.Namespace) -> Any:
+    if getattr(args, "look_at", None) is not None and getattr(args, "look_at_object", None):
+        raise CommandError("UsageError", "give --look-at or --look-at-object, not both")
+    if getattr(args, "look_at", None) is not None:
+        return _vec(args.look_at)
+    return getattr(args, "look_at_object", None)
+
+
+def _camera_params(args: argparse.Namespace) -> dict[str, Any]:
+    params = {
+        "projection": args.projection,
+        "fov": args.fov,
+        "fov_axis": args.fov_axis,
+        "ortho_scale": args.ortho_scale,
+        "near": args.near,
+        "far": args.far,
+    }
+    out = {k: v for k, v in params.items() if v is not None}
+    if args.aspect_ratio is not None:
+        out["aspect_ratio"] = None if args.aspect_ratio == "none" else _float(args.aspect_ratio)
+    return out
+
+
+def _float(text: str) -> float:
+    try:
+        return float(text)
+    except ValueError:
+        raise CommandError("UsageError", f"expected a number or 'none', got {text!r}") from None
+
+
+def _placement(args: argparse.Namespace) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    if getattr(args, "position", None) is not None:
+        out["position"] = _vec(args.position)
+    if getattr(args, "rotation_euler", None) is not None:
+        out["rotation_euler"] = _vec(args.rotation_euler)
+    target = _look_target(args)
+    if target is not None:
+        out["look_at"] = target
+    if getattr(args, "up", None) is not None:
+        out["up"] = _vec(args.up)
+    return out
+
+
+def cmd_camera_add(args: argparse.Namespace) -> CommandOutput:
+    op: dict[str, Any] = {"op": "add_camera", **_camera_params(args), **_placement(args)}
+    if args.name:
+        op["name"] = args.name
+    if args.parent:
+        op["parent"] = args.parent
+    if args.active is not None:
+        op["active"] = args.active
+    if args.frame:
+        op["frame"] = True
+        op["frame_margin"] = args.margin
+        if args.frame_direction is not None:
+            op["frame_direction"] = _vec(args.frame_direction)
+    _, data, _ = _run_scene(args, [op], "camera add")
+    result = data["operations"][0]
+    active = " (active)" if result["active"] else ""
+    created = result["object"]
+    lines = [f"Added camera {created['name']!r} [{created['id']}]{active}", _saved(data)]
+    return data, "\n".join(lines), EXIT_OK
+
+
+def cmd_camera_set(args: argparse.Namespace) -> CommandOutput:
+    operations: list[dict[str, Any]] = []
+    params = _camera_params(args)
+    if params:
+        operations.append({"op": "set_camera", "camera": args.camera, **params})
+    placement = _placement(args)
+    if placement:
+        operations.append({"op": "set_object", "object": args.camera, **placement})
+    if args.activate:
+        operations.append({"op": "set_active_camera", "camera": args.camera})
+    if not operations:
+        raise CommandError("UsageError", "nothing to change; give camera parameters or placement")
+    _, data, _ = _run_scene(args, operations, "camera set")
+    return data, f"Updated camera {args.camera!r}\n{_saved(data)}", EXIT_OK
+
+
+def cmd_camera_frame(args: argparse.Namespace) -> CommandOutput:
+    op: dict[str, Any] = {"op": "frame_camera", "margin": args.margin}
+    if args.camera:
+        op["camera"] = args.camera
+    if args.object:
+        op["targets"] = list(args.object)
+    if args.direction is not None:
+        op["direction"] = _vec(args.direction)
+    if args.no_fit_clipping:
+        op["fit_clipping"] = False
+    _, data, _ = _run_scene(args, [op], "camera frame")
+    framing = data["operations"][0]
+    pos = framing["framing"]["position"]
+    text = f"Framed camera {framing['object']['name']!r} at {_fmt_vec(pos)}\n{_saved(data)}"
+    return data, text, EXIT_OK
+
+
+def cmd_camera_activate(args: argparse.Namespace) -> CommandOutput:
+    camera = None if args.camera == "none" else args.camera
+    _, data, _ = _run_scene(
+        args, [{"op": "set_active_camera", "camera": camera}], "camera activate"
+    )
+    active = data["operations"][0]["active_camera"]
+    text = f"Active camera: {active['name'] if active else 'none'}\n{_saved(data)}"
+    return data, text, EXIT_OK
+
+
+def cmd_camera_list(args: argparse.Namespace) -> CommandOutput:
+    from .rendering.script import rendering_summary
+
+    path = Path(args.path)
+    scene, info = _load_scene(path, getattr(args, "allow_lossy", False))
+    summary = rendering_summary(scene)
+    lines = [f'Cameras in "{scene.name}" ({len(summary["cameras"])}):']
+    for c in summary["cameras"]:
+        mark = " [active]" if c["active"] else ""
+        shape = (
+            f"fov {c['fov']:g}"
+            if c["projection"] == "perspective"
+            else (f"ortho_scale {c['ortho_scale']:g}")
+        )
+        where = _fmt_vec(c["position"]) if "position" in c else "?"
+        lines.append(f"  {c['name']}{mark}: {c['projection']}, {shape}, at {where}")
+    return {"path": str(path), **info, **summary}, "\n".join(lines), EXIT_OK
+
+
+def _light_params(args: argparse.Namespace) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key in ("color", "intensity", "falloff"):
+        value = getattr(args, key, None)
+        if value is not None:
+            out[key] = value
+    if getattr(args, "range", None) is not None:
+        out["range"] = None if args.range == "none" else _float(args.range)
+    return out
+
+
+def cmd_light_add(args: argparse.Namespace) -> CommandOutput:
+    op: dict[str, Any] = {
+        "op": "add_light",
+        "type": args.type,
+        **_light_params(args),
+        **_placement(args),
+    }
+    if args.direction is not None:
+        op["direction"] = _vec(args.direction)
+    if args.name:
+        op["name"] = args.name
+    if args.parent:
+        op["parent"] = args.parent
+    _, data, _ = _run_scene(args, [op], "light add")
+    created = data["operations"][0]["object"]
+    return data, f"Added {args.type} light {created['name']!r}\n{_saved(data)}", EXIT_OK
+
+
+def cmd_light_set(args: argparse.Namespace) -> CommandOutput:
+    operations: list[dict[str, Any]] = []
+    params = _light_params(args)
+    if args.type is not None:
+        params["type"] = args.type
+    if params:
+        operations.append({"op": "set_light", "light": args.light, **params})
+    placement = _placement(args)
+    if args.direction is not None:
+        placement["look_along"] = _vec(args.direction)
+    if placement:
+        operations.append({"op": "set_object", "object": args.light, **placement})
+    if not operations:
+        raise CommandError("UsageError", "nothing to change; give light parameters or placement")
+    _, data, _ = _run_scene(args, operations, "light set")
+    return data, f"Updated light {args.light!r}\n{_saved(data)}", EXIT_OK
+
+
+def cmd_light_list(args: argparse.Namespace) -> CommandOutput:
+    from .rendering.script import rendering_summary
+
+    path = Path(args.path)
+    scene, info = _load_scene(path, getattr(args, "allow_lossy", False))
+    summary = rendering_summary(scene)
+    world = summary["world"]
+    lines = [
+        f'Lights in "{scene.name}" ({len(summary["lights"])}); ambient '
+        f"{_fmt_vec(world['ambient_color'])} x {world['ambient_intensity']:g}:"
+    ]
+    for light in summary["lights"]:
+        where = (
+            f"from {_fmt_vec(light['position'])}"
+            if light["type"] == "point"
+            else f"along {_fmt_vec(light['direction'] or (0, 0, 0))}"
+        )
+        hidden = " (hidden)" if not light["visible"] else ""
+        lines.append(
+            f"  {light['name']}: {light['type']} {_fmt_vec(light['color'])} x "
+            f"{light['intensity']:g} {where}{hidden}"
+        )
+    return {"path": str(path), **info, **summary}, "\n".join(lines), EXIT_OK
+
+
+def _bool_arg(text: str) -> bool:
+    lowered = text.lower()
+    if lowered in ("true", "yes", "on", "1"):
+        return True
+    if lowered in ("false", "no", "off", "0"):
+        return False
+    raise argparse.ArgumentTypeError(f"expected true or false, got {text!r}")
+
+
+def cmd_object_set(args: argparse.Namespace) -> CommandOutput:
+    op: dict[str, Any] = {"op": "set_object", "object": args.object, **_placement(args)}
+    for key in ("color", "specular", "shininess", "visible"):
+        value = getattr(args, key)
+        if value is not None:
+            op[key] = value
+    if args.scale is not None:
+        op["scale"] = _vec(args.scale)
+    if len(op) == 2:
+        raise CommandError("UsageError", "nothing to change")
+    _, data, _ = _run_scene(args, [op], "object set")
+    return data, f"Updated {args.object!r}\n{_saved(data)}", EXIT_OK
+
+
+def cmd_object_remove(args: argparse.Namespace) -> CommandOutput:
+    _, data, _ = _run_scene(args, [{"op": "remove", "object": args.object}], "object remove")
+    removed = data["operations"][0]["removed"]
+    return data, f"Removed {len(removed)} object(s)\n{_saved(data)}", EXIT_OK
+
+
+def cmd_scene_set(args: argparse.Namespace) -> CommandOutput:
+    operations: list[dict[str, Any]] = []
+    world = {
+        k: getattr(args, k)
+        for k in ("background", "ambient_color", "ambient_intensity")
+        if getattr(args, k) is not None
+    }
+    if world:
+        operations.append({"op": "set_world", **world})
+    settings = {
+        k: getattr(args, k)
+        for k in ("width", "height", "samples", "exposure", "cull", "default_lights")
+        if getattr(args, k) is not None
+    }
+    if settings:
+        operations.append({"op": "set_render_settings", **settings})
+    if args.active_camera is not None:
+        camera = None if args.active_camera == "none" else args.active_camera
+        operations.append({"op": "set_active_camera", "camera": camera})
+    if not operations:
+        raise CommandError("UsageError", "nothing to change")
+    _, data, _ = _run_scene(args, operations, "scene set")
+    return data, f"Updated scene settings\n{_saved(data)}", EXIT_OK
+
+
+def cmd_scene_run(args: argparse.Namespace) -> CommandOutput:
+    from .editing.script import ScriptError
+    from .rendering.script import run_scene_script
+
+    path = Path(args.path)
+    _project_only(path, "scene run")
+    scene, _ = _load_scene(path)
+    script = _read_script(args.script)
+    try:
+        result = run_scene_script(scene, script)
+    except ScriptError as exc:
+        details = {k: v for k, v in exc.to_dict().items() if k not in ("message", "location")}
+        raise CommandError("ScriptError", exc.message, exc.location, details) from None
+    written = _write_or_dry_run(scene, path, args)
+    data = {"path": str(path), "output": written, "dry_run": args.dry_run, **result}
+    lines = [f"{len(result['operations'])} operations applied", _saved(data)]
+    return data, "\n".join(lines), EXIT_OK
+
+
+# --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
 
@@ -796,14 +1173,187 @@ def build_parser() -> argparse.ArgumentParser:
     p_bake.add_argument("--object", action="append", help="object id or name (repeatable)")
     p_bake.add_argument("--all", action="store_true", help="bake every procedural object")
     p_bake.set_defaults(handler=cmd_procedural_bake)
+
+    _add_render_parsers(sub, common, lossy, writing)
     return parser
+
+
+def _add_render_parsers(sub, common, lossy, writing) -> None:
+    vec = {"nargs": 3, "type": float, "metavar": ("X", "Y", "Z")}
+
+    p_render = sub.add_parser(
+        "render", parents=[common, lossy], help="render a PNG image with Aether3D's CPU renderer"
+    )
+    p_render.add_argument("path", help="a .aether project (or a .glb/.gltf file, with --frame)")
+    p_render.add_argument("-o", "--output", help="the .png file to write (default: PATH.png)")
+    p_render.add_argument("--width", type=int, help="image width in pixels")
+    p_render.add_argument("--height", type=int, help="image height in pixels")
+    p_render.add_argument("--camera", help="camera object id or name (default: active camera)")
+    p_render.add_argument("--samples", type=int, help="antialiasing: N x N samples per pixel (1-4)")
+    p_render.add_argument("--exposure", type=float, help="exposure in stops (EV)")
+    p_render.add_argument("--cull", choices=["none", "back", "front"], help="face culling")
+    p_render.add_argument("--background", help="background color for this render (#rrggbb)")
+    p_render.add_argument(
+        "--no-default-lights", action="store_true", help="no built-in light if the scene has none"
+    )
+    p_render.add_argument(
+        "--frame",
+        action="store_true",
+        help="frame the camera on all visible geometry for this render (a temporary camera "
+        "is used if the scene has none); the project is not modified",
+    )
+    p_render.add_argument("--margin", type=float, default=0.05, help="free border with --frame")
+    p_render.add_argument("--force", action="store_true", help="overwrite an existing image")
+    p_render.set_defaults(handler=cmd_render)
+
+    def placement(p, *, target: bool = True) -> None:
+        p.add_argument("--position", **vec, help="local position")
+        p.add_argument("--rotation-euler", **vec, help="local XYZ Euler rotation (degrees)")
+        if target:
+            p.add_argument("--look-at", **vec, help="aim the front (-Y) at this world point")
+            p.add_argument("--look-at-object", help="aim the front (-Y) at this object")
+            p.add_argument("--up", **vec, help="up direction when aiming (default 0 0 1)")
+
+    def camera_params(p) -> None:
+        p.add_argument("--projection", choices=["perspective", "orthographic"])
+        p.add_argument("--fov", type=float, help="field of view in degrees (perspective)")
+        p.add_argument("--fov-axis", choices=["vertical", "horizontal", "auto"])
+        p.add_argument("--ortho-scale", type=float, help="view size in units (orthographic)")
+        p.add_argument("--near", type=float, help="near clipping distance")
+        p.add_argument("--far", type=float, help="far clipping distance")
+        p.add_argument("--aspect-ratio", help="preferred frame width/height, or 'none'")
+
+    p_cam = sub.add_parser("camera", help="add, change, list and frame cameras")
+    cam = p_cam.add_subparsers(dest="subcommand", required=True, metavar="SUBCOMMAND")
+    p = cam.add_parser("add", parents=[common, writing], help="add a camera")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--name", help="object name (default: Camera, Camera.001, ...)")
+    p.add_argument("--parent", help="parent object id or name")
+    camera_params(p)
+    placement(p)
+    p.add_argument(
+        "--active",
+        dest="active",
+        action="store_const",
+        const=True,
+        default=None,
+        help="make it the active camera (default: if there is none)",
+    )
+    p.add_argument(
+        "--inactive",
+        dest="active",
+        action="store_const",
+        const=False,
+        help="do not make it the active camera",
+    )
+    p.add_argument("--frame", action="store_true", help="frame it on all visible geometry")
+    p.add_argument("--frame-direction", **vec, help="view direction when framing")
+    p.add_argument("--margin", type=float, default=0.05, help="free border when framing")
+    p.set_defaults(handler=cmd_camera_add)
+
+    p = cam.add_parser("set", parents=[common, writing], help="change a camera")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("camera", help="camera object id or name")
+    camera_params(p)
+    placement(p)
+    p.add_argument("--activate", action="store_true", help="make it the active camera")
+    p.set_defaults(handler=cmd_camera_set)
+
+    p = cam.add_parser("frame", parents=[common, writing], help="frame a camera on geometry")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("camera", nargs="?", help="camera id or name (default: the active camera)")
+    p.add_argument("--object", action="append", help="frame this object (repeatable; default all)")
+    p.add_argument("--direction", **vec, help="new view direction (default: keep)")
+    p.add_argument("--margin", type=float, default=0.05, help="free border fraction")
+    p.add_argument("--no-fit-clipping", action="store_true", help="keep near/far unchanged")
+    p.set_defaults(handler=cmd_camera_frame)
+
+    p = cam.add_parser("activate", parents=[common, writing], help="choose the active camera")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("camera", help="camera id or name, or 'none'")
+    p.set_defaults(handler=cmd_camera_activate)
+
+    p = cam.add_parser("list", parents=[common, lossy], help="list cameras")
+    p.add_argument("path", help="a .aether project")
+    p.set_defaults(handler=cmd_camera_list)
+
+    p_light = sub.add_parser("light", help="add, change and list lights")
+    lights = p_light.add_subparsers(dest="subcommand", required=True, metavar="SUBCOMMAND")
+
+    def light_params(p) -> None:
+        p.add_argument("--color", help="light color (#rrggbb)")
+        p.add_argument("--intensity", type=float, help="unitless intensity (>= 0)")
+        p.add_argument("--range", help="point lights: fade-out distance, or 'none'")
+        p.add_argument("--falloff", choices=["inverse_square", "none"], help="point light falloff")
+        p.add_argument("--direction", **vec, help="directional lights: travel direction")
+
+    p = lights.add_parser("add", parents=[common, writing], help="add a light")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--type", choices=["directional", "point"], default="directional")
+    p.add_argument("--name", help="object name (default: Light, Light.001, ...)")
+    p.add_argument("--parent", help="parent object id or name")
+    light_params(p)
+    placement(p)
+    p.set_defaults(handler=cmd_light_add)
+
+    p = lights.add_parser("set", parents=[common, writing], help="change a light")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("light", help="light object id or name")
+    p.add_argument("--type", choices=["directional", "point"])
+    light_params(p)
+    placement(p)
+    p.set_defaults(handler=cmd_light_set)
+
+    p = lights.add_parser("list", parents=[common, lossy], help="list lights and ambient light")
+    p.add_argument("path", help="a .aether project")
+    p.set_defaults(handler=cmd_light_list)
+
+    p_obj = sub.add_parser("object", help="change an object's placement, color and visibility")
+    objs = p_obj.add_subparsers(dest="subcommand", required=True, metavar="SUBCOMMAND")
+    p = objs.add_parser("set", parents=[common, writing], help="change an object")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("object", help="object id or name")
+    placement(p)
+    p.add_argument("--scale", **vec, help="local scale")
+    p.add_argument("--color", help="display color (#rrggbb)")
+    p.add_argument("--specular", type=float, help="highlight strength in [0, 1]")
+    p.add_argument("--shininess", type=float, help="highlight exponent in [1, 10000]")
+    p.add_argument("--visible", type=_bool_arg, help="true or false")
+    p.set_defaults(handler=cmd_object_set)
+    p = objs.add_parser("remove", parents=[common, writing], help="remove an object and children")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("object", help="object id or name")
+    p.set_defaults(handler=cmd_object_remove)
+
+    p_scene = sub.add_parser("scene", help="world, render settings and scene scripts")
+    scenes = p_scene.add_subparsers(dest="subcommand", required=True, metavar="SUBCOMMAND")
+    p = scenes.add_parser("set", parents=[common, writing], help="world and render settings")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--background", help="background color (#rrggbb)")
+    p.add_argument("--ambient-color", help="ambient light color (#rrggbb)")
+    p.add_argument("--ambient-intensity", type=float, help="ambient light strength (>= 0)")
+    p.add_argument("--width", type=int, help="default image width")
+    p.add_argument("--height", type=int, help="default image height")
+    p.add_argument("--samples", type=int, help="default antialiasing (1-4)")
+    p.add_argument("--exposure", type=float, help="default exposure (EV)")
+    p.add_argument("--cull", choices=["none", "back", "front"], help="default face culling")
+    p.add_argument("--default-lights", type=_bool_arg, help="true or false")
+    p.add_argument("--active-camera", help="camera id or name, or 'none'")
+    p.set_defaults(handler=cmd_scene_set)
+    p = scenes.add_parser(
+        "run", parents=[common, writing], help="apply a JSON scene-setup script (atomically)"
+    )
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("script", help="scene script (.json), or - to read it from stdin")
+    p.set_defaults(handler=cmd_scene_run)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     command = args.command
-    if command == "procedural":
-        command = f"procedural {args.procedural_command}"
+    subcommand = getattr(args, "procedural_command", None) or getattr(args, "subcommand", None)
+    if subcommand:
+        command = f"{command} {subcommand}"
     # Never crash on non-ASCII scene/object names when stdout is a legacy code page.
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
