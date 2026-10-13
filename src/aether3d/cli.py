@@ -1,7 +1,8 @@
 """Command-line interface.
 
 Commands: ``new``, ``validate``, ``inspect``, ``geometry``, ``import``,
-``export``, ``topology`` and ``edit``.
+``export``, ``topology``, ``edit`` and ``procedural`` (with the subcommands
+``types``, ``inspect``, ``validate``, ``run``, ``set`` and ``bake``).
 
 Every command accepts ``--json`` to emit a single machine-readable JSON
 object on stdout, both on success (``"ok": true``) and on failure
@@ -10,7 +11,8 @@ object on stdout, both on success (``"ok": true``) and on failure
 * ``0`` -- success
 * ``1`` -- the command failed (invalid file, missing file, unsupported content, ...)
 * ``2`` -- invalid command-line usage
-* ``3`` -- ``geometry``/``topology`` completed but found error-severity problems
+* ``3`` -- ``geometry``/``topology``/``procedural validate`` completed but found
+  error-severity problems
 
 Commands that read a scene accept native ``.aether`` projects as well as
 ``.glb``/``.gltf`` files (which are imported in memory).
@@ -76,11 +78,24 @@ def _command_error(exc: BaseException, path: Path) -> CommandError:
             exc.message,
             details={"diagnostics": [d.to_dict() for d in exc.diagnostics]},
         )
+    from .procedural.params import ProceduralError
+
+    if isinstance(exc, ProceduralError):
+        return CommandError("ProceduralError", exc.message, exc.location, _procedural_details(exc))
     if isinstance(exc, AetherError):
         return CommandError(type(exc).__name__, str(exc))
     if isinstance(exc, OSError):
         return CommandError(type(exc).__name__, f"cannot access {path}: {exc.strerror or exc}")
     raise exc
+
+
+def _procedural_details(exc: Any) -> dict[str, Any]:
+    details: dict[str, Any] = {"code": exc.code}
+    if exc.hint:
+        details["hint"] = exc.hint
+    if exc.details:
+        details["details"] = exc.details
+    return details
 
 
 def _read_project(path: Path) -> tuple[Scene, int]:
@@ -185,6 +200,9 @@ def _object_info(obj: SceneObject, depth: int) -> dict[str, Any]:
         },
         "world_position": list(obj.world_position),
         "mesh": mesh,
+        "geometry": None
+        if obj.geometry is None
+        else {"id": obj.geometry.id, "name": obj.geometry.name},
     }
 
 
@@ -253,6 +271,8 @@ def cmd_inspect(args: argparse.Namespace) -> CommandOutput:
             details.append(f"scale={_fmt_vec(obj.scale)}")
         if obj.mesh is not None:
             details.append(f"mesh={obj.mesh.vertex_count}v/{obj.mesh.triangle_count}t")
+        if obj.geometry is not None:
+            details.append(f"procedural={obj.geometry.name}")
         lines.append(f"{prefix}{branch}{obj.name}  [{obj.id}]  " + "  ".join(details))
         kids = obj.children
         for i, child in enumerate(kids):
@@ -407,6 +427,47 @@ def cmd_topology(args: argparse.Namespace) -> CommandOutput:
     return data, "\n".join(lines), code
 
 
+def _read_script(arg: str) -> Any:
+    """Read a JSON script from a file or ``-`` (stdin), with a size limit."""
+    try:
+        if arg == "-":
+            raw = sys.stdin.buffer.read(MAX_SCRIPT_BYTES + 1)
+        else:
+            script_path = Path(arg)
+            if script_path.stat().st_size > MAX_SCRIPT_BYTES:
+                raise CommandError(
+                    "ResourceLimitError", f"script is larger than {MAX_SCRIPT_BYTES} bytes"
+                )
+            raw = script_path.read_bytes()
+    except OSError as exc:
+        raise _command_error(exc, Path(arg)) from None
+    if len(raw) > MAX_SCRIPT_BYTES:
+        raise CommandError("ResourceLimitError", f"script is larger than {MAX_SCRIPT_BYTES} bytes")
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CommandError(
+            "ScriptError", f"script is not valid JSON: {exc}", "script", {"code": "INVALID_JSON"}
+        ) from None
+
+
+def _write_or_dry_run(scene: Scene, path: Path, args: argparse.Namespace) -> str | None:
+    if args.dry_run:
+        return None
+    output = Path(args.output) if args.output else path
+    try:
+        return str(save_scene(scene, output))
+    except (AetherError, OSError) as exc:
+        raise _command_error(exc, output) from None
+
+
+def _project_only(path: Path, command: str) -> None:
+    if path.suffix.lower() in GLTF_SUFFIXES:
+        raise CommandError(
+            "ValidationError", f"{command} works on .aether projects; import the glTF file first"
+        )
+
+
 def cmd_edit(args: argparse.Namespace) -> CommandOutput:
     from .editing.script import ScriptError, run_edit_script
 
@@ -416,26 +477,7 @@ def cmd_edit(args: argparse.Namespace) -> CommandOutput:
             "ValidationError", "edit works on .aether projects; import the glTF file first"
         )
     scene, info = _load_scene(path)
-    try:
-        if args.script == "-":
-            raw = sys.stdin.buffer.read(MAX_SCRIPT_BYTES + 1)
-        else:
-            script_path = Path(args.script)
-            if script_path.stat().st_size > MAX_SCRIPT_BYTES:
-                raise CommandError(
-                    "ResourceLimitError", f"script is larger than {MAX_SCRIPT_BYTES} bytes"
-                )
-            raw = script_path.read_bytes()
-    except OSError as exc:
-        raise _command_error(exc, Path(args.script)) from None
-    if len(raw) > MAX_SCRIPT_BYTES:
-        raise CommandError("ResourceLimitError", f"script is larger than {MAX_SCRIPT_BYTES} bytes")
-    try:
-        script = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise CommandError(
-            "ScriptError", f"script is not valid JSON: {exc}", "script", {"code": "INVALID_JSON"}
-        ) from None
+    script = _read_script(args.script)
     try:
         result = run_edit_script(scene, script)
     except ScriptError as exc:
@@ -464,6 +506,167 @@ def cmd_edit(args: argparse.Namespace) -> CommandOutput:
             f"{'changed' if commit['changed'] else 'unchanged'} ({size}), "
             f"validation {commit['validation']['status']}"
         )
+    lines.append("dry run: nothing written" if args.dry_run else f"saved {written}")
+    return data, "\n".join(lines), EXIT_OK
+
+
+# --------------------------------------------------------------------------- #
+# procedural
+# --------------------------------------------------------------------------- #
+
+
+def cmd_procedural_types(args: argparse.Namespace) -> CommandOutput:
+    from .procedural import ProceduralSystem
+
+    types = ProceduralSystem.types()
+    lines = ["Primitives:"]
+    for t in types["primitives"]:
+        params = ", ".join(p["name"] for p in t["params"])
+        lines.append(f"  {t['type']}({params})")
+    lines.append("Modifiers:")
+    for t in types["modifiers"]:
+        params = ", ".join(p["name"] for p in t["params"])
+        lines.append(f"  {t['type']}({params})")
+    lines.append("Parameter types: " + ", ".join(types["parameter_types"]))
+    return types, "\n".join(lines), EXIT_OK
+
+
+def cmd_procedural_inspect(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    _project_only(path, "procedural inspect")
+    scene, _ = _load_scene(path)
+    system = scene.procedural
+    if args.geometry:
+        info = {"geometry": [system.info(args.geometry, evaluate=args.evaluate)]}
+        info["parameters"] = system.info()["parameters"]
+    else:
+        info = system.info(evaluate=args.evaluate)
+    info.pop("cache", None)
+    info["objects"] = [
+        {"id": o.id, "name": o.name, "geometry": o.geometry.name} for o in scene if o.is_procedural
+    ]
+    lines = [f'Procedural content of "{scene.name}"']
+    lines.append(f"Parameters ({len(info['parameters'])}):")
+    for name, p in info["parameters"].items():
+        value = p["value"]
+        shown = (
+            f"{value['expr']} = {p['resolved']}" if isinstance(value, dict) else f"{p['resolved']}"
+        )
+        lines.append(f"  {name}: {p['type']} = {shown}")
+    lines.append(f"Geometry ({len(info['geometry'])}):")
+    for g in info["geometry"]:
+        src = g["source"]
+        what = src.get("primitive") or (
+            f"geometry {src.get('geometry')}" if src["type"] == "geometry" else "stored mesh"
+        )
+        lines.append(f"  {g['name']} <- {what}; users: {len(g['users'])}")
+        for m in g["modifiers"]:
+            state = "" if m["enabled"] else " (disabled)"
+            lines.append(f"    - {m['name']} [{m['type']}]{state}")
+        if "evaluated" in g:
+            e = g["evaluated"]
+            lines.append(
+                f"    = {e['mesh']['vertex_count']}v/{e['mesh']['triangle_count']}t, "
+                f"{e['polygons']['face_count']} faces"
+            )
+    return info, "\n".join(lines), EXIT_OK
+
+
+def cmd_procedural_validate(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    _project_only(path, "procedural validate")
+    scene, _ = _load_scene(path)
+    report = scene.procedural.validate(args.geometry)
+    lines = [f"Procedural validation: {report['status']}"]
+    for entry in report["geometry"]:
+        name = entry["geometry"]["name"]
+        if entry["status"] == "error" and "error" in entry:
+            err = entry["error"]
+            lines.append(f"  {name}: error [{err['code']}] {err['message']}")
+            continue
+        summary = entry["topology"]["summary"]
+        lines.append(
+            f"  {name}: {entry['status']} ({summary['face_count']} faces, "
+            f"{'closed' if summary['closed'] else 'open'})"
+        )
+        lines += ["  " + line for line in _diagnostic_lines(entry["diagnostics"])]
+    code = EXIT_GEOMETRY_ERRORS if report["status"] == "error" else EXIT_OK
+    return {"path": str(path), **report}, "\n".join(lines), code
+
+
+def _run_procedural(scene: Scene, script: Any) -> dict[str, Any]:
+    from .editing.script import ScriptError
+    from .procedural.script import run_procedural_script
+
+    try:
+        return run_procedural_script(scene, script)
+    except ScriptError as exc:
+        details = {k: v for k, v in exc.to_dict().items() if k not in ("message", "location")}
+        raise CommandError("ScriptError", exc.message, exc.location, details) from None
+
+
+def cmd_procedural_run(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    _project_only(path, "procedural run")
+    scene, _ = _load_scene(path)
+    script = _read_script(args.script)
+    result = _run_procedural(scene, script)
+    written = _write_or_dry_run(scene, path, args)
+    data = {"path": str(path), "output": written, "dry_run": args.dry_run, **result}
+    lines = [f"{len(result['operations'])} operations applied"]
+    lines.append("dry run: nothing written" if args.dry_run else f"saved {written}")
+    return data, "\n".join(lines), EXIT_OK
+
+
+def _parse_assignment(text: str) -> tuple[str, Any]:
+    name, sep, value = text.partition("=")
+    if not sep or not name:
+        raise CommandError("UsageError", f"expected NAME=VALUE, got {text!r}")
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        parsed = value  # bare strings (e.g. enum values)
+    return name, parsed
+
+
+def cmd_procedural_set(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    _project_only(path, "procedural set")
+    scene, _ = _load_scene(path)
+    operations = []
+    for assignment in args.assignments:
+        name, value = _parse_assignment(assignment)
+        op: dict[str, Any] = {"op": "set_parameter", "name": name, "value": value}
+        if args.geometry:
+            op["geometry"] = args.geometry
+        operations.append(op)
+    script = {"format": "aether3d.procedural-script", "version": 1, "operations": operations}
+    result = _run_procedural(scene, script)
+    written = _write_or_dry_run(scene, path, args)
+    data = {"path": str(path), "output": written, "dry_run": args.dry_run, **result}
+    lines = [f"set {', '.join(a.partition('=')[0] for a in args.assignments)}"]
+    lines.append("dry run: nothing written" if args.dry_run else f"saved {written}")
+    return data, "\n".join(lines), EXIT_OK
+
+
+def cmd_procedural_bake(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    _project_only(path, "procedural bake")
+    scene, _ = _load_scene(path)
+    if args.all:
+        targets = [o.id for o in scene if o.is_procedural]
+    elif args.object:
+        targets = [_find_object(scene, ref).id for ref in args.object]
+    else:
+        raise CommandError("UsageError", "give --object (repeatable) or --all")
+    operations = [{"op": "bake", "object": oid} for oid in targets]
+    if operations:
+        script = {"format": "aether3d.procedural-script", "version": 1, "operations": operations}
+        _run_procedural(scene, script)
+    written = _write_or_dry_run(scene, path, args)
+    baked = [{"id": oid, "name": scene.get(oid).name} for oid in targets]
+    data = {"path": str(path), "output": written, "dry_run": args.dry_run, "baked": baked}
+    lines = [f"baked {len(baked)} object(s): " + ", ".join(b["name"] for b in baked)]
     lines.append("dry run: nothing written" if args.dry_run else f"saved {written}")
     return data, "\n".join(lines), EXIT_OK
 
@@ -550,24 +753,73 @@ def build_parser() -> argparse.ArgumentParser:
     p_edit.add_argument("--output", help="write the result here instead of updating PATH")
     p_edit.add_argument("--dry-run", action="store_true", help="run and report, but write nothing")
     p_edit.set_defaults(handler=cmd_edit)
+
+    p_proc = sub.add_parser("procedural", help="procedural geometry: inspect, run scripts, bake")
+    proc = p_proc.add_subparsers(dest="procedural_command", required=True, metavar="SUBCOMMAND")
+    writing = argparse.ArgumentParser(add_help=False)
+    writing.add_argument("--output", help="write the result here instead of updating PATH")
+    writing.add_argument("--dry-run", action="store_true", help="run and report, but write nothing")
+
+    p_types = proc.add_parser("types", parents=[common], help="primitive and modifier schemas")
+    p_types.set_defaults(handler=cmd_procedural_types)
+
+    p_pinspect = proc.add_parser("inspect", parents=[common], help="parameters, geometry, stacks")
+    p_pinspect.add_argument("path", help="the .aether project")
+    p_pinspect.add_argument("--geometry", help="only this geometry (id or name)")
+    p_pinspect.add_argument("--evaluate", action="store_true", help="also evaluate and summarize")
+    p_pinspect.set_defaults(handler=cmd_procedural_inspect)
+
+    p_pvalidate = proc.add_parser("validate", parents=[common], help="evaluate and check geometry")
+    p_pvalidate.add_argument("path", help="the .aether project")
+    p_pvalidate.add_argument("--geometry", help="only this geometry (id or name)")
+    p_pvalidate.set_defaults(handler=cmd_procedural_validate)
+
+    p_run = proc.add_parser(
+        "run", parents=[common, writing], help="apply a JSON procedural script (atomically)"
+    )
+    p_run.add_argument("path", help="the .aether project")
+    p_run.add_argument("script", help="procedural script (.json), or - to read it from stdin")
+    p_run.set_defaults(handler=cmd_procedural_run)
+
+    p_set = proc.add_parser(
+        "set", parents=[common, writing], help="set parameters (NAME=VALUE, values as JSON)"
+    )
+    p_set.add_argument("path", help="the .aether project")
+    p_set.add_argument("assignments", nargs="+", metavar="NAME=VALUE")
+    p_set.add_argument("--geometry", help="set this geometry's parameters (default: scene's)")
+    p_set.set_defaults(handler=cmd_procedural_set)
+
+    p_bake = proc.add_parser(
+        "bake", parents=[common, writing], help="replace procedural objects by static meshes"
+    )
+    p_bake.add_argument("path", help="the .aether project")
+    p_bake.add_argument("--object", action="append", help="object id or name (repeatable)")
+    p_bake.add_argument("--all", action="store_true", help="bake every procedural object")
+    p_bake.set_defaults(handler=cmd_procedural_bake)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    command = args.command
+    if command == "procedural":
+        command = f"procedural {args.procedural_command}"
     # Never crash on non-ASCII scene/object names when stdout is a legacy code page.
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
     try:
-        result, text, code = args.handler(args)
+        try:
+            result, text, code = args.handler(args)
+        except AetherError as exc:  # e.g. a procedural object failing to evaluate
+            raise _command_error(exc, Path(getattr(args, "path", "") or "")) from None
     except CommandError as exc:
         error: dict[str, Any] = {"type": exc.error_type, "message": exc.message}
         if exc.location:
             error["location"] = exc.location
         error.update(exc.details)
         if args.json:
-            print(json.dumps({"ok": False, "command": args.command, "error": error}, indent=2))
+            print(json.dumps({"ok": False, "command": command, "error": error}, indent=2))
         else:
             where = f"{exc.location}: " if exc.location else ""
             print(f"error: {where}{exc.message}", file=sys.stderr)
@@ -575,7 +827,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(line, file=sys.stderr)
         return EXIT_FAILURE
     if args.json:
-        print(json.dumps({"ok": True, "command": args.command, **result}, indent=2))
+        print(json.dumps({"ok": True, "command": command, **result}, indent=2))
     else:
         print(text)
     return code

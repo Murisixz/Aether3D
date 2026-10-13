@@ -4,6 +4,108 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.4.0: Procedural geometry engine
+
+### Added
+
+- **Non-destructive procedural geometry** (`aether3d.procedural`,
+  `scene.procedural`; guide: [docs/PROCEDURAL.md](docs/PROCEDURAL.md)).
+  - **Geometry nodes:** a source (a parametric primitive, a stored base
+    mesh, or another node with parameter overrides and an optional `after`
+    modifier) plus an ordered **modifier stack**.
+  - **Modifiers** have stable UUID ids, unique names, typed and validated
+    parameters, and an `enabled` flag. They can be inserted, moved and
+    removed.
+  - **Objects** reference nodes (`scene.add_object(..., geometry=)`,
+    `scene.add_procedural`, `obj.set_geometry`), and `obj.mesh` returns the
+    evaluated mesh. Base definitions are never modified.
+- **Primitives:** `box`, `grid`, `cylinder`, `cone` (and frustum), `torus`
+  and `uv_sphere`. All are watertight where closed and outward-wound, with
+  UVs and analytic normals.
+- **Modifiers:**
+  - `transform` (pivot; mirroring scales re-wind faces);
+  - `mirror` (multi-axis, merge with a threshold, interior cap removal, UV
+    mirroring);
+  - `array` (relative and constant offsets, per-step rotation and scale,
+    boundary welding);
+  - `solidify` (offset, even thickness, rims);
+  - `subdivision` (vectorized Catmull–Clark with boundary rules, up to
+    level 6);
+  - `bevel` (the editing engine's chamfer, limited to all, angle or sharp
+    edges);
+  - `boolean` (union, difference and intersection with another node, using
+    Manifold).
+
+  Invalid input raises a stable error code. Noteworthy results are reported
+  as diagnostics.
+- **Parameters:** `float`, `int`, `bool`, `vec3`, `enum` and `string`, with
+  ranges, choices, units and descriptions, at scene and node scope.
+  - **Expressions** (`Expr`, `{"expr": ...}` in JSON) are a whitelisted
+    arithmetic and logic language with resource limits. It is never Python
+    `eval`.
+  - **Rules** reject invalid parameter combinations
+    (`CONSTRAINT_VIOLATED`).
+- **Dependency graph:** node references and boolean operands, with
+  `dependencies()` and `dependents()`, and cycle detection for both
+  geometry and parameters (`DEPENDENCY_CYCLE`).
+- **Content-addressed caching:** SHA-256 keys over the resolved inputs of
+  each stack step. Results can never be stale, unchanged prefixes and nodes
+  are reused, evaluated meshes are shared between instances, and the LRU
+  cache is byte-bounded and reports statistics.
+- **Transactions:** every change is validated, including evaluation of the
+  affected geometry, and rolled back exactly on failure, keeping handles
+  valid. `batch()` groups changes; `undo()` and `redo()` restore history.
+- **Introspection:** `ProceduralSystem.types()` (every schema), `info()`
+  (raw and resolved values, dependencies, users, evaluated statistics),
+  `validate()` (per-node topology and diagnostics), and
+  `parameter_dependencies()`.
+- **Baking and source editing:** `obj.bake()`;
+  `geometry.convert_source_to_mesh()`; `geometry.edit_source()`, which
+  edits a base mesh with the editing engine and regenerates every user.
+- **JSON procedural scripts** (`run_procedural_script`, format
+  `aether3d.procedural-script` v1). They are atomic, report the failing
+  operation and location, and never execute code.
+- **CLI:** `aether3d procedural types | inspect | validate | run | set | bake`
+  (JSON output; `--dry-run` and `--output`; exit code `3` when validation
+  fails). `inspect` shows which geometry node an object uses.
+- **Demo:** [`examples/minecraft_castle.py`](examples/minecraft_castle.py)
+  builds a parametric castle: walls with battlements and an arched gate;
+  towers with arrow slits and crowns; a keep, a roofed watchtower and
+  instanced bushes. It verifies the castle's structure, then saves,
+  reloads, modifies, rejects invalid changes, exports, validates with
+  Khronos, compares in Blender (optional) and undoes.
+- **Benchmarks:** `benchmarks/bench_procedural.py` (time and peak memory per
+  modifier at three sizes, plus castle cache behaviour).
+- **Optional dependency:** `aether3d[boolean]` installs
+  [manifold3d](https://github.com/elalish/manifold) (Apache-2.0, ≥ 3.4).
+  It is included in `dev`.
+
+### Changed
+
+- **`.aether` format version 2:** `scene.parameters`, `scene.rules`,
+  `scene.geometry`, and an object `geometry` reference. Procedural objects
+  store definitions, never evaluated meshes. Version 1 files are migrated
+  on load.
+- **Editing engine bevel is faster:** edge-to-face lookups are indexed
+  instead of scanning every vertex fan. Results are identical; bevelling
+  every edge of an 8,192-face mesh dropped from about 62 s to 3 s.
+- **CLI:** `inspect` shows procedural objects (`geometry` in JSON,
+  `procedural=` in text). Commands that need an evaluated mesh report
+  evaluation failures as a `ProceduralError` (exit code `1`) with a
+  location.
+
+### Compatibility
+
+- **Old projects load:** version 1 projects (0.1.0–0.3.0) load unchanged,
+  and saving writes version 2. Aether3D 0.3.0 cannot read version 2 files.
+- **No API changes for static objects.** All 0.1–0.3 APIs behave as before
+  for objects without procedural geometry.
+- **Two test changes:** the earlier tests pass unchanged, except two CLI
+  tests that hard-coded `format_version: 1`. They now use
+  `FORMAT_VERSION`.
+- **NumPy is still the only required dependency.** Booleans need the
+  optional `boolean` extra.
+
 ## 0.3.0: Mesh editing engine
 
 ### Added

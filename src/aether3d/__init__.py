@@ -14,6 +14,10 @@ Quick start::
     imported = Scene.import_file("example.glb")
     report = imported.inspect_geometry().to_dict()
 
+    # Non-destructive procedural geometry (docs/PROCEDURAL.md)
+    tower = scene.add_procedural("Tower", "cylinder", radius=1, depth=4, segments=8)
+    tower.geometry.add_modifier("bevel", width=0.05, limit="angle", angle=40)
+
 Everything listed in ``__all__`` is the supported public API.
 """
 
@@ -45,6 +49,15 @@ from .gltf import ExportResult, ImportLimits, ImportResult, export_gltf, import_
 from .inspection import MeshGeometryReport, SceneGeometryReport, inspect_mesh, inspect_scene
 from .mesh import Mesh
 from .primitives import create_cube, create_plane, create_sphere
+from .procedural import (
+    Expr,
+    Modifier,
+    PolyMesh,
+    ProceduralError,
+    ProceduralGeometry,
+    ProceduralSystem,
+)
+from .procedural.script import run_procedural_script
 from .scene import Scene, SceneObject
 from .serialization import FORMAT_VERSION, load_scene, save_scene
 from .transform import Transform
@@ -59,15 +72,21 @@ __all__ = [
     "EditError",
     "EditSession",
     "EditableMesh",
+    "Expr",
     "ExportResult",
     "HierarchyError",
     "ImportLimits",
     "ImportResult",
     "Mesh",
     "MeshGeometryReport",
+    "Modifier",
     "NameConflictError",
     "ObjectNotFoundError",
     "OperationResult",
+    "PolyMesh",
+    "ProceduralError",
+    "ProceduralGeometry",
+    "ProceduralSystem",
     "ProjectFormatError",
     "ResourceLimitError",
     "Scene",
@@ -89,5 +108,6 @@ __all__ = [
     "inspect_scene",
     "load_scene",
     "run_edit_script",
+    "run_procedural_script",
     "save_scene",
 ]

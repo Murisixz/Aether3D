@@ -13,6 +13,8 @@ apply to agents too.
 - Public API: [docs/API.md](docs/API.md). File format: [docs/FILE_FORMAT.md](docs/FILE_FORMAT.md).
 - glTF interchange: [docs/GLTF.md](docs/GLTF.md). Geometry reports: [docs/INSPECTION.md](docs/INSPECTION.md).
 - Mesh editing: [docs/EDITING.md](docs/EDITING.md) (topology, ids, sessions, operations, scripts).
+- Procedural geometry: [docs/PROCEDURAL.md](docs/PROCEDURAL.md) (parameters, expressions, modifiers,
+  caching, transactions, scripts).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 
 ## Conventions to preserve
@@ -31,6 +33,13 @@ apply to agents too.
   `editing/core.py`; new operations are `@operation` methods that validate first and raise
   `EditError` with a stable code (never leave a partial edit; never approximate an operation).
   Run `tests/test_editing_robustness.py` after touching topology code.
+- Procedural: modifiers are pure functions `PolyMesh -> PolyMesh` registered in
+  `procedural/modifiers.py` with a `ParamSpec` schema; never mutate inputs (arrays are
+  read-only), raise `ProceduralError` with a stable code instead of returning damaged
+  geometry, and report noteworthy results as `Diagnostic`s. Cache keys must cover every
+  input a result depends on. Run `tests/test_procedural_randomized.py` after changes.
+- Expressions are evaluated by the AST whitelist in `procedural/params.py`; never use
+  `eval`/`exec` or widen it to attribute access, indexing or arbitrary calls.
 
 ## Using Aether3D from an agent
 
@@ -49,3 +58,11 @@ apply to agents too.
   read `created`/`removed` from each result, and run `validate` before committing.
 - `aether3d topology PROJECT --object NAME --elements --json` lists element ids, positions and
   face loops; ids from a fresh session are deterministic for the same mesh.
+
+- Build or change procedural geometry with `scene.procedural` (Python) or
+  `aether3d procedural run PROJECT script.json` (JSON). Read `aether3d procedural types --json`
+  for schemas, wrap related changes in one `batch()`/script, and match on
+  `ProceduralError.code` and `location`. Procedural objects' meshes are read-only: change
+  the definition, `bake()`, or edit the base mesh with `geometry.edit_source()`.
+- `aether3d procedural validate PROJECT --json` evaluates every node; exit code `3` means a
+  node failed. `aether3d procedural set PROJECT name=value` changes parameters atomically.
