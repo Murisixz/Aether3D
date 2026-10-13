@@ -1,0 +1,1466 @@
+{
+  "format": "aether3d.project",
+  "format_version": 3,
+  "generator": "aether3d 0.5.0",
+  "scene": {
+    "name": "Minecraft Castle",
+    "active_camera": "8f88a2b3-b045-41a9-a7b6-ff02b7e32db7",
+    "world": {
+      "background": [0.5568627450980392, 0.7725490196078432, 0.9490196078431372],
+      "ambient_color": [0.8352941176470589, 0.9019607843137255, 1.0],
+      "ambient_intensity": 0.32
+    },
+    "render": {
+      "width": 1920,
+      "height": 1080,
+      "samples": 3,
+      "exposure": 0.0,
+      "cull": "none",
+      "default_lights": true
+    },
+    "parameters": [
+      {
+        "name": "castle_width",
+        "type": "float",
+        "value": 24.0,
+        "min": 12.0,
+        "max": 80.0,
+        "description": "outer size of the square curtain wall",
+        "unit": "m"
+      },
+      {
+        "name": "wall_height",
+        "type": "float",
+        "value": 6.0,
+        "min": 3.0,
+        "max": 20.0,
+        "unit": "m"
+      },
+      {
+        "name": "wall_thickness",
+        "type": "float",
+        "value": 1.2,
+        "min": 0.5,
+        "max": 3.0,
+        "unit": "m"
+      },
+      {
+        "name": "tower_count",
+        "type": "int",
+        "value": 6,
+        "min": 4,
+        "max": 16,
+        "description": "towers on the side walls (even)"
+      },
+      {
+        "name": "tower_radius",
+        "type": "float",
+        "value": 2.2,
+        "min": 1.0,
+        "max": 6.0,
+        "unit": "m"
+      },
+      {
+        "name": "gate_width",
+        "type": "float",
+        "value": 3.0,
+        "min": 1.0,
+        "max": 10.0,
+        "unit": "m"
+      },
+      {
+        "name": "gate_height",
+        "type": "float",
+        "value": 4.0,
+        "min": 1.5,
+        "max": 16.0,
+        "unit": "m"
+      },
+      {
+        "name": "detail_density",
+        "type": "int",
+        "value": 2,
+        "min": 0,
+        "max": 3,
+        "description": "battlements, windows, segments"
+      },
+      {
+        "name": "towers_per_side",
+        "type": "int",
+        "value": {
+          "expr": "tower_count // 2"
+        },
+        "min": 2
+      },
+      {
+        "name": "tower_height",
+        "type": "float",
+        "value": {
+          "expr": "wall_height * 1.4"
+        },
+        "min": 1
+      },
+      {
+        "name": "merlons_per_wall",
+        "type": "int",
+        "value": {
+          "expr": "max(3, floor(castle_width * (detail_density + 1) / 6))"
+        },
+        "min": 3
+      }
+    ],
+    "rules": [
+      {
+        "name": "even_towers",
+        "expr": "tower_count % 2 == 0",
+        "message": "tower_count must be even (two rows of towers)"
+      },
+      {
+        "name": "towers_fit",
+        "expr": "2 * tower_radius + 1 <= castle_width / (tower_count / 2 - 1)",
+        "message": "towers would overlap: reduce tower_radius or tower_count, or widen the castle"
+      },
+      {
+        "name": "gate_fits_width",
+        "expr": "gate_width + 2 * tower_radius + 2 <= castle_width",
+        "message": "the gate is too wide for the front wall"
+      },
+      {
+        "name": "gate_fits_height",
+        "expr": "gate_height + 1 <= wall_height",
+        "message": "the gate must be lower than the wall"
+      },
+      {
+        "name": "arch_fits",
+        "expr": "gate_width / 2 < gate_height",
+        "message": "the gate arch is taller than the gate"
+      }
+    ],
+    "geometry": [
+      {
+        "id": "beb63354-982c-4366-af5f-8caadec1be32",
+        "name": "Ground",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "grid",
+          "params": {
+            "x_size": {
+              "expr": "castle_width * 1.6"
+            },
+            "y_size": {
+              "expr": "castle_width * 1.6"
+            }
+          }
+        },
+        "modifiers": [
+          {
+            "id": "ff2f9cff-b3fd-4d24-9e76-126a006ffaca",
+            "name": "Solidify",
+            "type": "solidify",
+            "enabled": true,
+            "params": {
+              "thickness": 1.0,
+              "offset": -1.0
+            }
+          }
+        ]
+      },
+      {
+        "id": "c46d07f7-533d-41e9-ae16-7fe24be6ac9e",
+        "name": "Curtain Wall",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "box",
+          "params": {
+            "width": {
+              "expr": "castle_width + wall_thickness"
+            },
+            "depth": {
+              "expr": "wall_thickness"
+            },
+            "height": {
+              "expr": "wall_height"
+            }
+          }
+        },
+        "modifiers": [
+          {
+            "id": "d88e7579-45da-4f0e-b7e3-7a26688acf16",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": {
+                "expr": "(0, castle_width / 2, wall_height / 2)"
+              }
+            }
+          },
+          {
+            "id": "253dffa8-dba7-4351-b29d-e7b9066d6e1b",
+            "name": "Mirror",
+            "type": "mirror",
+            "enabled": true,
+            "params": {
+              "axes": "y"
+            }
+          },
+          {
+            "id": "733e22f0-f5eb-4aa6-9843-961ad3765511",
+            "name": "Join Side Walls",
+            "type": "boolean",
+            "enabled": true,
+            "params": {
+              "operation": "union",
+              "operand": {
+                "geometry": "736e69cf-2974-4bd5-b93f-8fac92d10bae"
+              }
+            }
+          },
+          {
+            "id": "89b7eee5-9b30-4765-b8af-f1f47342c7d6",
+            "name": "Battlements X",
+            "type": "boolean",
+            "enabled": true,
+            "params": {
+              "operation": "union",
+              "operand": {
+                "geometry": "f00c09ab-a5db-4a03-99d8-92bde7fdaca1"
+              }
+            }
+          },
+          {
+            "id": "bbf1f9a6-5c00-4430-8e0f-7f801c3fe482",
+            "name": "Battlements Y",
+            "type": "boolean",
+            "enabled": true,
+            "params": {
+              "operation": "union",
+              "operand": {
+                "geometry": "1bc0b31c-ddc4-4eeb-b4ed-168195dc6406"
+              }
+            }
+          },
+          {
+            "id": "1fa8b40e-c1de-43da-9b2f-ae334ff52dc7",
+            "name": "Cut Gate",
+            "type": "boolean",
+            "enabled": true,
+            "params": {
+              "operation": "difference",
+              "operand": {
+                "geometry": "768f0064-aa16-44ae-807a-d24666dc6839"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "736e69cf-2974-4bd5-b93f-8fac92d10bae",
+        "name": "Side Walls",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "box",
+          "params": {
+            "width": {
+              "expr": "wall_thickness"
+            },
+            "depth": {
+              "expr": "castle_width + wall_thickness"
+            },
+            "height": {
+              "expr": "wall_height"
+            }
+          }
+        },
+        "modifiers": [
+          {
+            "id": "a59674c5-efd6-4f8b-b316-c28286a947ca",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": {
+                "expr": "(castle_width / 2, 0, wall_height / 2)"
+              }
+            }
+          },
+          {
+            "id": "947c2a1b-98df-4690-8f87-ce13daa28a84",
+            "name": "Mirror",
+            "type": "mirror",
+            "enabled": true,
+            "params": {
+              "axes": "x"
+            }
+          }
+        ]
+      },
+      {
+        "id": "f00c09ab-a5db-4a03-99d8-92bde7fdaca1",
+        "name": "Merlons X",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "box",
+          "params": {
+            "width": {
+              "expr": "castle_width / merlons_per_wall / 2"
+            },
+            "depth": {
+              "expr": "wall_thickness"
+            },
+            "height": 0.9
+          }
+        },
+        "modifiers": [
+          {
+            "id": "416edcec-2ac6-42c7-a210-b94af8cce0ed",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": {
+                "expr": "(-castle_width / 2 + castle_width / merlons_per_wall / 2, castle_width / 2, wall_height + 0.4)"
+              }
+            }
+          },
+          {
+            "id": "2851c166-521d-41ff-adbd-10a365a80988",
+            "name": "Array",
+            "type": "array",
+            "enabled": true,
+            "params": {
+              "count": {
+                "expr": "merlons_per_wall"
+              },
+              "relative_offset": [0, 0, 0],
+              "constant_offset": {
+                "expr": "(castle_width / merlons_per_wall, 0, 0)"
+              }
+            }
+          },
+          {
+            "id": "709a891c-8ab6-4456-9722-12022882e402",
+            "name": "Mirror",
+            "type": "mirror",
+            "enabled": true,
+            "params": {
+              "axes": "y"
+            }
+          }
+        ]
+      },
+      {
+        "id": "1bc0b31c-ddc4-4eeb-b4ed-168195dc6406",
+        "name": "Merlons Y",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "geometry",
+          "geometry": "f00c09ab-a5db-4a03-99d8-92bde7fdaca1",
+          "parameters": {},
+          "after": "709a891c-8ab6-4456-9722-12022882e402"
+        },
+        "modifiers": [
+          {
+            "id": "40db74f1-afec-478f-944a-a9ecc5eca532",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "rotation": [0, 0, 90]
+            }
+          }
+        ]
+      },
+      {
+        "id": "cf781e3b-3417-402a-bdc2-6db594f9354f",
+        "name": "Gate Arch",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "cylinder",
+          "params": {
+            "radius": {
+              "expr": "gate_width / 2"
+            },
+            "depth": {
+              "expr": "wall_thickness * 3"
+            },
+            "segments": 16,
+            "smooth": false
+          }
+        },
+        "modifiers": [
+          {
+            "id": "e64968bc-2197-4bd3-a064-bc2130e40d1f",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "rotation": [90, 0, 0],
+              "translation": {
+                "expr": "(0, -castle_width / 2, gate_height - gate_width / 2)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "768f0064-aa16-44ae-807a-d24666dc6839",
+        "name": "Gate Cutter",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "box",
+          "params": {
+            "width": {
+              "expr": "gate_width"
+            },
+            "depth": {
+              "expr": "wall_thickness * 3"
+            },
+            "height": {
+              "expr": "gate_height - gate_width / 2 + 1"
+            }
+          }
+        },
+        "modifiers": [
+          {
+            "id": "eef3763a-7096-4b56-816f-f02d3bf0f869",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": {
+                "expr": "(0, -castle_width / 2, (gate_height - gate_width / 2 + 1) / 2 - 1)"
+              }
+            }
+          },
+          {
+            "id": "a50a1258-e58f-4d14-a3e4-d5f4623ca743",
+            "name": "Boolean",
+            "type": "boolean",
+            "enabled": true,
+            "params": {
+              "operation": "union",
+              "operand": {
+                "geometry": "cf781e3b-3417-402a-bdc2-6db594f9354f"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "40a76dc8-befd-4db6-b749-e7b8fde75500",
+        "name": "Tower",
+        "parameters": [
+          {
+            "name": "height",
+            "type": "float",
+            "value": {
+              "expr": "tower_height"
+            },
+            "min": 1
+          }
+        ],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "cylinder",
+          "params": {
+            "radius": {
+              "expr": "tower_radius"
+            },
+            "depth": {
+              "expr": "height"
+            },
+            "segments": {
+              "expr": "8 * (1 + detail_density // 2)"
+            },
+            "smooth": false
+          }
+        },
+        "modifiers": [
+          {
+            "id": "b5e4f42a-d61d-4014-9f84-44b7d2065050",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": {
+                "expr": "(0, 0, height / 2)"
+              }
+            }
+          },
+          {
+            "id": "226588c4-f913-40bd-90fb-cd1593407ca5",
+            "name": "Arrow Slits",
+            "type": "boolean",
+            "enabled": true,
+            "params": {
+              "operation": "difference",
+              "operand": {
+                "geometry": "9850640f-2de0-40d1-a3b2-9c5aecc34839"
+              }
+            }
+          },
+          {
+            "id": "271d998a-442a-4d78-982d-8ec4da3fc3e0",
+            "name": "Crown",
+            "type": "boolean",
+            "enabled": true,
+            "params": {
+              "operation": "union",
+              "operand": {
+                "geometry": "1378dae5-b078-4f22-8503-6ee8074fd7a3"
+              },
+              "operand_translation": {
+                "expr": "(0, 0, height)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "9850640f-2de0-40d1-a3b2-9c5aecc34839",
+        "name": "Arrow Slit",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "box",
+          "params": {
+            "width": 0.35,
+            "depth": {
+              "expr": "tower_radius * 0.8"
+            },
+            "height": 1.2
+          }
+        },
+        "modifiers": [
+          {
+            "id": "b2f26799-6654-43ed-936e-3cef5d71a215",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": {
+                "expr": "(0, tower_radius, wall_height * 0.9)"
+              }
+            }
+          },
+          {
+            "id": "3bcc0ecb-760b-45ff-8a3b-a53d558503b8",
+            "name": "Array",
+            "type": "array",
+            "enabled": true,
+            "params": {
+              "count": {
+                "expr": "detail_density + 2"
+              },
+              "relative_offset": [0, 0, 0],
+              "rotation": {
+                "expr": "(0, 0, 360 / (detail_density + 2))"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "1378dae5-b078-4f22-8503-6ee8074fd7a3",
+        "name": "Crown Merlon",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "box",
+          "params": {
+            "width": {
+              "expr": "tower_radius * 0.25"
+            },
+            "depth": {
+              "expr": "tower_radius * 0.25"
+            },
+            "height": 1.0
+          }
+        },
+        "modifiers": [
+          {
+            "id": "fc7c5f7c-52bc-4fc9-992a-76f9a9b30eb4",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": {
+                "expr": "(tower_radius * 0.82, 0, 0.4)"
+              }
+            }
+          },
+          {
+            "id": "dcdab954-ab6a-4c4a-814b-a1bc8f7ec34b",
+            "name": "Array",
+            "type": "array",
+            "enabled": true,
+            "params": {
+              "count": {
+                "expr": "8 * (1 + detail_density // 2)"
+              },
+              "relative_offset": [0, 0, 0],
+              "rotation": {
+                "expr": "(0, 0, 45 / (1 + detail_density // 2))"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "df719499-540d-406b-9ab3-33d3494e5ec8",
+        "name": "Towers",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "geometry",
+          "geometry": "40a76dc8-befd-4db6-b749-e7b8fde75500",
+          "parameters": {}
+        },
+        "modifiers": [
+          {
+            "id": "21655765-b827-49e0-9e5f-2cfe65edf58a",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": {
+                "expr": "(castle_width / 2, -castle_width / 2, 0)"
+              }
+            }
+          },
+          {
+            "id": "5d9c30c4-d676-4050-a331-21cf401d3dfd",
+            "name": "Array",
+            "type": "array",
+            "enabled": true,
+            "params": {
+              "count": {
+                "expr": "towers_per_side"
+              },
+              "relative_offset": [0, 0, 0],
+              "constant_offset": {
+                "expr": "(0, castle_width / (towers_per_side - 1), 0)"
+              }
+            }
+          },
+          {
+            "id": "2cf4a4ef-3ec5-454b-9497-e54de689b50b",
+            "name": "Mirror",
+            "type": "mirror",
+            "enabled": true,
+            "params": {
+              "axes": "x"
+            }
+          }
+        ]
+      },
+      {
+        "id": "f4985931-85b3-4070-a21f-d85ab27ea39c",
+        "name": "Keep",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "box",
+          "params": {
+            "width": {
+              "expr": "castle_width * 0.3"
+            },
+            "depth": {
+              "expr": "castle_width * 0.3"
+            },
+            "height": {
+              "expr": "wall_height * 1.5"
+            }
+          }
+        },
+        "modifiers": [
+          {
+            "id": "5879cf06-7576-4ff8-b59d-f6bd151eaf2a",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": {
+                "expr": "(0, castle_width * 0.15, wall_height * 0.75)"
+              }
+            }
+          },
+          {
+            "id": "df4ffeb1-2286-4424-b23e-f685e3a2d7a7",
+            "name": "Bevel",
+            "type": "bevel",
+            "enabled": true,
+            "params": {
+              "width": 0.3,
+              "limit": "all"
+            }
+          }
+        ]
+      },
+      {
+        "id": "7589a3f4-5013-4ef2-88c2-6f5d78372e53",
+        "name": "Roof",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "cone",
+          "params": {
+            "radius_bottom": {
+              "expr": "tower_radius * 1.25"
+            },
+            "radius_top": 0,
+            "depth": {
+              "expr": "tower_radius * 1.8"
+            },
+            "segments": {
+              "expr": "8 * (1 + detail_density // 2)"
+            },
+            "smooth": false
+          }
+        },
+        "modifiers": []
+      },
+      {
+        "id": "ab8406d6-be67-488c-b77e-693a86fc10de",
+        "name": "Watchtower",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "geometry",
+          "geometry": "40a76dc8-befd-4db6-b749-e7b8fde75500",
+          "parameters": {
+            "height": {
+              "expr": "wall_height * 1.1"
+            }
+          }
+        },
+        "modifiers": [
+          {
+            "id": "cdd276d3-fae1-4e4a-ab2a-6772ca4a4d1c",
+            "name": "Roof",
+            "type": "boolean",
+            "enabled": false,
+            "params": {
+              "operation": "union",
+              "operand": {
+                "geometry": "7589a3f4-5013-4ef2-88c2-6f5d78372e53"
+              },
+              "operand_translation": {
+                "expr": "(0, 0, wall_height * 1.1 + tower_radius * 0.9 + 0.5)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "cb4cb800-6a79-4c72-9af2-e4df8e780a1f",
+        "name": "Bush",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "box",
+          "params": {
+            "width": 1.6,
+            "depth": 1.6,
+            "height": 1.2
+          }
+        },
+        "modifiers": [
+          {
+            "id": "1a2bae1e-2d72-4bc5-bb84-b13bd0b06993",
+            "name": "Subdivision",
+            "type": "subdivision",
+            "enabled": true,
+            "params": {
+              "levels": {
+                "expr": "min(2, detail_density)"
+              }
+            }
+          },
+          {
+            "id": "cd767825-4f22-43bf-9d83-69746dd8adc9",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": [0, 0, 0.5]
+            }
+          }
+        ]
+      },
+      {
+        "id": "23294ca8-1c16-4c81-b060-5ba755d84af8",
+        "name": "Watchtower Roof",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "geometry",
+          "geometry": "7589a3f4-5013-4ef2-88c2-6f5d78372e53",
+          "parameters": {}
+        },
+        "modifiers": [
+          {
+            "id": "ab58f970-87ba-48d0-9b38-deaf67a249c9",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": {
+                "expr": "(0, 0, wall_height * 1.1 + tower_radius * 0.9 + 0.5)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "c40aefd2-34fe-40ac-a704-711327a0765f",
+        "name": "Path",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "box",
+          "params": {
+            "width": {
+              "expr": "gate_width"
+            },
+            "depth": {
+              "expr": "castle_width * 0.3"
+            },
+            "height": 0.06
+          }
+        },
+        "modifiers": [
+          {
+            "id": "80520967-b2f2-44fd-9f76-ac32e53c5f82",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": {
+                "expr": "(0, -castle_width / 2 - castle_width * 0.15, 0.03)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "ecfa1ed0-63d4-459f-b185-b42834dfdcf2",
+        "name": "Trunk",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "box",
+          "params": {
+            "width": 0.7,
+            "depth": 0.7,
+            "height": 3.0
+          }
+        },
+        "modifiers": [
+          {
+            "id": "13420957-a756-4279-ba4b-69b69a3a5af6",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": [0, 0, 1.5]
+            }
+          }
+        ]
+      },
+      {
+        "id": "437497f4-866a-42b9-bfc4-7f9e0a962828",
+        "name": "Leaves",
+        "parameters": [],
+        "rules": [],
+        "source": {
+          "type": "primitive",
+          "primitive": "box",
+          "params": {
+            "width": 3.2,
+            "depth": 3.2,
+            "height": 2.6
+          }
+        },
+        "modifiers": [
+          {
+            "id": "d51b2090-f7da-4b6d-851c-4d270e4eaefe",
+            "name": "Bevel",
+            "type": "bevel",
+            "enabled": true,
+            "params": {
+              "width": 0.25,
+              "limit": "all"
+            }
+          },
+          {
+            "id": "40d7a966-5157-4e94-b554-21588ac83816",
+            "name": "Transform",
+            "type": "transform",
+            "enabled": true,
+            "params": {
+              "translation": [0, 0, 3.9]
+            }
+          }
+        ]
+      }
+    ],
+    "objects": [
+      {
+        "id": "783d617b-ff7a-4afd-a18d-3b4bd5183063",
+        "name": "Ground",
+        "parent": null,
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "beb63354-982c-4366-af5f-8caadec1be32",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.30980392156862746, 0.5411764705882353, 0.2],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "21998711-cc5c-409d-8a1d-743110ddba73",
+        "name": "Curtain Wall",
+        "parent": null,
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "c46d07f7-533d-41e9-ae16-7fe24be6ac9e",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.5607843137254902, 0.5607843137254902, 0.5333333333333333],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "f02432b8-8d8d-49ec-ad71-35707dd04902",
+        "name": "Towers",
+        "parent": null,
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "df719499-540d-406b-9ab3-33d3494e5ec8",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.6392156862745098, 0.6352941176470588, 0.6],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "f16f2809-a48a-4cab-9ec6-034b305338ef",
+        "name": "Keep",
+        "parent": null,
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "f4985931-85b3-4070-a21f-d85ab27ea39c",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.5490196078431373, 0.45098039215686275, 0.33725490196078434],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "2c61ebad-1ae9-4b08-9ab7-8b9d408dbd91",
+        "name": "Watchtower",
+        "parent": "f16f2809-a48a-4cab-9ec6-034b305338ef",
+        "transform": {
+          "position": [0.0, 3.5999999999999996, 9.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "ab8406d6-be67-488c-b77e-693a86fc10de",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.48627450980392156, 0.4823529411764706, 0.4588235294117647],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "90f628d9-4d59-4d63-9a94-e0b52745d911",
+        "name": "Watchtower Roof",
+        "parent": "2c61ebad-1ae9-4b08-9ab7-8b9d408dbd91",
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "23294ca8-1c16-4c81-b060-5ba755d84af8",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.7215686274509804, 0.22745098039215686, 0.16470588235294117],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "90316b1f-493d-4df0-afbc-60bdda63f154",
+        "name": "Bush 1",
+        "parent": null,
+        "transform": {
+          "position": [-6.0, -6.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "cb4cb800-6a79-4c72-9af2-e4df8e780a1f",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.1803921568627451, 0.47843137254901963, 0.17254901960784313],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "ee2f5bd5-f1c9-49af-a756-b69c3be0b89e",
+        "name": "Bush 2",
+        "parent": null,
+        "transform": {
+          "position": [6.0, -6.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "cb4cb800-6a79-4c72-9af2-e4df8e780a1f",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.1803921568627451, 0.47843137254901963, 0.17254901960784313],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "d757cc55-0431-4bdd-89d5-64fd6005f072",
+        "name": "Bush 3",
+        "parent": null,
+        "transform": {
+          "position": [-7.0, 2.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "cb4cb800-6a79-4c72-9af2-e4df8e780a1f",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.1803921568627451, 0.47843137254901963, 0.17254901960784313],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "66919a5e-1f66-4d4f-9c36-4497c9f1b9fc",
+        "name": "Bush 4",
+        "parent": null,
+        "transform": {
+          "position": [7.0, 2.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "cb4cb800-6a79-4c72-9af2-e4df8e780a1f",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.1803921568627451, 0.47843137254901963, 0.17254901960784313],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "207f7398-4709-4b65-afd7-79de84a19df8",
+        "name": "Path",
+        "parent": null,
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "c40aefd2-34fe-40ac-a704-711327a0765f",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.5607843137254902, 0.48627450980392156, 0.3843137254901961],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "0a06d804-fedd-461c-a87d-35ef28e662dc",
+        "name": "Trunk 1",
+        "parent": null,
+        "transform": {
+          "position": [-17.0, -14.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "ecfa1ed0-63d4-459f-b185-b42834dfdcf2",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.4196078431372549, 0.2901960784313726, 0.16862745098039217],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "8af4fe4d-cbb8-4efc-b0d8-0cc91d9d1ba8",
+        "name": "Leaves 1",
+        "parent": null,
+        "transform": {
+          "position": [-17.0, -14.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": "437497f4-866a-42b9-bfc4-7f9e0a962828",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.23921568627450981, 0.5411764705882353, 0.2],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "f9f2a7bd-d234-400e-b4f7-a58db4266759",
+        "name": "Trunk 2",
+        "parent": null,
+        "transform": {
+          "position": [16.5, -13.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.15, 1.15, 1.15]
+        },
+        "mesh": null,
+        "geometry": "ecfa1ed0-63d4-459f-b185-b42834dfdcf2",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.4196078431372549, 0.2901960784313726, 0.16862745098039217],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "9520ad5e-0d99-467e-9c55-732e2268ffed",
+        "name": "Leaves 2",
+        "parent": null,
+        "transform": {
+          "position": [16.5, -13.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.15, 1.15, 1.15]
+        },
+        "mesh": null,
+        "geometry": "437497f4-866a-42b9-bfc4-7f9e0a962828",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.23921568627450981, 0.5411764705882353, 0.2],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "57092d52-bd86-4134-95fd-6f7e658ea45e",
+        "name": "Trunk 3",
+        "parent": null,
+        "transform": {
+          "position": [-17.5, 6.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.9, 0.9, 0.9]
+        },
+        "mesh": null,
+        "geometry": "ecfa1ed0-63d4-459f-b185-b42834dfdcf2",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.4196078431372549, 0.2901960784313726, 0.16862745098039217],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "aac38387-c940-4322-8fb9-6ac597d1e6bb",
+        "name": "Leaves 3",
+        "parent": null,
+        "transform": {
+          "position": [-17.5, 6.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.9, 0.9, 0.9]
+        },
+        "mesh": null,
+        "geometry": "437497f4-866a-42b9-bfc4-7f9e0a962828",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.23921568627450981, 0.5411764705882353, 0.2],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "fc8213ce-631a-4d22-9994-15b6f27bd24d",
+        "name": "Trunk 4",
+        "parent": null,
+        "transform": {
+          "position": [17.0, 9.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.05, 1.05, 1.05]
+        },
+        "mesh": null,
+        "geometry": "ecfa1ed0-63d4-459f-b185-b42834dfdcf2",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.4196078431372549, 0.2901960784313726, 0.16862745098039217],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "cd90e0a6-c67a-4b16-8c07-8365b757d0e8",
+        "name": "Leaves 4",
+        "parent": null,
+        "transform": {
+          "position": [17.0, 9.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.05, 1.05, 1.05]
+        },
+        "mesh": null,
+        "geometry": "437497f4-866a-42b9-bfc4-7f9e0a962828",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.23921568627450981, 0.5411764705882353, 0.2],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "b558ea37-d0ed-4f99-8adb-d0d10d045c14",
+        "name": "Trunk 5",
+        "parent": null,
+        "transform": {
+          "position": [-9.0, -17.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.8, 0.8, 0.8]
+        },
+        "mesh": null,
+        "geometry": "ecfa1ed0-63d4-459f-b185-b42834dfdcf2",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.4196078431372549, 0.2901960784313726, 0.16862745098039217],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "f106ce05-15d8-48c9-8761-bfeaf1b1d909",
+        "name": "Leaves 5",
+        "parent": null,
+        "transform": {
+          "position": [-9.0, -17.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [0.8, 0.8, 0.8]
+        },
+        "mesh": null,
+        "geometry": "437497f4-866a-42b9-bfc4-7f9e0a962828",
+        "camera": null,
+        "light": null,
+        "appearance": {
+          "color": [0.23921568627450981, 0.5411764705882353, 0.2],
+          "specular": 0.0,
+          "shininess": 32.0
+        },
+        "visible": true
+      },
+      {
+        "id": "f740f487-8534-4098-a8c4-b001313d6f42",
+        "name": "Sun",
+        "parent": null,
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.13728376266465903, 0.3529293541046749, 0.8625647460403351, 0.33552361825699073],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "directional",
+          "color": [1.0, 0.9450980392156862, 0.8392156862745098],
+          "intensity": 2.4,
+          "range": null,
+          "falloff": "inverse_square"
+        },
+        "appearance": null,
+        "visible": true
+      },
+      {
+        "id": "d7870e38-2371-4379-a5e8-e0b61afe4b45",
+        "name": "Fill",
+        "parent": null,
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.2259454880222593, -0.1396419912024385, -0.5068464427645114, 0.8200947714699577],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "directional",
+          "color": [0.7372549019607844, 0.8235294117647058, 1.0],
+          "intensity": 0.35,
+          "range": null,
+          "falloff": "inverse_square"
+        },
+        "appearance": null,
+        "visible": true
+      },
+      {
+        "id": "34e2b4c4-2c2c-44a7-ae2b-d419ca5d2f3f",
+        "name": "Torch 1",
+        "parent": null,
+        "transform": {
+          "position": [-2.6, -14.0, 3.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "point",
+          "color": [1.0, 0.6039215686274509, 0.23529411764705882],
+          "intensity": 6.0,
+          "range": 10.0,
+          "falloff": "inverse_square"
+        },
+        "appearance": null,
+        "visible": true
+      },
+      {
+        "id": "68524a61-6a67-4aec-bd63-ce970680f0ba",
+        "name": "Torch 2",
+        "parent": null,
+        "transform": {
+          "position": [2.6, -14.0, 3.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "point",
+          "color": [1.0, 0.6039215686274509, 0.23529411764705882],
+          "intensity": 6.0,
+          "range": 10.0,
+          "falloff": "inverse_square"
+        },
+        "appearance": null,
+        "visible": true
+      },
+      {
+        "id": "8f88a2b3-b045-41a9-a7b6-ff02b7e32db7",
+        "name": "Camera",
+        "parent": null,
+        "transform": {
+          "position": [29.44688009822267, -59.9837187394572, 37.2301554411287],
+          "rotation": [0.06126605105890192, -0.2385222399270695, -0.9387305765758869, 0.24111929962017667],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 30.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 26.756165551593924,
+          "far": 152.6368589196945,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true
+      }
+    ]
+  },
+  "meshes": []
+}
