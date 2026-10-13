@@ -16,10 +16,12 @@ applied. On that welded graph the report evaluates, per edge:
 * edges traversed in the same direction by both adjacent triangles
   -> ``consistently_oriented``
 
-Vertex manifoldness (e.g. two closed surfaces touching at a single vertex) and
-self-intersections are **not** evaluated, so reports never claim a mesh is
-"manifold" or "watertight" in the general sense. The enclosed ``volume`` is
-reported only when the mesh is closed, edge-manifold and consistently oriented.
+and, per vertex, whether the triangles around it form a single fan connected
+through manifold edges (``vertex_manifold``; a "bowtie" where two surfaces
+touch at one vertex is not). Self-intersections are **not** evaluated, so
+reports never claim a mesh is free of them or "watertight" in the general
+sense. The enclosed ``volume`` is reported only when the mesh is closed,
+edge-manifold and consistently oriented.
 """
 
 from __future__ import annotations
@@ -233,6 +235,17 @@ def inspect_mesh(mesh: Mesh, *, location: str | None = None) -> MeshGeometryRepo
                 topology["non_manifold_edge_count"],
             )
         )
+    if topology["non_manifold_vertex_count"]:
+        diagnostics.append(
+            Diagnostic(
+                "NON_MANIFOLD_VERTICES",
+                WARNING,
+                "triangles around these vertices form more than one fan "
+                "(surfaces touch at a single vertex)",
+                location,
+                topology["non_manifold_vertex_count"],
+            )
+        )
     if topology["inconsistent_edge_count"]:
         diagnostics.append(
             Diagnostic(
@@ -278,9 +291,11 @@ def _topology(mesh: Mesh, triangles: np.ndarray) -> dict[str, Any]:
         "boundary_edge_count": 0,
         "non_manifold_edge_count": 0,
         "inconsistent_edge_count": 0,
+        "non_manifold_vertex_count": 0,
         "closed": False,
         "edge_manifold": True,
         "consistently_oriented": True,
+        "vertex_manifold": True,
         "volume": None,
     }
     if mesh.vertex_count == 0:
@@ -322,6 +337,8 @@ def _topology(mesh: Mesh, triangles: np.ndarray) -> dict[str, Any]:
         edge_manifold=non_manifold == 0,
         consistently_oriented=inconsistent == 0,
     )
+    nm_vertices = _non_manifold_vertices(w, edge_index.reshape(-1), edge_counts)
+    result.update(non_manifold_vertex_count=nm_vertices, vertex_manifold=nm_vertices == 0)
     if boundary == 0 and non_manifold == 0 and inconsistent == 0:
         p = mesh.positions.astype(np.float64)
         signed = np.einsum(
@@ -329,6 +346,45 @@ def _topology(mesh: Mesh, triangles: np.ndarray) -> dict[str, Any]:
         )
         result["volume"] = float(signed.sum() / 6.0)
     return result
+
+
+def _non_manifold_vertices(w: np.ndarray, edge_index: np.ndarray, edge_counts: np.ndarray) -> int:
+    """Count vertices whose triangles form more than one fan (connected via manifold edges).
+
+    ``w`` are welded, non-degenerate triangles; ``edge_index`` maps each of the
+    ``3T`` triangle edges (block layout: edge k of triangle t is entry
+    ``k*T + t``) to its undirected edge. Corners (also in block layout) are
+    linked across manifold edges and grouped by vectorized label propagation.
+    """
+    t_count = len(w)
+    entries = np.flatnonzero(edge_counts[edge_index] == 2)
+    if len(entries):
+        order = entries[np.argsort(edge_index[entries], kind="stable")]
+        e1, e2 = order[0::2], order[1::2]
+        blk1, t1 = np.divmod(e1, t_count)
+        blk2, t2 = np.divmod(e2, t_count)
+        u1, u2 = w[t1, blk1], w[t2, blk2]
+        cu1, cv1 = blk1 * t_count + t1, ((blk1 + 1) % 3) * t_count + t1
+        cu2, cv2 = blk2 * t_count + t2, ((blk2 + 1) % 3) * t_count + t2
+        same = u1 == u2  # both triangles list the edge starting at the same vertex
+        a = np.concatenate([cu1, cv1])
+        b = np.concatenate([np.where(same, cu2, cv2), np.where(same, cv2, cu2)])
+    else:
+        a = b = np.zeros(0, dtype=np.int64)
+    labels = np.arange(3 * t_count)
+    while True:
+        m = np.minimum(labels[a], labels[b])
+        new = labels.copy()
+        np.minimum.at(new, a, m)
+        np.minimum.at(new, b, m)
+        new = new[new]
+        if np.array_equal(new, labels):
+            break
+        labels = new
+    vertex_of_corner = w.T.reshape(-1)
+    pairs = np.unique(np.stack([vertex_of_corner, labels], axis=1), axis=0)
+    fans = np.bincount(pairs[:, 0])
+    return int(np.sum(fans > 1))
 
 
 # --------------------------------------------------------------------------- #
