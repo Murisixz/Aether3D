@@ -39,8 +39,20 @@ runtime dependencies and needs no GPU or graphical environment.
    aether3d inspect /tmp/first_scene.aether
    ```
 
+5. Optional: install the official Khronos glTF Validator, which the test
+   suite uses to check exported files when it is available:
+
+   ```bash
+   sudo pacman -S --needed nodejs npm
+   npm ci --prefix tools/gltf-validator
+   pytest tests/test_khronos_validator.py
+   python examples/gltf_roundtrip.py /tmp/gltf_demo --require-validator
+   ```
+
+   Without it, those tests are skipped (CI always runs them).
+
 If you prefer pacman-managed dependencies, you can install
-`python-numpy python-pytest` with pacman and create the environment with
+`python-numpy python-pytest python-trimesh` with pacman and create the environment with
 `python -m venv --system-site-packages .venv`, then run
 `pip install -e . --no-deps`.
 
@@ -63,3 +75,5 @@ pip install .
 ```
 
 This installs only the `aether3d` package, its `aether3d` command, and NumPy.
+glTF import/export needs nothing else. trimesh and the Khronos validator are
+used only by the tests.

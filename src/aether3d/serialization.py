@@ -15,13 +15,13 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from ._fileio import write_atomic
 from ._version import __version__
 from .errors import AetherError, ProjectFormatError, ValidationError
 from .mesh import Mesh
@@ -130,19 +130,7 @@ def save_scene(scene: Scene, path: str | os.PathLike[str]) -> Path:
     The file is written to a temporary sibling first and then moved into
     place, so an interrupted save never leaves a half-written project.
     """
-    target = Path(path)
-    text = dumps(scene_to_dict(scene))
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent if target.parent.parts else "."
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(text)
-        os.replace(tmp_name, target)
-    except BaseException:
-        Path(tmp_name).unlink(missing_ok=True)
-        raise
-    return target.resolve()
+    return write_atomic(path, dumps(scene_to_dict(scene)).encode("utf-8"))
 
 
 # --------------------------------------------------------------------------- #

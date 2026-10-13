@@ -1,0 +1,10 @@
+{
+  "name": "aether3d-gltf-validator",
+  "private": true,
+  "description": "Runs the official Khronos glTF Validator against files produced by Aether3D.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "gltf-validator": "2.0.0-dev.3.10"
+  }
+}

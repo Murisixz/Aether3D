@@ -10,19 +10,29 @@ Quick start::
     scene.save("example.aether")
     loaded = Scene.load("example.aether")
 
+    scene.export("example.glb")              # glTF 2.0 binary
+    imported = Scene.import_file("example.glb")
+    report = imported.inspect_geometry().to_dict()
+
 Everything listed in ``__all__`` is the supported public API.
 """
 
 from ._version import __version__
+from .diagnostics import Diagnostic
 from .errors import (
     AetherError,
+    AssetFormatError,
     DetachedObjectError,
     HierarchyError,
     NameConflictError,
     ObjectNotFoundError,
     ProjectFormatError,
+    ResourceLimitError,
+    UnsupportedFeatureError,
     ValidationError,
 )
+from .gltf import ExportResult, ImportLimits, ImportResult, export_gltf, import_gltf
+from .inspection import MeshGeometryReport, SceneGeometryReport, inspect_mesh, inspect_scene
 from .mesh import Mesh
 from .primitives import create_cube, create_plane, create_sphere
 from .scene import Scene, SceneObject
@@ -32,20 +42,33 @@ from .transform import Transform
 __all__ = [
     "FORMAT_VERSION",
     "AetherError",
+    "AssetFormatError",
     "DetachedObjectError",
+    "Diagnostic",
+    "ExportResult",
     "HierarchyError",
+    "ImportLimits",
+    "ImportResult",
     "Mesh",
+    "MeshGeometryReport",
     "NameConflictError",
     "ObjectNotFoundError",
     "ProjectFormatError",
+    "ResourceLimitError",
     "Scene",
+    "SceneGeometryReport",
     "SceneObject",
     "Transform",
+    "UnsupportedFeatureError",
     "ValidationError",
     "__version__",
     "create_cube",
     "create_plane",
     "create_sphere",
+    "export_gltf",
+    "import_gltf",
+    "inspect_mesh",
+    "inspect_scene",
     "load_scene",
     "save_scene",
 ]

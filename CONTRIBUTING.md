@@ -25,7 +25,13 @@ ruff format --check .   # formatting (run `ruff format .` to fix)
 pytest                  # tests
 ```
 
-All three must pass.
+All three must pass. If you change glTF export, also run the official Khronos
+glTF Validator (CI always does):
+
+```bash
+npm ci --prefix tools/gltf-validator
+AETHER3D_REQUIRE_GLTF_VALIDATOR=1 pytest tests/test_khronos_validator.py
+```
 
 ## Guidelines
 

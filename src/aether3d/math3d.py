@@ -2,7 +2,9 @@
 
 Conventions (used consistently across Aether3D):
 
-* **Coordinate system:** right-handed, +Z up, +Y forward, +X right.
+* **Coordinate system:** right-handed, +Z up, +X right; the front of an
+  asset faces -Y (as in Blender, and matching glTF's +Z front via
+  :mod:`aether3d.gltf.axes`).
   One unit is one meter by convention.
 * **Vectors** are column vectors; a point ``p`` is transformed as ``M @ p``.
 * **Matrices** are 4x4 ``float64`` NumPy arrays. A transform is composed as
@@ -74,7 +76,11 @@ def quat(value: Iterable[float], what: str = "rotation") -> Quat:
     norm = float(np.linalg.norm(arr))
     if norm < 1e-9:
         raise ValidationError(f"{what} quaternion must be non-zero, got {value!r}")
-    arr = arr / norm
+    # Leave already-unit quaternions untouched so normalization is idempotent and
+    # independent of component order (dividing by a norm of 1 +/- 1 ulp would
+    # perturb the last bits).
+    if abs(norm - 1.0) > 1e-15:
+        arr = arr / norm
     if arr[3] < 0.0:
         arr = -arr
     x, y, z, w = (float(c) + 0.0 for c in arr)  # "+ 0.0" folds -0.0 into 0.0

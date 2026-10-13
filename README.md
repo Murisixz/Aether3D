@@ -8,10 +8,13 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: foundation (v0.1.0).** This release provides the core scene system,
-> transforms and hierarchy, basic primitive geometry, the native `.aether`
-> project format, and a minimal CLI. Rendering, animation, physics, and other
-> systems are intentionally **not** part of this stage.
+> **Status: v0.2.0 (geometry interoperability and inspection).** Aether3D
+> provides a scene graph with transforms and hierarchy, primitive and custom
+> triangle meshes, and the native `.aether` project format. It adds
+> standards-compliant **glTF 2.0 / GLB import and export** and structured
+> **geometry inspection**, all scriptable from Python and a JSON-speaking CLI.
+> Rendering, animation, physics, materials and other systems are intentionally
+> **not** part of this stage. See the [changelog](CHANGELOG.md).
 
 ## Quick start
 
@@ -45,6 +48,37 @@ scene.get(moon.id) is scene.get_by_name("Moon")  # True
 
 A complete, runnable example lives in [`examples/first_scene.py`](examples/first_scene.py).
 
+### glTF import/export and geometry inspection
+
+```python
+from aether3d import Scene, import_gltf
+
+result = scene.export("world.glb")  # glTF 2.0 binary (or "world.gltf")
+imported = Scene.import_file("world.glb")  # object ids survive the round trip
+
+report = imported.inspect_geometry()  # bounds, areas, degeneracies, topology...
+report.status  # "ok" | "warning" | "error"
+report.to_dict()  # JSON-compatible
+
+result = import_gltf("model.gltf")  # scene + node map + diagnostics
+for d in result.diagnostics:
+    print(d.code, d.severity, d.location, d.message)
+```
+
+- **Exact conversion.** Aether3D's +Z-up space converts exactly to glTF's
+  +Y-up space, using the same convention as Blender.
+- **Unsupported content is reported, never silently dropped.**
+  - Non-geometric content (materials, animations, cameras, …) is skipped and
+    listed in the diagnostics.
+  - Content whose loss would change geometry (skins, morph targets, points
+    and lines) is refused unless you pass `allow_lossy=True`.
+- **Verified exports.** Output is checked with the official Khronos glTF
+  Validator.
+
+See [docs/GLTF.md](docs/GLTF.md) and [docs/INSPECTION.md](docs/INSPECTION.md).
+[`examples/gltf_roundtrip.py`](examples/gltf_roundtrip.py) builds a town
+scene, exports it, validates it, imports it back, and verifies every property.
+
 ## Command-line interface
 
 ```console
@@ -57,6 +91,21 @@ Scene "First Scene" (5 objects, format v1)
 ├── Ground  [efddd1b2-…]  pos=(0, 0, 0)  mesh=4v/2t
 └── Pivot  [c1181286-…]  pos=(3, 0, 1)  rot_euler=(0, 0, 90)
     └── Moon  [8122a0f9-…]  pos=(2, 0, 0)  mesh=561v/960t
+```
+
+Interchange and geometry analysis:
+
+```console
+$ aether3d export world.aether world.glb       # .aether (or .gltf) -> .glb / .gltf
+$ aether3d import model.gltf model.aether      # add --allow-lossy to drop unsupported content
+$ aether3d inspect model.glb                   # validate/inspect also read .glb/.gltf
+$ aether3d geometry examples/first_scene.aether
+Geometry of "First Scene": OK
+  objects: 5 (4 with meshes), unique meshes: 4
+  triangles: 1934 unique, 1934 instanced
+  world bounds: (-5, -5, 0) .. (5, 5, 2)
+  mesh 0: 24v/12t, area 24, closed, volume 8 [ok] used by 1 object(s)
+  ...
 ```
 
 Add `--json` to any command for machine-readable output. Errors point at the
@@ -75,7 +124,8 @@ $ aether3d validate broken.aether --json
 }
 ```
 
-Exit codes: `0` success, `1` failure (invalid project, missing file, …), `2` usage error.
+Exit codes: `0` success, `1` failure (invalid file, missing file, unsupported
+content, …), `2` usage error, `3` `geometry` found error-severity problems.
 `python -m aether3d` works the same as `aether3d`.
 
 ## Installation
@@ -88,8 +138,16 @@ git clone https://github.com/Murisixz/Aether3D.git
 cd Aether3D
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"     # editable install + pytest and ruff
+pip install -e ".[dev]"     # editable install + pytest, ruff and trimesh
 pytest                      # run the test suite
+```
+
+Optional: to run the official Khronos glTF Validator locally (tests use it
+when present), install Node.js and the pinned validator:
+
+```bash
+sudo pacman -S --needed nodejs npm
+npm ci --prefix tools/gltf-validator
 ```
 
 Arch marks the system Python as externally managed (PEP 668), so install
@@ -112,14 +170,18 @@ pip install -e ".[dev]"
 | --- | --- |
 | [docs/API.md](docs/API.md) | Python API reference and conventions |
 | [docs/FILE_FORMAT.md](docs/FILE_FORMAT.md) | The versioned `.aether` project format |
+| [docs/GLTF.md](docs/GLTF.md) | glTF 2.0 import/export: features, axis conversion, limitations, safety |
+| [docs/INSPECTION.md](docs/INSPECTION.md) | Geometry inspection reports and diagnostic codes |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [AGENTS.md](AGENTS.md) | Orientation for AI coding agents working on this repository |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
 
 ## Conventions at a glance
 
-- Right-handed coordinates, **+Z up**, 1 unit = 1 meter.
+- Right-handed coordinates, **+Z up**, 1 unit = 1 meter; an asset's front faces −Y.
+- glTF (+Y up) conversion: `glTF (x, y, z) = (x, z, −y)`; UV origin is bottom-left (`v` flipped for glTF).
 - Rotations are unit quaternions `(x, y, z, w)`; `rotation_euler` offers XYZ Euler angles in degrees.
 - Transforms compose as `T @ R @ S`; `world = parent.world @ local`.
 - Object ids are UUID strings that never change, including across save/load.
