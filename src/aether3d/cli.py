@@ -1,4 +1,7 @@
-"""Command-line interface: ``aether3d new | validate | inspect | geometry | import | export``.
+"""Command-line interface.
+
+Commands: ``new``, ``validate``, ``inspect``, ``geometry``, ``import``,
+``export``, ``topology`` and ``edit``.
 
 Every command accepts ``--json`` to emit a single machine-readable JSON
 object on stdout, both on success (``"ok": true``) and on failure
@@ -7,7 +10,7 @@ object on stdout, both on success (``"ok": true``) and on failure
 * ``0`` -- success
 * ``1`` -- the command failed (invalid file, missing file, unsupported content, ...)
 * ``2`` -- invalid command-line usage
-* ``3`` -- ``geometry`` completed but found error-severity problems
+* ``3`` -- ``geometry``/``topology`` completed but found error-severity problems
 
 Commands that read a scene accept native ``.aether`` projects as well as
 ``.glb``/``.gltf`` files (which are imported in memory).
@@ -32,6 +35,8 @@ from .errors import (
 from .gltf import export_gltf, import_gltf
 from .scene import Scene, SceneObject
 from .serialization import FORMAT_VERSION, loads, save_scene, scene_from_dict
+
+MAX_SCRIPT_BYTES = 16 * 1024 * 1024
 
 EXIT_OK = 0
 EXIT_FAILURE = 1
@@ -359,6 +364,110 @@ def cmd_export(args: argparse.Namespace) -> CommandOutput:
     return data, text, EXIT_OK
 
 
+def _find_object(scene: Scene, ref: str) -> SceneObject:
+    for getter in (scene.get, scene.get_by_name):
+        try:
+            return getter(ref)
+        except AetherError:
+            continue
+    raise CommandError("ObjectNotFoundError", f"no object with id or name {ref!r}")
+
+
+def cmd_topology(args: argparse.Namespace) -> CommandOutput:
+    from .editing import EditableMesh
+
+    path = Path(args.path)
+    scene, info = _load_scene(path, args.allow_lossy)
+    obj = _find_object(scene, args.object)
+    if obj.mesh is None:
+        raise CommandError("ValidationError", f"object {obj.name!r} has no mesh")
+    mesh = EditableMesh.from_mesh(obj.mesh, quads=not args.triangles)
+    report = mesh.validate()
+    data: dict[str, Any] = {
+        "path": str(path),
+        **info,
+        "object": {"id": obj.id, "name": obj.name},
+        "topology": report.to_dict(),
+    }
+    if args.elements:
+        data["elements"] = mesh.describe(limit=args.limit)
+    summary = report.summary
+    lines = [
+        f'Topology of "{obj.name}": {report.status.upper()}',
+        f"  vertices {summary['vertex_count']}, edges {summary['edge_count']}, faces "
+        f"{summary['face_count']} {summary['face_sizes']}",
+        f"  closed={summary['closed']} edge_manifold={summary['edge_manifold']} "
+        f"vertex_manifold={summary['vertex_manifold']} "
+        f"consistently_oriented={summary['consistently_oriented']}",
+    ]
+    if report.diagnostics:
+        lines.append("Diagnostics:")
+        lines += _diagnostic_lines([d.to_dict() for d in report.diagnostics])
+    code = EXIT_GEOMETRY_ERRORS if report.status == "error" else EXIT_OK
+    return data, "\n".join(lines), code
+
+
+def cmd_edit(args: argparse.Namespace) -> CommandOutput:
+    from .editing.script import ScriptError, run_edit_script
+
+    path = Path(args.path)
+    if path.suffix.lower() in GLTF_SUFFIXES:
+        raise CommandError(
+            "ValidationError", "edit works on .aether projects; import the glTF file first"
+        )
+    scene, info = _load_scene(path)
+    try:
+        if args.script == "-":
+            raw = sys.stdin.buffer.read(MAX_SCRIPT_BYTES + 1)
+        else:
+            script_path = Path(args.script)
+            if script_path.stat().st_size > MAX_SCRIPT_BYTES:
+                raise CommandError(
+                    "ResourceLimitError", f"script is larger than {MAX_SCRIPT_BYTES} bytes"
+                )
+            raw = script_path.read_bytes()
+    except OSError as exc:
+        raise _command_error(exc, Path(args.script)) from None
+    if len(raw) > MAX_SCRIPT_BYTES:
+        raise CommandError("ResourceLimitError", f"script is larger than {MAX_SCRIPT_BYTES} bytes")
+    try:
+        script = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CommandError(
+            "ScriptError", f"script is not valid JSON: {exc}", "script", {"code": "INVALID_JSON"}
+        ) from None
+    try:
+        result = run_edit_script(scene, script)
+    except ScriptError as exc:
+        details = {k: v for k, v in exc.to_dict().items() if k not in ("message", "location")}
+        raise CommandError("ScriptError", exc.message, exc.location, details) from None
+    output = Path(args.output) if args.output else path
+    written = None
+    if not args.dry_run:
+        try:
+            written = str(save_scene(scene, output))
+        except (AetherError, OSError) as exc:
+            raise _command_error(exc, output) from None
+    data = {
+        "path": str(path),
+        "output": None if args.dry_run else str(output),
+        "dry_run": args.dry_run,
+        **result.to_dict(),
+    }
+    lines = []
+    for edit in result.edits:
+        commit = edit["commit"]
+        mesh = commit["mesh"]
+        size = f"{mesh['vertex_count']}v/{mesh['triangle_count']}t" if mesh else "no mesh"
+        lines.append(
+            f"{edit['object']['name']}: {len(edit['operations'])} operations, "
+            f"{'changed' if commit['changed'] else 'unchanged'} ({size}), "
+            f"validation {commit['validation']['status']}"
+        )
+    lines.append("dry run: nothing written" if args.dry_run else f"saved {written}")
+    return data, "\n".join(lines), EXIT_OK
+
+
 # --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
@@ -418,6 +527,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_export.add_argument("destination", help="the .glb or .gltf file to write")
     p_export.add_argument("--force", action="store_true", help="overwrite an existing file")
     p_export.set_defaults(handler=cmd_export)
+
+    p_topology = sub.add_parser(
+        "topology", parents=reading, help="polygon topology and validation of one object's mesh"
+    )
+    p_topology.add_argument("path", help="path of a .aether, .glb or .gltf file")
+    p_topology.add_argument("--object", required=True, help="object id or name")
+    p_topology.add_argument(
+        "--elements", action="store_true", help="list vertices, edges and faces"
+    )
+    p_topology.add_argument("--limit", type=int, default=None, help="list at most N of each kind")
+    p_topology.add_argument(
+        "--triangles", action="store_true", help="do not rebuild quads from triangle pairs"
+    )
+    p_topology.set_defaults(handler=cmd_topology)
+
+    p_edit = sub.add_parser(
+        "edit", parents=[common], help="apply a JSON edit script to a project (atomically)"
+    )
+    p_edit.add_argument("path", help="the .aether project to edit")
+    p_edit.add_argument("script", help="edit script (.json), or - to read it from stdin")
+    p_edit.add_argument("--output", help="write the result here instead of updating PATH")
+    p_edit.add_argument("--dry-run", action="store_true", help="run and report, but write nothing")
+    p_edit.set_defaults(handler=cmd_edit)
     return parser
 
 
