@@ -12,6 +12,7 @@ apply to agents too.
 - Architecture and module boundaries: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Public API: [docs/API.md](docs/API.md). File format: [docs/FILE_FORMAT.md](docs/FILE_FORMAT.md).
 - glTF interchange: [docs/GLTF.md](docs/GLTF.md). Geometry reports: [docs/INSPECTION.md](docs/INSPECTION.md).
+- Mesh editing: [docs/EDITING.md](docs/EDITING.md) (topology, ids, sessions, operations, scripts).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 
 ## Conventions to preserve
@@ -26,6 +27,10 @@ apply to agents too.
   `lossy=True` (which makes the conversion fail unless `allow_lossy=True`) if geometry would change.
 - Treat imported files as untrusted: validate before allocating, keep file access inside the
   asset's directory, raise `AssetFormatError` with a `code` and JSON-pointer `location`.
+- Editing: mutate an `EditableMesh` only through the journaled primitives in
+  `editing/core.py`; new operations are `@operation` methods that validate first and raise
+  `EditError` with a stable code (never leave a partial edit; never approximate an operation).
+  Run `tests/test_editing_robustness.py` after touching topology code.
 
 ## Using Aether3D from an agent
 
@@ -39,3 +44,8 @@ apply to agents too.
   values, not messages. Exit code `3` means error-severity findings.
 - Object ids survive glTF round trips (stored in `node.extras.aether3d.id`); names may
   be suffixed (`.001`) if an external file repeats them.
+- Model geometry with `obj.edit_mesh()` (Python) or `aether3d edit PROJECT script.json`
+  (JSON). Use `expect=` on selections, prefer `nearest=`/`normal=`/`box=` over guessing ids,
+  read `created`/`removed` from each result, and run `validate` before committing.
+- `aether3d topology PROJECT --object NAME --elements --json` lists element ids, positions and
+  face loops; ids from a fresh session are deterministic for the same mesh.

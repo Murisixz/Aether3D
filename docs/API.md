@@ -11,6 +11,8 @@ from aether3d import save_scene, load_scene, FORMAT_VERSION
 from aether3d import import_gltf, export_gltf, ImportResult, ExportResult, ImportLimits
 from aether3d import inspect_mesh, inspect_scene, MeshGeometryReport, SceneGeometryReport
 from aether3d import Diagnostic
+from aether3d import EditableMesh, EditSession, Selection, OperationResult, CommitResult
+from aether3d import TopologyReport, run_edit_script
 from aether3d import AetherError  # and the specific error classes below
 ```
 
@@ -83,6 +85,7 @@ Created only through a `Scene`.
 | `parent` | Parent object or `None`. |
 | `children` | Tuple of direct children, in order. |
 | `iter_descendants()` | Depth-first iterator over all descendants. |
+| `edit_mesh(weld="exact", quads=True)` | Start an `EditSession` on this object's geometry (see [EDITING.md](EDITING.md)). |
 | `iter_ancestors()` | Iterator: parent, grandparent, …, root. |
 | `set_parent(parent, *, keep_world_transform=False)` | Re-parent (`None` = root). Raises `HierarchyError` on cycles. |
 | `local_matrix` | 4x4 local-to-parent matrix. |
@@ -187,6 +190,60 @@ Field and diagnostic reference: [INSPECTION.md](INSPECTION.md).
 | `SceneGeometryReport` | `scene_name`, `summary`, `world_bounds`, `objects`, `meshes`, `diagnostics`, `all_diagnostics`, `status`, `to_dict()` |
 | `Diagnostic` | Frozen dataclass: `code`, `severity` (`"error"`/`"warning"`/`"info"`), `message`, `location`, `count`, `samples`, `lossy`; `to_dict()` |
 
+## Mesh editing
+
+Full guide: [EDITING.md](EDITING.md).
+
+| Name | Description |
+| --- | --- |
+| `EditSession` | Returned by `obj.edit_mesh()`. Delegates queries and operations to its `mesh`. Its methods are `commit(scope="object"\|"shared", allow_invalid=False) -> CommitResult` and `discard()`. Used as a context manager, it commits on success and discards on exception. |
+| `CommitResult` | `mesh`, `objects` (updated object ids), `changed`, `validation` (`TopologyReport`), `inspection` (`MeshGeometryReport`), `diagnostics`, `operations`, `to_dict()` |
+| `EditableMesh` | The polygon mesh. Construct with `EditableMesh(uvs=True, normals=True)` or `EditableMesh.from_mesh(mesh, weld="exact", quads=True)`; convert back with `to_mesh()` / `build_mesh(compute_normals=None)`. |
+| `Selection` | Frozen sets `vertices`, `edges`, `faces`; `|`, `&`, `-`; `Selection.of(...)`; `to_dict()` |
+| `OperationResult` | `operation`, `created`, `removed` (dicts of id lists by kind), `modified_faces`, `data`, `diagnostics`, `selection(key)`, `to_dict()` |
+| `TopologyReport` | `summary`, `diagnostics`, `status`, `ok`, `codes()`, `to_dict()` |
+| `run_edit_script(scene, script) -> ScriptResult` | Apply a declarative JSON edit script atomically |
+
+**`EditableMesh` queries:**
+
+- Counts and ids: `vertex_count`, `edge_count`, `face_count`, `vertex_ids()`,
+  `edge_ids()`, `face_ids()`, `has_vertex`, `has_edge`, `has_face`.
+- Positions: `position(v)`, `positions(ids)`, `world_positions(ids)`.
+- Topology: `face_vertices(f)`, `face_edges(f)`, `edge_vertices(e)`,
+  `edge_faces(e)`, `vertex_edges(v)`, `vertex_faces(v)`, `edge_between(a, b)`.
+- Geometry: `face_normal(f)`, `face_center(f)`, `face_area(f)`,
+  `edge_length(e)`, `edge_midpoint(e)`, `bounds(space=)`.
+- Attributes and shading: `corner_values(f, layer)`, `is_smooth(f)`,
+  `is_sharp(e)`, `corner_layers`, `has_uvs`, `has_normals`.
+- Reports: `summary()`, `describe(kinds, limit)`, `validate()`.
+- History: `history`, `undo()`, `redo()`, `can_undo`, `can_redo`.
+- Discovery: `EditableMesh.operations()` lists every operation name.
+
+**Selection:**
+
+- Queries: `select(kind, ids=None, *, box, sphere, plane, normal, nearest,
+  boundary, sides, predicate, test, space, expect)`, plus the shortcuts
+  `select_vertices`, `select_edges`, `select_faces` and `select_all()`.
+- Adjacency: `edge_loop(e)`, `edge_ring(e)`, `linked_faces(faces)`,
+  `grow(sel)`, `region_boundary(faces)`, `boundary_edges()`,
+  `non_manifold_edges()`.
+- Conversions: `to_vertices`, `to_edges`, `to_faces`.
+
+**Operations** (atomic and undoable; each returns an `OperationResult`):
+
+- Creation: `add_box`, `add_grid`, `create_vertex`, `create_face`.
+- Deletion: `delete_faces`, `delete_edges`, `delete_vertices`.
+- Transforms: `translate`, `rotate`, `scale`, `transform`, `set_positions`,
+  `move_along_normals`.
+- Extrusion and bevel: `extrude_faces`, `inset_faces`, `bevel_edges`.
+- Refinement: `subdivide_faces`, `loop_cut`.
+- Merging: `merge_vertices`, `merge_by_distance`, `collapse_edges`.
+- Dissolving: `dissolve_edges`, `join_triangles`.
+- Splitting: `split_edges`, `split_edge`, `split_face`, `rip_vertices`,
+  `separate_faces`.
+- Triangulation: `triangulate_faces`.
+- Orientation and shading: `flip_faces`, `set_smooth`, `set_sharp`.
+
 ## `aether3d.math3d`
 
 Stateless helpers used by the engine, available for scripts:
@@ -209,6 +266,8 @@ All deliberate errors derive from `AetherError`.
 | `AssetFormatError` | `ValueError` | An external asset (glTF/GLB) is malformed; `.code` is a stable identifier and `.location` a JSON pointer such as `/accessors/3` |
 | `UnsupportedFeatureError` | `ValueError` | A conversion cannot represent some content faithfully; `.diagnostics` lists every item |
 | `ResourceLimitError` | `ValueError` | Input exceeds an `ImportLimits` limit |
+| `EditError` | `ValueError` | An editing operation cannot be applied; nothing changed. `.code` (stable), `.elements` (offending ids by kind), `.hint` |
+| `ScriptError` | `ValueError` | An edit script is malformed or a step failed. `.code`, `.location` (e.g. `edits[0].operations[3]`), `.details` |
 
 Missing files raise the standard `FileNotFoundError`.
 
@@ -221,6 +280,8 @@ aether3d inspect PATH [--allow-lossy] [--json]
 aether3d geometry PATH [--allow-lossy] [--json]
 aether3d import SOURCE.glb|.gltf DESTINATION.aether [--allow-lossy] [--force] [--json]
 aether3d export SOURCE DESTINATION.glb|.gltf [--allow-lossy] [--force] [--json]
+aether3d topology PATH --object ID_OR_NAME [--elements] [--limit N] [--triangles] [--json]
+aether3d edit PROJECT.aether SCRIPT.json|- [--output PATH] [--dry-run] [--json]
 aether3d --version
 ```
 
@@ -246,7 +307,7 @@ Exit codes:
 | `0` | Success |
 | `1` | Failure |
 | `2` | Usage error |
-| `3` | `geometry` completed but found error-severity problems |
+| `3` | `geometry` or `topology` completed but found error-severity problems |
 
 The `import`, `export` and `geometry` commands report:
 

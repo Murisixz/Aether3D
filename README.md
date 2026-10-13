@@ -8,13 +8,15 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.2.0 (geometry interoperability and inspection).** Aether3D
-> provides a scene graph with transforms and hierarchy, primitive and custom
-> triangle meshes, and the native `.aether` project format. It adds
-> standards-compliant **glTF 2.0 / GLB import and export** and structured
-> **geometry inspection**, all scriptable from Python and a JSON-speaking CLI.
-> Rendering, animation, physics, materials and other systems are intentionally
-> **not** part of this stage. See the [changelog](CHANGELOG.md).
+> **Status: v0.3.0 (mesh editing engine).** Aether3D provides a scene graph
+> with transforms and hierarchy, the native `.aether` project format,
+> standards-compliant **glTF 2.0 / GLB import and export**, structured
+> **geometry inspection**, and a programmable **polygon modeling engine**
+> (selection, transforms, extrude, inset, bevel, loop cuts, subdivision,
+> merging, splitting, validation, undo), all scriptable from Python and from
+> declarative JSON on the CLI. Rendering, animation, physics, materials and
+> other systems are intentionally **not** part of this stage. See the
+> [changelog](CHANGELOG.md).
 
 ## Quick start
 
@@ -79,6 +81,38 @@ See [docs/GLTF.md](docs/GLTF.md) and [docs/INSPECTION.md](docs/INSPECTION.md).
 [`examples/gltf_roundtrip.py`](examples/gltf_roundtrip.py) builds a town
 scene, exports it, validates it, imports it back, and verifies every property.
 
+### Mesh editing
+
+```python
+from aether3d import Scene
+
+scene = Scene()
+crate = scene.add_cube("Crate", size=2)
+
+with crate.edit_mesh() as edit:  # commits on success, discards on error
+    top = edit.select_faces(normal=((0, 0, 1), 1), expect=1)
+    edit.inset_faces(top, 0.2)
+    edit.extrude_faces(top, -0.1)  # a recessed lid
+    edge = edit.select_edges(nearest=(1, 1, 0))  # exactly one edge, or an error
+    edit.bevel_edges(edge, 0.05)
+    report = edit.validate()  # topology checks before committing
+```
+
+- **Editable topology.** The engine works on BMesh-style polygon topology with
+  stable vertex, edge and face ids.
+- **Safe operations.** Every operation is atomic and undoable, reports exactly
+  which ids it created and removed, and fails with a stable error code instead
+  of producing broken geometry.
+- **Faithful attributes.** UVs and normals are preserved or interpolated, and
+  any loss is reported.
+- **Instancing respected.** Editing one object never changes another object
+  that shares its mesh, unless asked to.
+
+See [docs/EDITING.md](docs/EDITING.md).
+[`examples/minecraft_hero.py`](examples/minecraft_hero.py) models a blocky
+hero and sword entirely with editing operations, validates them, exports a
+GLB, and checks it with the Khronos validator and, optionally, Blender.
+
 ## Command-line interface
 
 ```console
@@ -98,6 +132,8 @@ Interchange and geometry analysis:
 ```console
 $ aether3d export world.aether world.glb       # .aether (or .gltf) -> .glb / .gltf
 $ aether3d import model.gltf model.aether      # add --allow-lossy to drop unsupported content
+$ aether3d topology world.aether --object Crate --json     # polygon topology + validation
+$ aether3d edit world.aether script.json --json            # declarative JSON edit script
 $ aether3d inspect model.glb                   # validate/inspect also read .glb/.gltf
 $ aether3d geometry examples/first_scene.aether
 Geometry of "First Scene": OK
@@ -172,6 +208,7 @@ pip install -e ".[dev]"
 | [docs/FILE_FORMAT.md](docs/FILE_FORMAT.md) | The versioned `.aether` project format |
 | [docs/GLTF.md](docs/GLTF.md) | glTF 2.0 import/export: features, axis conversion, limitations, safety |
 | [docs/INSPECTION.md](docs/INSPECTION.md) | Geometry inspection reports and diagnostic codes |
+| [docs/EDITING.md](docs/EDITING.md) | Mesh editing: topology, ids, sessions, operations, scripts, limitations |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
@@ -186,6 +223,7 @@ pip install -e ".[dev]"
 - Transforms compose as `T @ R @ S`; `world = parent.world @ local`.
 - Object ids are UUID strings that never change, including across save/load.
 - Object names are unique within a scene.
+- Faces wind counter-clockwise seen from the front; editing ids are stable within a session.
 
 ## License
 

@@ -37,6 +37,19 @@ Aether3D/
 │   ├── scene.py           Scene and SceneObject: the scene graph
 │   ├── serialization.py   .aether reader/writer, validation, migrations
 │   ├── inspection.py      Geometry analysis of meshes and scenes
+│   ├── editing/           Polygon mesh editing engine (see docs/EDITING.md)
+│   │   ├── core.py        EditableMesh storage, journaled primitives, transactions
+│   │   ├── selection.py   Selection queries, loops, rings, conversions
+│   │   ├── transform.py   Local/world transforms, mirroring, normal transforms
+│   │   ├── topology.py    Create/delete/merge/split/dissolve/triangulate
+│   │   ├── extrude.py     Region/individual extrusion and inset
+│   │   ├── bevel.py       Edge chamfer
+│   │   ├── subdivide.py   Subdivision and loop cuts
+│   │   ├── normals.py     Shading model and corner-normal recomputation
+│   │   ├── validation.py  Polygon-level topology validation
+│   │   ├── session.py     EditSession: commit/discard on a scene object
+│   │   ├── script.py      Declarative JSON edit scripts (CLI, future MCP)
+│   │   └── _polygon.py    Newell normals, ear clipping, simplicity, affine fits
 │   ├── gltf/              glTF 2.0 interchange (no third-party dependencies)
 │   │   ├── axes.py        Exact Z-up <-> Y-up conversion
 │   │   ├── writer.py      Export: scene -> glTF document + buffer -> .glb/.gltf
@@ -47,6 +60,7 @@ Aether3D/
 │   └── data/              Khronos sample assets (pinned) and a v0.1.0 project
 ├── examples/              Runnable examples and a sample .aether project
 ├── tools/gltf-validator/  Pinned Khronos glTF Validator runner (Node.js, dev only)
+├── benchmarks/            Editing-engine benchmarks (bench_editing.py)
 ├── docs/                  API, file formats, glTF, inspection, architecture, install
 └── .github/workflows/     Continuous integration
 ```
@@ -66,11 +80,12 @@ Aether3D/
 | `gltf.axes` | `math3d` |
 | `gltf.writer` | `gltf.axes`, `mesh`, `diagnostics`, `errors`, `_fileio` |
 | `gltf.reader` | `gltf.axes`, `gltf.writer` (constants), `scene`, `mesh`, `transform`, `math3d`, `diagnostics`, `errors` |
-| `cli` | `gltf`, `serialization`, `scene`, `errors` |
+| `editing.*` | `mesh`, `math3d`, `diagnostics`, `errors`, `primitives` (box layout), `inspection` (session commit reports); `scene` only for type hints and the session |
+| `cli` | `editing`, `gltf`, `serialization`, `scene`, `errors` |
 
 Lower layers never import higher ones. `scene` provides convenience methods
-(`save`/`load`, `export`/`import_file`, `inspect_geometry`) by importing
-`serialization`, `gltf` and `inspection` lazily inside those methods, and
+(`save`/`load`, `export`/`import_file`, `inspect_geometry`, `edit_mesh`) by importing
+`serialization`, `gltf`, `inspection` and `editing` lazily inside those methods, and
 `inspection`/`gltf.writer` refer to `Scene` only for type hints.
 
 ## Core concepts
@@ -190,3 +205,32 @@ Several design decisions keep conversions predictable:
   each distinct mesh is analysed once. Its topology claims are limited to
   what it actually computes on exactly-welded vertices (see
   [INSPECTION.md](INSPECTION.md)).
+
+## Mesh editing (v0.3.0)
+
+The editing engine is a layer on top of the core: it consumes and produces
+immutable `Mesh` objects and never changes how they are stored. The core
+design decisions are explained in [EDITING.md](EDITING.md). Most importantly:
+
+- **BMesh-style topology in id-keyed tables.** Polygons, non-manifold
+  geometry and per-corner attributes, with stable integer ids, stored as
+  NumPy positions plus dictionaries. The alternatives that were considered
+  are compared in EDITING.md.
+- **All mutation goes through journaled primitives.** Operations are atomic
+  (exact rollback on any exception) and undoable, without copying meshes.
+  `OperationResult` id lists are derived from the journal, so they are always
+  complete.
+- **Operations are plain methods on mixins** (`TransformMixin`,
+  `ExtrudeMixin`, ...) composed into `EditableMesh`. A new operation is one
+  `@operation` method in the right module; it is then automatically
+  undoable, listed by `EditableMesh.operations()`, and callable from JSON
+  scripts.
+- **Attributes are generic corner layers.** Interpolation code is
+  layer-agnostic, so vertex colours, extra UV sets or a per-face material
+  index can be added without touching the operations.
+- **Sessions bind an editable mesh to a scene object.** Committing is the
+  only way geometry reaches the scene: instancing stays intact and failed
+  edits never leak.
+- **Scripts are data, not code.** `run_edit_script` is the single entry point
+  for declarative edits. The CLI uses it today; a future MCP server can expose
+  it unchanged.

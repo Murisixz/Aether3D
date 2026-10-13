@@ -51,6 +51,8 @@ jobs:
           python examples/gltf_roundtrip.py ci_gltf
           aether3d validate ci_gltf/town.glb --json
           aether3d geometry ci_gltf/town.glb
+          python examples/minecraft_hero.py ci_hero
+          aether3d inspect ci_hero/blocky_hero.glb
 
   khronos-validator:
     name: Khronos glTF Validator (${{ matrix.os }})
@@ -73,6 +75,8 @@ jobs:
       - name: Validate exports with the Khronos glTF Validator
         env:
           AETHER3D_REQUIRE_GLTF_VALIDATOR: "1"
-        run: pytest tests/test_khronos_validator.py -v
-      - name: Validate the demonstration scene
-        run: python examples/gltf_roundtrip.py ci_gltf --require-validator
+        run: pytest tests/test_khronos_validator.py tests/test_editing_gltf.py -v
+      - name: Validate the demonstration scenes
+        run: |
+          python examples/gltf_roundtrip.py ci_gltf --require-validator
+          python examples/minecraft_hero.py ci_hero --require-validator
