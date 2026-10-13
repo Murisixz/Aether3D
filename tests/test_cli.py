@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from aether3d import Scene
+from aether3d import FORMAT_VERSION, Scene
 from aether3d.cli import main
 
 
@@ -48,7 +48,7 @@ def test_new_with_name_and_json(tmp_path, capsys):
         "command": "new",
         "path": str(path),
         "scene": "My World",
-        "format_version": 1,
+        "format_version": FORMAT_VERSION,
     }
     assert Scene.load(path).name == "My World"
 
@@ -123,7 +123,7 @@ def test_inspect_human_tree(project, capsys):
     code, out, _ = run(capsys, "inspect", str(project))
     assert code == 0
     lines = out.splitlines()
-    assert lines[0] == 'Scene "CLI Scene" (3 objects, format v1)'
+    assert lines[0] == f'Scene "CLI Scene" (3 objects, format v{FORMAT_VERSION})'
     assert lines[1].startswith("├── Group")
     assert lines[2].startswith("│   └── Cube") and "mesh=24v/12t" in lines[2]
     assert lines[3].startswith("└── Sphere")
