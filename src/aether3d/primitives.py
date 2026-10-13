@@ -61,7 +61,9 @@ def create_sphere(radius: float = 1.0, segments: int = 32, rings: int = 16) -> M
     t, p = np.meshgrid(theta, phi, indexing="ij")
     sin_t = np.sin(t)
     sin_t[0, :] = sin_t[-1, :] = 0.0  # exact poles
-    normals = np.stack([sin_t * np.cos(p), sin_t * np.sin(p), np.cos(t)], axis=-1).reshape(-1, 3)
+    cos_p, sin_p = np.cos(p), np.sin(p)
+    cos_p[:, -1], sin_p[:, -1] = 1.0, 0.0  # seam column exactly matches the first column
+    normals = np.stack([sin_t * cos_p, sin_t * sin_p, np.cos(t)], axis=-1).reshape(-1, 3)
     uvs = np.stack(
         [np.broadcast_to(np.arange(segments + 1) / segments, t.shape), 1.0 - t / np.pi], axis=-1
     ).reshape(-1, 2)

@@ -51,3 +51,35 @@ class ProjectFormatError(AetherError, ValueError):
         self.message = message
         self.location = location
         super().__init__(f"{location}: {message}" if location else message)
+
+
+class AssetFormatError(AetherError, ValueError):
+    """An external asset (e.g. a glTF/GLB file) is malformed or violates its specification.
+
+    ``code`` is a stable machine-readable identifier (e.g. ``"ACCESSOR_OUT_OF_BOUNDS"``)
+    and ``location`` a JSON pointer into the asset (e.g. ``/accessors/3``), or ``None``.
+    """
+
+    def __init__(self, message: str, location: str | None = None, code: str = "INVALID_ASSET"):
+        self.message = message
+        self.location = location
+        self.code = code
+        super().__init__(f"{location}: {message}" if location else message)
+
+
+class UnsupportedFeatureError(AetherError, ValueError):
+    """The requested conversion cannot represent some content faithfully.
+
+    ``diagnostics`` lists every offending item (see :class:`aether3d.Diagnostic`).
+    Conversions that may drop or approximate such content can be requested
+    explicitly with ``allow_lossy=True``.
+    """
+
+    def __init__(self, message: str, diagnostics: list | None = None) -> None:
+        self.message = message
+        self.diagnostics = list(diagnostics or [])
+        super().__init__(message)
+
+
+class ResourceLimitError(AetherError, ValueError):
+    """Input exceeds a configured safety limit (file size, vertex count, ...)."""
