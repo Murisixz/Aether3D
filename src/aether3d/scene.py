@@ -17,8 +17,11 @@ from .errors import (
     ObjectNotFoundError,
     ValidationError,
 )
-from .math3d import Quat, Vec3, decompose_matrix
+from .math3d import Quat, Vec3, decompose_matrix, look_rotation_matrix, matrix3_to_quat, vec3
 from .mesh import Mesh
+from .rendering.camera import Camera
+from .rendering.light import Light
+from .rendering.settings import Appearance, RenderSettings, World
 from .transform import Transform
 
 if TYPE_CHECKING:
@@ -26,6 +29,8 @@ if TYPE_CHECKING:
     from .gltf import ExportResult, ImportLimits
     from .inspection import SceneGeometryReport
     from .procedural import ProceduralGeometry, ProceduralSystem
+    from .rendering import RenderResult
+    from .rendering.framing import Framing
 
 ObjectRef = Union["SceneObject", str]
 """A scene object, or its identifier."""
@@ -46,8 +51,11 @@ class SceneObject:
     """A node in a scene's hierarchy.
 
     Every object has a stable unique :attr:`id`, a :attr:`name` that is unique
-    within its scene, a local :attr:`transform` relative to its parent, and an
-    optional :attr:`mesh`. Objects without a mesh are useful as groups/pivots.
+    within its scene, a local :attr:`transform` relative to its parent, and at
+    most one kind of data: a :attr:`mesh` (static or procedural), a
+    :attr:`camera` or a :attr:`light`. Objects without data are useful as
+    groups/pivots. Mesh objects also have an :attr:`appearance` (color), and
+    every object a :attr:`visible` flag.
 
     Objects are created through a :class:`Scene` (``scene.add_object()``,
     ``scene.add_cube()``, ...), never directly.
@@ -62,6 +70,10 @@ class SceneObject:
         "_parent",
         "_children",
         "_geometry",
+        "_camera",
+        "_light",
+        "_appearance",
+        "_visible",
     )
 
     def __init__(
@@ -73,6 +85,10 @@ class SceneObject:
         self._transform = transform
         self._mesh = mesh
         self._geometry: str | None = None  # id of a procedural geometry node, if any
+        self._camera: Camera | None = None
+        self._light: Light | None = None
+        self._appearance = Appearance()
+        self._visible = True
         self._parent: SceneObject | None = None
         self._children: list[SceneObject] = []
 
@@ -123,7 +139,69 @@ class SceneObject:
             )
         if value is not None and not isinstance(value, Mesh):
             raise ValidationError(f"mesh must be a Mesh or None, got {type(value).__name__}")
+        if value is not None and (self._camera is not None or self._light is not None):
+            raise ValidationError(
+                f"object {self._name!r} is a {self.kind}; it cannot also have a mesh"
+            )
         self._mesh = value
+
+    # -- cameras, lights and appearance -------------------------------------
+
+    @property
+    def kind(self) -> str:
+        """``"mesh"``, ``"procedural"``, ``"camera"``, ``"light"`` or ``"empty"``."""
+        if self._camera is not None:
+            return "camera"
+        if self._light is not None:
+            return "light"
+        if self._geometry is not None:
+            return "procedural"
+        return "mesh" if self._mesh is not None else "empty"
+
+    @property
+    def camera(self) -> Camera | None:
+        """The :class:`~aether3d.rendering.Camera` of a camera object (``None`` otherwise).
+
+        Edit it in place (``obj.camera.fov = 35``); create cameras with
+        :meth:`Scene.add_camera`.
+        """
+        return self._camera
+
+    @property
+    def light(self) -> Light | None:
+        """The :class:`~aether3d.rendering.Light` of a light object (``None`` otherwise)."""
+        return self._light
+
+    @property
+    def appearance(self) -> Appearance:
+        """How the object's mesh renders (color, highlight); edit it in place."""
+        return self._appearance
+
+    @appearance.setter
+    def appearance(self, value: Appearance) -> None:
+        if not isinstance(value, Appearance):
+            raise ValidationError(f"appearance must be an Appearance, got {type(value).__name__}")
+        self._appearance = value.copy()
+
+    @property
+    def color(self) -> tuple[float, float, float]:
+        """Display (sRGB) base color; accepts ``"#rrggbb"`` or three numbers in ``[0, 1]``."""
+        return self._appearance.color
+
+    @color.setter
+    def color(self, value: Any) -> None:
+        self._appearance.color = value
+
+    @property
+    def visible(self) -> bool:
+        """Whether the object renders (lights: whether they shine). Not inherited by children."""
+        return self._visible
+
+    @visible.setter
+    def visible(self, value: bool) -> None:
+        if not isinstance(value, bool):
+            raise ValidationError(f"visible must be True or False, got {value!r}")
+        self._visible = value
 
     # -- procedural geometry ------------------------------------------------
 
@@ -269,6 +347,120 @@ class SceneObject:
         """World-space scale (see ``math3d.decompose_matrix`` for caveats)."""
         return decompose_matrix(self.world_matrix)[2]
 
+    @property
+    def world_forward(self) -> Vec3:
+        """Unit world direction of the object's front (local -Y): where cameras look
+        and directional lights shine."""
+        direction = -self.world_matrix[:3, 1]
+        length = float(np.linalg.norm(direction))
+        if length < 1e-12:
+            raise ValidationError(f"object {self._name!r} has zero scale along its forward axis")
+        x, y, z = (direction / length).tolist()
+        return (x, y, z)
+
+    # -- orientation -------------------------------------------------------
+
+    def look_at(
+        self, target: ObjectRef | Iterable[float], *, up: Iterable[float] = (0.0, 0.0, 1.0)
+    ) -> None:
+        """Turn the object so its front (local -Y) faces ``target`` and local +Z is up.
+
+        ``target`` is a world-space point or another object (its world
+        position). Parents, including scaled and rotated ones, are taken into
+        account exactly. Raises ``ValidationError`` if the target coincides
+        with the object's position. See :func:`aether3d.math3d.look_rotation_matrix`
+        for what happens when looking straight along ``up``.
+        """
+        if isinstance(target, (SceneObject, str)):
+            point = np.asarray(self._require_scene()._resolve_object(target).world_position)
+        else:
+            point = np.asarray(vec3(target, "target"))
+        direction = point - np.asarray(self.world_position)
+        if float(np.linalg.norm(direction)) < 1e-12:
+            raise ValidationError(
+                f"cannot aim {self._name!r} at its own position; move it or the target first"
+            )
+        self.look_along(direction, up=up)
+
+    def look_along(
+        self, direction: Iterable[float], *, up: Iterable[float] = (0.0, 0.0, 1.0)
+    ) -> None:
+        """Turn the object so its front (local -Y) points along a world ``direction``."""
+        self._transform.rotation = self._aim_rotation(direction, up)
+
+    def _aim_rotation(self, direction: Iterable[float], up: Iterable[float]) -> Quat:
+        """Local rotation that makes the world front/up axes match ``direction``/``up``.
+
+        Exact under any invertible parent transform and the object's own
+        (possibly negative) scale.
+        """
+        world_rot = look_rotation_matrix(direction, up)
+        forward, upv = -world_rot[:, 1], world_rot[:, 2]
+        parent = np.eye(3) if self._parent is None else self._parent.world_matrix[:3, :3]
+        try:
+            inv = np.linalg.inv(parent)
+        except np.linalg.LinAlgError:
+            raise ValidationError(
+                f"cannot aim {self._name!r}: its parent has a zero world scale"
+            ) from None
+        sx, sy, sz = (np.sign(c) or 1.0 for c in self._transform.scale)
+        y_local = inv @ (-sy * forward)
+        y_local /= np.linalg.norm(y_local)
+        w = inv @ (sz * upv)
+        z_local = w - float(w @ y_local) * y_local
+        z_len = float(np.linalg.norm(z_local))
+        if z_len < 1e-9 * float(np.linalg.norm(w)):
+            raise ValidationError(
+                f"cannot aim {self._name!r}: its parent's transform collapses the up axis"
+            )
+        z_local /= z_len
+        x_local = np.cross(y_local, z_local)
+        return matrix3_to_quat(np.column_stack([x_local, y_local, z_local]))
+
+    def set_world_position(self, position: Iterable[float]) -> None:
+        """Move the object so its world position is ``position`` (parents respected)."""
+        p = np.append(np.asarray(vec3(position, "position")), 1.0)
+        if self._parent is not None:
+            try:
+                p = np.linalg.solve(self._parent.world_matrix, p)
+            except np.linalg.LinAlgError:
+                raise ValidationError(
+                    f"cannot place {self._name!r}: its parent has a zero world scale"
+                ) from None
+        self._transform.position = p[:3]
+
+    def frame(
+        self,
+        targets: Any = None,
+        *,
+        direction: Iterable[float] | None = None,
+        up: Iterable[float] = (0.0, 0.0, 1.0),
+        margin: float = 0.05,
+        fit_clipping: bool = True,
+        aspect: float | None = None,
+    ) -> Framing:
+        """Camera objects: move the camera so ``targets`` exactly fill its frame.
+
+        ``targets`` are objects (or ids/names); by default every visible mesh
+        object. The camera keeps its orientation unless a view ``direction``
+        is given. ``margin`` is the fraction of the frame left free around the
+        geometry. With ``fit_clipping`` the near/far planes (and, for
+        orthographic cameras, ``ortho_scale``) are adjusted to the geometry.
+        ``aspect`` defaults to the camera's ``aspect_ratio`` or the scene's
+        render settings. See :mod:`aether3d.rendering.framing`.
+        """
+        from .rendering.framing import frame_object
+
+        return frame_object(
+            self,
+            targets,
+            direction=direction,
+            up=up,
+            margin=margin,
+            fit_clipping=fit_clipping,
+            aspect=aspect,
+        )
+
     # -- editing -----------------------------------------------------------
 
     def edit_mesh(self, *, weld: str = "exact", quads: bool = True) -> EditSession:
@@ -322,6 +514,9 @@ class Scene:
         self._objects: dict[str, SceneObject] = {}
         self._by_name: dict[str, SceneObject] = {}
         self._roots: list[SceneObject] = []
+        self._active_camera: str | None = None
+        self._world = World()
+        self._render_settings = RenderSettings()
 
     @property
     def name(self) -> str:
@@ -518,6 +713,205 @@ class Scene:
             del self._objects[item._id]
             del self._by_name[item._name]
             item._scene = None
+            if item._id == self._active_camera:
+                self._active_camera = None
+
+    # -- cameras, lights and rendering -------------------------------------
+
+    def add_camera(
+        self,
+        name: str | None = None,
+        *,
+        projection: str = "perspective",
+        fov: float = 40.0,
+        fov_axis: str = "vertical",
+        ortho_scale: float = 10.0,
+        near: float = 0.1,
+        far: float = 1000.0,
+        aspect_ratio: float | None = None,
+        parent: ObjectRef | None = None,
+        position: Iterable[float] | None = None,
+        rotation: Iterable[float] | None = None,
+        look_at: ObjectRef | Iterable[float] | None = None,
+        up: Iterable[float] = (0.0, 0.0, 1.0),
+        active: bool | None = None,
+    ) -> SceneObject:
+        """Add a camera object (see :class:`~aether3d.rendering.Camera`).
+
+        A camera looks along its local -Y axis with +Z up; ``look_at`` aims it
+        at a point or object after placing it. The new camera becomes the
+        scene's active camera if ``active`` is true, or if it is ``None`` and
+        there is no active camera yet. Everything is validated before the
+        scene changes.
+        """
+        camera = Camera(projection, fov, fov_axis, ortho_scale, near, far, aspect_ratio)
+        if active is not None and not isinstance(active, bool):
+            raise ValidationError(f"active must be True, False or None, got {active!r}")
+        obj = self._create_with(name, "Camera", parent, position, rotation, look_at, up)
+        obj._camera = camera
+        if active or (active is None and self._active_camera is None):
+            self._active_camera = obj.id
+        return obj
+
+    def add_light(
+        self,
+        type: str = "directional",
+        name: str | None = None,
+        *,
+        color: Any = (1.0, 1.0, 1.0),
+        intensity: float = 1.0,
+        range: float | None = None,
+        falloff: str = "inverse_square",
+        parent: ObjectRef | None = None,
+        position: Iterable[float] | None = None,
+        rotation: Iterable[float] | None = None,
+        direction: Iterable[float] | None = None,
+        look_at: ObjectRef | Iterable[float] | None = None,
+        up: Iterable[float] = (0.0, 0.0, 1.0),
+    ) -> SceneObject:
+        """Add a light object (see :class:`~aether3d.rendering.Light`).
+
+        Directional lights shine along their front (local -Y): give a world
+        ``direction`` (the way the light travels) or a ``look_at`` target.
+        Point lights shine from their ``position``.
+        """
+        light = Light(type, color, intensity, range, falloff)
+        if direction is not None and look_at is not None:
+            raise ValidationError("give either direction= or look_at=, not both")
+        if direction is not None:
+            look_rotation_matrix(direction, up)  # validate before creating anything
+        obj = self._create_with(name, "Light", parent, position, rotation, look_at, up)
+        if direction is not None:
+            try:
+                obj.look_along(direction, up=up)
+            except BaseException:
+                self.remove(obj)
+                raise
+        obj._light = light
+        return obj
+
+    def add_directional_light(
+        self,
+        name: str | None = None,
+        *,
+        direction: Iterable[float] = (0.3, 0.5, -1.0),
+        **options: Any,
+    ) -> SceneObject:
+        """Add a directional ("sun") light travelling along ``direction``."""
+        return self.add_light("directional", name, direction=direction, **options)
+
+    def add_point_light(
+        self,
+        name: str | None = None,
+        *,
+        position: Iterable[float] = (0.0, 0.0, 5.0),
+        **options: Any,
+    ) -> SceneObject:
+        """Add a point light at ``position``."""
+        return self.add_light("point", name, position=position, **options)
+
+    def _create_with(
+        self,
+        name: str | None,
+        base: str,
+        parent: ObjectRef | None,
+        position: Iterable[float] | None,
+        rotation: Iterable[float] | None,
+        look_at: ObjectRef | Iterable[float] | None,
+        up: Iterable[float],
+    ) -> SceneObject:
+        """Create an empty object and aim it; nothing is added if aiming fails."""
+        name = self._unique_name(base) if name is None else name
+        obj = self._create(name, None, parent, position, rotation, None, None)
+        if look_at is not None:
+            try:
+                obj.look_at(look_at, up=up)
+            except BaseException:
+                self.remove(obj)
+                raise
+        return obj
+
+    @property
+    def cameras(self) -> tuple[SceneObject, ...]:
+        """Camera objects, in hierarchy order."""
+        return tuple(o for o in self if o._camera is not None)
+
+    @property
+    def lights(self) -> tuple[SceneObject, ...]:
+        """Light objects, in hierarchy order."""
+        return tuple(o for o in self if o._light is not None)
+
+    @property
+    def active_camera(self) -> SceneObject | None:
+        """The camera used by :meth:`render` when none is given (``None`` if unset)."""
+        return None if self._active_camera is None else self._objects[self._active_camera]
+
+    @active_camera.setter
+    def active_camera(self, value: ObjectRef | None) -> None:
+        if value is None:
+            self._active_camera = None
+            return
+        obj = self._resolve_object(value)
+        if obj._camera is None:
+            raise ValidationError(f"object {obj.name!r} is not a camera")
+        self._active_camera = obj.id
+
+    @property
+    def world(self) -> World:
+        """Background color and ambient light (edit in place: ``scene.world.background = ...``)."""
+        return self._world
+
+    @world.setter
+    def world(self, value: World) -> None:
+        if not isinstance(value, World):
+            raise ValidationError(f"world must be a World, got {type(value).__name__}")
+        self._world = value.copy()
+
+    @property
+    def render_settings(self) -> RenderSettings:
+        """Saved output settings (size, antialiasing, exposure, culling, default lights)."""
+        return self._render_settings
+
+    @render_settings.setter
+    def render_settings(self, value: RenderSettings) -> None:
+        if not isinstance(value, RenderSettings):
+            raise ValidationError(
+                f"render_settings must be a RenderSettings, got {type(value).__name__}"
+            )
+        self._render_settings = value.copy()
+
+    def render(self, **options: Any) -> RenderResult:
+        """Render an image with Aether3D's CPU renderer (see :func:`aether3d.rendering.render`).
+
+        Options override the saved :attr:`render_settings` for this render
+        only: ``camera``, ``width``, ``height``, ``samples``, ``exposure``,
+        ``cull``, ``default_lights``, ``frame``, ``limits``. The scene is not
+        modified. Save the image with ``result.save("image.png")``.
+        """
+        from .rendering import render
+
+        return render(self, **options)
+
+    def _resolve_object(self, ref: ObjectRef) -> SceneObject:
+        """An object of this scene by object, id or name."""
+        if isinstance(ref, SceneObject):
+            return self._resolve(ref)
+        if isinstance(ref, str):
+            if ref in self._objects:
+                return self._objects[ref]
+            if ref in self._by_name:
+                return self._by_name[ref]
+            raise ObjectNotFoundError(f"no object with id or name {ref!r} in this scene")
+        raise ValidationError(f"expected an object, id or name, got {type(ref).__name__}")
+
+    def _restore_subtree(self, obj: SceneObject, parent: SceneObject | None, index: int) -> None:
+        """Put back an object removed with ``remove(recursive=True)`` (script rollback)."""
+        for item in (obj, *obj.iter_descendants()):
+            self._objects[item._id] = item
+            self._by_name[item._name] = item
+            item._scene = self
+        obj._parent = parent
+        (self._roots if parent is None else parent._children).insert(index, obj)
 
     # -- procedural geometry -----------------------------------------------
 

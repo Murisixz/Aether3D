@@ -11,7 +11,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "The Aether3D Authors" }]
-keywords = ["3d", "engine", "scene-graph", "geometry", "gltf", "procedural", "ai-agents"]
+keywords = ["3d", "engine", "scene-graph", "geometry", "gltf", "procedural", "rendering", "ai-agents"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
@@ -24,7 +24,8 @@ dependencies = ["numpy>=1.24"]
 [project.optional-dependencies]
 # Solid booleans (the "boolean" modifier) use Manifold (Apache-2.0).
 boolean = ["manifold3d>=3.4"]
-dev = ["pytest>=7", "ruff>=0.5", "trimesh>=4", "manifold3d>=3.4"]
+# Test-only: Pillow decodes PNGs independently of Aether3D's own encoder.
+dev = ["pytest>=7", "ruff>=0.5", "trimesh>=4", "manifold3d>=3.4", "pillow>=10"]
 
 [project.scripts]
 aether3d = "aether3d.cli:main"

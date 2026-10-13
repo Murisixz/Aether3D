@@ -15,6 +15,8 @@ apply to agents too.
 - Mesh editing: [docs/EDITING.md](docs/EDITING.md) (topology, ids, sessions, operations, scripts).
 - Procedural geometry: [docs/PROCEDURAL.md](docs/PROCEDURAL.md) (parameters, expressions, modifiers,
   caching, transactions, scripts).
+- Cameras, lights and rendering: [docs/RENDERING.md](docs/RENDERING.md) (conventions, pipeline,
+  shading model, API, CLI, verification).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 
 ## Conventions to preserve
@@ -40,6 +42,15 @@ apply to agents too.
   input a result depends on. Run `tests/test_procedural_randomized.py` after changes.
 - Expressions are evaluated by the AST whitelist in `procedural/params.py`; never use
   `eval`/`exec` or widen it to attribute access, indexing or arbitrary calls.
+- Rendering: images are produced by Aether3D's own code (`rendering/`). Never shell out to Blender
+  or another renderer to make an image; Blender may only be used for optional external checks.
+  Backends consume a `RenderScene` from `extract_render_scene` and must not touch scene objects.
+  Rendering must never modify the scene or bake procedural geometry.
+- Cameras and lights look along local -Y with +Z up; user colors are display sRGB and lighting is
+  linear; keep per-vertex/per-sample math explicit (no BLAS) so results stay bitwise reproducible.
+  Validate new shading or projection code against `tests/render_reference.py` (an independent ray
+  caster) and analytic values; regenerate `tests/data/renders` only for intended changes
+  (`python tests/render_goldens.py --update`).
 
 ## Using Aether3D from an agent
 
@@ -66,3 +77,9 @@ apply to agents too.
   the definition, `bake()`, or edit the base mesh with `geometry.edit_source()`.
 - `aether3d procedural validate PROJECT --json` evaluates every node; exit code `3` means a
   node failed. `aether3d procedural set PROJECT name=value` changes parameters atomically.
+- To see a scene: `aether3d render PROJECT -o out.png --json` (add `--frame` if it has no camera;
+  works on `.glb`/`.gltf` too). Read `objects[].visible_samples` to check what is visible and
+  `diagnostics` (e.g. `DEFAULT_LIGHTING`, `NOTHING_TO_RENDER`). Set up cameras, lights and colors
+  with `aether3d camera add --frame`, `light add`, `object set --color`, `scene set`, or one
+  atomic `aether3d scene run PROJECT script.json`. In Python: `scene.add_camera(...).frame()`,
+  `scene.add_directional_light(...)`, `scene.render(...)`, `result.save("x.png")`.

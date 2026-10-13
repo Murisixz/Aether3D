@@ -793,6 +793,11 @@ class ProceduralSystem:
         """Make a scene object use a geometry node (``None`` detaches, leaving no mesh)."""
         with self._transaction():
             g = None if ref is None else self.geometry(ref)
+            if g is not None and (obj._camera is not None or obj._light is not None):
+                raise ProceduralError(
+                    "INVALID_TARGET",
+                    f"object {obj.name!r} is a {obj.kind}; it cannot use procedural geometry",
+                )
             obj._geometry = None if g is None else g.id
             if g is not None:
                 obj._mesh = None

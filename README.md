@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.4.0 (procedural geometry).** Aether3D provides:
+> **Status: v0.5.0 (cameras, lights and the first renderer).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -20,11 +20,16 @@ graphical interface required.
 > - a **non-destructive procedural geometry engine**: parametric primitives,
 >   modifier stacks (transform, mirror, array, solidify, Catmull–Clark
 >   subdivision, bevel, solid booleans), typed parameters with safe
->   expressions and rules, dependency tracking, caching, and undo.
+>   expressions and rules, dependency tracking, caching, and undo;
+> - **cameras, lights and Aether3D's own CPU renderer**: perspective and
+>   orthographic cameras, directional, point and ambient light, solid colors,
+>   clipping, depth testing, antialiasing, and PNG output, all without
+>   Blender, a GPU or a GUI.
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
-> Rendering, animation, physics, materials and other systems are
-> intentionally **not** part of this stage. See the [changelog](CHANGELOG.md).
+> GPU rendering, materials and textures, animation, physics and other systems
+> are intentionally **not** part of this stage. See the
+> [changelog](CHANGELOG.md).
 
 ## Quick start
 
@@ -159,6 +164,44 @@ count and radius, gate size, and detail density), then saves, reloads,
 modifies, validates and exports it, and checks the GLB with the Khronos
 validator and, optionally, Blender.
 
+### Rendering
+
+![A procedural Minecraft-style castle rendered by Aether3D](examples/output/minecraft_castle_render.png)
+
+*Rendered by Aether3D's own CPU rasterizer:
+[`examples/minecraft_castle_render.py`](examples/minecraft_castle_render.py),
+1920×1080, about 2 s.*
+
+```python
+from aether3d import Scene
+
+scene = Scene()
+scene.add_plane("Ground", size=20).color = "#6f9b4f"
+scene.add_cube("Crate", size=2, position=(0, 0, 1)).color = "#c0392b"
+camera = scene.add_camera("Camera", fov=40)  # becomes the active camera
+camera.frame(direction=(-0.5, 1.0, -0.45))  # fit everything in view
+scene.add_directional_light("Sun", direction=(-0.4, 0.6, -1.0), intensity=2.0)
+result = scene.render(width=640, height=360)
+result.save("crate.png")  # a real PNG, written by Aether3D
+```
+
+- **A real renderer.** The pipeline runs camera projection, homogeneous
+  clipping, exact watertight fixed-point rasterization, an order-independent
+  depth test, and perspective-correct deferred shading. Supersampling is
+  averaged in linear light, and the PNG encoder is Aether3D's own.
+- **Scenes from every stage render.** That includes static meshes, imported
+  glTF, edited meshes, and procedural objects, which render their current
+  evaluation without being baked.
+- **Persistent setup.** Cameras, lights, colors, the background and render
+  settings are saved in the project (`.aether` format version 3).
+- **Verified.** Correctness is checked against analytic results and an
+  independent ray caster. Blender, as an external check, agrees with the
+  castle's silhouette on all but 2 of 2,073,600 pixels.
+
+See [docs/RENDERING.md](docs/RENDERING.md).
+[`examples/first_render.py`](examples/first_render.py) and
+[`examples/hero_render.py`](examples/hero_render.py) render more scenes.
+
 ## Command-line interface
 
 ```console
@@ -184,6 +227,11 @@ $ aether3d procedural run castle.aether build.json         # declarative procedu
 $ aether3d procedural set castle.aether tower_count=8      # change parameters (validated)
 $ aether3d procedural inspect castle.aether --evaluate     # parameters, nodes, stacks
 $ aether3d procedural types --json                         # primitive/modifier schemas
+$ aether3d camera add castle.aether --frame --fov 30      # camera framed on everything
+$ aether3d light add castle.aether --direction 0.5 0.6 -0.8 --intensity 2.4
+$ aether3d object set castle.aether Keep --color "#8c7356"
+$ aether3d render castle.aether -o castle.png --width 1920 --height 1080
+$ aether3d render model.glb -o preview.png --frame          # any project or glTF, no setup
 $ aether3d inspect model.glb                   # validate/inspect also read .glb/.gltf
 $ aether3d geometry examples/first_scene.aether
 Geometry of "First Scene": OK
@@ -229,7 +277,7 @@ git clone https://github.com/Murisixz/Aether3D.git
 cd Aether3D
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"     # editable install + pytest, ruff, trimesh and manifold3d
+pip install -e ".[dev]"     # editable install + pytest, ruff, trimesh, manifold3d, pillow
 pytest                      # run the test suite
 ```
 
@@ -268,6 +316,7 @@ Procedural booleans additionally need the optional `boolean` extra
 | [docs/INSPECTION.md](docs/INSPECTION.md) | Geometry inspection reports and diagnostic codes |
 | [docs/EDITING.md](docs/EDITING.md) | Mesh editing: topology, ids, sessions, operations, scripts, limitations |
 | [docs/PROCEDURAL.md](docs/PROCEDURAL.md) | Procedural geometry: parameters, expressions, modifiers, caching, scripts, CLI, limitations |
+| [docs/RENDERING.md](docs/RENDERING.md) | Cameras, lights, the CPU renderer: pipeline, conventions, shading model, API, CLI, verification, performance, limitations |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
@@ -284,6 +333,9 @@ Procedural booleans additionally need the optional `boolean` extra
 - Object names are unique within a scene.
 - Faces wind counter-clockwise seen from the front; editing ids are stable within a session.
 - Procedural geometry nodes and modifiers have stable UUID ids; objects reference nodes by id.
+- Cameras and lights look along their local −Y axis with +Z up (the same "front faces −Y" rule).
+- User-facing colors are display sRGB (`"#rrggbb"`); lighting happens in linear light.
+- Images: row 0 at the top, pixel centers at `+0.5`; NDC depth runs from 0 (near) to 1 (far).
 
 ## License
 

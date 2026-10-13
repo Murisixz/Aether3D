@@ -58,6 +58,18 @@ Aether3D/
 │   │   ├── graph.py       ProceduralSystem: nodes, dependencies, evaluation, cache, undo
 │   │   ├── session.py     Editing a node's stored base mesh with the editing engine
 │   │   └── script.py      Declarative JSON procedural scripts
+│   ├── rendering/         Cameras, lights and the CPU renderer (see docs/RENDERING.md)
+│   │   ├── camera.py      Camera parameters, projection matrices, camera frames
+│   │   ├── light.py       Light parameters
+│   │   ├── settings.py    Appearance, World, RenderSettings, RenderLimits
+│   │   ├── color.py       sRGB <-> linear transfer functions, color parsing
+│   │   ├── scene_data.py  RenderScene extraction (backend-independent)
+│   │   ├── raster.py      Clipping, fixed-point rasterization, visibility buffer
+│   │   ├── cpu.py         CPU backend: geometry, raster, deferred shading, resolve
+│   │   ├── renderer.py    render() and RenderResult
+│   │   ├── framing.py     Exact camera framing
+│   │   ├── png.py         PNG encoder (zlib from the standard library)
+│   │   └── script.py      Declarative scene-setup scripts
 │   ├── gltf/              glTF 2.0 interchange (no third-party dependencies)
 │   │   ├── axes.py        Exact Z-up <-> Y-up conversion
 │   │   ├── writer.py      Export: scene -> glTF document + buffer -> .glb/.gltf
@@ -65,10 +77,10 @@ Aether3D/
 │   ├── cli.py             `aether3d` command-line interface
 │   └── __main__.py        `python -m aether3d`
 ├── tests/                 pytest suite, one file per module
-│   └── data/              Khronos sample assets (pinned) and a v0.1.0 project
-├── examples/              Runnable examples and a sample .aether project
+│   └── data/              Khronos samples (pinned), v0.1.0/v0.4.0 projects, reference renders
+├── examples/              Runnable examples, a sample project, and the first renders (output/)
 ├── tools/gltf-validator/  Pinned Khronos glTF Validator runner (Node.js, dev only)
-├── benchmarks/            Editing and procedural benchmarks (bench_*.py)
+├── benchmarks/            Editing, procedural and rendering benchmarks (bench_*.py)
 ├── docs/                  API, file formats, glTF, inspection, architecture, install
 └── .github/workflows/     Continuous integration
 ```
@@ -91,7 +103,9 @@ Aether3D/
 | `editing.*` | `mesh`, `math3d`, `diagnostics`, `errors`, `primitives` (box layout), `inspection` (session commit reports); `scene` only for type hints and the session |
 | `procedural.*` | `mesh`, `math3d`, `diagnostics`, `errors`, `inspection`, `editing` (bevel, base-mesh sessions, polygon helpers); `scene` only for type hints; `manifold3d` (optional, lazily, boolean modifier only) |
 | `serialization` (v2) | additionally `procedural.params` (value encoding), and `procedural` lazily when reading |
-| `cli` | `editing`, `procedural`, `gltf`, `serialization`, `scene`, `errors` |
+| `rendering.camera`, `.light`, `.settings`, `.color` | `errors`, `diagnostics` (value types; imported by `scene` and `serialization`) |
+| `rendering.*` (others) | the above, `mesh`, `math3d`, `_fileio`; `scene` only for type hints and lazily for lookups |
+| `cli` | `editing`, `procedural`, `rendering`, `gltf`, `serialization`, `scene`, `errors` |
 
 Lower layers never import higher ones. `scene` provides convenience methods
 (`save`/`load`, `export`/`import_file`, `inspect_geometry`, `edit_mesh`) by importing
@@ -165,11 +179,11 @@ large meshes later need binary storage, that becomes a new format version
 
 | Future system | Expected integration point |
 | --- | --- |
-| Rendering | Consumes `Scene` iteration, `world_matrix`, and `Mesh` arrays read-only; lives in its own package/module and is not imported by the core. |
+| Rendering | Implemented in v0.5.0 (`rendering/`): backends consume a `RenderScene` from `extract_render_scene` (see below). |
 | Animation | Targets objects by `id`; writes transform components through the public setters. |
 | Physics | Reads/writes world transforms; stores per-object data alongside the transform. |
 | Procedural modeling | Implemented in v0.4.0 (`procedural/`): new primitive and modifier types are registry entries (see below). |
-| Materials / shaders | New per-object data plus a format version bump. |
+| Materials / shaders | Replace `Appearance` (the only place surface properties enter shading) with materials; extend the per-triangle shading table. Format version bump. |
 | Asset management / interop | Importers/exporters that convert to/from `Scene` and `Mesh`, outside the core. |
 | Native acceleration | Replace `math3d` functions or mesh generation with Rust/C++ (e.g. PyO3) behind the same Python signatures. |
 
@@ -285,3 +299,50 @@ in [PROCEDURAL.md](PROCEDURAL.md); the key decisions:
   library: `manifold3d` (Apache-2.0), imported lazily, validated on input,
   and reported clearly when absent. The core and every other feature work
   without it.
+
+## Rendering (v0.5.0)
+
+The renderer is a layer above the core, beside editing and procedural
+geometry. The scene gains only *data*: camera and light components on
+objects, an appearance and a visibility flag, a world and render settings.
+All rendering logic lives in `rendering/`. The design is explained in
+[RENDERING.md](RENDERING.md); the key decisions:
+
+- **Extraction separates scenes from backends.** `extract_render_scene` walks
+  the scene once and produces an immutable `RenderScene`:
+  - shared mesh arrays (procedural objects contribute their current cached
+    evaluation);
+  - per-instance world and normal matrices and linear colors;
+  - world-space lights and the camera frame.
+
+  The CPU backend consumes only this, and a GPU backend (Stage 6) can
+  consume the same data, so `scene.render`, the CLI and the tests do not
+  change. Rendering never modifies the scene.
+- **A visibility buffer, then deferred shading.**
+  - Rasterization writes one packed `int64` per sample (quantized depth
+    above, triangle index below), using `np.minimum.at`.
+  - Visibility is therefore order-independent and deterministic, and every
+    covered sample is shaded exactly once.
+  - Batches bound memory to about 8 bytes per sample plus per-pixel buffers.
+- **Exact integer rasterization.** Vertices are snapped to 1/256 of a sample.
+  Covered spans come directly from integer edge functions with the top-left
+  rule, so the result is watertight (each sample of a shared edge is covered
+  once) and no candidate pixels are wasted.
+- **Homogeneous everything.** Clipping happens in clip space. Shading
+  barycentrics come from the original triangle in homogeneous 2D
+  coordinates, so near-plane clipping never distorts attributes. The world
+  position is reconstructed exactly on the view ray.
+- **Conventions shared with the rest of Aether3D.**
+  - Cameras and lights use the same "front faces −Y, +Z up" convention as
+    assets, so one `look_at` aims everything.
+  - Colors follow one policy: sRGB in, linear for lighting, sRGB out.
+  - The clip and NDC conventions (depth [0, 1], pixel centers at +0.5)
+    match modern GPU APIs, ready for a GPU backend.
+- **Data-only scripts.** `run_scene_script` is the single entry point for
+  declarative setup changes. CLI commands build one-operation scripts, and
+  the planned MCP server can expose it unchanged. Rollback is exact and keeps
+  callers' handles valid.
+- **Independent verification.** The test suite's reference renderer is a
+  brute-force ray caster that shares no projection, clipping, rasterization
+  or shading code with the renderer. Analytic tests and a cross-check of
+  silhouettes with Blender, an external tool, complement it.

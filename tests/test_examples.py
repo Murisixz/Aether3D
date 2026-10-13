@@ -2,6 +2,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from aether3d import Scene
@@ -92,3 +93,90 @@ def test_minecraft_castle_example_runs(tmp_path):
     assert scene.procedural.parameters["tower_count"].value == 8
     assert all(o.is_procedural for o in scene)
     assert (tmp_path / "castle.glb").is_file()
+
+
+def _decode(path):
+    image = pytest.importorskip("PIL.Image")
+    return np.asarray(image.open(path))
+
+
+def test_first_render_example_runs(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(EXAMPLES / "first_render.py"),
+            str(tmp_path),
+            "--width",
+            "160",
+            "--height",
+            "90",
+            "--samples",
+            "1",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "All checks passed." in result.stdout
+    assert _decode(tmp_path / "aether3d_first_render.png").shape == (90, 160, 3)
+    assert Scene.load(tmp_path / "first_render.aether").active_camera.name == "Camera"
+
+
+def test_minecraft_castle_render_example_runs(tmp_path):
+    pytest.importorskip("manifold3d")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(EXAMPLES / "minecraft_castle_render.py"),
+            str(tmp_path),
+            "--width",
+            "320",
+            "--height",
+            "180",
+            "--samples",
+            "2",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "All checks passed." in result.stdout
+    assert "reproduce the image exactly" in result.stdout
+    assert _decode(tmp_path / "minecraft_castle_render.png").shape == (180, 320, 3)
+
+
+def test_hero_render_example_runs(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(EXAMPLES / "hero_render.py"),
+            str(tmp_path),
+            "--width",
+            "160",
+            "--height",
+            "90",
+            "--samples",
+            "1",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "All checks passed." in result.stdout
+
+
+def test_committed_renders_are_real_aether3d_pngs():
+    """The PNGs in examples/output are Aether3D renders (they carry its Software tag)."""
+    image = pytest.importorskip("PIL.Image")
+    for name, size in (
+        ("minecraft_castle_render.png", (1920, 1080)),
+        ("aether3d_first_render.png", (1280, 720)),
+        ("blocky_hero_render.png", (1280, 720)),
+    ):
+        with image.open(EXAMPLES / "output" / name) as png:
+            assert png.size == size and png.info["Software"].startswith("Aether3D ")
+    project = Scene.load(EXAMPLES / "output" / "minecraft_castle_render.aether")
+    assert project.active_camera.name == "Camera" and project.render_settings.width == 1920

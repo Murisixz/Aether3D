@@ -90,7 +90,7 @@ def test_round_trip_is_exact(tmp_path):
 def test_document_layout(tmp_path):
     scene = build_scene()
     doc = scene_to_dict(scene)
-    assert doc["format_version"] == FORMAT_VERSION == 2
+    assert doc["format_version"] == FORMAT_VERSION
     s = doc["scene"]
     assert [p["name"] for p in s["parameters"]] == ["width", "count", "style"]
     assert s["parameters"][1]["value"] == {"expr": "floor(width / 2)"}
@@ -128,12 +128,12 @@ def test_version_1_projects_load_and_upgrade(tmp_path):
     assert [o.name for o in scene] == ["Cube", "Sphere", "Ground", "Pivot", "Moon"]
     assert scene.procedural.geometries == [] and not any(o.is_procedural for o in scene)
     doc = scene_to_dict(scene)
-    assert doc["format_version"] == 2
+    assert doc["format_version"] == FORMAT_VERSION
     assert doc["scene"]["parameters"] == [] and doc["scene"]["geometry"] == []
     assert all(o["geometry"] is None for o in doc["scene"]["objects"])
     v1 = loads(V010.read_text(encoding="utf-8"))
     migrated = migrate(copy.deepcopy(v1))
-    assert migrated["format_version"] == 2 and migrated["scene"]["rules"] == []
+    assert migrated["format_version"] == FORMAT_VERSION and migrated["scene"]["rules"] == []
     scene.save(tmp_path / "up.aether")
     resaved = Scene.load(tmp_path / "up.aether")
     for a, b in zip(scene, resaved, strict=True):
