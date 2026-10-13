@@ -52,9 +52,10 @@ runtime dependencies and needs no GPU or graphical environment.
    Without it, those tests are skipped (CI always runs them).
 
 If you prefer pacman-managed dependencies, you can install
-`python-numpy python-pytest python-trimesh` with pacman and create the environment with
-`python -m venv --system-site-packages .venv`, then run
-`pip install -e . --no-deps`.
+`python-numpy python-pytest python-trimesh python-manifold3d` with pacman and create the
+environment with `python -m venv --system-site-packages .venv`, then run
+`pip install -e . --no-deps`. (Arch's `python-manifold3d` 3.4.1 has been tested with
+Aether3D; any version ≥ 3.4 is supported.)
 
 ## Other Linux distributions, macOS, Windows
 
@@ -71,9 +72,17 @@ pytest
 ## Installing without the development tools
 
 ```bash
-pip install .
+pip install .              # core: NumPy is the only dependency
+pip install ".[boolean]"   # also solid booleans for procedural geometry
 ```
 
-This installs only the `aether3d` package, its `aether3d` command, and NumPy.
-glTF import/export needs nothing else. trimesh and the Khronos validator are
-used only by the tests.
+The first command installs only the `aether3d` package, its `aether3d`
+command, and NumPy. glTF import/export, mesh editing and every procedural
+feature except the `boolean` modifier need nothing else.
+
+The `boolean` extra adds [manifold3d](https://github.com/elalish/manifold)
+(Apache-2.0; prebuilt wheels for Linux, macOS and Windows on Python
+3.10–3.14). Without it, a procedural boolean fails with
+`BOOLEAN_BACKEND_UNAVAILABLE`, while projects that contain booleans still
+load. The `dev` extra includes it, and so do the tests and the castle demo.
+trimesh and the Khronos validator are used only by the tests.

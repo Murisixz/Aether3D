@@ -13,6 +13,8 @@ from aether3d import inspect_mesh, inspect_scene, MeshGeometryReport, SceneGeome
 from aether3d import Diagnostic
 from aether3d import EditableMesh, EditSession, Selection, OperationResult, CommitResult
 from aether3d import TopologyReport, run_edit_script
+from aether3d import ProceduralSystem, ProceduralGeometry, Modifier, PolyMesh, Expr
+from aether3d import ProceduralError, run_procedural_script
 from aether3d import AetherError  # and the specific error classes below
 ```
 
@@ -42,7 +44,10 @@ Scene(name: str = "Untitled Scene")
 | Member | Description |
 | --- | --- |
 | `name` | Scene name (non-empty string, settable). |
-| `add_object(name=None, *, mesh=None, parent=None, position=None, rotation=None, scale=None, object_id=None)` | Add an object, optionally with a `Mesh`. Returns the `SceneObject`. |
+| `add_object(name=None, *, mesh=None, parent=None, position=None, rotation=None, scale=None, object_id=None, geometry=None)` | Add an object, optionally with a `Mesh` or a procedural `geometry` node (id, name or object), but not both. Returns the `SceneObject`. |
+| `procedural` | The scene's `ProceduralSystem` (see [Procedural geometry](#procedural-geometry)). |
+| `add_geometry(name, primitive=None, *, mesh=None, source=None, overrides=None, after=None, parameters=None, **params)` | Create a procedural geometry node: from a primitive (with `**params`), a stored `mesh`, or another node (`source`, with `overrides` and an optional `after` modifier). `parameters` declares node-local parameters as `{name: value}` or `{name: {"value": ..., "min": ...}}`. |
+| `add_procedural(name=None, primitive="box", *, parent=None, position=None, rotation=None, scale=None, parameters=None, **params)` | Create a primitive node and an object that uses it, in one step. |
 | `add_cube(name=None, *, size=1.0, parent=None, position=None, rotation=None, scale=None)` | Add a cube with edge length `size`. |
 | `add_sphere(name=None, *, radius=1.0, segments=32, rings=16, parent=None, position=None, rotation=None, scale=None)` | Add a UV sphere. |
 | `add_plane(name=None, *, size=1.0, parent=None, position=None, rotation=None, scale=None)` | Add a square plane in the XY plane facing +Z. |
@@ -79,13 +84,17 @@ Created only through a `Scene`.
 | `id` | Stable unique id (UUID4 string). Read-only, preserved by save/load. |
 | `name` | Unique name, settable (raises `NameConflictError` if taken). |
 | `scene` | The owning scene, or `None` after removal. |
-| `mesh` | A `Mesh` or `None`, settable. Meshes may be shared between objects. |
+| `mesh` | A `Mesh` or `None`, settable. Meshes may be shared between objects. For a procedural object, this is the evaluated mesh, and assigning to it raises `ProceduralError("PROCEDURAL_OBJECT")`. |
+| `geometry` | The `ProceduralGeometry` the object uses, or `None`. |
+| `is_procedural` | `True` if the object uses a geometry node. |
+| `set_geometry(node_or_none)` | Use a geometry node; `None` detaches it, leaving no mesh. |
+| `bake()` | Replace the procedural geometry with a static copy of the evaluated mesh, and return the mesh. |
 | `transform` | The local `Transform`. Assigning a `Transform` copies it. |
 | `position`, `rotation`, `rotation_euler`, `scale` | Shortcuts for the local transform's components. |
 | `parent` | Parent object or `None`. |
 | `children` | Tuple of direct children, in order. |
 | `iter_descendants()` | Depth-first iterator over all descendants. |
-| `edit_mesh(weld="exact", quads=True)` | Start an `EditSession` on this object's geometry (see [EDITING.md](EDITING.md)). |
+| `edit_mesh(weld="exact", quads=True)` | Start an `EditSession` on this object's geometry (see [EDITING.md](EDITING.md)). Procedural objects raise `EditError("PROCEDURAL_OBJECT")`. |
 | `iter_ancestors()` | Iterator: parent, grandparent, …, root. |
 | `set_parent(parent, *, keep_world_transform=False)` | Re-parent (`None` = root). Raises `HierarchyError` on cycles. |
 | `local_matrix` | 4x4 local-to-parent matrix. |
@@ -244,6 +253,55 @@ Full guide: [EDITING.md](EDITING.md).
 - Triangulation: `triangulate_faces`.
 - Orientation and shading: `flip_faces`, `set_smooth`, `set_sharp`.
 
+## Procedural geometry
+
+Full guide: [PROCEDURAL.md](PROCEDURAL.md).
+
+**`ProceduralSystem`** (`scene.procedural`):
+
+| Member | Description |
+| --- | --- |
+| `types()` (static) | Schemas of every primitive and modifier, the parameter types and the expression functions. |
+| `parameters`, `rules`, `geometries` | Scene parameters (`{name: Parameter}`), rules, and geometry nodes. |
+| `add_parameter(name, value, *, type=None, min=None, max=None, choices=None, description="", unit="", geometry=None)` | Add a parameter. `value` may be an `Expr`. |
+| `set_parameter(name, value, *, geometry=None)`, `set_parameters(values, *, geometry=None)`, `remove_parameter(name, *, geometry=None)` | Change parameters. |
+| `add_rule(name, expr, message="", *, geometry=None)`, `remove_rule(...)` | Boolean conditions that forbid invalid combinations. |
+| `geometry(ref)` | A node by id or name. |
+| `add_geometry(...)`, `remove_geometry(ref)`, `rename_geometry(ref, name)`, `set_source(ref, params)`, `set_source_mesh(ref, mesh)`, `convert_source_to_mesh(ref)` | Nodes. |
+| `add_modifier(ref, type, *, name=None, enabled=True, index=None, params=None)`, `set_modifier(...)`, `remove_modifier(ref, m)`, `move_modifier(ref, m, index)` | Modifier stacks. A modifier is given by id, name, index or `Modifier`. |
+| `assign(obj, ref_or_none)` | Set an object's geometry. |
+| `evaluate(ref, *, upto=None, overrides=None) -> Evaluation` | `key`, `polygons` (`PolyMesh`), `diagnostics`, `mesh` (cached `Mesh`). |
+| `mesh(ref)` | The evaluated `Mesh`. |
+| `validate(ref=None)` | A per-node evaluation and topology report. Never raises for a geometry problem. |
+| `info(ref=None, *, evaluate=False)` | A JSON-compatible description of the definitions, with resolved values. |
+| `dependencies(ref)`, `dependents(ref)`, `parameter_dependencies(ref=None)` | The dependency graph. |
+| `batch()` | Context manager: several changes as one validated, undoable transaction. |
+| `undo()`, `redo()`, `can_undo`, `can_redo`, `revision` | History. |
+| `cache_info`, `clear_cache()`, `cache_limit_bytes`, `stats` | The evaluation cache. |
+
+**`ProceduralGeometry`** has `id`, `name`, `source`, `parameters`, `rules`,
+`modifiers`, `users`, plus these methods:
+
+- parameters and rules: `add_parameter`, `set_parameter`,
+  `remove_parameter`, `add_rule`, `remove_rule`;
+- the stack: `add_modifier(type, *, name, enabled, index, **params)`,
+  `modifier(ref)`, `remove_modifier`, `move_modifier`;
+- the source: `set_source(**params)`, `convert_source_to_mesh()`,
+  `edit_source()` (an editing session on the stored base mesh);
+- results: `evaluate(*, upto, overrides) -> Mesh`, `evaluate_polygons(...)`,
+  `validate()`, `info(evaluate=False)`.
+
+**`Modifier`** has `id`, `name`, `type`, `enabled` and `params` (raw values),
+plus `set(*, enabled=None, name=None, **params)`, `resolved()` and `info()`.
+
+**`Expr(source)`** is a safe expression over parameters (written
+`{"expr": ...}` in JSON). **`PolyMesh`** is the immutable polygon mesh that
+flows through modifier stacks; its methods include `validate()`,
+`triangulate()`, `to_mesh()`, `from_mesh()`, `bounds()` and `content_hash()`.
+
+**`run_procedural_script(scene, script)`** applies a declarative JSON
+procedural script atomically, and raises `ScriptError` on failure.
+
 ## `aether3d.math3d`
 
 Stateless helpers used by the engine, available for scripts:
@@ -267,7 +325,8 @@ All deliberate errors derive from `AetherError`.
 | `UnsupportedFeatureError` | `ValueError` | A conversion cannot represent some content faithfully; `.diagnostics` lists every item |
 | `ResourceLimitError` | `ValueError` | Input exceeds an `ImportLimits` limit |
 | `EditError` | `ValueError` | An editing operation cannot be applied; nothing changed. `.code` (stable), `.elements` (offending ids by kind), `.hint` |
-| `ScriptError` | `ValueError` | An edit script is malformed or a step failed. `.code`, `.location` (e.g. `edits[0].operations[3]`), `.details` |
+| `ScriptError` | `ValueError` | An edit or procedural script is malformed, or a step failed. `.code`, `.location` (e.g. `edits[0].operations[3]`), `.details` |
+| `ProceduralError` | `ValueError` | A procedural definition, parameter or evaluation is invalid; nothing changed. `.code` (stable), `.location` (e.g. `geometry[Tower].modifiers[Row].params.count`), `.hint`, `.details` |
 
 Missing files raise the standard `FileNotFoundError`.
 
@@ -282,6 +341,12 @@ aether3d import SOURCE.glb|.gltf DESTINATION.aether [--allow-lossy] [--force] [-
 aether3d export SOURCE DESTINATION.glb|.gltf [--allow-lossy] [--force] [--json]
 aether3d topology PATH --object ID_OR_NAME [--elements] [--limit N] [--triangles] [--json]
 aether3d edit PROJECT.aether SCRIPT.json|- [--output PATH] [--dry-run] [--json]
+aether3d procedural types [--json]
+aether3d procedural inspect PROJECT.aether [--geometry REF] [--evaluate] [--json]
+aether3d procedural validate PROJECT.aether [--geometry REF] [--json]
+aether3d procedural run PROJECT.aether SCRIPT.json|- [--output PATH] [--dry-run] [--json]
+aether3d procedural set PROJECT.aether NAME=VALUE... [--geometry REF] [--output PATH] [--dry-run] [--json]
+aether3d procedural bake PROJECT.aether (--object REF... | --all) [--output PATH] [--dry-run] [--json]
 aether3d --version
 ```
 
@@ -297,7 +362,8 @@ object has:
 
 - `type` and `message`;
 - `location`, when known;
-- `code`, for `AssetFormatError`;
+- `code`, for `AssetFormatError`, `ScriptError` and `ProceduralError` (with `hint`
+  and `details` when available);
 - `diagnostics`, for `UnsupportedFeatureError`.
 
 Exit codes:
@@ -307,7 +373,7 @@ Exit codes:
 | `0` | Success |
 | `1` | Failure |
 | `2` | Usage error |
-| `3` | `geometry` or `topology` completed but found error-severity problems |
+| `3` | `geometry`, `topology` or `procedural validate` completed but found error-severity problems |
 
 The `import`, `export` and `geometry` commands report:
 
@@ -318,5 +384,6 @@ The `import`, `export` and `geometry` commands report:
 `inspect --json` returns `scene` (`name`, `object_count`, `mesh_count`,
 `roots`) and an `objects` array in depth-first order, where each entry has
 `id`, `name`, `parent`, `children`, `depth`, `transform` (`position`,
-`rotation`, `rotation_euler`, `scale`), `world_position` and `mesh`
-(`vertex_count`, `triangle_count`, `bounds`, or `null`).
+`rotation`, `rotation_euler`, `scale`), `world_position`, `mesh`
+(`vertex_count`, `triangle_count`, `bounds`, or `null`) and `geometry` (the
+procedural node's `id` and `name`, or `null`).

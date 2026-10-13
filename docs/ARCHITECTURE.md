@@ -50,6 +50,14 @@ Aether3D/
 │   │   ├── session.py     EditSession: commit/discard on a scene object
 │   │   ├── script.py      Declarative JSON edit scripts (CLI, future MCP)
 │   │   └── _polygon.py    Newell normals, ear clipping, simplicity, affine fits
+│   ├── procedural/        Non-destructive procedural geometry (see docs/PROCEDURAL.md)
+│   │   ├── polymesh.py    PolyMesh: immutable CSR polygon mesh flowing through stacks
+│   │   ├── params.py      Parameters, safe expressions (Expr), rules, schemas
+│   │   ├── primitives.py  Parametric primitive types (box, grid, cylinder, cone, ...)
+│   │   ├── modifiers.py   Modifier types (transform, mirror, array, ..., boolean)
+│   │   ├── graph.py       ProceduralSystem: nodes, dependencies, evaluation, cache, undo
+│   │   ├── session.py     Editing a node's stored base mesh with the editing engine
+│   │   └── script.py      Declarative JSON procedural scripts
 │   ├── gltf/              glTF 2.0 interchange (no third-party dependencies)
 │   │   ├── axes.py        Exact Z-up <-> Y-up conversion
 │   │   ├── writer.py      Export: scene -> glTF document + buffer -> .glb/.gltf
@@ -60,7 +68,7 @@ Aether3D/
 │   └── data/              Khronos sample assets (pinned) and a v0.1.0 project
 ├── examples/              Runnable examples and a sample .aether project
 ├── tools/gltf-validator/  Pinned Khronos glTF Validator runner (Node.js, dev only)
-├── benchmarks/            Editing-engine benchmarks (bench_editing.py)
+├── benchmarks/            Editing and procedural benchmarks (bench_*.py)
 ├── docs/                  API, file formats, glTF, inspection, architecture, install
 └── .github/workflows/     Continuous integration
 ```
@@ -81,7 +89,9 @@ Aether3D/
 | `gltf.writer` | `gltf.axes`, `mesh`, `diagnostics`, `errors`, `_fileio` |
 | `gltf.reader` | `gltf.axes`, `gltf.writer` (constants), `scene`, `mesh`, `transform`, `math3d`, `diagnostics`, `errors` |
 | `editing.*` | `mesh`, `math3d`, `diagnostics`, `errors`, `primitives` (box layout), `inspection` (session commit reports); `scene` only for type hints and the session |
-| `cli` | `editing`, `gltf`, `serialization`, `scene`, `errors` |
+| `procedural.*` | `mesh`, `math3d`, `diagnostics`, `errors`, `inspection`, `editing` (bevel, base-mesh sessions, polygon helpers); `scene` only for type hints; `manifold3d` (optional, lazily, boolean modifier only) |
+| `serialization` (v2) | additionally `procedural.params` (value encoding), and `procedural` lazily when reading |
+| `cli` | `editing`, `procedural`, `gltf`, `serialization`, `scene`, `errors` |
 
 Lower layers never import higher ones. `scene` provides convenience methods
 (`save`/`load`, `export`/`import_file`, `inspect_geometry`, `edit_mesh`) by importing
@@ -158,7 +168,7 @@ large meshes later need binary storage, that becomes a new format version
 | Rendering | Consumes `Scene` iteration, `world_matrix`, and `Mesh` arrays read-only; lives in its own package/module and is not imported by the core. |
 | Animation | Targets objects by `id`; writes transform components through the public setters. |
 | Physics | Reads/writes world transforms; stores per-object data alongside the transform. |
-| Procedural modeling | Functions that return `Mesh` (like `primitives`), or that build objects through `Scene`. |
+| Procedural modeling | Implemented in v0.4.0 (`procedural/`): new primitive and modifier types are registry entries (see below). |
 | Materials / shaders | New per-object data plus a format version bump. |
 | Asset management / interop | Importers/exporters that convert to/from `Scene` and `Mesh`, outside the core. |
 | Native acceleration | Replace `math3d` functions or mesh generation with Rust/C++ (e.g. PyO3) behind the same Python signatures. |
@@ -234,3 +244,44 @@ design decisions are explained in [EDITING.md](EDITING.md). Most importantly:
 - **Scripts are data, not code.** `run_edit_script` is the single entry point
   for declarative edits. The CLI uses it today; a future MCP server can expose
   it unchanged.
+
+## Procedural geometry (v0.4.0)
+
+The procedural engine sits beside the editing engine, above the core. Objects
+reference **geometry nodes**, and `SceneObject.mesh` returns the node's
+evaluated `Mesh`. Everything downstream (inspection, glTF, the CLI) is
+therefore unchanged and always sees current geometry. The design is explained
+in [PROCEDURAL.md](PROCEDURAL.md); the key decisions:
+
+- **A value type for evaluation.** Modifiers map an immutable `PolyMesh` to a
+  new one: CSR polygons with per-corner UV and normal layers, smooth flags and
+  sharp edges, as read-only NumPy arrays. Evaluation can therefore share
+  arrays freely, caching is safe, and modifiers are vectorized. The editing
+  engine's `EditableMesh` (id-keyed, journaled) is built only where an
+  operation needs it (bevel, editing a base mesh).
+- **Definitions are data.** A node is a source plus a list of `(id, name,
+  type, enabled, params)` entries, and parameter values are literals or `Expr`
+  objects. Serialization, undo snapshots, `info()` and JSON scripts all
+  operate on that data. Nothing is executed as code.
+- **Content-addressed caching.** Cache keys are SHA-256 hashes of fully
+  resolved inputs, chained through the stack. Invalidation is implicit: a
+  changed input gives a different key, so results can never be stale. There
+  is no dependency bookkeeping to get wrong, and identical sub-evaluations are
+  shared across nodes. The cache is a byte-bounded LRU.
+- **Transactions validate by evaluating.** After any change, rules, schemas
+  and cycles are checked and every node is evaluated (mostly cache hits); on
+  failure, the definitions are restored *into the existing handle objects*.
+  Errors therefore appear at the change that caused them, and handles held by
+  callers stay valid across rollback, undo and redo.
+- **Registries for extension.** `PRIMITIVES` and `MODIFIER_TYPES` map names
+  to small classes that declare a parameter schema (`ParamSpec`) and a pure
+  function. A new primitive or modifier is one class: it is then validated,
+  serialized, listed by `types()`, and usable from scripts and the CLI
+  without further changes. Modifiers that read other geometry declare it via
+  `references()`, which feeds the dependency graph and cycle detection.
+- **Booleans through Manifold.** Solid booleans need robust geometric
+  predicates that are impractical to reimplement correctly in pure Python.
+  The boolean modifier is the only place that uses an optional third-party
+  library: `manifold3d` (Apache-2.0), imported lazily, validated on input,
+  and reported clearly when absent. The core and every other feature work
+  without it.

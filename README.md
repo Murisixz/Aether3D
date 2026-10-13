@@ -8,15 +8,23 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.3.0 (mesh editing engine).** Aether3D provides a scene graph
-> with transforms and hierarchy, the native `.aether` project format,
-> standards-compliant **glTF 2.0 / GLB import and export**, structured
-> **geometry inspection**, and a programmable **polygon modeling engine**
-> (selection, transforms, extrude, inset, bevel, loop cuts, subdivision,
-> merging, splitting, validation, undo), all scriptable from Python and from
-> declarative JSON on the CLI. Rendering, animation, physics, materials and
-> other systems are intentionally **not** part of this stage. See the
-> [changelog](CHANGELOG.md).
+> **Status: v0.4.0 (procedural geometry).** Aether3D provides:
+>
+> - a scene graph with transforms and hierarchy;
+> - the native `.aether` project format;
+> - standards-compliant **glTF 2.0 / GLB import and export**;
+> - structured **geometry inspection**;
+> - a programmable **polygon modeling engine** (selection, transforms,
+>   extrude, inset, bevel, loop cuts, subdivision, merging, splitting,
+>   validation, undo);
+> - a **non-destructive procedural geometry engine**: parametric primitives,
+>   modifier stacks (transform, mirror, array, solidify, Catmull–Clark
+>   subdivision, bevel, solid booleans), typed parameters with safe
+>   expressions and rules, dependency tracking, caching, and undo.
+>
+> All of it is scriptable from Python and from declarative JSON on the CLI.
+> Rendering, animation, physics, materials and other systems are
+> intentionally **not** part of this stage. See the [changelog](CHANGELOG.md).
 
 ## Quick start
 
@@ -113,6 +121,44 @@ See [docs/EDITING.md](docs/EDITING.md).
 hero and sword entirely with editing operations, validates them, exports a
 GLB, and checks it with the Khronos validator and, optionally, Blender.
 
+### Procedural geometry
+
+```python
+from aether3d import Expr, Scene
+
+scene = Scene()
+scene.procedural.add_parameter("count", 5, min=1, max=50)
+crate = scene.add_geometry("Crates", "box", width=1, depth=1, height=1)
+crate.add_modifier("bevel", width=0.08, limit="all")
+crate.add_modifier("array", count=Expr("count"), relative_offset=(1.2, 0, 0))
+row = scene.add_object("Row", geometry=crate)  # row.mesh is the evaluated result
+
+scene.procedural.set_parameter("count", 8)  # regenerates; invalid values are refused
+scene.procedural.undo()
+```
+
+- **Non-destructive.** Objects use the *evaluated* result of a geometry
+  definition (a source plus a modifier stack); the base definitions are
+  never modified. Stacks can be reordered, disabled, edited and baked.
+- **Parametric.** Typed, range-checked parameters; safe expressions
+  (`{"expr": "floor(width / 2)"}`) that are never Python `eval`; and rules
+  that reject invalid combinations.
+- **Safe and fast.** Every change is an atomic, undoable transaction.
+  Dependency cycles are detected. Content-addressed caching recomputes only
+  what changed, and shares meshes between instances.
+- **Persistent and exportable.** Definitions are saved in `.aether` format
+  version 2 (version 1 projects still load). Exports always use the current
+  evaluation.
+- **Booleans** use [Manifold](https://github.com/elalish/manifold), an
+  optional dependency: `pip install "aether3d[boolean]"`.
+
+See [docs/PROCEDURAL.md](docs/PROCEDURAL.md).
+[`examples/minecraft_castle.py`](examples/minecraft_castle.py) builds a
+parametric Minecraft-style castle (configurable width, wall height, tower
+count and radius, gate size, and detail density), then saves, reloads,
+modifies, validates and exports it, and checks the GLB with the Khronos
+validator and, optionally, Blender.
+
 ## Command-line interface
 
 ```console
@@ -134,6 +180,10 @@ $ aether3d export world.aether world.glb       # .aether (or .gltf) -> .glb / .g
 $ aether3d import model.gltf model.aether      # add --allow-lossy to drop unsupported content
 $ aether3d topology world.aether --object Crate --json     # polygon topology + validation
 $ aether3d edit world.aether script.json --json            # declarative JSON edit script
+$ aether3d procedural run castle.aether build.json         # declarative procedural script
+$ aether3d procedural set castle.aether tower_count=8      # change parameters (validated)
+$ aether3d procedural inspect castle.aether --evaluate     # parameters, nodes, stacks
+$ aether3d procedural types --json                         # primitive/modifier schemas
 $ aether3d inspect model.glb                   # validate/inspect also read .glb/.gltf
 $ aether3d geometry examples/first_scene.aether
 Geometry of "First Scene": OK
@@ -160,8 +210,13 @@ $ aether3d validate broken.aether --json
 }
 ```
 
-Exit codes: `0` success, `1` failure (invalid file, missing file, unsupported
-content, …), `2` usage error, `3` `geometry` found error-severity problems.
+Exit codes:
+
+- `0`: success
+- `1`: failure (invalid file, missing file, unsupported content, …)
+- `2`: usage error
+- `3`: `geometry`, `topology` or `procedural validate` found error-severity
+  problems
 `python -m aether3d` works the same as `aether3d`.
 
 ## Installation
@@ -174,7 +229,7 @@ git clone https://github.com/Murisixz/Aether3D.git
 cd Aether3D
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"     # editable install + pytest, ruff and trimesh
+pip install -e ".[dev]"     # editable install + pytest, ruff, trimesh and manifold3d
 pytest                      # run the test suite
 ```
 
@@ -193,12 +248,15 @@ platforms.
 
 ### Other platforms
 
-Aether3D is pure Python (3.10+) with NumPy as its only runtime dependency, and
-is tested on Linux, macOS and Windows:
+Aether3D is pure Python (3.10+) with NumPy as its only required runtime
+dependency, and is tested on Linux, macOS and Windows:
 
 ```bash
 pip install -e ".[dev]"
 ```
+
+Procedural booleans additionally need the optional `boolean` extra
+(`pip install "aether3d[boolean]"`, which installs manifold3d, Apache-2.0).
 
 ## Documentation
 
@@ -209,6 +267,7 @@ pip install -e ".[dev]"
 | [docs/GLTF.md](docs/GLTF.md) | glTF 2.0 import/export: features, axis conversion, limitations, safety |
 | [docs/INSPECTION.md](docs/INSPECTION.md) | Geometry inspection reports and diagnostic codes |
 | [docs/EDITING.md](docs/EDITING.md) | Mesh editing: topology, ids, sessions, operations, scripts, limitations |
+| [docs/PROCEDURAL.md](docs/PROCEDURAL.md) | Procedural geometry: parameters, expressions, modifiers, caching, scripts, CLI, limitations |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
@@ -224,6 +283,7 @@ pip install -e ".[dev]"
 - Object ids are UUID strings that never change, including across save/load.
 - Object names are unique within a scene.
 - Faces wind counter-clockwise seen from the front; editing ids are stable within a session.
+- Procedural geometry nodes and modifiers have stable UUID ids; objects reference nodes by id.
 
 ## License
 
