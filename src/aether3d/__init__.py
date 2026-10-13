@@ -19,10 +19,20 @@ Everything listed in ``__all__`` is the supported public API.
 
 from ._version import __version__
 from .diagnostics import Diagnostic
+from .editing import (
+    CommitResult,
+    EditableMesh,
+    EditSession,
+    OperationResult,
+    Selection,
+    TopologyReport,
+)
+from .editing.script import ScriptError, run_edit_script
 from .errors import (
     AetherError,
     AssetFormatError,
     DetachedObjectError,
+    EditError,
     HierarchyError,
     NameConflictError,
     ObjectNotFoundError,
@@ -43,8 +53,12 @@ __all__ = [
     "FORMAT_VERSION",
     "AetherError",
     "AssetFormatError",
+    "CommitResult",
     "DetachedObjectError",
     "Diagnostic",
+    "EditError",
+    "EditSession",
+    "EditableMesh",
     "ExportResult",
     "HierarchyError",
     "ImportLimits",
@@ -53,11 +67,15 @@ __all__ = [
     "MeshGeometryReport",
     "NameConflictError",
     "ObjectNotFoundError",
+    "OperationResult",
     "ProjectFormatError",
     "ResourceLimitError",
     "Scene",
     "SceneGeometryReport",
     "SceneObject",
+    "ScriptError",
+    "Selection",
+    "TopologyReport",
     "Transform",
     "UnsupportedFeatureError",
     "ValidationError",
@@ -70,5 +88,6 @@ __all__ = [
     "inspect_mesh",
     "inspect_scene",
     "load_scene",
+    "run_edit_script",
     "save_scene",
 ]

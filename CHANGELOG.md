@@ -4,6 +4,91 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.3.0: Mesh editing engine
+
+### Added
+
+- **Editable polygon meshes** (`aether3d.editing.EditableMesh`). The
+  topology is BMesh-style (vertices, edges, faces, per-corner attributes)
+  stored in id-keyed tables. It supports n-gons, boundaries, non-manifold
+  geometry, and UV/normal seams. Ids are stable, and every operation reports
+  the ids it created, removed and modified. `from_mesh()` (welding, and
+  lossless quad reconstruction) and `to_mesh()` (ear-clipping triangulation)
+  convert to and from the immutable `Mesh`.
+- **Editing sessions:** `SceneObject.edit_mesh()` returns an `EditSession`.
+  - Operations are atomic; a failure never leaves a partial edit.
+  - Undo and redo restore exact state and ids.
+  - Commits are validated, and a session refuses to commit over a mesh that
+    changed meanwhile (stale-session protection).
+  - Used as a context manager, a session commits on success and discards on
+    exception.
+  - Instancing is preserved: by default only the edited object changes;
+    `scope="shared"` updates every object sharing the mesh.
+- **Selection** by ids, box, sphere, plane, normal, nearest (ambiguity is an
+  error), boundary, polygon size, or a predicate, in local or world space,
+  with `expect=` count guards. Also edge loops, edge rings, linked faces,
+  region boundaries, growth, and kind conversions.
+- **Transforms:** translate, rotate, scale, arbitrary matrices, explicit
+  positions, and moves along normals.
+  - World-space edits are exact under rotated, non-uniform and mirrored
+    parents.
+  - Mirrored pieces are re-wound so they stay outward-facing.
+  - Stored normals are transformed exactly.
+- **Modeling operations:**
+  - extrusion (region and individual, along normals or by an offset);
+  - inset (individual and region, mitred, with depth);
+  - edge bevel (chamfer, including box corners);
+  - subdivision (quads, triangles, n-gons);
+  - loop cuts (closed and open quad rings, with factor);
+  - vertex merge, merge by distance and edge collapse;
+  - edge dissolve and triangle-to-quad joining;
+  - edge, face and vertex splitting, and face separation;
+  - triangulation, polygon creation, box and grid creation;
+  - deletion, flipping, and smooth/sharp shading control.
+
+  Unsupported or unsafe cases raise `EditError` with a stable code,
+  offending ids and a hint.
+- **Attribute handling:**
+  - UVs and normals are preserved exactly where untouched;
+  - they are interpolated (linear, bilinear, barycentric or affine) where
+    geometry is refined;
+  - normals are recomputed from a flat/smooth/sharp shading model where
+    geometry changed;
+  - unavoidable loss is reported (`UV_DEGENERATE_FACES`, `UVS_UNDEFINED`);
+  - corner layers are generic, so future attributes need no operation
+    changes.
+- **Topology validation** (`EditableMesh.validate()`): adjacency consistency,
+  non-finite data, self-intersecting, zero-area and non-planar polygons,
+  duplicate faces, coincident vertices, boundary and non-manifold edges,
+  non-manifold vertices, inconsistent winding, concave faces, and loose
+  vertices. Cross-face self-intersection is explicitly not evaluated.
+- **Declarative JSON edit scripts** (`run_edit_script`, `ScriptError`): named
+  selections, inline queries, `save`, validate/summary/describe/undo/redo
+  steps, exact error locations, and all-or-nothing application. No code is
+  ever evaluated.
+- **CLI:** `aether3d edit` (atomic project updates, `--output`, `--dry-run`,
+  scripts from stdin) and `aether3d topology` (polygon topology, validation
+  and element listings).
+- `examples/minecraft_hero.py`: a blocky hero and sword modelled entirely with
+  editing operations, exported to GLB, then checked with the Khronos
+  validator, a re-import, and optionally Blender (headless).
+- `benchmarks/bench_editing.py`, plus documentation in `docs/EDITING.md`.
+
+### Changed
+
+- `inspect_mesh` (and `aether3d geometry`) now evaluates vertex manifoldness
+  (`vertex_manifold`, `non_manifold_vertex_count`, `NON_MANIFOLD_VERTICES`).
+  This was documented as not evaluated in 0.2.0.
+- `EditError` and `ScriptError` join the error hierarchy.
+
+### Compatibility
+
+- **No `.aether` format change** (still version 1). `Mesh`, glTF import and
+  export, and every 0.1.0 and 0.2.0 API behave as before; all earlier tests
+  pass unchanged.
+- **The CLI is backward compatible:** two commands were added, and the
+  `topology` command uses exit code `3` like `geometry`.
+
 ## 0.2.0: Geometry interoperability and inspection
 
 ### Added

@@ -34,3 +34,4 @@ Thumbs.db
 # Example and tool output
 gltf_roundtrip_output/
 tools/gltf-validator/node_modules/
+minecraft_hero_output/

@@ -78,6 +78,7 @@ Every finding is a **diagnostic**:
 | `NON_MANIFOLD_EDGES` | warning | An edge is shared by more than two triangles. |
 | `INCONSISTENT_ORIENTATION` | warning | Two triangles traverse a shared edge in the same direction. |
 | `INSIDE_OUT` | warning | The mesh is closed and consistently oriented, but its volume is negative: the triangles face inwards. |
+| `NON_MANIFOLD_VERTICES` | warning | Triangles around a vertex form more than one fan (surfaces touch at a single vertex). Since 0.3.0. |
 
 ### Topology: exactly what is evaluated
 
@@ -95,12 +96,13 @@ tolerance is applied. Degenerate triangles are excluded. On that graph:
 | `closed` | `boundary_edge_count == 0`. |
 | `edge_manifold` | `non_manifold_edge_count == 0`. |
 | `consistently_oriented` | `inconsistent_edge_count == 0`. |
+| `non_manifold_vertex_count` | Vertices whose triangles form more than one fan, connected through manifold edges (a "bowtie" where two surfaces touch at one vertex). |
+| `vertex_manifold` | `non_manifold_vertex_count == 0` (evaluated since 0.3.0). |
 | `volume` | Signed enclosed volume, given **only** when the mesh is closed, edge-manifold and consistently oriented; otherwise `null`. Positive means the triangles face outwards. |
 
-**Not evaluated:** vertex manifoldness (for example two surfaces touching at a
-single vertex) and self-intersections. The reports therefore never claim a
-mesh is "manifold" or "watertight" in general. They report only the edge
-properties above. Because welding requires bit-identical positions, surfaces
+**Not evaluated:** self-intersections (faces passing through each other). The
+reports therefore never claim a mesh is "watertight" in general. They report
+only the edge and vertex properties above. Because welding requires bit-identical positions, surfaces
 that are merely very close count as separate. For example, UV spheres created
 by Aether3D 0.1.0 have a seam gap of about 10⁻¹⁶ and are reported as open.
 

@@ -22,6 +22,7 @@ from .mesh import Mesh
 from .transform import Transform
 
 if TYPE_CHECKING:
+    from .editing import EditSession
     from .gltf import ExportResult, ImportLimits
     from .inspection import SceneGeometryReport
 
@@ -204,6 +205,20 @@ class SceneObject:
     def world_scale(self) -> Vec3:
         """World-space scale (see ``math3d.decompose_matrix`` for caveats)."""
         return decompose_matrix(self.world_matrix)[2]
+
+    # -- editing -----------------------------------------------------------
+
+    def edit_mesh(self, *, weld: str = "exact", quads: bool = True) -> EditSession:
+        """Start an :class:`~aether3d.editing.EditSession` on this object's geometry.
+
+        Objects without a mesh start from an empty editable mesh. The current
+        mesh is never modified; ``commit()`` assigns a new one (to this object
+        only, unless ``scope="shared"``). See ``docs/EDITING.md``.
+        """
+        from .editing import EditSession
+
+        self._require_scene()
+        return EditSession(self, weld=weld, quads=quads)
 
     # -- misc --------------------------------------------------------------
 
