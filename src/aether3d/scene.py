@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterable, Iterator
-from typing import Any, Union
+from typing import TYPE_CHECKING, Any, Union
 
 import numpy as np
 
@@ -20,6 +20,10 @@ from .errors import (
 from .math3d import Quat, Vec3, decompose_matrix
 from .mesh import Mesh
 from .transform import Transform
+
+if TYPE_CHECKING:
+    from .gltf import ExportResult, ImportLimits
+    from .inspection import SceneGeometryReport
 
 ObjectRef = Union["SceneObject", str]
 """A scene object, or its identifier."""
@@ -448,6 +452,41 @@ class Scene:
 
         return scene_from_dict(data)
 
+    # -- interchange and inspection ----------------------------------------
+
+    def export(self, path: str | os.PathLike[str], *, allow_lossy: bool = False) -> ExportResult:
+        """Export to an interchange format chosen by extension (``.glb`` or ``.gltf``).
+
+        Returns an :class:`aether3d.gltf.ExportResult` describing what was
+        written. See :func:`aether3d.gltf.export_gltf` for details.
+        """
+        from .gltf import export_gltf
+
+        return export_gltf(self, path, allow_lossy=allow_lossy)
+
+    @classmethod
+    def import_file(
+        cls,
+        path: str | os.PathLike[str],
+        *,
+        allow_lossy: bool = False,
+        limits: ImportLimits | None = None,
+    ) -> Scene:
+        """Import a ``.glb`` or ``.gltf`` file as a new scene.
+
+        Use :func:`aether3d.gltf.import_gltf` instead to also receive the
+        import report (diagnostics and the node-to-object map).
+        """
+        from .gltf import import_gltf
+
+        return import_gltf(path, allow_lossy=allow_lossy, limits=limits).scene
+
+    def inspect_geometry(self) -> SceneGeometryReport:
+        """Analyse all geometry in the scene (see :func:`aether3d.inspect_scene`)."""
+        from .inspection import inspect_scene
+
+        return inspect_scene(self)
+
     # -- internals ---------------------------------------------------------
 
     def _resolve(self, ref: ObjectRef) -> SceneObject:
@@ -460,6 +499,10 @@ class Scene:
         raise ValidationError(
             f"expected a SceneObject or object id string, got {type(ref).__name__}"
         )
+
+    def unique_name(self, base: str) -> str:
+        """Return ``base`` if unused, else the first free ``base.001``, ``base.002``, ..."""
+        return self._unique_name(_check_name(base, "base name"))
 
     def _unique_name(self, base: str) -> str:
         if base not in self._by_name:
