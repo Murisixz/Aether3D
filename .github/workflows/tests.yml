@@ -58,6 +58,20 @@ jobs:
           aether3d procedural inspect ci_castle/castle.aether --evaluate
           aether3d procedural set ci_castle/castle.aether tower_count=10 castle_width=40 --dry-run --json
           aether3d geometry ci_castle/castle.glb
+      - name: Render with Aether3D's CPU renderer and check the PNGs
+        run: |
+          python examples/first_render.py ci_render --width 320 --height 180 --samples 2
+          python examples/minecraft_castle_render.py ci_render --width 640 --height 360 --samples 2
+          python examples/hero_render.py ci_render --width 320 --height 180 --samples 2
+          aether3d render ci_render/minecraft_castle_render.aether -o ci_render/cli_castle.png --width 480 --height 270 --json
+          aether3d render ci_castle/castle.aether -o ci_render/framed_stage4_castle.png --frame --width 320 --height 180
+          python -c "from PIL import Image; import sys; [print(p, Image.open(p).size, Image.open(p).mode) for p in sys.argv[1:]]" ci_render/aether3d_first_render.png ci_render/minecraft_castle_render.png ci_render/blocky_hero_render.png ci_render/cli_castle.png ci_render/framed_stage4_castle.png
+      - name: Upload the CI renders
+        uses: actions/upload-artifact@v4
+        with:
+          name: renders-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: ci_render/*.png
+          if-no-files-found: error
 
   optional-dependencies:
     # The core must work without the optional boolean backend, and with the oldest
@@ -70,7 +84,7 @@ jobs:
         include:
           - name: without manifold3d (Python 3.10)
             python-version: "3.10"
-            install: pip install -e . pytest trimesh
+            install: pip install -e . pytest trimesh pillow
           - name: oldest manifold3d (Python 3.10)
             python-version: "3.10"
             install: pip install -e ".[dev]" "manifold3d==3.4.1"
@@ -105,7 +119,7 @@ jobs:
       - name: Validate exports with the Khronos glTF Validator
         env:
           AETHER3D_REQUIRE_GLTF_VALIDATOR: "1"
-        run: pytest tests/test_khronos_validator.py tests/test_editing_gltf.py tests/test_procedural_gltf.py -v
+        run: pytest tests/test_khronos_validator.py tests/test_editing_gltf.py tests/test_procedural_gltf.py tests/test_render_gltf.py -v
       - name: Validate the demonstration scenes
         run: |
           python examples/gltf_roundtrip.py ci_gltf --require-validator
