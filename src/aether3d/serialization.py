@@ -23,21 +23,28 @@ import numpy as np
 
 from ._fileio import write_atomic
 from ._version import __version__
-from .errors import AetherError, ProjectFormatError, ValidationError
+from .errors import AetherError, ProjectFormatError, RenderError, ValidationError
 from .mesh import Mesh
 from .procedural.params import value_from_json, value_to_json
+from .rendering.camera import Camera
+from .rendering.light import Light
+from .rendering.settings import Appearance, RenderSettings, World
 from .scene import Scene
 from .transform import Transform
 
 FORMAT_ID = "aether3d.project"
 """Value of the top-level ``format`` field identifying an Aether3D project."""
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 """Version written by this release. Files with a higher version are rejected.
 
-Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
-``scene.geometry`` and a ``geometry`` reference on every object. Version 1
-files are upgraded on load by :func:`_migrate_v1_to_v2`.
+* Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
+  ``scene.rules``, ``scene.geometry`` and a ``geometry`` reference on every object.
+* Version 3 (Aether3D 0.5.0) adds rendering: ``scene.active_camera``,
+  ``scene.world``, ``scene.render`` and, on every object, ``camera``,
+  ``light``, ``appearance`` and ``visible``.
+
+Older files are upgraded on load by the functions in :data:`MIGRATIONS`.
 """
 
 FILE_EXTENSION = ".aether"
@@ -62,7 +69,34 @@ def _migrate_v1_to_v2(document: dict[str, Any]) -> dict[str, Any]:
     return doc
 
 
-MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {1: _migrate_v1_to_v2}
+def _migrate_v2_to_v3(document: dict[str, Any]) -> dict[str, Any]:
+    """v2 -> v3: no cameras, lights or colors; default world and render settings."""
+    from .rendering.settings import RenderSettings, World
+
+    doc = dict(document)
+    scene = doc.get("scene")
+    if isinstance(scene, dict):
+        scene = dict(scene)
+        scene.setdefault("active_camera", None)
+        scene.setdefault("world", World().to_dict())
+        scene.setdefault("render", RenderSettings().to_dict())
+        objects = scene.get("objects")
+        if isinstance(objects, list):
+            defaults = {"camera": None, "light": None, "appearance": None, "visible": True}
+            scene["objects"] = [
+                {**o, **{k: v for k, v in defaults.items() if k not in o}}
+                if isinstance(o, dict)
+                else o
+                for o in objects
+            ]
+        doc["scene"] = scene
+    return doc
+
+
+MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    1: _migrate_v1_to_v2,
+    2: _migrate_v2_to_v3,
+}
 """``MIGRATIONS[n]`` upgrades a version-``n`` document to version ``n + 1``."""
 
 
@@ -116,6 +150,10 @@ def scene_to_dict(scene: Scene) -> dict[str, Any]:
                 },
                 "mesh": mesh_ref,
                 "geometry": obj._geometry,
+                "camera": None if obj._camera is None else obj._camera.to_dict(),
+                "light": None if obj._light is None else obj._light.to_dict(),
+                "appearance": None if obj._appearance.is_default else obj._appearance.to_dict(),
+                "visible": obj._visible,
             }
         )
     system = scene._procedural
@@ -148,6 +186,9 @@ def scene_to_dict(scene: Scene) -> dict[str, Any]:
         "generator": f"aether3d {__version__}",
         "scene": {
             "name": scene.name,
+            "active_camera": scene._active_camera,
+            "world": scene.world.to_dict(),
+            "render": scene.render_settings.to_dict(),
             "parameters": parameters,
             "rules": rules,
             "geometry": geometry,
@@ -309,9 +350,13 @@ def scene_from_dict(document: dict[str, Any]) -> Scene:
         _mesh_from_dict(m, f"meshes[{i}]") for i, m in enumerate(_list(doc["meshes"], "meshes"))
     ]
     scene_data = _object(
-        doc["scene"], "scene", ("name", "parameters", "rules", "geometry", "objects")
+        doc["scene"],
+        "scene",
+        ("name", "active_camera", "world", "render", "parameters", "rules", "geometry", "objects"),
     )
     scene = Scene(_string(scene_data["name"], "scene.name"))
+    scene._world = _render_value(World, scene_data["world"], "scene.world")
+    scene._render_settings = _render_value(RenderSettings, scene_data["render"], "scene.render")
 
     # Pass 1: parse and check every object record on its own.
     records: list[dict[str, Any]] = []
@@ -319,7 +364,13 @@ def scene_from_dict(document: dict[str, Any]) -> Scene:
     seen_names: dict[str, str] = {}
     for i, raw in enumerate(_list(scene_data["objects"], "scene.objects")):
         loc = f"scene.objects[{i}]"
-        data = _object(raw, loc, ("id", "name", "parent", "transform", "mesh", "geometry"))
+        data = _object(
+            raw,
+            loc,
+            ("id", "name", "parent", "transform", "mesh", "geometry"),
+            ("camera", "light", "appearance", "visible"),  # optional: null/null/null/true
+        )
+        data = {"camera": None, "light": None, "appearance": None, "visible": True, **data}
         object_id = _string(data["id"], f"{loc}.id")
         name = _string(data["name"], f"{loc}.name")
         if object_id in seen_ids:
@@ -357,8 +408,43 @@ def scene_from_dict(document: dict[str, Any]) -> Scene:
             _string(geometry_ref, f"{loc}.geometry")
             if mesh_ref is not None:
                 raise ProjectFormatError("an object cannot have both a mesh and a geometry", loc)
+        camera = (
+            None
+            if data["camera"] is None
+            else _render_value(Camera, data["camera"], f"{loc}.camera")
+        )
+        light = (
+            None if data["light"] is None else _render_value(Light, data["light"], f"{loc}.light")
+        )
+        kinds = [
+            k
+            for k, v in (
+                ("mesh", mesh_ref),
+                ("geometry", geometry_ref),
+                ("camera", camera),
+                ("light", light),
+            )
+            if v is not None
+        ]
+        if len(kinds) > 1:
+            raise ProjectFormatError(
+                f"an object can have only one of mesh, geometry, camera and light "
+                f"(got {', '.join(kinds)})",
+                loc,
+            )
+        appearance = (
+            Appearance()
+            if data["appearance"] is None
+            else _render_value(Appearance, data["appearance"], f"{loc}.appearance")
+        )
+        if not isinstance(data["visible"], bool):
+            raise ProjectFormatError("must be true or false", f"{loc}.visible")
         records.append(
             {
+                "camera": camera,
+                "light": light,
+                "appearance": appearance,
+                "visible": data["visible"],
                 "geometry": geometry_ref,
                 "loc": loc,
                 "id": object_id,
@@ -386,11 +472,23 @@ def scene_from_dict(document: dict[str, Any]) -> Scene:
         )
         obj.transform = record["transform"]
         obj._geometry = record["geometry"]
+        obj._camera = record["camera"]
+        obj._light = record["light"]
+        obj._appearance = record["appearance"]
+        obj._visible = record["visible"]
         stack.extend(reversed(children.get(record["id"], [])))
 
     if len(scene) != len(records):
         orphan = next(r for r in records if r["id"] not in scene)
         raise ProjectFormatError("object is part of a parent cycle", f"{orphan['loc']}.parent")
+    active = scene_data["active_camera"]
+    if active is not None:
+        _string(active, "scene.active_camera")
+        if active not in seen_ids or scene.get(active).camera is None:
+            raise ProjectFormatError(
+                f"must be null or the id of a camera object, got {active!r}", "scene.active_camera"
+            )
+        scene._active_camera = active
     _read_procedural(scene, scene_data, meshes)
     return scene
 
@@ -545,6 +643,14 @@ def _read_procedural(scene: Scene, scene_data: dict[str, Any], meshes: list[Mesh
     except ProceduralError as exc:
         where = f" at {exc.location}" if exc.location else ""
         raise ProjectFormatError(f"[{exc.code}] {exc.message}{where}", "scene.geometry") from None
+
+
+def _render_value(kind: Any, raw: Any, loc: str) -> Any:
+    """Build a camera/light/appearance/world/settings value; errors become format errors."""
+    try:
+        return kind.from_dict(raw, loc)
+    except RenderError as exc:
+        raise ProjectFormatError(f"[{exc.code}] {exc.message}", exc.location or loc) from None
 
 
 def _json_values(raw: Any, loc: str) -> dict[str, Any]:
