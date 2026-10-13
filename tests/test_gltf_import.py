@@ -409,6 +409,9 @@ def test_triangle_count_must_be_multiple_of_three(tmp_path):
         ('{"asset": {"version": NaN}}', "INVALID_JSON"),
         ("[" * 100_000 + "]" * 100_000, "INVALID_JSON"),
     ],
+    # Explicit ids: pytest exports the test id in an environment variable, and the
+    # deeply nested input would exceed Windows' 32767-character limit.
+    ids=["syntax", "not-an-object", "duplicate-key", "nan", "deep-nesting"],
 )
 def test_invalid_json(tmp_path, text, code):
     (tmp_path / "j.gltf").write_text(text)
