@@ -88,3 +88,45 @@ def test_readme_procedural_example():
     topo = inspect_mesh(row.mesh).topology
     single = 1 - 12 * 0.08**2 / 2 * (1 - 2 * 0.08) - 8 * (5 / 6) * 0.08**3
     assert topo["volume"] == pytest.approx(5 * single, rel=1e-5)
+
+
+def test_rendering_quick_start(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    source = python_block(
+        ROOT / "docs/RENDERING.md", 'from aether3d import Scene\n\nscene = Scene("Studio")'
+    )
+    namespace: dict = {}
+    exec(compile(source, "RENDERING.md", "exec"), namespace)
+    result = namespace["result"]
+    assert (result.width, result.height) == (640, 360) and (tmp_path / "studio.png").is_file()
+    assert all(o["visible_samples"] > 0 for o in result.objects)
+    assert result.diagnostics == []
+
+
+def test_rendering_scene_script_example():
+    from aether3d import run_scene_script
+
+    text = (ROOT / "docs/RENDERING.md").read_text(encoding="utf-8")
+    block = re.search(r'```json\n(\{\n  "format": "aether3d.scene-script".*?)\n```', text, re.S)
+    scene = Scene()
+    scene.add_cube("Crate", size=2, position=(0, 0, 1))
+    scene.add_plane("Ground", size=20)
+    run_scene_script(scene, json.loads(block.group(1)))
+    result = scene.render(width=128, height=72)
+    assert result.camera["name"] == "Main" and result.stats["lights"] == 2
+    assert all(o["visible_samples"] > 0 for o in result.objects)
+
+
+def test_readme_render_example(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    source = python_block(
+        ROOT / "README.md", "from aether3d import Scene\n\nscene = Scene()\nscene.add_plane"
+    )
+    namespace: dict = {}
+    exec(compile(source, "README.md", "exec"), namespace)
+    result = namespace["result"]
+    assert (tmp_path / "crate.png").is_file() and result.width == 640
+    assert {o["name"]: o["visible_samples"] > 0 for o in result.objects} == {
+        "Ground": True,
+        "Crate": True,
+    }

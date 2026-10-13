@@ -77,12 +77,14 @@ pip install ".[boolean]"   # also solid booleans for procedural geometry
 ```
 
 The first command installs only the `aether3d` package, its `aether3d`
-command, and NumPy. glTF import/export, mesh editing and every procedural
-feature except the `boolean` modifier need nothing else.
+command, and NumPy. glTF import/export, mesh editing, rendering (including
+PNG output) and every procedural feature except the `boolean` modifier need
+nothing else.
 
 The `boolean` extra adds [manifold3d](https://github.com/elalish/manifold)
 (Apache-2.0; prebuilt wheels for Linux, macOS and Windows on Python
 3.10–3.14). Without it, a procedural boolean fails with
 `BOOLEAN_BACKEND_UNAVAILABLE`, while projects that contain booleans still
 load. The `dev` extra includes it, and so do the tests and the castle demo.
-trimesh and the Khronos validator are used only by the tests.
+trimesh, Pillow (an independent PNG decoder) and the Khronos validator are
+used only by the tests.

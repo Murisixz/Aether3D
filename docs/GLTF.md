@@ -192,6 +192,17 @@ Export has the same policy. Content glTF cannot store raises
 
 - Only static geometry: no materials, textures, cameras, lights, animation,
   skinning or morph targets (see the tables above).
+- **Exported cameras and lights (since 0.5.0)** are written as plain nodes:
+  - their transforms, names and ids are kept, and the files pass the Khronos
+    validator;
+  - glTF `camera` objects and `KHR_lights_punctual` lights are not written
+    yet;
+  - object colors are not exported, because there are no materials yet.
+
+  An exported glTF camera would also need a 180° turn about the up axis.
+  Aether3D cameras look along their local −Y; glTF cameras look along −Z in
+  Y-up space, which is +Y in Aether3D's world (see
+  [RENDERING.md](RENDERING.md)).
 - Several primitives in one glTF mesh are merged into one Aether3D mesh.
   Per-primitive material assignment is not preserved.
 - Normals or UVs present on only some primitives of a mesh are dropped for

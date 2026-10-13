@@ -1,21 +1,31 @@
 # The `.aether` project format
 
-**Current version: 2** (Aether3D 0.4.0; version 1 files are upgraded on load)
+**Current version: 3** (Aether3D 0.5.0; version 1 and 2 files are upgraded on load)
 
-An `.aether` file stores one scene: its objects, their hierarchy and transforms,
-their mesh geometry, and its procedural geometry definitions (parameters,
-rules and geometry nodes with modifier stacks; see [PROCEDURAL.md](PROCEDURAL.md)). It is a UTF-8 encoded JSON document (RFC 8259) designed
-to be readable, diffable, and safely editable by people, scripts, and AI agents.
+An `.aether` file stores one scene:
+
+- its objects, with their hierarchy and transforms;
+- their mesh geometry;
+- its procedural geometry definitions: parameters, rules and geometry nodes
+  with modifier stacks (see [PROCEDURAL.md](PROCEDURAL.md));
+- its cameras, lights, object colors, background, ambient light and render
+  settings (see [RENDERING.md](RENDERING.md)).
+
+It is a UTF-8 encoded JSON document (RFC 8259), designed to be readable,
+diffable, and safely editable by people, scripts, and AI agents.
 
 ## Example
 
 ```json
 {
   "format": "aether3d.project",
-  "format_version": 2,
-  "generator": "aether3d 0.4.0",
+  "format_version": 3,
+  "generator": "aether3d 0.5.0",
   "scene": {
     "name": "First Scene",
+    "active_camera": "5b0f1c2e-…",
+    "world": {"background": [0.2, 0.2, 0.2], "ambient_color": [1.0, 1.0, 1.0], "ambient_intensity": 0.1},
+    "render": {"width": 1280, "height": 720, "samples": 2, "exposure": 0.0, "cull": "none", "default_lights": true},
     "parameters": [],
     "rules": [],
     "geometry": [],
@@ -30,7 +40,11 @@ to be readable, diffable, and safely editable by people, scripts, and AI agents.
           "scale": [1.0, 1.0, 1.0]
         },
         "mesh": null,
-        "geometry": null
+        "geometry": null,
+        "camera": null,
+        "light": null,
+        "appearance": null,
+        "visible": true
       },
       {
         "id": "8122a0f9-511d-4611-88f4-b44f02b96274",
@@ -42,7 +56,24 @@ to be readable, diffable, and safely editable by people, scripts, and AI agents.
           "scale": [1.0, 1.0, 1.0]
         },
         "mesh": 0,
-        "geometry": null
+        "geometry": null,
+        "camera": null,
+        "light": null,
+        "appearance": {"color": [0.75, 0.22, 0.17], "specular": 0.4, "shininess": 64.0},
+        "visible": true
+      },
+      {
+        "id": "5b0f1c2e-…",
+        "name": "Camera",
+        "parent": null,
+        "transform": {"position": [8.0, -12.0, 6.0], "rotation": […], "scale": [1.0, 1.0, 1.0]},
+        "mesh": null,
+        "geometry": null,
+        "camera": {"projection": "perspective", "fov": 40.0, "fov_axis": "vertical",
+                   "ortho_scale": 10.0, "near": 0.1, "far": 1000.0, "aspect_ratio": null},
+        "light": null,
+        "appearance": null,
+        "visible": true
       }
     ]
   },
@@ -72,6 +103,9 @@ to be readable, diffable, and safely editable by people, scripts, and AI agents.
 | Key | Type | Description |
 | --- | --- | --- |
 | `name` | non-empty string | Scene name. |
+| `active_camera` | string or `null` | `id` of the camera used for rendering by default. It must be a camera object. Since version 3. |
+| `world` | object | Background and ambient light (see [Rendering](#rendering)). Since version 3. |
+| `render` | object | Saved render settings (see [Rendering](#rendering)). Since version 3. |
 | `parameters` | array | Scene parameters (see [Procedural geometry](#procedural-geometry)). Since version 2. |
 | `rules` | array | Scene rules. Since version 2. |
 | `geometry` | array | Procedural geometry nodes. Since version 2. |
@@ -91,6 +125,14 @@ a parent (or that are all roots) defines their child order.
 | `transform` | object | Local transform relative to the parent (see below). |
 | `mesh` | integer or `null` | Index into the top-level `meshes` array, or `null` for an object without a static mesh. Several objects may share one mesh. |
 | `geometry` | string or `null` | `id` of a procedural geometry node, or `null`. An object has a `mesh` or a `geometry`, never both. Its mesh is the node's evaluated result, which is never stored. Since version 2. |
+| `camera` | object or `null` | The object is a camera (see [Rendering](#rendering)). Since version 3. |
+| `light` | object or `null` | The object is a light. Since version 3. |
+| `appearance` | object or `null` | Color and highlight; `null` means the defaults. Since version 3. |
+| `visible` | boolean | Whether the object renders (lights: whether they shine). Since version 3. |
+
+An object holds at most one of `mesh`, `geometry`, `camera` and `light`.
+Writers always emit `camera`, `light`, `appearance` and `visible`. Readers
+treat them as optional, with the defaults `null`, `null`, `null` and `true`.
 
 ### `transform`
 
@@ -156,6 +198,43 @@ a boolean expression that must hold. `message` is optional.
 Modifier and primitive parameters follow the schemas in
 [PROCEDURAL.md](PROCEDURAL.md). Boolean operands reference geometry by id.
 
+## Rendering
+
+Since version 3. Colors are display (sRGB-encoded) values: arrays of three
+numbers in [0, 1].
+
+**`camera`**
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `projection` | `"perspective"` or `"orthographic"` | Projection type. |
+| `fov` | number, 0.01–179 | Field of view in degrees, along `fov_axis`. |
+| `fov_axis` | `"vertical"`, `"horizontal"` or `"auto"` | Which image extent `fov` (and `ortho_scale`) measures. |
+| `ortho_scale` | number > 0 | Orthographic view size in world units, along `fov_axis`. |
+| `near`, `far` | numbers | Perspective: 0 < near < far and far/near ≤ 10⁹. Orthographic: 0 ≤ near < far. |
+| `aspect_ratio` | number in [10⁻³, 10³] or `null` | Preferred frame width / height. |
+
+Cameras look along their object's local −Y axis with local +Z up.
+
+**`light`**
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `type` | `"directional"` or `"point"` | Directional lights shine along the object's local −Y axis; point lights shine from its position. |
+| `color` | color | Light color. |
+| `intensity` | number in [0, 10⁹] | Unitless multiplier (see [RENDERING.md](RENDERING.md)). |
+| `range` | number > 0 or `null` | Point lights: smooth fade-out distance. |
+| `falloff` | `"inverse_square"` or `"none"` | Point lights: distance attenuation. |
+
+**`appearance`:** `color` (color), `specular` (0–1) and `shininess` (1–10000).
+
+**`world`:** `background` (color), `ambient_color` (color) and
+`ambient_intensity` (≥ 0).
+
+**`render`:** `width` and `height` (1–16384), `samples` (1–4; antialiasing
+is samples × samples per pixel), `exposure` (−20 to 20 EV), `cull`
+(`"none"`, `"back"` or `"front"`) and `default_lights` (boolean).
+
 ## Mesh
 
 An indexed triangle mesh.
@@ -190,6 +269,12 @@ Readers are strict, so mistakes are reported instead of silently ignored:
   missing geometry or modifier references; geometry dependency cycles; duplicate ids
   or names; and an object with both `mesh` and `geometry`. Geometry is evaluated
   lazily after loading.
+- Rendering data is validated with the same rules as the Python API:
+  - camera, light, appearance, world and render values (types, ranges,
+    choices, colors);
+  - unknown or missing keys;
+  - objects holding more than one of mesh, geometry, camera and light;
+  - an `active_camera` that is not a camera object.
 
 Every error names the offending element with a dotted path, such as
 `scene.objects[1].transform.scale` or `meshes[0].triangles[12]`.
@@ -212,6 +297,7 @@ Every error names the offending element with a dotted path, such as
 | --- | --- | --- |
 | 1 | 0.1.0 | Initial format: one scene, object hierarchy, TRS transforms, indexed triangle meshes with optional normals and UVs. |
 | 2 | 0.4.0 | Procedural geometry: `scene.parameters`, `scene.rules`, `scene.geometry`, and a `geometry` reference on every object. The migration from 1 adds empty lists and `"geometry": null`. |
+| 3 | 0.5.0 | Rendering: `scene.active_camera`, `scene.world`, `scene.render`, and `camera`, `light`, `appearance` and `visible` on every object. The migration from 2 adds `null`, the default world and the default render settings, and `null`, `null`, `null` and `true` on objects. |
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged. glTF interchange
 is a separate format (see [GLTF.md](GLTF.md)); it did not require a project

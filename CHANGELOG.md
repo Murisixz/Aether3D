@@ -4,6 +4,106 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.5.0: Cameras, lighting and the first renderer
+
+### Added
+
+- **Aether3D's own CPU renderer** (`aether3d.rendering`, `scene.render()`,
+  `aether3d render`; guide: [docs/RENDERING.md](docs/RENDERING.md)). It is a
+  deterministic, headless NumPy rasterizer with no external renderer, GPU,
+  OpenGL context or GUI.
+  - **Pipeline:**
+    1. Backend-independent scene extraction (`RenderScene`).
+    2. World and clip transforms.
+    3. Back- and front-face culling.
+    4. Homogeneous clipping against all six frustum planes, with per-vertex
+       outcodes.
+    5. Fixed-point (8 sub-pixel bits) rasterization with exact integer edge
+       functions and a watertight top-left fill rule.
+    6. An order-independent visibility buffer (packed depth + triangle id).
+    7. Deferred shading with perspective-correct barycentrics, from the
+       original triangle in homogeneous 2D coordinates.
+  - **Antialiasing:** s×s ordered-grid supersampling (1–4), averaged in
+    linear light.
+  - **Output:** exposure, then the exact sRGB transfer function, then 8 bits,
+    then a PNG from Aether3D's own encoder (adaptive filters, `sRGB` chunk,
+    atomic writes).
+  - **`RenderResult`:** the image plus linear light, depth, coverage and
+    object-index maps, per-object visibility, camera information, counts,
+    per-stage timings and diagnostics.
+- **Cameras:**
+  - perspective and orthographic, with vertical, horizontal or automatic
+    field of view, near and far planes, and an optional preferred aspect
+    ratio;
+  - documented, tested projection matrices;
+  - cameras look along local −Y with +Z up, and the frame is
+    Gram–Schmidt-orthonormalized from the world matrix, so scale, shear and
+    mirroring never distort the image;
+  - `obj.look_at()` / `look_along()`, exact under scaled and rotated parents,
+    with a defined fallback when looking along `up`;
+  - an active camera (`scene.active_camera`);
+  - exact vertex-based framing (`camera.frame()`, `render(frame=True)`).
+- **Lights:**
+  - directional and point lights (inverse-square or constant falloff, an
+    optional smooth range window), plus ambient light (`scene.world`);
+  - documented unitless intensities (non-physically-based);
+  - a built-in key light when a scene has no lights.
+- **Appearance:**
+  - per-object solid color (display sRGB) and an optional Blinn–Phong
+    highlight (`obj.appearance`, `obj.color`), plus `obj.visible`;
+  - normals transformed with the inverse transpose (correct under mirroring);
+  - flat shading for meshes without normals, and two-sided lighting;
+  - a background color and render settings (`scene.render_settings`).
+- **CLI:**
+  - `aether3d render`, which renders projects or glTF files and frames
+    automatically with `--frame`;
+  - `camera add|set|list|frame|activate`, `light add|set|list`,
+    `object set|remove`, `scene set|run`;
+  - declarative scene-setup scripts (`aether3d.scene-script` v1,
+    `run_scene_script`), atomic with exact rollback.
+- **Examples:**
+  - [`examples/first_render.py`](examples/first_render.py);
+  - [`examples/minecraft_castle_render.py`](examples/minecraft_castle_render.py),
+    the procedural castle rendered at 1920×1080, with an optional Blender
+    silhouette comparison;
+  - [`examples/hero_render.py`](examples/hero_render.py).
+
+  Their PNGs are committed in `examples/output`.
+- **Verification:**
+  - an independent brute-force ray-caster reference
+    (`tests/render_reference.py`);
+  - analytic pixel tests and regression images (`tests/data/renders`);
+  - Khronos validation of scenes with cameras and lights;
+  - CI renders on Linux, macOS and Windows, uploaded as artifacts.
+- **Benchmarks:** `benchmarks/bench_render.py` (per-stage timings and peak
+  memory at three resolutions).
+
+### Changed
+
+- **`.aether` format version 3:** `scene.active_camera`, `scene.world`,
+  `scene.render`, and `camera`, `light`, `appearance` and `visible` on
+  objects. Versions 1 and 2 are migrated on load. The four object keys are
+  optional when reading.
+- **Data kinds:** an object holds at most one of mesh/geometry, camera and
+  light. Assigning a mesh or procedural geometry to a camera or light is an
+  error.
+- **CLI `inspect`:** reports each object's `kind`, `camera`, `light`,
+  `appearance` and `visible`, and marks cameras and lights in text output.
+- **Dev extra:** includes Pillow, used by the tests only, to decode PNGs
+  independently.
+
+### Compatibility
+
+- **Old projects load:** projects from 0.1.0–0.4.0 (format versions 1 and 2)
+  load unchanged, and saving writes version 3. Aether3D 0.4.0 cannot read
+  version 3 files.
+- **Changed tests:** every earlier test passes. Three assertions in
+  `tests/test_procedural_serialization.py` that hard-coded
+  `format_version == 2` now use `FORMAT_VERSION`.
+- **glTF:** cameras and lights export as plain nodes (they pass the Khronos
+  validator). glTF cameras and `KHR_lights_punctual` are not written yet.
+- **Dependencies:** NumPy is still the only required runtime dependency.
+
 ## 0.4.0: Procedural geometry engine
 
 ### Added

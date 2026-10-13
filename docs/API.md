@@ -15,6 +15,8 @@ from aether3d import EditableMesh, EditSession, Selection, OperationResult, Comm
 from aether3d import TopologyReport, run_edit_script
 from aether3d import ProceduralSystem, ProceduralGeometry, Modifier, PolyMesh, Expr
 from aether3d import ProceduralError, run_procedural_script
+from aether3d import Camera, Light, Appearance, World, RenderSettings, RenderLimits
+from aether3d import RenderResult, RenderError, render, run_scene_script
 from aether3d import AetherError  # and the specific error classes below
 ```
 
@@ -46,6 +48,12 @@ Scene(name: str = "Untitled Scene")
 | `name` | Scene name (non-empty string, settable). |
 | `add_object(name=None, *, mesh=None, parent=None, position=None, rotation=None, scale=None, object_id=None, geometry=None)` | Add an object, optionally with a `Mesh` or a procedural `geometry` node (id, name or object), but not both. Returns the `SceneObject`. |
 | `procedural` | The scene's `ProceduralSystem` (see [Procedural geometry](#procedural-geometry)). |
+| `add_camera(name=None, *, projection, fov, fov_axis, ortho_scale, near, far, aspect_ratio, parent, position, rotation, look_at, up, active)` | Add a camera object (see [Rendering](#rendering)). It becomes active if none is, or if `active=True`. |
+| `add_light(type="directional", name=None, *, color, intensity, range, falloff, parent, position, rotation, direction, look_at, up)`, `add_directional_light(...)`, `add_point_light(...)` | Add a light object. |
+| `cameras`, `lights` | Tuples of camera and light objects. |
+| `active_camera` | The default render camera, or `None` (settable with an object, id, name or `None`). |
+| `world`, `render_settings` | `World` (background, ambient light) and `RenderSettings` (saved output settings). Edit them in place. |
+| `render(**options)` | Render with the CPU renderer; returns a `RenderResult` (see [Rendering](#rendering)). |
 | `add_geometry(name, primitive=None, *, mesh=None, source=None, overrides=None, after=None, parameters=None, **params)` | Create a procedural geometry node: from a primitive (with `**params`), a stored `mesh`, or another node (`source`, with `overrides` and an optional `after` modifier). `parameters` declares node-local parameters as `{name: value}` or `{name: {"value": ..., "min": ...}}`. |
 | `add_procedural(name=None, primitive="box", *, parent=None, position=None, rotation=None, scale=None, parameters=None, **params)` | Create a primitive node and an object that uses it, in one step. |
 | `add_cube(name=None, *, size=1.0, parent=None, position=None, rotation=None, scale=None)` | Add a cube with edge length `size`. |
@@ -86,6 +94,14 @@ Created only through a `Scene`.
 | `scene` | The owning scene, or `None` after removal. |
 | `mesh` | A `Mesh` or `None`, settable. Meshes may be shared between objects. For a procedural object, this is the evaluated mesh, and assigning to it raises `ProceduralError("PROCEDURAL_OBJECT")`. |
 | `geometry` | The `ProceduralGeometry` the object uses, or `None`. |
+| `kind` | `"mesh"`, `"procedural"`, `"camera"`, `"light"` or `"empty"`. An object holds at most one of mesh, camera and light. |
+| `camera`, `light` | The `Camera` or `Light` component, or `None`. Edit it in place. |
+| `appearance`, `color` | `Appearance` (color, specular, shininess); `color` is a shortcut. |
+| `visible` | Whether the object renders (lights: whether they shine). Not inherited by children. |
+| `look_at(target, *, up=(0, 0, 1))`, `look_along(direction, *, up)` | Turn the object's front (local −Y) toward a point or object, or along a direction. Exact under any parent. |
+| `world_forward` | Unit world direction of the object's front (local −Y). |
+| `set_world_position(position)` | Move the object to a world position, respecting parents. |
+| `frame(targets=None, *, direction, up, margin, fit_clipping, aspect)` | Camera objects: place the camera so `targets` exactly fill the frame. |
 | `is_procedural` | `True` if the object uses a geometry node. |
 | `set_geometry(node_or_none)` | Use a geometry node; `None` detaches it, leaving no mesh. |
 | `bake()` | Replace the procedural geometry with a static copy of the evaluated mesh, and return the mesh. |
@@ -302,6 +318,31 @@ flows through modifier stacks; its methods include `validate()`,
 **`run_procedural_script(scene, script)`** applies a declarative JSON
 procedural script atomically, and raises `ScriptError` on failure.
 
+## Rendering
+
+Full guide: [RENDERING.md](RENDERING.md).
+
+| Name | Description |
+| --- | --- |
+| `render(scene, *, camera=None, width=None, height=None, samples=None, exposure=None, cull=None, default_lights=None, frame=False, margin=0.05, limits=None)` | Render with the CPU rasterizer. Arguments override `scene.render_settings` for this render only. Same as `scene.render(...)`. |
+| `RenderResult` | `image` (`(h, w, 3) uint8` sRGB); `linear`, `depth`, `coverage` and `object_index` maps; `objects`, `camera`, `settings`, `stats` (counts and timings), `diagnostics`, `output`, `status`, `width`, `height`, `pixel(x, y)`, `png_bytes()`, `save(path)` (atomic, `.png` only), `to_dict()`. |
+| `Camera(projection="perspective", fov=40, fov_axis="vertical", ortho_scale=10, near=0.1, far=1000, aspect_ratio=None)` | Validated camera parameters, with `configure(**changes)`, `half_extents(aspect)` and `projection_matrix(aspect)`. |
+| `Light(type="directional", color=(1, 1, 1), intensity=1, range=None, falloff="inverse_square")` | Validated light parameters, with `configure(**changes)`. |
+| `Appearance(color=(0.8, 0.8, 0.8), specular=0, shininess=32)` | Object color and highlight. |
+| `World(background=(0.2, 0.2, 0.2), ambient_color=(1, 1, 1), ambient_intensity=0.1)` | Background and ambient light. |
+| `RenderSettings(width=1280, height=720, samples=2, exposure=0, cull="none", default_lights=True)` | Saved output settings. |
+| `RenderLimits(max_dimension=16384, max_samples=40_000_000, max_triangles=20_000_000)` | Resource limits, checked before allocating. |
+| `run_scene_script(scene, script)` | Apply a declarative `aether3d.scene-script` (cameras, lights, appearance, world, settings) atomically. |
+| `aether3d.rendering.extract_render_scene(scene, camera)` | The backend-independent `RenderScene`. |
+| `aether3d.rendering.encode_png(image)`, `write_png(path, image)` | Aether3D's PNG encoder. |
+| `aether3d.rendering.srgb_to_linear`, `linear_to_srgb`, `parse_color`, `color_to_hex` | Color helpers. |
+| `aether3d.math3d.look_rotation_matrix(direction, up)` | The world rotation used by `look_at`. |
+
+Colors are display (sRGB) values: `"#rrggbb"`, `"#rgb"`, or three numbers in
+[0, 1]. Every `Camera`, `Light`, `Appearance`, `World` and `RenderSettings`
+value has `to_dict()`, `from_dict()` and `copy()`. Setting an invalid value
+raises `RenderError`, and nothing changes.
+
 ## `aether3d.math3d`
 
 Stateless helpers used by the engine, available for scripts:
@@ -326,6 +367,7 @@ All deliberate errors derive from `AetherError`.
 | `ResourceLimitError` | `ValueError` | Input exceeds an `ImportLimits` limit |
 | `EditError` | `ValueError` | An editing operation cannot be applied; nothing changed. `.code` (stable), `.elements` (offending ids by kind), `.hint` |
 | `ScriptError` | `ValueError` | An edit or procedural script is malformed, or a step failed. `.code`, `.location` (e.g. `edits[0].operations[3]`), `.details` |
+| `RenderError` | `ValueError` | A camera, light, appearance, world or render setting is invalid, or rendering failed; nothing changed and no file was written. `.code` (stable), `.location`, `.hint`, `.details` |
 | `ProceduralError` | `ValueError` | A procedural definition, parameter or evaluation is invalid; nothing changed. `.code` (stable), `.location` (e.g. `geometry[Tower].modifiers[Row].params.count`), `.hint`, `.details` |
 
 Missing files raise the standard `FileNotFoundError`.
@@ -347,6 +389,11 @@ aether3d procedural validate PROJECT.aether [--geometry REF] [--json]
 aether3d procedural run PROJECT.aether SCRIPT.json|- [--output PATH] [--dry-run] [--json]
 aether3d procedural set PROJECT.aether NAME=VALUE... [--geometry REF] [--output PATH] [--dry-run] [--json]
 aether3d procedural bake PROJECT.aether (--object REF... | --all) [--output PATH] [--dry-run] [--json]
+aether3d render PATH [-o OUT.png] [--width W] [--height H] [--camera REF] [--samples N] [--exposure EV] [--cull none|back|front] [--background COLOR] [--no-default-lights] [--frame] [--margin M] [--force] [--json]
+aether3d camera add|set|frame|activate|list PROJECT ... [--output PATH] [--dry-run] [--json]
+aether3d light add|set|list PROJECT ... [--output PATH] [--dry-run] [--json]
+aether3d object set|remove PROJECT OBJECT ... [--output PATH] [--dry-run] [--json]
+aether3d scene set PROJECT ... | scene run PROJECT SCRIPT.json|- [--output PATH] [--dry-run] [--json]
 aether3d --version
 ```
 
@@ -362,7 +409,7 @@ object has:
 
 - `type` and `message`;
 - `location`, when known;
-- `code`, for `AssetFormatError`, `ScriptError` and `ProceduralError` (with `hint`
+- `code`, for `AssetFormatError`, `ScriptError`, `ProceduralError` and `RenderError` (with `hint`
   and `details` when available);
 - `diagnostics`, for `UnsupportedFeatureError`.
 
