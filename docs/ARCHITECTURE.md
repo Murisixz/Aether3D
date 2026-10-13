@@ -28,17 +28,26 @@ Aether3D/
 │   ├── __init__.py        Public API surface (__all__)
 │   ├── _version.py        Package version (single source of truth)
 │   ├── errors.py          Exception hierarchy
+│   ├── diagnostics.py     Diagnostic: structured findings (code, severity, location, ...)
+│   ├── _fileio.py         Atomic file writes shared by all writers
 │   ├── math3d.py          Stateless vector/quaternion/matrix helpers (NumPy)
 │   ├── transform.py       Transform: position / rotation / scale
 │   ├── mesh.py            Mesh: immutable indexed triangle mesh
 │   ├── primitives.py      Cube, sphere and plane generators
 │   ├── scene.py           Scene and SceneObject: the scene graph
 │   ├── serialization.py   .aether reader/writer, validation, migrations
+│   ├── inspection.py      Geometry analysis of meshes and scenes
+│   ├── gltf/              glTF 2.0 interchange (no third-party dependencies)
+│   │   ├── axes.py        Exact Z-up <-> Y-up conversion
+│   │   ├── writer.py      Export: scene -> glTF document + buffer -> .glb/.gltf
+│   │   └── reader.py      Import: validated, resource-limited, path-confined
 │   ├── cli.py             `aether3d` command-line interface
 │   └── __main__.py        `python -m aether3d`
 ├── tests/                 pytest suite, one file per module
+│   └── data/              Khronos sample assets (pinned) and a v0.1.0 project
 ├── examples/              Runnable examples and a sample .aether project
-├── docs/                  API, file format, architecture, installation
+├── tools/gltf-validator/  Pinned Khronos glTF Validator runner (Node.js, dev only)
+├── docs/                  API, file formats, glTF, inspection, architecture, install
 └── .github/workflows/     Continuous integration
 ```
 
@@ -46,17 +55,23 @@ Aether3D/
 
 | Module | Imports (internal) |
 | --- | --- |
-| `errors` | none |
+| `errors`, `diagnostics`, `_fileio` | none |
 | `math3d` | `errors` |
 | `mesh` | `errors` |
 | `transform` | `math3d` |
 | `primitives` | `mesh`, `math3d` |
 | `scene` | `transform`, `mesh`, `primitives`, `math3d`, `errors` |
-| `serialization` | `scene`, `transform`, `mesh`, `errors` |
-| `cli` | `serialization`, `scene`, `errors` |
+| `serialization` | `scene`, `transform`, `mesh`, `errors`, `_fileio` |
+| `inspection` | `mesh`, `math3d`, `diagnostics` |
+| `gltf.axes` | `math3d` |
+| `gltf.writer` | `gltf.axes`, `mesh`, `diagnostics`, `errors`, `_fileio` |
+| `gltf.reader` | `gltf.axes`, `gltf.writer` (constants), `scene`, `mesh`, `transform`, `math3d`, `diagnostics`, `errors` |
+| `cli` | `gltf`, `serialization`, `scene`, `errors` |
 
-Lower layers never import higher ones (`scene` imports `serialization` lazily, only inside
-`Scene.save`/`Scene.load`, to provide the convenience methods).
+Lower layers never import higher ones. `scene` provides convenience methods
+(`save`/`load`, `export`/`import_file`, `inspect_geometry`) by importing
+`serialization`, `gltf` and `inspection` lazily inside those methods, and
+`inspection`/`gltf.writer` refer to `Scene` only for type hints.
 
 ## Core concepts
 
@@ -141,3 +156,37 @@ Ground rules for extensions:
    updates `docs/FILE_FORMAT.md`.
 3. Public API additions are exported from `aether3d/__init__.py` and documented
    in `docs/API.md`.
+
+## Interchange and inspection (v0.2.0)
+
+Interchange code is an adapter around the core, not part of it. `gltf`
+converts between external documents and the existing `Scene`/`Mesh` types,
+and the core never imports it except lazily for convenience methods. Future
+formats (OBJ, USD, FBX, ...) can be added the same way, as sibling packages
+with their own reader and writer.
+
+Several design decisions keep conversions predictable:
+
+- **No third-party glTF library.** The container format is small. A direct
+  reader and writer over `json`, `struct` and NumPy keep full control over
+  validation, error locations, resource limits and exactness. Correctness is
+  established externally instead: the official Khronos validator, an
+  independent parser (trimesh, test-only), and pinned Khronos sample assets.
+- **Exact axis conversion.** The Z-up → Y-up map is a signed axis
+  permutation applied to TRS components, mesh data and every node.
+  Conversion is therefore lossless and hierarchy-consistent, and needs no
+  extra root node (see [GLTF.md](GLTF.md)).
+- **One `Diagnostic` type for every report.** Inspection, import and export
+  all report findings the same way: a stable `code`, a `severity`, a
+  `location` and a `lossy` flag.
+- **Lossy conversions are opt-in.** Content that a conversion would have to
+  drop or approximate makes it fail with `UnsupportedFeatureError` listing
+  every item, unless the caller passes `allow_lossy=True`. Non-geometric
+  content that is merely skipped is reported but does not fail.
+- **No partial state.** Imports build a new `Scene` and return it only on
+  success. Exports build the complete file in memory, then write it
+  atomically.
+- **Inspection is read-only and vectorized.** It never mutates scenes, and
+  each distinct mesh is analysed once. Its topology claims are limited to
+  what it actually computes on exactly-welded vertices (see
+  [INSPECTION.md](INSPECTION.md)).

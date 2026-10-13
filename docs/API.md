@@ -8,6 +8,9 @@ modules or attributes starting with `_`) are internal and may change.
 from aether3d import Scene, SceneObject, Transform, Mesh
 from aether3d import create_cube, create_sphere, create_plane
 from aether3d import save_scene, load_scene, FORMAT_VERSION
+from aether3d import import_gltf, export_gltf, ImportResult, ExportResult, ImportLimits
+from aether3d import inspect_mesh, inspect_scene, MeshGeometryReport, SceneGeometryReport
+from aether3d import Diagnostic
 from aether3d import AetherError  # and the specific error classes below
 ```
 
@@ -15,13 +18,15 @@ from aether3d import AetherError  # and the specific error classes below
 
 | Topic | Convention |
 | --- | --- |
-| Coordinates | Right-handed, **+Z up**, +Y forward, +X right; 1 unit = 1 meter |
+| Coordinates | Right-handed, **+Z up**, +X right; an asset's front faces -Y (as in Blender); 1 unit = 1 meter |
 | Vectors | Returned as tuples of Python `float`; accept any 3-element sequence or NumPy array |
 | Rotation | Unit quaternion `(x, y, z, w)`, normalized on assignment and canonicalized to `w >= 0` |
 | Euler angles | Degrees, XYZ order about fixed world axes: `R = Rz @ Ry @ Rx` |
 | Matrices | 4x4 `float64` NumPy arrays, column vectors (`p' = M @ p`), local = `T @ R @ S` |
 | World space | `world_matrix = parent.world_matrix @ local_matrix` |
 | Winding | Triangles are counter-clockwise when seen from the front (outside) |
+| UVs | Origin at the bottom-left of the texture (as in Blender/OpenGL); `v` grows upwards |
+| glTF axes | `glTF (x, y, z) = (x, z, -y)`; see [GLTF.md](GLTF.md) |
 
 Read-only values come back as tuples or fresh arrays, so `obj.position[0] = 5`
 cannot silently change nothing. Always assign a whole value: `obj.position = (5, 0, 0)`.
@@ -48,6 +53,10 @@ Scene(name: str = "Untitled Scene")
 | `save(path)` | Write a `.aether` file (atomically). |
 | `Scene.load(path)` | Read and validate a `.aether` file. |
 | `to_dict()` / `Scene.from_dict(doc)` | Convert to/from the JSON-compatible document stored in `.aether` files. |
+| `export(path, *, allow_lossy=False)` | Export to `.glb` or `.gltf` (by extension); returns an `ExportResult`. |
+| `Scene.import_file(path, *, allow_lossy=False, limits=None)` | Import a `.glb` or `.gltf` file as a new scene. |
+| `inspect_geometry()` | Analyse all geometry; returns a `SceneGeometryReport`. |
+| `unique_name(base)` | `base` if unused, else the first free `base.001`, `base.002`, … |
 
 **Names.** Object names are unique within a scene. If `name` is omitted, a
 unique one is generated (`"Cube"`, `"Cube.001"`, …). An explicit name that is
@@ -138,6 +147,46 @@ Each returns a new `Mesh` centered at the origin, with normals and UVs.
 
 See [FILE_FORMAT.md](FILE_FORMAT.md) for the format itself.
 
+## glTF import and export
+
+Full details, including the axis conversion, the supported feature set and
+safety rules, are in [GLTF.md](GLTF.md).
+
+| Name | Description |
+| --- | --- |
+| `export_gltf(scene, path, *, allow_lossy=False)` | Write `.glb` or `.gltf` (embedded buffer). Returns `ExportResult`. Raises `UnsupportedFeatureError` (nothing written) for content glTF cannot store, unless `allow_lossy=True`. |
+| `import_gltf(path, *, allow_lossy=False, limits=None)` | Read `.glb`/`.gltf`. Returns `ImportResult`. Raises `AssetFormatError`, `ResourceLimitError`, `UnsupportedFeatureError`, `FileNotFoundError`. |
+| `ImportLimits(max_file_bytes, max_buffer_bytes, max_nodes, max_vertices, max_triangles)` | Safety limits for untrusted files (frozen dataclass with defaults). |
+
+`ExportResult` has these fields:
+
+- `path`, `format` (`"glb"`/`"gltf"`), `byte_length`;
+- `node_count`, `mesh_count`;
+- `nodes`: a list of `{"node", "id", "name", "mesh"}`;
+- `diagnostics`.
+
+`ImportResult` has these fields:
+
+- `scene`, `source`, `format`, `generator`;
+- `objects`: a list of `{"node", "id", "name", "id_source"}`, where
+  `id_source` is `"extras"` or `"generated"`;
+- `diagnostics`;
+- `lossy`: true if anything was dropped or approximated.
+
+Both results have `to_dict()`.
+
+## Geometry inspection
+
+Field and diagnostic reference: [INSPECTION.md](INSPECTION.md).
+
+| Name | Description |
+| --- | --- |
+| `inspect_mesh(mesh, *, location=None)` | Returns a `MeshGeometryReport`. |
+| `inspect_scene(scene)` | Returns a `SceneGeometryReport` (same as `scene.inspect_geometry()`). |
+| `MeshGeometryReport` | `vertex_count`, `triangle_count`, `attributes`, `bounds`, `surface_area`, `uv_bounds`, `topology`, `diagnostics`, `status`, `to_dict()` |
+| `SceneGeometryReport` | `scene_name`, `summary`, `world_bounds`, `objects`, `meshes`, `diagnostics`, `all_diagnostics`, `status`, `to_dict()` |
+| `Diagnostic` | Frozen dataclass: `code`, `severity` (`"error"`/`"warning"`/`"info"`), `message`, `location`, `count`, `samples`, `lossy`; `to_dict()` |
+
 ## `aether3d.math3d`
 
 Stateless helpers used by the engine, available for scripts:
@@ -157,6 +206,9 @@ All deliberate errors derive from `AetherError`.
 | `HierarchyError` | `ValueError` | An operation would create a cycle |
 | `DetachedObjectError` | | The object was removed from its scene |
 | `ProjectFormatError` | `ValueError` | A project file is invalid; `.location` names the offending element |
+| `AssetFormatError` | `ValueError` | An external asset (glTF/GLB) is malformed; `.code` is a stable identifier and `.location` a JSON pointer such as `/accessors/3` |
+| `UnsupportedFeatureError` | `ValueError` | A conversion cannot represent some content faithfully; `.diagnostics` lists every item |
+| `ResourceLimitError` | `ValueError` | Input exceeds an `ImportLimits` limit |
 
 Missing files raise the standard `FileNotFoundError`.
 
@@ -164,15 +216,43 @@ Missing files raise the standard `FileNotFoundError`.
 
 ```text
 aether3d new PATH [--name NAME] [--force] [--json]
-aether3d validate PATH [--json]
-aether3d inspect PATH [--json]
+aether3d validate PATH [--allow-lossy] [--json]
+aether3d inspect PATH [--allow-lossy] [--json]
+aether3d geometry PATH [--allow-lossy] [--json]
+aether3d import SOURCE.glb|.gltf DESTINATION.aether [--allow-lossy] [--force] [--json]
+aether3d export SOURCE DESTINATION.glb|.gltf [--allow-lossy] [--force] [--json]
 aether3d --version
 ```
 
+`validate`, `inspect`, `geometry` and `export` read `.aether` projects as well
+as `.glb`/`.gltf` files. For glTF input they add `source_format`, `generator`,
+`lossy` and `import_diagnostics` to their JSON output (`.aether` input reports
+`source_format: "aether"` and `format_version`).
+
 With `--json`, each command prints exactly one JSON object to stdout:
-`{"ok": true, "command": ..., ...}` on success or
-`{"ok": false, "command": ..., "error": {"type", "message", "location"?}}` on
-failure. Exit codes: `0` success, `1` failure, `2` usage error.
+`{"ok": true, "command": ..., ...}` on success, or
+`{"ok": false, "command": ..., "error": {...}}` on failure. The `error`
+object has:
+
+- `type` and `message`;
+- `location`, when known;
+- `code`, for `AssetFormatError`;
+- `diagnostics`, for `UnsupportedFeatureError`.
+
+Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success |
+| `1` | Failure |
+| `2` | Usage error |
+| `3` | `geometry` completed but found error-severity problems |
+
+The `import`, `export` and `geometry` commands report:
+
+- **`import --json`:** `ImportResult.to_dict()` plus `destination`.
+- **`export --json`:** `ExportResult.to_dict()` plus the source fields.
+- **`geometry --json`:** the scene geometry report under `geometry`.
 
 `inspect --json` returns `scene` (`name`, `object_count`, `mesh_count`,
 `roots`) and an `objects` array in depth-first order, where each entry has

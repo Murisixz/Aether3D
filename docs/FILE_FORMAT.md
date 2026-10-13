@@ -143,3 +143,7 @@ Every error names the offending element with a dotted path, such as
 | Version | Aether3D | Changes |
 | --- | --- | --- |
 | 1 | 0.1.0 | Initial format: one scene, object hierarchy, TRS transforms, indexed triangle meshes with optional normals and UVs. |
+
+Aether3D 0.2.0 still reads and writes version 1 unchanged. glTF interchange
+is a separate format (see [GLTF.md](GLTF.md)); it did not require a project
+format change.

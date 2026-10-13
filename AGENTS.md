@@ -11,6 +11,8 @@ apply to agents too.
 - Verify every change with `ruff check . && ruff format --check . && pytest`.
 - Architecture and module boundaries: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Public API: [docs/API.md](docs/API.md). File format: [docs/FILE_FORMAT.md](docs/FILE_FORMAT.md).
+- glTF interchange: [docs/GLTF.md](docs/GLTF.md). Geometry reports: [docs/INSPECTION.md](docs/INSPECTION.md).
+- Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 
 ## Conventions to preserve
 
@@ -19,6 +21,11 @@ apply to agents too.
 - Public getters return tuples or fresh arrays, never mutable internal state.
 - Validate all inputs before mutating; raise `AetherError` subclasses with specific messages.
 - File format changes require a `FORMAT_VERSION` bump, a migration, a test, and doc updates.
+- Z-up <-> glTF Y-up conversion lives only in `gltf/axes.py`; it must stay exact (see its docstring).
+- Never silently drop or alter content in a conversion: emit a `Diagnostic`, and mark it
+  `lossy=True` (which makes the conversion fail unless `allow_lossy=True`) if geometry would change.
+- Treat imported files as untrusted: validate before allocating, keep file access inside the
+  asset's directory, raise `AssetFormatError` with a `code` and JSON-pointer `location`.
 
 ## Using Aether3D from an agent
 
@@ -26,3 +33,9 @@ apply to agents too.
 - Use `aether3d inspect PATH --json` to read a project's structure and
   `aether3d validate PATH --json` after editing a `.aether` file by hand.
   Error responses include a `location` such as `scene.objects[2].transform`.
+- `aether3d import`/`export` convert between `.aether` and `.glb`/`.gltf`; read the
+  `diagnostics` in the JSON output, and only pass `--allow-lossy` deliberately.
+- `aether3d geometry PATH --json` reports geometric problems; match on diagnostic `code`
+  values, not messages. Exit code `3` means error-severity findings.
+- Object ids survive glTF round trips (stored in `node.extras.aether3d.id`); names may
+  be suffixed (`.001`) if an external file repeats them.
