@@ -250,3 +250,45 @@ def transform_point(matrix: np.ndarray, point: Iterable[float]) -> Vec3:
     p = np.append(np.asarray(vec3(point, "point")), 1.0)
     x, y, z, _ = (np.asarray(matrix, dtype=np.float64) @ p).tolist()
     return (x, y, z)
+
+
+# --------------------------------------------------------------------------- #
+# Orientation
+# --------------------------------------------------------------------------- #
+
+
+def look_rotation_matrix(
+    direction: Iterable[float], up: Iterable[float] = (0.0, 0.0, 1.0)
+) -> np.ndarray:
+    """World rotation that turns an object's front (local -Y) along ``direction``.
+
+    The object's local +Z axis is turned as close to ``up`` as possible (the
+    component of ``up`` perpendicular to ``direction``), so local -X ends up
+    on the right of the view: this is how cameras, lights and assets are
+    aimed (see ``docs/RENDERING.md``). Returns a 3x3 proper rotation whose
+    columns are the world images of the local X, Y and Z axes.
+
+    If ``direction`` is parallel to ``up``, "up" becomes the world axis least
+    aligned with ``direction`` (preferring Y, then X, then Z), signed so that
+    looking down along -``up`` puts +Y at the top (like a top view) and
+    looking up puts -Y at the top.
+    """
+    f = np.asarray(vec3(direction, "direction"))
+    f_len = float(np.linalg.norm(f))
+    if f_len < _EPS:
+        raise ValidationError("direction must be non-zero")
+    f = f / f_len
+    u = np.asarray(vec3(up, "up"))
+    u_len = float(np.linalg.norm(u))
+    if u_len < _EPS:
+        raise ValidationError("up must be non-zero")
+    perp = u - float(u @ f) * f
+    if float(np.linalg.norm(perp)) <= 1e-9 * u_len:
+        axes = (np.array([0.0, 1.0, 0.0]), np.array([1.0, 0.0, 0.0]), np.array([0.0, 0.0, 1.0]))
+        axis = min(axes, key=lambda e: abs(float(e @ f)))
+        sign = -1.0 if float(f @ u) > 0.0 else 1.0
+        candidate = sign * axis
+        perp = candidate - float(candidate @ f) * f
+    perp = perp / float(np.linalg.norm(perp))
+    right = np.cross(f, perp)
+    return np.column_stack([-right, -f, perp])

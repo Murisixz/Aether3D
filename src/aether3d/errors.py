@@ -119,3 +119,42 @@ class EditError(AetherError, ValueError):
             "elements": {k: list(v) for k, v in self.elements.items()},
             "hint": self.hint,
         }
+
+
+class RenderError(AetherError, ValueError):
+    """A camera, light, appearance, render setting or render request is invalid, or rendering
+    failed; nothing was changed and no file was written.
+
+    ``code`` is a stable identifier (e.g. ``"NO_CAMERA"``, ``"INVALID_CAMERA"``,
+    ``"RESOURCE_LIMIT"``), ``location`` names the offending element (e.g.
+    ``objects[Camera].camera.fov``), ``hint`` suggests how to proceed and
+    ``details`` carries structured context.
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        location: str | None = None,
+        *,
+        hint: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.location = location
+        self.hint = hint
+        self.details = dict(details or {})
+        text = f"[{code}] " + (f"{location}: " if location else "") + message
+        if hint:
+            text += f". Hint: {hint}"
+        super().__init__(text)
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "location": self.location,
+            "hint": self.hint,
+            "details": self.details,
+        }

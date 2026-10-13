@@ -41,6 +41,7 @@ from .errors import (
     NameConflictError,
     ObjectNotFoundError,
     ProjectFormatError,
+    RenderError,
     ResourceLimitError,
     UnsupportedFeatureError,
     ValidationError,
@@ -58,6 +59,17 @@ from .procedural import (
     ProceduralSystem,
 )
 from .procedural.script import run_procedural_script
+from .rendering import (
+    Appearance,
+    Camera,
+    Light,
+    RenderLimits,
+    RenderResult,
+    RenderSettings,
+    World,
+    render,
+)
+from .rendering.script import run_scene_script
 from .scene import Scene, SceneObject
 from .serialization import FORMAT_VERSION, load_scene, save_scene
 from .transform import Transform
@@ -65,18 +77,21 @@ from .transform import Transform
 __all__ = [
     "FORMAT_VERSION",
     "AetherError",
+    "Appearance",
     "AssetFormatError",
+    "Camera",
     "CommitResult",
     "DetachedObjectError",
     "Diagnostic",
     "EditError",
     "EditSession",
     "EditableMesh",
-    "Expr",
     "ExportResult",
+    "Expr",
     "HierarchyError",
     "ImportLimits",
     "ImportResult",
+    "Light",
     "Mesh",
     "MeshGeometryReport",
     "Modifier",
@@ -88,6 +103,10 @@ __all__ = [
     "ProceduralGeometry",
     "ProceduralSystem",
     "ProjectFormatError",
+    "RenderError",
+    "RenderLimits",
+    "RenderResult",
+    "RenderSettings",
     "ResourceLimitError",
     "Scene",
     "SceneGeometryReport",
@@ -98,6 +117,7 @@ __all__ = [
     "Transform",
     "UnsupportedFeatureError",
     "ValidationError",
+    "World",
     "__version__",
     "create_cube",
     "create_plane",
@@ -107,7 +127,9 @@ __all__ = [
     "inspect_mesh",
     "inspect_scene",
     "load_scene",
+    "render",
     "run_edit_script",
     "run_procedural_script",
+    "run_scene_script",
     "save_scene",
 ]
