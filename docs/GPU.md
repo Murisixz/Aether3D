@@ -657,7 +657,7 @@ Other environment variables:
 | `test_gpu_shadows.py` | a GPU adapter | Analytic box shadows (acne, edges), filtering and map size, ray-traced shadows for the castle and a mirrored hierarchy, two lights and the shading equation |
 | `test_gpu_faults.py` | a GPU adapter | Unknown adapters, unsupported MSAA, device and memory limits, shader errors, device loss and recovery, no files on failure, a validation-layer run |
 | `test_gpu_cli.py` | a GPU adapter | `render --backend gpu` reproducing the Python API exactly, shadow and MSAA flags, `gpu info --check` |
-| `test_gpu_performance.py` | a hardware GPU | The GPU at least 3× faster than the CPU renderer on a 200,000-triangle scene (skipped on software adapters) |
+| `test_gpu_performance.py` | a hardware GPU | The GPU at least 3× faster than the CPU renderer on a 200,000-triangle scene (skipped on software adapters, and on CI unless `AETHER3D_PERFORMANCE_TESTS=1`) |
 
 Without an adapter, GPU tests are skipped and the skip reason says why.
 
@@ -681,8 +681,14 @@ CI jobs ([`.github/workflows/tests.yml`](../.github/workflows/tests.yml)):
   GitHub's Linux runners have no graphics hardware, so this validates the
   graphics API path, not hardware speed.
 - **The `GPU (windows-latest / macos-latest, native adapter if any)` jobs** use
-  whatever the hosted runner provides: Direct3D 12 / WARP, or Metal. They
-  report the adapter or the reason there is none.
+  whatever the hosted runner provides, and report the adapter or the reason
+  there is none. Today that is:
+  - Windows: Microsoft WARP through Direct3D 12, a software adapter with
+    MSAA up to 16× and timestamps;
+  - macOS: Apple's paravirtual Metal device, with MSAA 1/2/4 and no
+    timestamps.
+
+  The GPU tests and the GPU example run on both.
 - **Jobs without wgpu** (Python 3.10 and 3.13) check that everything else
   works and that `aether3d gpu info` explains the absence.
 
@@ -732,12 +738,19 @@ Verified on the development machine:
 - **Readback cost.** Every GPU render reads back all auxiliary maps (depth,
   object index, coverage, linear color). That keeps results identical in
   shape to the CPU's, but costs readback time at very large sizes.
+- **Tested devices and APIs:**
+  - **Hardware:** an NVIDIA GeForce RTX 4060 Laptop GPU (Vulkan).
+  - **Software and virtual adapters:**
+    - Mesa lavapipe (Vulkan), locally and in CI;
+    - on GitHub's runners: **Apple's paravirtual Metal device**
+      (macos-latest, Apple silicon virtual machine) and **Microsoft WARP
+      through Direct3D 12** (windows-latest).
+
+    The GPU tests run on all of these.
 - **Not covered by testing:**
-  - macOS (Metal), Windows (Direct3D 12) and AMD or Intel GPUs: only on
-    whatever the CI runners provide (see the PR / CI reports); the
-    development machine has an NVIDIA GPU and lavapipe;
-  - the Intel integrated GPU of the hybrid laptop: it has no Vulkan driver
-    installed there;
+  - physical AMD, Intel and Apple GPUs, and Direct3D 12 on hardware;
+  - the Intel integrated GPU of the hybrid development laptop: it has no
+    Vulkan driver installed there;
   - the OpenGL backend: it could not create a device with compute shaders on
     the test machine.
 - **Nothing beyond Stage 5's appearance model.** There are no textures,

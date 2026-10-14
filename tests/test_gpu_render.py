@@ -97,7 +97,14 @@ def test_parity_mode_reproduces_the_cpu_renderer(gpu, projection, samples):
     assert result.stats["samples"] == 128 * 80 * samples * samples
     assert_parity(result, cpu)
     assert result.stats["samples_covered"] == sum(o["visible_samples"] for o in result.objects)
-    np.testing.assert_allclose(result.coverage, cpu.coverage, atol=0.5 / samples**2 + 1e-6)
+    # Coverage: identical, except that a sample exactly on a silhouette may fall on either
+    # side (Apple's Metal rasterizer did so for 1 of 10,240 pixels): at most one sample,
+    # only next to background or partially covered pixels.
+    diff = np.abs(result.coverage - cpu.coverage)
+    assert diff.max() <= 1 / samples**2 + 1e-6
+    changed = diff > 1e-6
+    near_silhouette = ~interior(np.where(cpu.coverage < 1, -1, 0))
+    assert np.all(near_silhouette[changed]) and changed.mean() < 0.005
 
 
 @pytest.mark.parametrize("projection", ["perspective", "orthographic"])
