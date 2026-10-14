@@ -57,10 +57,12 @@ scene.assign_material(ground, "Lawn")
 
 # An image texture (PNG or JPEG) with a normal map, projected in object space.
 bricks = scene.create_material("Bricks", roughness=0.85)
-bricks.set_texture("base_color", "examples/textures/stone_bricks_color.png",
-                   coordinates="object", scale=0.5)
-bricks.set_texture("normal", "examples/textures/stone_bricks_normal.png",
-                   coordinates="object", scale=0.5)
+bricks.set_texture(
+    "base_color", "examples/textures/stone_bricks_color.png", coordinates="object", scale=0.5
+)
+bricks.set_texture(
+    "normal", "examples/textures/stone_bricks_normal.png", coordinates="object", scale=0.5
+)
 wall.material = bricks
 
 # Factors and a procedural roughness map.
@@ -70,10 +72,10 @@ crate.material = wood
 
 scene.add_directional_light("Sun", direction=(-0.4, 0.6, -1), intensity=2.2)
 scene.add_camera("Camera", fov=40).frame(direction=(-0.5, 1, -0.5))
-scene.render(width=640, height=360).save("courtyard.png")         # the CPU renderer
+scene.render(width=640, height=360).save("courtyard.png")  # the CPU renderer
 gpu = scene.render(backend="auto", width=640, height=360, shadows=True)  # the GPU if it works
 gpu.save("courtyard_gpu.png")
-print(wood.inspect())          # parameters, bindings, users and problems
+print(wood.inspect())  # parameters, bindings, users and problems
 scene.save("courtyard.aether")  # textures are stored as paths relative to the project
 ```
 
@@ -109,17 +111,17 @@ objects can share a material, and any number of materials can share a texture.
 ```python
 from aether3d import MaterialError
 
-stone = scene.create_material("Stone", roughness=0.9)        # validated before it is added
-stone.configure(base_color="#8c8a83", metallic=0.0)           # all-or-nothing changes
-obj.material = stone                                          # or scene.assign_material(obj, "Stone")
-scene.assign_material(["Wall 1", "Wall 2"], stone)            # names, ids or objects
-obj.material = None                                           # back to the object's own color
-print(scene.materials.users(stone))                           # [(object, group or None), ...]
+stone = scene.create_material("Stone", roughness=0.9)  # validated before it is added
+stone.configure(base_color="#8c8a83", metallic=0.0)  # all-or-nothing changes
+obj.material = stone  # or scene.assign_material(obj, "Stone")
+scene.assign_material(["Wall 1", "Wall 2"], stone)  # names, ids or objects
+obj.material = None  # back to the object's own color
+print(scene.materials.users(stone))  # [(object, group or None), ...]
 try:
-    scene.materials.remove_material(stone)                    # refused while objects use it
+    scene.materials.remove_material(stone)  # refused while objects use it
 except MaterialError as exc:
-    print(exc.code, exc.location)                             # MATERIAL_IN_USE materials[Stone]
-scene.materials.remove_material(stone, force=True)            # unassigns it, then removes it
+    print(exc.code, exc.location)  # MATERIAL_IN_USE materials[Stone]
+scene.materials.remove_material(stone, force=True)  # unassigns it, then removes it
 ```
 
 - **Objects without a material** render with their own color
@@ -238,12 +240,12 @@ ambient light.
   normal maps average unit vectors and renormalize them.
 
 ```python
-m.set_texture("roughness", "rough.png", channel="r")           # a grayscale roughness map
-m.set_texture("normal", "normal.png")                          # tangent-space normal map
+m.set_texture("roughness", "rough.png", channel="r")  # a grayscale roughness map
+m.set_texture("normal", "normal.png")  # tangent-space normal map
 m.configure(normal_strength=0.6)
-decal = scene.add_image_texture("Decal", "decal.png", wrap="clamp")   # sampler settings
-m.set_texture("base_color", decal)                             # belong to the texture
-m.clear_texture("roughness")                                   # the texture stays in the scene
+decal = scene.add_image_texture("Decal", "decal.png", wrap="clamp")  # sampler settings
+m.set_texture("base_color", decal)  # belong to the texture
+m.clear_texture("roughness")  # the texture stays in the scene
 ```
 
 ## Image textures
@@ -251,10 +253,10 @@ m.clear_texture("roughness")                                   # the texture sta
 ```python
 tex = scene.add_image_texture("Bricks", "textures/bricks.png", wrap="repeat", filter="linear")
 tex.configure(wrap=["repeat", "clamp"], mipmaps=True, color_space="auto")
-material.set_texture("base_color", tex, scale=4)              # bind an existing texture
+material.set_texture("base_color", tex, scale=4)  # bind an existing texture
 material.set_texture("normal", "textures/bricks_normal.png")  # or a path: adds a texture
-tex.embed()                                                    # store the image in the project
-print(tex.info(), tex.status())                                # settings; format, size, digest
+tex.embed()  # store the image in the project
+print(tex.info(), tex.status())  # settings; format, size, digest
 ```
 
 - **Formats.**
@@ -331,10 +333,11 @@ or the coordinates around z. A `scale` of 4 repeats a UV texture 4 times;
 `scale=0.5` in object space gives a texture tile 2 units wide.
 
 ```python
-m.set_texture("base_color", "tiles.png", scale=8, rotation=45)                 # uv
-m.set_texture("base_color", "rock.png", coordinates="world", projection="triplanar",
-              scale=0.25, blend=8)
-m.set_texture_options("base_color", offset=[0.5, 0])                           # change a binding
+m.set_texture("base_color", "tiles.png", scale=8, rotation=45)  # uv
+m.set_texture(
+    "base_color", "rock.png", coordinates="world", projection="triplanar", scale=0.25, blend=8
+)
+m.set_texture_options("base_color", offset=[0.5, 0])  # change a binding
 ```
 
 A UV binding on a mesh without UVs is skipped for that object, with a
@@ -354,20 +357,28 @@ graph = {
     "nodes": {
         "cells": {"type": "voronoi", "scale": 3.2, "seed": 7},
         "grain": {"type": "fbm", "scale": 9, "octaves": 4, "seed": 8},
-        "tint": {"type": "ramp", "factor": {"node": "cells", "output": "cell"},
-                 "stops": [[0, "#6d6a63"], [1, "#a5a39b"]]},
-        "color": {"type": "mix", "a": {"node": "tint"}, "b": {"node": "grain"},
-                  "factor": 0.35, "mode": "multiply"},
+        "tint": {
+            "type": "ramp",
+            "factor": {"node": "cells", "output": "cell"},
+            "stops": [[0, "#6d6a63"], [1, "#a5a39b"]],
+        },
+        "color": {
+            "type": "mix",
+            "a": {"node": "tint"},
+            "b": {"node": "grain"},
+            "factor": 0.35,
+            "mode": "multiply",
+        },
     },
 }
 m.set_procedural_texture("base_color", graph, coordinates="object", projection="volume")
-m.set_procedural_texture("roughness", {"type": "noise", "scale": 12})   # a single node
-m.set_procedural_texture("emissive", "checker", scale=8, color2="#ffcc00")  # a node type:
-                                                # keywords are its parameters, or binding options
+m.set_procedural_texture("roughness", {"type": "noise", "scale": 12})  # a single node
+# A node type name: keywords are its parameters (the others are binding options).
+m.set_procedural_texture("emissive", "checker", scale=8, color2="#ffcc00")
 tex = scene.add_procedural_texture("Clouds", {"type": "fbm", "octaves": 6})
-tex.set_params(scale=4)                         # change the output node's parameters
-image = tex.preview(256)                        # an 8-bit sRGB array of the unit uv square
-tex.bake("clouds.png", 1024)                    # an explicit, optional PNG output
+tex.set_params(scale=4)  # change the output node's parameters
+image = tex.preview(256)  # an 8-bit sRGB array of the unit uv square
+tex.bake("clouds.png", 1024)  # an explicit, optional PNG output
 ```
 
 - **Values.** Every node produces four numbers (`r, g, b, a`). Its outputs
@@ -450,10 +461,10 @@ Every triangle of a mesh belongs to a face group: 0 by default, any integer
 0..65535 otherwise. An object can map groups to materials:
 
 ```python
-scene.assign_material(block, earth)              # the whole object
-scene.assign_material(block, grass, group=1)     # faces of group 1 only
-block.group_materials                            # {1: Material 'Grass'}
-block.material_for_group(0)                      # Material 'Earth'
+scene.assign_material(block, earth)  # the whole object
+scene.assign_material(block, grass, group=1)  # faces of group 1 only
+block.group_materials  # {1: Material 'Grass'}
+block.material_for_group(0)  # Material 'Earth'
 ```
 
 Groups without an entry use the object's material, or its color if it has

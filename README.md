@@ -226,12 +226,12 @@ stone.set_texture("base_color", "textures/bricks.png", coordinates="object", sca
 stone.set_texture("normal", "textures/bricks_normal.png", coordinates="object", scale=0.5)
 wall.material = stone
 
-scene.create_material("Lawn", preset="grass")            # procedural: no images, no UVs
+scene.create_material("Lawn", preset="grass")  # procedural: no images, no UVs
 scene.assign_material(ground, "Lawn")
 
 roof = scene.create_material("Roof", base_color="#9c3a27", roughness=0.7)
 roof.set_procedural_texture("roughness", {"type": "fbm", "scale": 8, "octaves": 4})
-scene.assign_material(tower, roof, group=1)              # one face group of a mesh
+scene.assign_material(tower, roof, group=1)  # one face group of a mesh
 ```
 
 - **Two shading models.** The default is glTF's physically based

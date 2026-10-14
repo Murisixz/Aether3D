@@ -294,10 +294,10 @@ Groups are a per-face value, carried like the smooth flag:
 ```python
 with crate.edit_mesh() as m:
     lid = m.select_faces(normal=((0, 0, 1), 1), expect=1)
-    m.set_group(lid, 1)                     # an undoable operation
-    m.inset_faces(lid, 0.1)                 # the inset border joins group 1 too
+    m.set_group(lid, 1)  # an undoable operation
+    m.inset_faces(lid, 0.1)  # the inset border joins group 1 too
     print(m.face_group(next(iter(lid.faces))), m.has_groups)
-    m.select_faces(group=1)                 # every face of group 1
+    m.select_faces(group=1)  # every face of group 1
 scene.assign_material(crate, "Lid", group=1)
 ```
 
