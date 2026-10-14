@@ -115,6 +115,30 @@ const C_THROUGH: u32 = 5u;
 const C_LIMITED: u32 = 6u;
 const C_VISIBLE: u32 = 8u;
 
+// A path's ray counts. Scalar fields, not an array: D3D12's FXC cannot write an array
+// inside a struct ("l-value expected"). Counters are indexed by constants only.
+struct Tally {
+  camera: u32,
+  bounce: u32,
+  shadow: u32,
+  ao: u32,
+  center: u32,
+  through: u32,
+  limited: u32,
+};
+
+fn add_tally(a: Tally, b: Tally) -> Tally {
+  return Tally(
+    a.camera + b.camera,
+    a.bounce + b.bounce,
+    a.shadow + b.shadow,
+    a.ao + b.ao,
+    a.center + b.center,
+    a.through + b.through,
+    a.limited + b.limited,
+  );
+}
+
 struct Params {
   eye: vec3<f32>, near: f32,             // eye: world position of the camera (for world coordinates)
   forward: vec3<f32>, far: f32,
@@ -1014,7 +1038,7 @@ struct State {
   hit_any: bool,
   depth: f32,
   center_inst: u32,
-  counts: array<u32, 8>,
+  tally: Tally,
 };
 
 fn add_target(st: ptr<function, State>, v: vec3<f32>, direct: bool) {
@@ -1124,9 +1148,9 @@ fn continue_ray(st: ptr<function, State>) {
   (*st).skip_inst = (*st).hit.inst;
   (*st).skip_prim = (*st).hit.prim;
   (*st).layers += 1u;
-  (*st).counts[C_THROUGH] += 1u;
+  (*st).tally.through += 1u;
   if ((*st).layers >= MAX_LAYERS) {
-    (*st).counts[C_LIMITED] += 1u;
+    (*st).tally.limited += 1u;
     on_miss(st);
     return;
   }
@@ -1283,7 +1307,7 @@ fn on_shade(st: ptr<function, State>) {
 fn shadow_ray(st: ptr<function, State>, contrib: vec3<f32>, d: vec3<f32>, tmax: f32) {
   (*st).pending = contrib;
   start_ray(st, RAY_SHADOW, (*st).leave, d, 0.0, tmax, (*st).it.inst, (*st).it.prim);
-  (*st).counts[C_SHADOW] += 1u;
+  (*st).tally.shadow += 1u;
 }
 
 // The light sample of an emitter, once its emitted radiance `le` is known.
@@ -1427,7 +1451,7 @@ fn on_bounce(st: ptr<function, State>) {
   start_ray(st, RAY_BOUNCE, (*st).leave, s.wi, 0.0, PT_INF, (*st).it.inst, (*st).it.prim);
   (*st).cone_w = (*st).it.width;
   (*st).cone_spread = (*st).spread;
-  (*st).counts[C_BOUNCE] += 1u;
+  (*st).tally.bounce += 1u;
   (*st).vertex = vertex + 1u;
 }
 
@@ -1441,7 +1465,7 @@ fn on_ao(st: ptr<function, State>) {
     let u2 = rnd((*st).key, 0u, SLOT_AO + 2u * j + 1u);
     let d = to_world(cosine_hemisphere(u1, u2), basis(ng_side), ng_side);
     start_ray(st, RAY_AO, offset_origin(it.p, ng_side), d, 0.0, params.ao_distance, it.inst, it.prim);
-    (*st).counts[C_AO] += 1u;
+    (*st).tally.ao += 1u;
     return;
   }
   (*st).ao = 1.0 - params.ao_strength * (*st).ao_blocked / f32(params.ao_samples);
@@ -1502,10 +1526,14 @@ fn new_state(key: vec2<u32>) -> State {
   st.hit_any = false;
   st.depth = PT_INF;
   st.center_inst = PT_NONE;
-  for (var k = 0u; k < 8u; k++) {
-    st.counts[k] = 0u;
-  }
+  st.tally = Tally(0u, 0u, 0u, 0u, 0u, 0u, 0u);
   return st;
+}
+
+fn add_count(k: u32, n: u32) {
+  if (n != 0u) {
+    atomicAdd(&wg_counts[k], n);
+  }
 }
 
 fn plane(k: u32, pixel: u32) -> u32 {
@@ -1518,7 +1546,7 @@ fn path_main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invoc
     atomicStore(&wg_counts[lid], 0u);
   }
   workgroupBarrier();
-  var counts = array<u32, 8>(0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u);
+  var tally = Tally(0u, 0u, 0u, 0u, 0u, 0u, 0u);
   let x = params.tile_x + gid.x;
   let y = params.tile_y + gid.y;
   if (gid.x < params.tile_w && gid.y < params.tile_h) {
@@ -1533,17 +1561,17 @@ fn path_main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invoc
     } else if (params.mode == MODE_CENTER) {
       var st = new_state(vec2<u32>(0u));
       camera_ray(&st, RAY_CENTER, x, y, 0.5, 0.5, false);
-      st.counts[C_CENTER] += 1u;
+      st.tally.center += 1u;
       run_state(&st);
       accum[plane(ACC_DEPTH, pixel)] = st.depth;
       accum[plane(ACC_INSTANCE, pixel)] = bitcast<f32>(st.center_inst);
-      counts = st.counts;
+      tally = st.tally;
     } else {
       for (var s = params.sample_first; s < params.sample_first + params.sample_count; s++) {
         let key = path_key(pixel, s);
         var st = new_state(key);
         camera_ray(&st, RAY_CAMERA, x, y, rnd(key, 0u, SLOT_PIXEL), rnd(key, 0u, SLOT_PIXEL + 1u), true);
-        st.counts[C_CAMERA] += 1u;
+        st.tally.camera += 1u;
         run_state(&st);
         var indirect = st.indirect;
         if (params.clamp > 0.0) {
@@ -1568,17 +1596,17 @@ fn path_main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invoc
         }
         accum[plane(ACC_AO, pixel)] += st.ao;
         accum[plane(ACC_HITS, pixel)] += select(0.0, 1.0, st.hit_any);
-        for (var k = 0u; k < 8u; k++) {
-          counts[k] += st.counts[k];
-        }
+        tally = add_tally(tally, st.tally);
       }
     }
   }
-  for (var k = 0u; k < 8u; k++) {
-    if (counts[k] != 0u) {
-      atomicAdd(&wg_counts[k], counts[k]);
-    }
-  }
+  add_count(C_CAMERA, tally.camera);
+  add_count(C_BOUNCE, tally.bounce);
+  add_count(C_SHADOW, tally.shadow);
+  add_count(C_AO, tally.ao);
+  add_count(C_CENTER, tally.center);
+  add_count(C_THROUGH, tally.through);
+  add_count(C_LIMITED, tally.limited);
   workgroupBarrier();
   if (lid < 8u) {
     let total = atomicLoad(&wg_counts[lid]);
