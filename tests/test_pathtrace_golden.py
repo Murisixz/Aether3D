@@ -17,6 +17,7 @@ after an intended change with::
 
 from __future__ import annotations
 
+import math
 import platform
 import sys
 from pathlib import Path
@@ -38,7 +39,23 @@ REFERENCE_PLATFORM = {
     "objects": [76, 70, 256, 80, 80, 10],
     "rays": {"camera_rays": 9216, "bounce_rays": 24115, "shadow_rays": 22952},
     "albedo": [0.6924957036972046, 0.6919260621070862, 0.6164466142654419],
+    "direct": [0.2562319040298462, 0.25624212622642517, 0.24119612574577332],
+    "indirect": [0.06234975531697273, 0.06201505661010742, 0.030815303325653076],
+    "pixel_12_12": [0.23855219781398773, 0.2514634132385254, 0.21876032650470734],
+    "pass_through_rays": 28,
+    "cos_sin_ulps": [0.0, 0.0],
 }
+
+
+def math_ulps() -> list[float]:
+    """Largest difference, in ulps, of NumPy's cos and sin from the math module's."""
+    u = uniform(path_keys(11, np.arange(20000), np.zeros(20000, np.int64)), 3)
+    x = 2.0 * np.pi * u
+    out = []
+    for vectorized, scalar in ((np.cos, math.cos), (np.sin, math.sin)):
+        expected = np.array([scalar(v) for v in x])
+        out.append(float((np.abs(vectorized(x) - expected) / np.spacing(np.abs(expected))).max()))
+    return out
 
 
 def render():
@@ -60,10 +77,21 @@ def fingerprint(result, image: np.ndarray, reference: np.ndarray) -> str:
         "objects": np.bincount(result.object_index[result.object_index >= 0].ravel()).tolist(),
         "rays": {k: result.stats[k] for k in REFERENCE_PLATFORM["rays"]},
         "albedo": result.passes["albedo"].mean(axis=(0, 1)).tolist(),
+        "direct": result.passes["direct"].mean(axis=(0, 1)).tolist(),
+        "indirect": result.passes["indirect"].mean(axis=(0, 1)).tolist(),
+        "pixel_12_12": image[12, 12].tolist(),
+        "pass_through_rays": result.stats["pass_through_rays"],
+        "cos_sin_ulps": math_ulps(),
     }
     lines = [f"{k}: {found[k]} (reference platform: {v})" for k, v in REFERENCE_PLATFORM.items()]
     mean, expected = image.mean(axis=(0, 1)).tolist(), reference.mean(axis=(0, 1)).tolist()
     lines.append(f"mean: {mean} (reference: {expected})")
+    relative = np.abs(image.astype(np.float64) - reference) / np.maximum(np.abs(reference), 1e-3)
+    lines.append(
+        "relative differences: median {:.3g}, 90th percentile {:.3g}, max {:.3g}".format(
+            *np.percentile(relative, [50, 90, 100])
+        )
+    )
     lines.append(f"NumPy {np.__version__}, {platform.platform()}, {platform.machine()}")
     return "\n".join(lines)
 
