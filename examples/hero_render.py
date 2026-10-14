@@ -116,10 +116,6 @@ EARTH_SIDES = {
 
 def dress_with_materials(scene: Scene) -> None:
     """Skin, fabric, a gem blade on a metal hilt and a grass block (face groups)."""
-    import numpy as np
-
-    from aether3d import Mesh
-
     skin = scene.create_material("Skin", base_color="#c69c72", roughness=0.62, specular=0.45)
     skin.set_procedural_texture(
         "base_color",
@@ -162,9 +158,7 @@ def dress_with_materials(scene: Scene) -> None:
     block = scene.get_by_name("Grass Block")
     cube = block.mesh
     top = cube.normals[cube.triangles[:, 0], 2] > 0.5
-    block.mesh = Mesh(
-        cube.positions, cube.triangles, cube.normals, cube.uvs, groups=np.where(top, 1, 0)
-    )
+    block.mesh = cube.with_groups(np.where(top, 1, 0))
     earth = scene.create_material("Earth", roughness=0.95, specular=0.3)
     earth.set_procedural_texture(
         "base_color", EARTH_SIDES, coordinates="world", projection="triplanar"
