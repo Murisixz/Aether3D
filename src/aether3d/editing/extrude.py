@@ -221,7 +221,12 @@ class ExtrudeMixin:
             cb = corners[f][loop.index(mapping.get(b, b))]
             side_corners = self._split_corners([ca, cb, cb, ca])
             sides.append(
-                self._new_face([a, b, mapping[b], mapping[a]], side_corners, smooth=self._smooth[f])
+                self._new_face(
+                    [a, b, mapping[b], mapping[a]],
+                    side_corners,
+                    smooth=self._smooth[f],
+                    group=self._group.get(f, 0),
+                )
             )
         return mapping, sides
 

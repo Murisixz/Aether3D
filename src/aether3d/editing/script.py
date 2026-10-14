@@ -62,6 +62,7 @@ QUERY_KEYS = {
     "nearest",
     "boundary",
     "sides",
+    "group",
     "test",
     "space",
     "expect",

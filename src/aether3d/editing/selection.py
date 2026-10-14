@@ -57,6 +57,7 @@ class SelectionMixin:
         nearest: Iterable[float] | None = None,
         boundary: bool | None = None,
         sides: int | None = None,
+        group: int | None = None,
         predicate: Callable[[int, tuple], bool] | None = None,
         test: str = "center",
         space: str = "local",
@@ -76,6 +77,7 @@ class SelectionMixin:
           ``AMBIGUOUS_SELECTION`` if several are equally near.
         * ``boundary=True/False`` -- on (or off) an open boundary.
         * ``sides=n`` -- faces with exactly ``n`` vertices.
+        * ``group=k`` -- faces in face group ``k`` (see :meth:`set_group`).
         * ``predicate(id, location) -> bool`` -- arbitrary Python test.
         """
         if kind not in KINDS:
@@ -86,6 +88,8 @@ class SelectionMixin:
             raise ValidationError(f"space must be 'local' or 'world', got {space!r}")
         if sides is not None and kind != "faces":
             raise ValidationError("sides= only applies to faces")
+        if group is not None and kind != "faces":
+            raise ValidationError("group= only applies to faces")
         all_ids = {"vertices": self.vertex_ids, "edges": self.edge_ids, "faces": self.face_ids}[
             kind
         ]()
@@ -180,6 +184,10 @@ class SelectionMixin:
         if sides is not None:
             candidates = np.array(
                 [f for f in candidates if len(self._faces[int(f)]) == int(sides)], dtype=np.int64
+            )
+        if group is not None:
+            candidates = np.array(
+                [f for f in candidates if self._group.get(int(f), 0) == int(group)], dtype=np.int64
             )
         if predicate is not None:
             locs = locations(candidates) if len(candidates) else np.zeros((0, 3))

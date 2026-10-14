@@ -236,7 +236,7 @@ class MeshCore:
     max_history: int = 256
     max_elements: int = 20_000_000
 
-    def __init__(self, *, uvs: bool = True, normals: bool = True) -> None:
+    def __init__(self, *, uvs: bool = True, normals: bool = True, groups: bool = False) -> None:
         self._pos = np.zeros((16, 3), dtype=np.float64)
         self._alive = np.zeros(16, dtype=bool)
         self._nv = 0
@@ -249,6 +249,8 @@ class MeshCore:
         self._next_edge = 0
         self._sharp: set[int] = set()
         self._smooth: dict[int, bool] = {}
+        self._group: dict[int, int] = {}  # face group of every face (materials per group)
+        self._has_groups = groups  # the mesh carries face groups (Mesh.groups)
         self._layers: dict[str, CornerLayer] = {}
         if uvs:
             self._layers[UV] = CornerLayer(UV, 2)
@@ -285,7 +287,10 @@ class MeshCore:
         reported in :attr:`source_diagnostics`; their area is zero.
         Shading is inferred from the normals: a face is *smooth* if its
         corner normals differ from its face normal, and an edge is *sharp* if
-        the normals of its two faces differ across it.
+        the normals of its two faces differ across it. Face groups
+        (:attr:`Mesh.groups`) carry over to the faces, and every editing
+        operation keeps them (new faces take the group of the face they come
+        from).
 
         ``quads=True`` (default) rebuilds quads from pairs of triangles that are
         coplanar (within 1 degree), form a convex quad and agree on UVs and
@@ -297,7 +302,11 @@ class MeshCore:
             raise ValidationError(f"expected a Mesh, got {type(mesh).__name__}")
         if weld not in ("exact", "none"):
             raise ValidationError(f"weld must be 'exact' or 'none', got {weld!r}")
-        em = cls(uvs=mesh.uvs is not None, normals=mesh.normals is not None)
+        em = cls(
+            uvs=mesh.uvs is not None,
+            normals=mesh.normals is not None,
+            groups=mesh.groups is not None,
+        )
         n = mesh.vertex_count
         positions = mesh.positions.astype(np.float64)
         if weld == "exact" and n:
@@ -322,13 +331,15 @@ class MeshCore:
         uv = mesh.uvs.astype(np.float64) if mesh.uvs is not None else None
         nor = mesh.normals.astype(np.float64) if mesh.normals is not None else None
         source = mesh.triangles
+        groups = mesh.groups
         for t in np.flatnonzero(~degenerate):
             corners = {}
             if uv is not None:
                 corners[UV] = [tuple(uv[i]) for i in source[t]]
             if nor is not None:
                 corners[NORMAL] = [tuple(nor[i]) for i in source[t]]
-            em._new_face([int(v) for v in tris[t]], corners, smooth=False)
+            group = int(groups[t]) if groups is not None else 0
+            em._new_face([int(v) for v in tris[t]], corners, smooth=False, group=group)
         if degenerate.any():
             em.source_diagnostics.append(
                 Diagnostic(
@@ -403,6 +414,7 @@ class MeshCore:
         out_normal: list[tuple] = []
         out_uv: list[tuple] = []
         triangles: list[tuple[int, int, int]] = []
+        triangle_groups: list[int] = []
         for fid in sorted(self._faces):
             loop = self._faces[fid]
             try:
@@ -427,6 +439,7 @@ class MeshCore:
                     out_uv.append(uk)
                 corner_out.append(index)
             triangles.extend((corner_out[a], corner_out[b], corner_out[c]) for a, b, c in local)
+            triangle_groups.extend([self._group.get(fid, 0)] * len(local))
         loose = [v for v in self.vertex_ids() if not self._vert_edges[v]]
         if loose:
             diagnostics.append(
@@ -444,6 +457,7 @@ class MeshCore:
             np.array(triangles, dtype=np.int64).reshape(-1, 3),
             normals=np.array(out_normal).reshape(-1, 3) if normals is not None else None,
             uvs=np.array(out_uv).reshape(-1, 2) if uvs is not None else None,
+            groups=np.array(triangle_groups, dtype=np.int64) if self._has_groups else None,
         )
         return mesh, diagnostics
 
@@ -462,6 +476,8 @@ class MeshCore:
         other._next_edge = self._next_edge
         other._sharp = set(self._sharp)
         other._smooth = dict(self._smooth)
+        other._group = dict(self._group)
+        other._has_groups = self._has_groups
         other._layers = {
             name: CornerLayer(
                 layer.name,
@@ -599,6 +615,16 @@ class MeshCore:
         if layer not in self._layers:
             raise ValidationError(f"mesh has no {layer!r} layer (layers: {list(self._layers)})")
         return list(self._layers[layer].data[fid])
+
+    @property
+    def has_groups(self) -> bool:
+        """Whether the mesh carries face groups (they become :attr:`Mesh.groups`)."""
+        return self._has_groups
+
+    def face_group(self, fid: int) -> int:
+        """The face group of face ``fid`` (0 unless set; see :meth:`set_group`)."""
+        self._require_faces([fid])
+        return self._group.get(fid, 0)
 
     def is_smooth(self, fid: int) -> bool:
         self._require_faces([fid])
@@ -973,6 +999,7 @@ class MeshCore:
         corners: dict[str, list[tuple]] | None = None,
         *,
         smooth: bool = False,
+        group: int = 0,
         fid: int | None = None,
         reuse_edges: dict | None = None,
         dirty: bool = True,
@@ -995,6 +1022,7 @@ class MeshCore:
                 values = defaults[name]
             layer.data[fid] = [tuple(float(x) for x in v) for v in values]
         self._smooth[fid] = bool(smooth)
+        self._group[fid] = int(group)
         self._log(("f+", fid, created))
         if dirty:
             self._mark_dirty([fid])
@@ -1007,9 +1035,10 @@ class MeshCore:
             self._drop_edge_use(key, fid, removed)
         corners = {name: layer.data.pop(fid) for name, layer in self._layers.items()}
         smooth = self._smooth.pop(fid)
+        group = self._group.pop(fid, 0)
         was_dirty = fid in self._dirty_faces
         self._dirty_faces.discard(fid)
-        self._log(("f-", fid, loop, corners, smooth, removed, was_dirty))
+        self._log(("f-", fid, loop, corners, smooth, removed, was_dirty, group))
 
     def _replace_face(
         self,
@@ -1061,6 +1090,10 @@ class MeshCore:
     def _set_smooth(self, fid: int, smooth: bool) -> None:
         self._log(("s=", fid, self._smooth[fid]))
         self._smooth[fid] = bool(smooth)
+
+    def _set_group(self, fid: int, group: int) -> None:
+        self._log(("g=", fid, self._group.get(fid, 0)))
+        self._group[fid] = int(group)
 
     def _set_sharp(self, eid: int, sharp: bool) -> None:
         self._log(("e=", eid, eid in self._sharp))
@@ -1114,14 +1147,16 @@ class MeshCore:
                 for layer in self._layers.values():
                     layer.data.pop(fid, None)
                 self._smooth.pop(fid, None)
+                self._group.pop(fid, None)
                 self._dirty_faces.discard(fid)
             elif kind == "f-":
-                _, fid, loop, corners, smooth, removed, was_dirty = entry
+                _, fid, loop, corners, smooth, removed, was_dirty, group = entry
                 self._faces[fid] = loop
                 self._restore_edge_uses(fid, removed)
                 for name, values in corners.items():
                     self._layers[name].data[fid] = values
                 self._smooth[fid] = smooth
+                self._group[fid] = group
                 if was_dirty:
                     self._dirty_faces.add(fid)
             elif kind == "f~":
@@ -1135,6 +1170,10 @@ class MeshCore:
                 self._layers[entry[2]].data[entry[1]] = entry[3]
             elif kind == "s=":
                 self._smooth[entry[1]] = entry[2]
+            elif kind == "g=":
+                self._group[entry[1]] = entry[2]
+            elif kind == "groups":
+                self._has_groups = entry[1]
             elif kind == "e=":
                 if entry[2]:
                     self._sharp.add(entry[1])

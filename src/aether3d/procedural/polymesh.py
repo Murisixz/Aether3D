@@ -15,6 +15,8 @@ and n-gons. The layout is fully vectorized (compressed sparse rows):
   still exact (transforms keep them valid; reshaping operations clear them)
 * ``smooth``        -- ``(F,) bool`` shading flag
 * ``sharp_edges``   -- ``(S, 2) int64`` vertex pairs (``a < b``) marked sharp
+* ``groups``        -- ``(F,) int64`` face groups (materials per group), or
+  ``None``; every modifier carries them to the faces it makes
 
 When a PolyMesh is converted to a triangle :class:`~aether3d.Mesh`, normals of
 faces whose stored normals are no longer valid are recomputed with the same
@@ -54,6 +56,7 @@ class PolyMesh:
         "normals_valid",
         "smooth",
         "sharp_edges",
+        "groups",
         "_derived",
     )
 
@@ -68,6 +71,7 @@ class PolyMesh:
         normals_valid: Any | None = None,
         smooth: Any | None = None,
         sharp_edges: Any | None = None,
+        groups: Any | None = None,
     ) -> None:
         pos = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
         offsets = np.asarray(face_offsets, dtype=np.int64).reshape(-1)
@@ -101,6 +105,12 @@ class PolyMesh:
         sharp = np.zeros((0, 2), np.int64) if sharp_edges is None else np.asarray(sharp_edges)
         sharp = np.sort(sharp.astype(np.int64).reshape(-1, 2), axis=1)
         self.sharp_edges = _readonly(np.unique(sharp, axis=0) if len(sharp) else sharp)
+        self.groups = None
+        if groups is not None:
+            g = np.asarray(groups, dtype=np.int64).reshape(-1)
+            if len(g) != f or (len(g) and (g.min() < 0 or g.max() > 2**16 - 1)):
+                raise PolyMeshError("groups must hold one group in [0, 65535] per face")
+            self.groups = _readonly(g)
         self._derived: dict[str, Any] = {}
 
     # ------------------------------------------------------------------ #
@@ -163,6 +173,7 @@ class PolyMesh:
             "normals_valid": self.normals_valid,
             "smooth": self.smooth,
             "sharp_edges": self.sharp_edges,
+            "groups": self.groups,
         }
         fields.update(changes)
         return PolyMesh(
@@ -192,6 +203,7 @@ class PolyMesh:
         normals: list[list[tuple]] | None = None,
         smooth: Any = None,
         sharp_edges: Any = None,
+        groups: Any = None,
     ) -> PolyMesh:
         """Build from a list of vertex loops (and optional per-face corner lists)."""
         sizes = [len(f) for f in faces]
@@ -207,6 +219,7 @@ class PolyMesh:
             normals=flat_n,
             smooth=smooth,
             sharp_edges=sharp_edges,
+            groups=groups,
         )
 
     # ------------------------------------------------------------------ #
@@ -428,6 +441,7 @@ class PolyMesh:
                     np.zeros((0, 3), np.int64),
                     normals=np.zeros((0, 3)) if self.normals is not None else None,
                     uvs=np.zeros((0, 2)) if self.uvs is not None else None,
+                    groups=np.zeros(0, np.int64) if self.groups is not None else None,
                 ),
                 diagnostics,
             )
@@ -447,11 +461,15 @@ class PolyMesh:
         rank[order] = np.arange(len(order))
         corner_to_vertex = rank[inverse]
         firsts = first[order]
+        groups = None
+        if self.groups is not None:  # each triangle belongs to the face of its first corner
+            groups = self.groups[self.corner_face[triangles[:, 0]]] if len(triangles) else []
         mesh = Mesh(
             self.positions[self.face_vertices[firsts]],
             corner_to_vertex[triangles],
             normals=normals[firsts] if normals is not None else None,
             uvs=uvs[firsts] if uvs is not None else None,
+            groups=None if groups is None else np.asarray(groups, np.int64),
         )
         return mesh, diagnostics
 
@@ -491,19 +509,27 @@ class PolyMesh:
             normals_valid=np.array([f not in em._dirty_faces for f in fids], bool),
             smooth=np.array([em._smooth.get(f, False) for f in fids], bool),
             sharp_edges=sharp_arr,
+            groups=np.array([em._group.get(f, 0) for f in fids], np.int64)
+            if em._has_groups
+            else None,
         )
 
     def to_editable(self):
         """An :class:`~aether3d.editing.EditableMesh` with the same polygons."""
         from ..editing import EditableMesh
 
-        em = EditableMesh(uvs=self.uvs is not None, normals=self.normals is not None)
+        em = EditableMesh(
+            uvs=self.uvs is not None,
+            normals=self.normals is not None,
+            groups=self.groups is not None,
+        )
         em._bulk_vertices(self.positions)
         uv = self.uvs.tolist() if self.uvs is not None else None
         nr = self.normals.tolist() if self.normals is not None else None
         offsets = self.face_offsets.tolist()
         fv = self.face_vertices.tolist()
         smooth = self.smooth.tolist()
+        groups = self.groups.tolist() if self.groups is not None else None
         valid = self.normals_valid.tolist()
         for f in range(self.face_count):
             s, e = offsets[f], offsets[f + 1]
@@ -512,7 +538,8 @@ class PolyMesh:
                 corners["uv"] = uv[s:e]
             if nr is not None:
                 corners["normal"] = nr[s:e]
-            em._new_face(fv[s:e], corners, smooth=smooth[f], dirty=not valid[f])
+            group = groups[f] if groups is not None else 0
+            em._new_face(fv[s:e], corners, smooth=smooth[f], group=group, dirty=not valid[f])
         for a, b in self.sharp_edges.tolist():
             e = em.edge_between(a, b)
             if e is not None:
@@ -656,6 +683,8 @@ class PolyMesh:
                 h.update(np.ascontiguousarray(arr).astype(arr.dtype.newbyteorder("<")).tobytes())
             for arr in (self.uvs, self.normals):
                 h.update(b"-" if arr is None else np.ascontiguousarray(arr).astype("<f8").tobytes())
+            if self.groups is not None:  # (hashes of meshes without groups are unchanged)
+                h.update(b"groups" + np.ascontiguousarray(self.groups).astype("<i8").tobytes())
             return h.hexdigest()
 
         return self._get("hash", build)
@@ -708,8 +737,10 @@ def _size_histogram(sizes: np.ndarray) -> dict[int, int]:
 
 
 def mesh_hash(mesh: Mesh) -> str:
-    """SHA-256 of a Mesh's arrays (positions, triangles, normals, UVs)."""
+    """SHA-256 of a Mesh's arrays (positions, triangles, normals, UVs, face groups)."""
     h = hashlib.sha256()
     for arr in (mesh.positions, mesh.triangles, mesh.normals, mesh.uvs):
         h.update(b"-" if arr is None else np.ascontiguousarray(arr).tobytes())
+    if mesh.groups is not None:  # (hashes of meshes without groups are unchanged)
+        h.update(b"groups" + np.ascontiguousarray(mesh.groups).tobytes())
     return h.hexdigest()
