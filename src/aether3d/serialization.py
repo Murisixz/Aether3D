@@ -24,7 +24,7 @@ import numpy as np
 from ._fileio import write_atomic
 from ._version import __version__
 from .errors import AetherError, ProjectFormatError, RenderError, ValidationError
-from .mesh import Mesh
+from .mesh import MAX_GROUP, Mesh
 from .procedural.params import value_from_json, value_to_json
 from .rendering.camera import Camera
 from .rendering.light import Light
@@ -35,7 +35,7 @@ from .transform import Transform
 FORMAT_ID = "aether3d.project"
 """Value of the top-level ``format`` field identifying an Aether3D project."""
 
-FORMAT_VERSION = 3
+FORMAT_VERSION = 4
 """Version written by this release. Files with a higher version are rejected.
 
 * Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
@@ -43,6 +43,9 @@ FORMAT_VERSION = 3
 * Version 3 (Aether3D 0.5.0) adds rendering: ``scene.active_camera``,
   ``scene.world``, ``scene.render`` and, on every object, ``camera``,
   ``light``, ``appearance`` and ``visible``.
+* Version 4 (Aether3D 0.7.0) adds materials: ``scene.materials``,
+  ``scene.textures``, per-triangle ``groups`` on meshes and, on every object,
+  ``material`` and ``group_materials``.
 
 Older files are upgraded on load by the functions in :data:`MIGRATIONS`.
 """
@@ -93,9 +96,31 @@ def _migrate_v2_to_v3(document: dict[str, Any]) -> dict[str, Any]:
     return doc
 
 
+def _migrate_v3_to_v4(document: dict[str, Any]) -> dict[str, Any]:
+    """v3 -> v4: no materials or textures; objects keep their colors (no material)."""
+    doc = dict(document)
+    scene = doc.get("scene")
+    if isinstance(scene, dict):
+        scene = dict(scene)
+        scene.setdefault("materials", [])
+        scene.setdefault("textures", [])
+        objects = scene.get("objects")
+        if isinstance(objects, list):
+            defaults = {"material": None, "group_materials": {}}
+            scene["objects"] = [
+                {**o, **{k: v for k, v in defaults.items() if k not in o}}
+                if isinstance(o, dict)
+                else o
+                for o in objects
+            ]
+        doc["scene"] = scene
+    return doc
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
+    3: _migrate_v3_to_v4,
 }
 """``MIGRATIONS[n]`` upgrades a version-``n`` document to version ``n + 1``."""
 
@@ -118,11 +143,23 @@ def _mesh_to_dict(mesh: Mesh) -> dict[str, Any]:
     if mesh.uvs is not None:
         data["uvs"] = _float32_list(mesh.uvs)
     data["triangles"] = mesh.triangles.tolist()
+    if mesh.groups is not None:
+        data["groups"] = mesh.groups.tolist()
     return data
 
 
-def scene_to_dict(scene: Scene) -> dict[str, Any]:
-    """Serialize ``scene`` into a JSON-compatible project document."""
+def scene_to_dict(
+    scene: Scene, project_dir: str | os.PathLike[str] | None = None
+) -> dict[str, Any]:
+    """Serialize ``scene`` into a JSON-compatible project document.
+
+    Image texture files are written as paths relative to ``project_dir`` (the
+    directory the project is saved in; default: the scene's own project
+    directory, else the current directory); a file outside it raises
+    ``MaterialError("TEXTURE_OUTSIDE_PROJECT")`` -- embed it or copy it there.
+    """
+    base = Path(project_dir) if project_dir is not None else scene.materials.base_dir
+    library = scene.materials.to_dict(Path(base if base is not None else Path.cwd()).absolute())
     mesh_index: dict[int, int] = {}  # id(mesh) -> position in "meshes"
     meshes: list[dict[str, Any]] = []
 
@@ -154,6 +191,8 @@ def scene_to_dict(scene: Scene) -> dict[str, Any]:
                 "light": None if obj._light is None else obj._light.to_dict(),
                 "appearance": None if obj._appearance.is_default else obj._appearance.to_dict(),
                 "visible": obj._visible,
+                "material": obj._material,
+                "group_materials": {str(g): m for g, m in sorted(obj._group_materials.items())},
             }
         )
     system = scene._procedural
@@ -192,6 +231,8 @@ def scene_to_dict(scene: Scene) -> dict[str, Any]:
             "parameters": parameters,
             "rules": rules,
             "geometry": geometry,
+            "materials": library["materials"],
+            "textures": library["textures"],
             "objects": objects,
         },
         "meshes": meshes,
@@ -230,8 +271,14 @@ def save_scene(scene: Scene, path: str | os.PathLike[str]) -> Path:
 
     The file is written to a temporary sibling first and then moved into
     place, so an interrupted save never leaves a half-written project.
+    Texture files are stored relative to the project's directory (see
+    :func:`scene_to_dict`); nothing is written if one cannot be.
     """
-    return write_atomic(path, dumps(scene_to_dict(scene)).encode("utf-8"))
+    project_dir = Path(path).absolute().parent
+    data = dumps(scene_to_dict(scene, project_dir)).encode("utf-8")
+    written = write_atomic(path, data)
+    scene.materials.base_dir = project_dir
+    return written
 
 
 # --------------------------------------------------------------------------- #
@@ -297,17 +344,23 @@ def _type_name(value: Any) -> str:
 
 
 def _mesh_from_dict(value: Any, loc: str) -> Mesh:
-    data = _object(value, loc, ("positions", "triangles"), ("normals", "uvs"))
+    data = _object(value, loc, ("positions", "triangles"), ("normals", "uvs", "groups"))
     positions = _rows(data["positions"], 3, f"{loc}.positions")
     triangles = _rows(data["triangles"], 3, f"{loc}.triangles", integer=True)
     normals = _rows(data["normals"], 3, f"{loc}.normals") if "normals" in data else None
     uvs = _rows(data["uvs"], 2, f"{loc}.uvs") if "uvs" in data else None
+    groups = None
+    if "groups" in data:
+        groups = _list(data["groups"], f"{loc}.groups")
+        if not all(isinstance(g, int) and not isinstance(g, bool) for g in groups):
+            raise ProjectFormatError("expected an array of integers", f"{loc}.groups")
     try:
         return Mesh(
             np.array(positions, dtype=np.float64).reshape(-1, 3),
             np.array(triangles, dtype=np.int64).reshape(-1, 3),
             normals=None if normals is None else np.array(normals, dtype=np.float64).reshape(-1, 3),
             uvs=None if uvs is None else np.array(uvs, dtype=np.float64).reshape(-1, 2),
+            groups=None if groups is None else np.array(groups, dtype=np.int64),
         )
     except OverflowError:
         raise ProjectFormatError("number out of range", loc) from None
@@ -341,8 +394,14 @@ def migrate(document: dict[str, Any]) -> dict[str, Any]:
     return document
 
 
-def scene_from_dict(document: dict[str, Any]) -> Scene:
-    """Build a :class:`Scene` from a project document, validating it fully."""
+def scene_from_dict(
+    document: dict[str, Any], project_dir: str | os.PathLike[str] | None = None
+) -> Scene:
+    """Build a :class:`Scene` from a project document, validating it fully.
+
+    Texture paths are resolved inside ``project_dir`` (the project file's
+    directory; default: the current directory) and may not leave it.
+    """
     doc = _object(
         migrate(document), "", ("format", "format_version", "scene", "meshes"), ("generator",)
     )
@@ -352,7 +411,18 @@ def scene_from_dict(document: dict[str, Any]) -> Scene:
     scene_data = _object(
         doc["scene"],
         "scene",
-        ("name", "active_camera", "world", "render", "parameters", "rules", "geometry", "objects"),
+        (
+            "name",
+            "active_camera",
+            "world",
+            "render",
+            "parameters",
+            "rules",
+            "geometry",
+            "materials",
+            "textures",
+            "objects",
+        ),
     )
     scene = Scene(_string(scene_data["name"], "scene.name"))
     scene._world = _render_value(World, scene_data["world"], "scene.world")
@@ -368,9 +438,18 @@ def scene_from_dict(document: dict[str, Any]) -> Scene:
             raw,
             loc,
             ("id", "name", "parent", "transform", "mesh", "geometry"),
-            ("camera", "light", "appearance", "visible"),  # optional: null/null/null/true
+            # optional: null/null/null/true/null/{}
+            ("camera", "light", "appearance", "visible", "material", "group_materials"),
         )
-        data = {"camera": None, "light": None, "appearance": None, "visible": True, **data}
+        data = {
+            "camera": None,
+            "light": None,
+            "appearance": None,
+            "visible": True,
+            "material": None,
+            "group_materials": {},
+            **data,
+        }
         object_id = _string(data["id"], f"{loc}.id")
         name = _string(data["name"], f"{loc}.name")
         if object_id in seen_ids:
@@ -439,8 +518,18 @@ def scene_from_dict(document: dict[str, Any]) -> Scene:
         )
         if not isinstance(data["visible"], bool):
             raise ProjectFormatError("must be true or false", f"{loc}.visible")
+        material_ref = data["material"]
+        if material_ref is not None:
+            _string(material_ref, f"{loc}.material")
+        group_materials = _group_materials(data["group_materials"], f"{loc}.group_materials")
+        if (material_ref is not None or group_materials) and (
+            camera is not None or light is not None
+        ):
+            raise ProjectFormatError("cameras and lights cannot have materials", loc)
         records.append(
             {
+                "material": material_ref,
+                "group_materials": group_materials,
                 "camera": camera,
                 "light": light,
                 "appearance": appearance,
@@ -476,6 +565,8 @@ def scene_from_dict(document: dict[str, Any]) -> Scene:
         obj._light = record["light"]
         obj._appearance = record["appearance"]
         obj._visible = record["visible"]
+        obj._material = record["material"]
+        obj._group_materials = record["group_materials"]
         stack.extend(reversed(children.get(record["id"], [])))
 
     if len(scene) != len(records):
@@ -490,7 +581,40 @@ def scene_from_dict(document: dict[str, Any]) -> Scene:
             )
         scene._active_camera = active
     _read_procedural(scene, scene_data, meshes)
+    base = Path(project_dir) if project_dir is not None else Path.cwd()
+    scene.materials.load_records(
+        _list(scene_data["materials"], "scene.materials"),
+        _list(scene_data["textures"], "scene.textures"),
+        base.absolute(),
+    )
+    library = scene.materials
+    for record in records:
+        refs = ([record["material"]] if record["material"] is not None else []) + list(
+            record["group_materials"].values()
+        )
+        for ref in refs:
+            if ref not in library._materials:
+                raise ProjectFormatError(
+                    f"material {ref!r} does not exist (materials are referenced by id)",
+                    f"{record['loc']}.material",
+                )
+    if project_dir is not None:
+        library.base_dir = base.absolute()
     return scene
+
+
+def _group_materials(value: Any, loc: str) -> dict[int, str]:
+    if not isinstance(value, dict):
+        raise ProjectFormatError(f"expected an object, got {_type_name(value)}", loc)
+    out: dict[int, str] = {}
+    for key, ref in value.items():
+        if not (isinstance(key, str) and key.isdigit() and len(key) <= 5) or int(key) > MAX_GROUP:
+            raise ProjectFormatError(
+                f"group keys must be integers in [0, {MAX_GROUP}] written as strings, got {key!r}",
+                loc,
+            )
+        out[int(key)] = _string(ref, f"{loc}.{key}")
+    return out
 
 
 def _read_procedural(scene: Scene, scene_data: dict[str, Any], meshes: list[Mesh]) -> None:
@@ -695,4 +819,4 @@ def load_scene(path: str | os.PathLike[str]) -> Scene:
         text = Path(path).read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
         raise ProjectFormatError(f"file is not valid UTF-8 text: {exc.reason}") from None
-    return scene_from_dict(loads(text))
+    return scene_from_dict(loads(text), Path(path).absolute().parent)

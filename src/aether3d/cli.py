@@ -113,7 +113,7 @@ def _read_project(path: Path) -> tuple[Scene, int]:
     try:
         document = loads(text)
         version = document.get("format_version") if isinstance(document, dict) else None
-        return scene_from_dict(document), version
+        return scene_from_dict(document, path.absolute().parent), version
     except ProjectFormatError as exc:
         raise _command_error(exc, path) from None
 
