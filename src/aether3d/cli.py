@@ -4,7 +4,8 @@ Commands: ``new``, ``validate``, ``inspect``, ``geometry``, ``import``,
 ``export``, ``topology``, ``edit``, ``procedural`` (``types``, ``inspect``,
 ``validate``, ``run``, ``set``, ``bake``), ``render``, ``camera`` (``add``,
 ``set``, ``list``, ``frame``, ``activate``), ``light`` (``add``, ``set``,
-``list``), ``object`` (``set``, ``remove``) and ``scene`` (``set``, ``run``).
+``list``), ``object`` (``set``, ``remove``), ``scene`` (``set``, ``run``) and
+``gpu`` (``info``).
 
 Every command accepts ``--json`` to emit a single machine-readable JSON
 object on stdout, both on success (``"ok": true``) and on failure
@@ -14,7 +15,8 @@ object on stdout, both on success (``"ok": true``) and on failure
 * ``1`` -- the command failed (invalid file, missing file, unsupported content, ...)
 * ``2`` -- invalid command-line usage
 * ``3`` -- ``geometry``/``topology``/``procedural validate`` completed but found
-  error-severity problems
+  error-severity problems, or ``gpu info --check`` found that GPU rendering
+  does not work
 
 Commands that read a scene accept native ``.aether`` projects as well as
 ``.glb``/``.gltf`` files (which are imported in memory).
@@ -703,10 +705,51 @@ def _render_error(exc: BaseException) -> CommandError:
     raise exc
 
 
+_SHADOW_FLAGS = {
+    "shadow_lights": ("lights", "--shadow-lights"),
+    "shadow_map_size": ("map_size", "--shadow-map-size"),
+    "shadow_bias": ("bias", "--shadow-bias"),
+    "shadow_normal_offset": ("normal_offset", "--shadow-normal-offset"),
+    "shadow_pcf_radius": ("pcf_radius", "--shadow-pcf-radius"),
+}
+
+
+def _shadow_options(args: argparse.Namespace) -> dict[str, Any] | None:
+    given = {k: v for k, v in vars(args).items() if k in _SHADOW_FLAGS and v is not None}
+    if not args.shadows:
+        if given:
+            flags = ", ".join(_SHADOW_FLAGS[k][1] for k in given)
+            raise CommandError("UsageError", f"{flags} need(s) --shadows")
+        return None
+    return {_SHADOW_FLAGS[k][0]: v for k, v in given.items()}
+
+
+def _render_summary(result: Any, path: Path, written: Path) -> str:
+    stats = result.stats
+    backend = result.backend
+    if backend["name"] == "gpu":
+        aa = backend["antialiasing"]
+        adapter = backend["adapter"]
+        how = f"GPU: {adapter['name']} ({adapter['backend']}), {aa['msaa']}x MSAA"
+        if aa["supersample"] > 1:
+            how += f" on {aa['supersample']}x{aa['supersample']} supersampling"
+        if backend["shadows"]:
+            how += ", shadows from " + ", ".join(m["light"] for m in backend["shadows"]["maps"])
+    else:
+        samples = result.settings["samples"]
+        how = f"{samples}x{samples} samples per pixel"
+    return (
+        f"Rendered {path} -> {written} ({result.width}x{result.height}, {how}, "
+        f"camera {result.camera['name']!r}, {stats['triangles']} triangles, "
+        f"{stats['timings']['total']:.2f} s)"
+    )
+
+
 def cmd_render(args: argparse.Namespace) -> CommandOutput:
     from .errors import RenderError
     from .rendering import render
 
+    shadows = _shadow_options(args)
     path = Path(args.path)
     output = Path(args.output) if args.output else path.with_suffix(".png")
     if output.suffix.lower() != ".png":
@@ -727,20 +770,78 @@ def cmd_render(args: argparse.Namespace) -> CommandOutput:
             default_lights=False if args.no_default_lights else None,
             frame=args.frame,
             margin=args.margin,
+            backend=args.backend,
+            adapter=args.adapter,
+            msaa=args.msaa,
+            supersample=args.supersample,
+            shadows=shadows,
         )
         written = result.save(output)
     except RenderError as exc:
         raise _render_error(exc) from None
     data = {"path": str(path), **info, **result.to_dict()}
-    stats = result.stats
     lines = [
-        f"Rendered {path} -> {written} ({result.width}x{result.height}, "
-        f"{result.settings['samples']}x{result.settings['samples']} samples per pixel, "
-        f"camera {result.camera['name']!r}, {stats['triangles']} triangles, "
-        f"{stats['timings']['total']:.2f} s)",
+        _render_summary(result, path, written),
         *_diagnostic_lines([d.to_dict() for d in result.diagnostics]),
     ]
     return data, "\n".join(lines), EXIT_OK
+
+
+def cmd_gpu_info(args: argparse.Namespace) -> CommandOutput:
+    from .rendering.gpu import gpu_status
+
+    status = gpu_status(adapter=args.adapter, check=args.check)
+    lines = []
+    versions = status["versions"]
+    if versions:
+        lines.append(
+            f"wgpu {versions['wgpu']} (wgpu-native {versions['wgpu_native']}), "
+            f"Python {status['python']}, {status['platform']}"
+        )
+    for note in status["notes"]:
+        lines.append(f"note: {note}")
+    if status["adapters"]:
+        lines.append("Adapters (best first; select with --adapter INDEX or a name part):")
+        for a in status["adapters"]:
+            kind = f"{a['type']}, software" if a["software"] else a["type"]
+            mark = "  <- auto" if a["recommended"] else ""
+            driver = f"driver {a['driver']!r}"
+            lines.append(f"  [{a['index']}] {a['name']} ({a['backend']}, {kind}) {driver}{mark}")
+    for attempt in status["attempts"]:
+        lines.append(f"  unusable: {attempt['adapter']}: [{attempt['code']}] {attempt['message']}")
+    selected = status["selected"]
+    if selected is not None:
+        adapter = selected["adapter"]
+        limits = selected["limits"]
+        lines.append(
+            f"Selected: [{adapter['index']}] {adapter['name']} ({adapter['backend']}): MSAA "
+            f"{', '.join(map(str, selected['msaa']))}; GPU timestamps "
+            f"{'yes' if selected['timestamps'] else 'no'}; largest texture "
+            f"{limits.get('max-texture-dimension-2d')}; device created in "
+            f"{selected['device_init_seconds']:.2f} s"
+        )
+    if "check" in status:
+        check = status["check"]
+        if check["ok"]:
+            lines.append(
+                f"Check passed: {len(check['checks'])} checks on {check['adapter']} "
+                f"in {check['seconds']:.2f} s"
+            )
+        else:
+            failed = [k for k, v in check["checks"].items() if not v["ok"]]
+            error = check.get("error")
+            lines.append(
+                "Check FAILED: "
+                + (f"[{error['code']}] {error['message']}" if error else ", ".join(failed))
+            )
+    if not status["available"]:
+        lines.append(f"GPU rendering is not available: {status['reason']}")
+        if status["hint"]:
+            lines.append(f"Hint: {status['hint']}")
+    code = EXIT_OK
+    if args.check and not status["available"]:
+        code = EXIT_GEOMETRY_ERRORS
+    return status, "\n".join(lines), code
 
 
 def _run_scene(args: argparse.Namespace, operations: list[dict[str, Any]], command: str):
@@ -1182,7 +1283,9 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     vec = {"nargs": 3, "type": float, "metavar": ("X", "Y", "Z")}
 
     p_render = sub.add_parser(
-        "render", parents=[common, lossy], help="render a PNG image with Aether3D's CPU renderer"
+        "render",
+        parents=[common, lossy],
+        help="render a PNG image with Aether3D's CPU (default) or GPU renderer",
     )
     p_render.add_argument("path", help="a .aether project (or a .glb/.gltf file, with --frame)")
     p_render.add_argument("-o", "--output", help="the .png file to write (default: PATH.png)")
@@ -1204,7 +1307,50 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     )
     p_render.add_argument("--margin", type=float, default=0.05, help="free border with --frame")
     p_render.add_argument("--force", action="store_true", help="overwrite an existing image")
+    p_render.add_argument(
+        "--backend",
+        choices=["cpu", "gpu", "auto"],
+        default="cpu",
+        help="cpu (default), gpu (fails if no usable GPU) or auto (GPU if available, else CPU)",
+    )
+    p_render.add_argument(
+        "--adapter",
+        help="GPU adapter: index, part of its name (nvidia), discrete/integrated/cpu, "
+        "vulkan/metal/d3d12 (default: $AETHER3D_GPU_ADAPTER or the best one)",
+    )
+    p_render.add_argument("--msaa", type=int, help="GPU: MSAA samples per pixel (1, 2, 4, 8, 16)")
+    p_render.add_argument(
+        "--supersample", type=int, help="GPU: render N times larger per axis and average (1-4)"
+    )
+    p_render.add_argument(
+        "--shadows", action="store_true", help="GPU: shadow maps for directional lights"
+    )
+    p_render.add_argument(
+        "--shadow-lights", nargs="+", metavar="LIGHT", help="only these lights cast shadows"
+    )
+    p_render.add_argument("--shadow-map-size", type=int, help="shadow map texels per side (2048)")
+    p_render.add_argument("--shadow-bias", type=float, help="shadow depth bias in texels (0.5)")
+    p_render.add_argument(
+        "--shadow-normal-offset", type=float, help="extra shadow normal offset in texels (0.5)"
+    )
+    p_render.add_argument(
+        "--shadow-pcf-radius", type=int, help="shadow filter radius in texels, 0-4 (1)"
+    )
     p_render.set_defaults(handler=cmd_render)
+
+    p_gpu = sub.add_parser("gpu", help="GPU rendering: adapters, capabilities and a self-test")
+    gpu = p_gpu.add_subparsers(dest="subcommand", required=True, metavar="SUBCOMMAND")
+    p = gpu.add_parser(
+        "info", parents=[common], help="list graphics adapters and what the GPU backend can use"
+    )
+    p.add_argument("--adapter", help="adapter to select (index, name part, discrete, vulkan, ...)")
+    p.add_argument(
+        "--check",
+        action="store_true",
+        help="render a test scene on the GPU and verify it against the CPU renderer "
+        "(exit code 3 if GPU rendering does not work)",
+    )
+    p.set_defaults(handler=cmd_gpu_info)
 
     def placement(p, *, target: bool = True) -> None:
         p.add_argument("--position", **vec, help="local position")
