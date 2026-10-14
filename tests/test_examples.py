@@ -8,8 +8,10 @@ import numpy as np
 import pytest
 
 from aether3d import Scene
+from aether3d.materials import ImageTexture
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
+CASTLE_TEXTURES = ("stone_bricks_color.png", "stone_bricks_normal.png", "wood_planks.jpg")
 
 
 def test_first_scene_example_runs(tmp_path):
@@ -147,6 +149,12 @@ def test_minecraft_castle_render_example_runs(tmp_path):
     assert "All checks passed." in result.stdout
     assert "reproduce the image exactly" in result.stdout
     assert _decode(tmp_path / "minecraft_castle_render.png").shape == (180, 320, 3)
+    assert _decode(tmp_path / "castle_flat_vs_materials.png").shape == (90, 2 * 160 + 8, 3)
+    # The project refers to the textures copied next to it by relative paths.
+    project = Scene.load(tmp_path / "minecraft_castle_render.aether")
+    paths = sorted(t.path for t in project.materials.textures if isinstance(t, ImageTexture))
+    assert paths == [f"textures/{n}" for n in CASTLE_TEXTURES]
+    assert [d.code for d in project.materials.validate() if d.severity != "info"] == []
 
 
 def test_hero_render_example_runs(tmp_path):
@@ -168,6 +176,21 @@ def test_hero_render_example_runs(tmp_path):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "All checks passed." in result.stdout
+    assert _decode(tmp_path / "hero_flat_vs_materials.png").shape == (45, 2 * 80 + 8, 3)
+
+
+def test_example_textures_are_reproducible(tmp_path):
+    """``examples/make_textures.py`` regenerates the committed textures exactly."""
+    pytest.importorskip("PIL.Image")  # the JPEG
+    result = subprocess.run(
+        [sys.executable, str(EXAMPLES / "make_textures.py"), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    for name in (*CASTLE_TEXTURES, "uv_grid.png"):
+        assert (tmp_path / name).read_bytes() == (EXAMPLES / "textures" / name).read_bytes(), name
 
 
 def test_committed_renders_are_real_aether3d_pngs():
@@ -177,11 +200,15 @@ def test_committed_renders_are_real_aether3d_pngs():
         ("minecraft_castle_render.png", (1920, 1080)),
         ("aether3d_first_render.png", (1280, 720)),
         ("blocky_hero_render.png", (1280, 720)),
+        ("castle_flat_vs_materials.png", (2 * 960 + 8, 540)),
+        ("hero_flat_vs_materials.png", (2 * 640 + 8, 360)),
     ):
         with image.open(EXAMPLES / "output" / name) as png:
             assert png.size == size and png.info["Software"].startswith("Aether3D ")
     project = Scene.load(EXAMPLES / "output" / "minecraft_castle_render.aether")
     assert project.active_camera.name == "Camera" and project.render_settings.width == 1920
+    # Its image textures are committed next to it and load.
+    assert [d.code for d in project.materials.validate() if d.severity != "info"] == []
 
 
 def test_gpu_render_example_runs(tmp_path, gpu):

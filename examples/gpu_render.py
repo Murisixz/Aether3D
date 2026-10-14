@@ -6,8 +6,10 @@ Run from the repository root (needs ``pip install 'aether3d[gpu,boolean]'``):
         [--adapter SPEC] [--require-gpu]
 
 1. Reports the GPU: the adapters wgpu finds and the one the renders use.
-2. Renders the Stage 5 castle (``examples/minecraft_castle_render.py``) three
-   ways, from the same scene and camera, at 1920x1080 by default:
+2. Renders the castle of ``examples/minecraft_castle_render.py`` with its
+   materials (image textures with a normal map, procedural textures and
+   glowing torches) three ways, from the same scene and camera, at 1920x1080
+   by default:
 
    * ``castle_cpu.png`` -- the CPU renderer, 2x2 samples per pixel;
    * ``castle_gpu.png`` -- the GPU, 4x MSAA (the same 4 samples per pixel);
@@ -15,13 +17,18 @@ Run from the repository root (needs ``pip install 'aether3d[gpu,boolean]'``):
    * ``castle_comparison.png`` -- the three side by side at half size
      (CPU | GPU | GPU with shadows).
 
-3. Checks that the GPU image shows the same objects in the same places in
-   the same colors as the CPU image (they differ only along edges, where the
-   sample positions differ), that shadows darken the ground behind the walls
-   and trees, that GPU renders are deterministic, and that
-   ``aether3d render --backend gpu`` reproduces the pixels exactly.
-4. Renders the Stage 3 hero and the primitives scene on the GPU with shadows
-   (``hero_gpu.png``, ``primitives_gpu.png``).
+3. Checks the GPU against the CPU renderer. In parity mode (the CPU's own
+   sample positions) the GPU shows the same object at every pixel except
+   along edges, and the same colors, textures included (a few texels may
+   round differently). With 4x MSAA it samples other positions and shades
+   once per pixel -- where the CPU shades every sample -- so it differs along
+   silhouettes and in the finest texture detail; it is checked to show the
+   same objects elsewhere, with the same average colors. Also checks that
+   shadows darken the ground behind the walls and trees, that GPU renders
+   are deterministic, and that ``aether3d render --backend gpu`` reproduces
+   the pixels exactly from the saved project.
+4. Renders the Stage 3 hero (with its materials) and the primitives scene
+   on the GPU with shadows (``hero_gpu.png``, ``primitives_gpu.png``).
 5. Prints CPU and GPU timings, the first GPU render (which creates the
    device and compiles the shaders) separately from the next ones.
 
@@ -34,6 +41,7 @@ with ``--require-gpu``). Any failed check exits with status 1.
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -64,20 +72,6 @@ def edges(ids: np.ndarray) -> np.ndarray:
     for dy in (-1, 0, 1):
         for dx in (-1, 0, 1):
             out |= pad[1 + dy : 1 + dy + h, 1 + dx : 1 + dx + w] != ids
-    return out
-
-
-def variation(image: np.ndarray) -> np.ndarray:
-    """Largest 8-bit difference between each pixel and its 3x3 neighbours."""
-    h, w, _ = image.shape
-    img = image.astype(int)
-    pad = np.pad(img, ((1, 1), (1, 1), (0, 0)), mode="edge")
-    out = np.zeros((h, w), dtype=int)
-    for dy in (-1, 0, 1):
-        for dx in (-1, 0, 1):
-            out = np.maximum(
-                out, np.abs(pad[1 + dy : h + 1 + dy, 1 + dx : w + 1 + dx] - img).max(-1)
-            )
     return out
 
 
@@ -123,14 +117,24 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
+    # The saved project and its textures live in a scratch directory, removed at the end.
+    work = Path(tempfile.mkdtemp(prefix="aether3d-gpu-example-"))
+    try:
+        return run(args, out, work)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def run(args: argparse.Namespace, out: Path, work: Path) -> int:
     w, h = args.width, args.height
     failures: list[str] = []
 
     print("1. The GPU")
     selected = report_gpu(args.adapter)
 
-    print("2. Rendering the procedural castle")
-    scene = minecraft_castle_render.build_scene(w, h, 2)
+    print("2. Rendering the procedural castle with its materials")
+    textures = minecraft_castle_render.copy_textures(work)
+    scene = minecraft_castle_render.build_scene(w, h, 2, materials=True, textures=textures)
     t0 = time.perf_counter()
     cpu = scene.render(width=w, height=h, samples=2)
     t_cpu = time.perf_counter() - t0
@@ -142,9 +146,11 @@ def main(argv: list[str]) -> int:
     t0 = time.perf_counter()
     gpu = scene.render(**gpu_options)
     t_cold = time.perf_counter() - t0
-    t0 = time.perf_counter()
-    again = scene.render(**gpu_options)
-    t_warm = time.perf_counter() - t0
+    t_warm = float("inf")
+    for _ in range(3):  # the best of three: a single render is at the mercy of GPU clocks
+        t0 = time.perf_counter()
+        again = scene.render(**gpu_options)
+        t_warm = min(t_warm, time.perf_counter() - t0)
     shadowed = scene.render(**gpu_options, shadows=SHADOWS)
     for name, result in (("cpu", cpu), ("gpu", gpu), ("gpu_shadows", shadowed)):
         path = result.save(out / f"castle_{name}.png")
@@ -157,39 +163,49 @@ def main(argv: list[str]) -> int:
     print(
         f"   CPU {cpu.settings['samples']}x{cpu.settings['samples']} samples per pixel: "
         f"{t_cpu:.2f} s; GPU {aa['msaa']}x MSAA: first render {t_cold:.2f} s (device and "
-        f"shaders {gpu.stats['timings']['init']:.2f} s), next {t_warm:.3f} s "
+        f"shaders {gpu.stats['timings']['init']:.2f} s), next (best of 3) {t_warm:.3f} s "
         f"({t_cpu / t_warm:.0f}x faster), with shadows {shadowed.stats['timings']['total']:.3f} s"
     )
 
     print("3. Checking the GPU images against the CPU renderer")
-    # Parity mode samples the CPU's own positions: everything must agree but sub-pixel edges.
+    # Parity mode samples the CPU's own positions: the objects agree but along sub-pixel
+    # edges, and so do the colors, textures included -- but where a sample sits exactly on a
+    # crease between two faces (either is correct) or a texel boundary rounds the other way.
     parity = scene.render(**{**gpu_options, "msaa": 1, "supersample": 2})
     same = parity.object_index == cpu.object_index
     cpu_edges = edges(cpu.object_index)
     away = ~cpu_edges & ~edges(parity.object_index)
     diff = np.abs(parity.image.astype(int) - cpu.image.astype(int)).max(axis=-1)
-    flat = away & (variation(cpu.image) <= 8)
-    # A sample exactly on an edge between two faces may go to either face (both correct):
-    # only such crease pixels may differ more.
-    ties = (away & (diff > 2)).mean()
-    if not np.all(cpu_edges[~same]) or diff[flat].max() > 2 or ties > 0.001:
+    close = (diff[away] <= 2).mean()
+    if not np.all(cpu_edges[~same]) or close < 0.995 or diff[away].mean() > 0.25:
         failures.append("the GPU in parity mode differs from the CPU away from edges")
     print(
         f"   parity mode (the CPU's sample positions): the same object at {same.mean():.3%} "
-        f"of pixels, flat areas within {diff[flat].max()} codes ({ties:.3%} crease ties)"
+        f"of pixels (all others on edges); away from edges {close:.2%} of the pixels within "
+        f"2 codes (mean difference {diff[away].mean():.3f})"
     )
-    # 4x MSAA samples other positions and shades once per pixel: it differs only along
-    # silhouettes and facet creases.
+    # 4x MSAA samples other positions and shades once per pixel (the CPU shades every
+    # sample): objects agree except along silhouettes, and their average colors agree.
     same = gpu.object_index == cpu.object_index
     near = cpu_edges | edges(gpu.object_index)
-    flat = same & ~near & (variation(cpu.image) <= 8) & (variation(gpu.image) <= 8)
-    diff = np.abs(gpu.image.astype(int) - cpu.image.astype(int)).max(axis=-1)
-    if same.mean() < 0.98 or not np.all(near[~same]) or np.percentile(diff[flat], 99.9) > 2:
-        failures.append("the MSAA image differs from the CPU image away from edges")
+    if same.mean() < 0.97 or not np.all(near[~same]):
+        failures.append("the MSAA image shows other objects than the CPU image away from edges")
+    worst, worst_name = 0.0, ""
+    for o in cpu.objects:
+        both = (cpu.object_index == o["index"]) & (gpu.object_index == o["index"]) & ~near
+        if both.sum() >= 100:
+            delta = float(np.abs(gpu.image[both].mean(0) - cpu.image[both].mean(0)).max())
+            if delta > worst:
+                worst, worst_name = delta, o["name"]
+    if worst > 5:
+        failures.append(f"{worst_name}: the MSAA average color differs by {worst:.1f} codes")
     print(
         f"   4x MSAA: the same object at {same.mean():.2%} of pixels (all others on edges); "
-        f"99.9% of flat pixels within {np.percentile(diff[flat], 99.9):.0f} codes"
+        f"average colors per object within {worst:.1f} codes (largest: {worst_name})"
     )
+    reported = [d.code for r in (cpu, gpu) for d in r.diagnostics if d.severity != "info"]
+    if reported:  # (a software adapter is reported as information)
+        failures.append(f"unexpected diagnostics: {reported}")
     names = {o["name"]: o["visible_samples"] for o in gpu.objects}
     missing = [
         n
@@ -207,8 +223,8 @@ def main(argv: list[str]) -> int:
     print(f"   sun shadows cover {fraction:.0%} of the visible ground")
     if not np.array_equal(again.image, gpu.image):
         failures.append("two GPU renders differ")
-    project = out / "gpu_castle.aether"
-    scene.save(project)
+    project = work / "gpu_castle.aether"
+    scene.save(project)  # its textures are in work/textures: saved as relative paths
     with tempfile.TemporaryDirectory() as tmp:
         cli_png = Path(tmp) / "cli.png"
         command = [sys.executable, "-m", "aether3d", "render", str(project), "-o", str(cli_png)]
@@ -223,12 +239,13 @@ def main(argv: list[str]) -> int:
             failures.append("aether3d render --backend gpu produced different pixels")
         else:
             print("   GPU renders are deterministic, and `aether3d render` reproduces them exactly")
-    project.unlink()
     print(f"   reproduce: aether3d render PROJECT --backend gpu --shadows --width {w} --height {h}")
 
-    print("4. The blocky hero and the primitives on the GPU")
-    for name, module in (("hero", hero_render), ("primitives", first_render)):
-        other = module.build_scene(w, h, 2)
+    print("4. The blocky hero (with its materials) and the primitives on the GPU")
+    for name, other in (
+        ("hero", hero_render.build_scene(w, h, 2, materials=True)),
+        ("primitives", first_render.build_scene(w, h, 2)),
+    ):
         result = other.render(backend="gpu", adapter=args.adapter, width=w, height=h, shadows=True)
         path = result.save(out / f"{name}_gpu.png")
         seen = sum(1 for o in result.objects if o["visible_samples"] > 0)
