@@ -37,6 +37,34 @@ Operations (``object``/``camera``/``light``/``parent`` are object ids or names;
 * ``remove`` -- ``object`` (and its children).
 * ``info`` -- read-only summary of cameras, lights, world and settings.
 
+Materials and textures (``material``/``texture`` are ids or names):
+
+* ``create_material`` -- ``name``, ``model``, ``preset`` and any material
+  parameters or preset options (``{"op": "create_material", "name": "Wall",
+  "preset": "brick", "scale": 2, "roughness": 0.9}``).
+* ``set_material`` -- ``material`` plus parameters, ``model`` or a new ``name``.
+* ``remove_material`` -- ``material`` (``force`` unassigns it first).
+* ``assign_material`` -- ``objects`` (one or a list), ``material`` (``null``
+  unassigns) and optionally a face ``group``.
+* ``set_texture`` -- ``material``, ``slot`` and one of ``texture`` (an
+  existing one), ``image`` (a PNG/JPEG path), ``procedural`` (a node graph or
+  node) or ``"clear": true``; binding options ``channel``, ``coordinates``,
+  ``projection``, ``offset``, ``scale``, ``rotation``, ``blend``; for new
+  textures ``texture_name``, ``embed``, ``wrap``, ``filter``, ``mipmaps``,
+  ``color_space``.
+* ``add_texture`` -- ``name`` and ``image`` or ``procedural`` (plus ``embed`` and
+  sampler settings).
+* ``set_texture_settings`` -- ``texture`` plus ``name``, sampler settings,
+  ``embed: true`` or a new ``graph``.
+* ``remove_texture`` -- ``texture`` (``force`` removes its bindings).
+* ``convert_colors`` -- ``objects`` (default: all) and ``dedupe``: object
+  colors become equivalent simple materials.
+* ``materials`` -- read-only summary of materials and textures.
+
+Image paths in a script are resolved inside the project's directory and may
+not leave it (scripts may come from anywhere); the CLI's own material
+commands accept paths as typed.
+
 :func:`run_scene_script` is atomic: if any operation fails, every change the
 script made is undone (created objects are removed, removed objects are put
 back, and changed values are restored in place) and a :class:`ScriptError`
@@ -48,7 +76,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ..editing.script import ScriptError
-from ..errors import AetherError, RenderError
+from ..errors import AetherError, MaterialError, RenderError
 
 if TYPE_CHECKING:
     from ..scene import Scene, SceneObject
@@ -97,8 +125,45 @@ _SPECS: dict[str, tuple[set[str], set[str]]] = {
 }
 
 
-def run_scene_script(scene: Scene, script: Any) -> dict[str, Any]:
-    """Apply a scene-setup script atomically; returns per-operation results."""
+def _material_specs() -> dict[str, tuple[set[str], set[str]]]:
+    from ..materials.material import PARAM_SPECS, TextureBinding
+    from ..materials.presets import COMMON_OPTIONS, PRESETS
+
+    params = set(PARAM_SPECS)
+    preset_options = set(COMMON_OPTIONS) | {o for _, _, extra in PRESETS.values() for o in extra}
+    sampler = {"wrap", "filter", "mipmaps", "color_space"}
+    return {
+        "create_material": (set(), {"name", "model", "preset"} | params | preset_options),
+        "set_material": ({"material"}, {"name", "model"} | params),
+        "remove_material": ({"material"}, {"force"}),
+        "assign_material": ({"objects", "material"}, {"group"}),
+        "set_texture": (
+            {"material", "slot"},
+            {"texture", "image", "procedural", "clear", "texture_name", "embed"}
+            | set(TextureBinding.FIELDS)
+            | sampler,
+        ),
+        "add_texture": ({"name"}, {"image", "procedural", "embed"} | sampler),
+        "set_texture_settings": ({"texture"}, {"name", "embed", "graph"} | sampler),
+        "remove_texture": ({"texture"}, {"force"}),
+        "convert_colors": (set(), {"objects", "dedupe"}),
+        "materials": (set(), set()),
+    }
+
+
+_SPECS.update(_material_specs())
+
+
+def run_scene_script(
+    scene: Scene, script: Any, *, base_dir: Any = None, trusted_paths: bool = False
+) -> dict[str, Any]:
+    """Apply a scene-setup script atomically; returns per-operation results.
+
+    Image paths are resolved inside ``base_dir`` (default: the project's
+    directory, else the current one) and may not leave it, unless
+    ``trusted_paths`` (paths typed by the user, as the CLI's material commands
+    pass them).
+    """
     if not isinstance(script, dict):
         raise ScriptError("the script must be a JSON object", "script")
     unknown = sorted(set(script) - {"format", "version", "operations"})
@@ -117,6 +182,10 @@ def run_scene_script(scene: Scene, script: Any) -> dict[str, Any]:
     if len(operations) > MAX_OPERATIONS:
         raise ScriptError(f"too many operations (limit {MAX_OPERATIONS})", "script.operations")
     journal = _Journal(scene)
+    from pathlib import Path
+
+    root = Path(base_dir) if base_dir is not None else scene.materials.base_dir or Path.cwd()
+    journal.paths = (root.absolute(), trusted_paths)
     results = []
     try:
         for i, step in enumerate(operations):
@@ -148,6 +217,8 @@ class _Journal:
         self.active = scene._active_camera
         self.world = scene.world.to_dict()
         self.settings = scene.render_settings.to_dict()
+        self.library = scene.materials.snapshot()
+        self.paths: tuple = (None, False)
 
     def rollback(self) -> None:
         scene = self.scene
@@ -167,6 +238,7 @@ class _Journal:
         scene._active_camera = self.active
         scene.world.configure(**self.world)
         scene.render_settings.configure(**self.settings)
+        scene.materials.restore(self.library)
 
 
 def _run(scene: Scene, step: Any, loc: str, journal: _Journal) -> dict[str, Any]:
@@ -286,6 +358,7 @@ def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> di
             raise ScriptError("give look_at or look_along, not both", "object")
         appearance = {k: s[k] for k in ("color", "specular", "shininess") if k in s}
         if appearance:
+            obj._check_no_material(next(iter(appearance)))
             obj.appearance.configure(**appearance)
         if "visible" in s:
             obj.visible = s["visible"]
@@ -339,6 +412,163 @@ def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> di
         return {"removed": removed}
     if op == "info":
         return rendering_summary(scene)
+    if op in _MATERIAL_OPS:
+        return _material_op(scene, op, s, journal)
+    raise AssertionError(op)  # pragma: no cover
+
+
+_MATERIAL_OPS = set(_material_specs())
+
+
+def _image_path(value: Any, journal: _Journal) -> Any:
+    """A script's image path: inside the project directory unless paths are trusted."""
+    from ..materials.textures import check_relative_path
+
+    root, trusted = journal.paths
+    if not isinstance(value, str) or not value:
+        raise MaterialError("INVALID_ARGUMENT", "image must be a file path", "image")
+    if trusted:
+        return value
+    rel = check_relative_path(value, "image")
+    path = (root / rel).absolute()
+    if not path.resolve().is_relative_to(root.resolve()):
+        raise MaterialError("UNSAFE_PATH", f"image {value!r} leaves the project directory", "image")
+    return path
+
+
+def _material_ref(material: Any) -> dict[str, str]:
+    return {"id": material.id, "name": material.name}
+
+
+def _material_op(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> dict[str, Any]:
+    library = scene.materials
+    if op == "create_material":
+        options = {k: v for k, v in s.items() if k not in ("op", "name", "model", "preset")}
+        if "preset" in s:
+            material = library.create_material(s.get("name"), preset=s["preset"], **options)
+        else:
+            material = library.create_material(
+                s.get("name"), model=s.get("model", "standard"), **options
+            )
+        return {"material": _material_ref(material), "textures": sorted(material.textures)}
+    if op == "set_material":
+        material = library.material(s["material"])
+        if "name" in s:
+            material.name = s["name"]
+        changes = {k: v for k, v in s.items() if k not in ("op", "material", "name")}
+        if changes:
+            material.configure(**changes)
+        return {"material": _material_ref(material), "parameters": material.params}
+    if op == "remove_material":
+        material = library.material(s["material"])
+        ref = _material_ref(material)
+        unassigned = library.remove_material(material, force=bool(s.get("force", False)))
+        return {"removed": ref, "unassigned": unassigned}
+    if op == "assign_material":
+        objects = s["objects"] if isinstance(s["objects"], list) else [s["objects"]]
+        targets = library.assign(objects, s["material"], group=s.get("group"))
+        material = None if s["material"] is None else _material_ref(library.material(s["material"]))
+        return {
+            "material": material,
+            "objects": [_ref(o) for o in targets],
+            "group": s.get("group"),
+        }
+    if op == "set_texture":
+        material = library.material(s["material"])
+        slot = s["slot"]
+        sources = [k for k in ("texture", "image", "procedural", "clear") if k in s]
+        if len(sources) != 1:
+            raise MaterialError(
+                "INVALID_ARGUMENT",
+                "give exactly one of texture, image, procedural and clear",
+                "set_texture",
+            )
+        if "clear" in s:
+            material.clear_texture(slot)
+            return {"material": _material_ref(material), "slot": slot, "texture": None}
+        from ..materials.material import TextureBinding
+
+        binding = {k: s[k] for k in TextureBinding.FIELDS if k in s}
+        sampler = {k: s[k] for k in ("wrap", "filter", "mipmaps", "color_space") if k in s}
+        if "texture" in s:
+            if sampler or "embed" in s or "texture_name" in s:
+                raise MaterialError(
+                    "INVALID_ARGUMENT",
+                    "sampler settings, embed and texture_name apply to new textures; use "
+                    "set_texture_settings for an existing one",
+                    "set_texture",
+                )
+            texture = library.texture(s["texture"])
+        elif "image" in s:
+            texture = library.add_image_texture(
+                s.get("texture_name"),
+                _image_path(s["image"], journal),
+                embed=bool(s.get("embed", False)),
+                **sampler,
+            )
+        else:
+            texture = library.add_procedural_texture(
+                s.get("texture_name") or library._unique_texture_name(f"{material.name} {slot}"),
+                s["procedural"],
+            )
+        result = material.set_texture(slot, texture, **binding)
+        return {
+            "material": _material_ref(material),
+            "slot": slot,
+            "texture": {"id": texture.id, "name": texture.name, "type": texture.kind},
+            "binding": result.to_dict(),
+        }
+    if op == "add_texture":
+        sampler = {k: s[k] for k in ("wrap", "filter", "mipmaps", "color_space") if k in s}
+        if ("image" in s) == ("procedural" in s):
+            raise MaterialError("INVALID_ARGUMENT", "give image or procedural", "add_texture")
+        if "image" in s:
+            texture = library.add_image_texture(
+                s["name"],
+                _image_path(s["image"], journal),
+                embed=bool(s.get("embed", False)),
+                **sampler,
+            )
+        else:
+            if sampler or "embed" in s:
+                raise MaterialError(
+                    "INVALID_ARGUMENT", "sampler settings and embed apply to images", "add_texture"
+                )
+            texture = library.add_procedural_texture(s["name"], s["procedural"])
+        return {"texture": texture.info()}
+    if op == "set_texture_settings":
+        texture = library.texture(s["texture"])
+        if "name" in s:
+            texture.name = s["name"]
+        sampler = {k: s[k] for k in ("wrap", "filter", "mipmaps", "color_space") if k in s}
+        if texture.kind == "image":
+            if "graph" in s:
+                raise MaterialError(
+                    "INVALID_ARGUMENT", "graph applies to procedural textures", "graph"
+                )
+            if sampler:
+                texture.configure(**sampler)
+            if s.get("embed"):
+                texture.embed()
+        else:
+            if sampler or "embed" in s:
+                raise MaterialError(
+                    "INVALID_ARGUMENT", "sampler settings and embed apply to images", "texture"
+                )
+            if "graph" in s:
+                texture.set_graph(s["graph"])
+        return {"texture": texture.info()}
+    if op == "remove_texture":
+        texture = library.texture(s["texture"])
+        info = {"id": texture.id, "name": texture.name}
+        unbound = library.remove_texture(texture, force=bool(s.get("force", False)))
+        return {"removed": info, "unbound_materials": unbound}
+    if op == "convert_colors":
+        objects = s.get("objects")
+        created = library.convert_appearances(objects, dedupe=s.get("dedupe", True))
+        return {"created": [_material_ref(m) for m in created]}
+    if op == "materials":
+        return library.inspect()
     raise AssertionError(op)  # pragma: no cover
 
 
