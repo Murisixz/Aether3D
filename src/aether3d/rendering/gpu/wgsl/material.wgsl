@@ -854,26 +854,6 @@ fn projections(b: u32, s: SurfaceInput) -> Projections {
   return Projections(3u, w, sign, src, projection);
 }
 
-fn binding_rgba(slot_binding: u32, s: SurfaceInput) -> vec4<f32> {
-  let b = header(HEADER_BINDINGS) + slot_binding * BINDING_WORDS;
-  let first = word(b + 1u);
-  let count = word(b + 2u);
-  let pr = projections(b, s);
-  if (pr.count == 1u) {
-    let c = interpolate(projected_corners(b, pr.projection, 0u, pr.src, pr.sign), s);
-    return run_program(first, count, c.p, c.dx, c.dy);
-  }
-  var out = vec4<f32>(0.0);
-  for (var axis = 0u; axis < 3u; axis++) {
-    let w = pr.weights[axis];
-    if (w > 0.0) {
-      let c = interpolate(projected_corners(b, PROJ_TRIPLANAR, axis, pr.src, pr.sign), s);
-      out = out + run_program(first, count, c.p, c.dx, c.dy) * w;
-    }
-  }
-  return out;
-}
-
 fn channel(v: vec4<f32>, which: u32) -> f32 {
   switch (which) {
     case 1u: { return v.x; }
@@ -921,28 +901,6 @@ fn mapped_normal(rgba: vec4<f32>, frame: Frame3, n: vec3<f32>, strength: f32) ->
   return n;
 }
 
-fn binding_normal(slot_binding: u32, s: SurfaceInput, strength: f32) -> vec3<f32> {
-  let b = header(HEADER_BINDINGS) + slot_binding * BINDING_WORDS;
-  let first = word(b + 1u);
-  let count = word(b + 2u);
-  let pr = projections(b, s);
-  var out = vec3<f32>(0.0);
-  for (var axis = 0u; axis < pr.count; axis++) {
-    let w = pr.weights[axis];
-    if (w > 0.0) {
-      let corners = projected_corners(b, pr.projection, axis, pr.src, pr.sign);
-      let c = interpolate(corners, s);
-      let rgba = run_program(first, count, c.p, c.dx, c.dy);
-      out = out + mapped_normal(rgba, tangent_frame(corners, s, s.normal), s.normal, strength) * w;
-    }
-  }
-  let len = length(out);
-  if (len > 1e-12) {
-    return out / len;
-  }
-  return s.normal;
-}
-
 struct SurfaceValues {
   base: vec3<f32>,
   alpha: f32,
@@ -970,6 +928,12 @@ fn material_flags(m: u32) -> u32 {
   return word(material_base(m));
 }
 
+// Every texture of a material is evaluated by the one loop below, so the texture-program
+// interpreter (run_program, which holds every node type) appears once in the compiled shader.
+// Shader compilers inline every call, and D3D12's FXC also unrolls loops whose trip count it
+// knows: one call per slot and projection made the shader dozens of times larger, and took
+// minutes to compile there. The loop visits the bound slots through a mask of loaded data (in
+// slot order; each slot sets its own values), and each slot's projections.
 fn evaluate_surface(m: u32, s: SurfaceInput, has_uvs: bool, alpha_only: bool) -> SurfaceValues {
   let mb = material_base(m);
   var v = SurfaceValues(
@@ -978,40 +942,68 @@ fn evaluate_surface(m: u32, s: SurfaceInput, has_uvs: bool, alpha_only: bool) ->
   if ((word(mb) & MATERIAL_TEXTURED) == 0u) {
     return v;
   }
-  let bc = slot_binding(m, SLOT_BASE_COLOR);
-  if (binding_usable(bc, has_uvs)) {
-    let rgba = binding_rgba(bc, s);
-    v.base = v.base * rgba.xyz;
-    if ((word(header(HEADER_BINDINGS) + bc * BINDING_WORDS) & BINDING_IMAGE) != 0u) {
-      v.alpha = v.alpha * rgba.w;
+  var pending = 0u;
+  for (var slot = 0u; slot < 7u; slot++) {
+    if (binding_usable(slot_binding(m, slot), has_uvs)) {
+      pending = pending | (1u << slot);
     }
   }
-  let op = slot_binding(m, SLOT_OPACITY);
-  if (binding_usable(op, has_uvs)) {
-    v.alpha = v.alpha * channel(binding_rgba(op, s), binding_channel(op));
-  }
   if (alpha_only) {
-    return v;
+    pending = pending & ((1u << SLOT_BASE_COLOR) | (1u << SLOT_OPACITY));
   }
-  let me = slot_binding(m, SLOT_METALLIC);
-  if (binding_usable(me, has_uvs)) {
-    v.metallic = v.metallic * channel(binding_rgba(me, s), binding_channel(me));
-  }
-  let ro = slot_binding(m, SLOT_ROUGHNESS);
-  if (binding_usable(ro, has_uvs)) {
-    v.roughness = v.roughness * channel(binding_rgba(ro, s), binding_channel(ro));
-  }
-  let em = slot_binding(m, SLOT_EMISSIVE);
-  if (binding_usable(em, has_uvs)) {
-    v.emissive = v.emissive * binding_rgba(em, s).xyz;
-  }
-  let oc = slot_binding(m, SLOT_OCCLUSION);
-  if (binding_usable(oc, has_uvs)) {
-    v.occlusion = 1.0 + wordf(mb + 14u) * (channel(binding_rgba(oc, s), binding_channel(oc)) - 1.0);
-  }
-  let nm = slot_binding(m, SLOT_NORMAL);
-  if (binding_usable(nm, has_uvs)) {
-    v.normal = binding_normal(nm, s, wordf(mb + 13u));
+  while (pending != 0u) {
+    let slot = firstTrailingBit(pending);
+    pending = pending & (pending - 1u);
+    let sb = slot_binding(m, slot);
+    let b = header(HEADER_BINDINGS) + sb * BINDING_WORDS;
+    let first = word(b + 1u);
+    let count = word(b + 2u);
+    let pr = projections(b, s);  // one projection (weight 1), or three triplanar ones
+    var rgba = vec4<f32>(0.0);
+    var normal = vec3<f32>(0.0);
+    for (var axis = 0u; axis < pr.count; axis++) {
+      let w = pr.weights[axis];
+      if (w > 0.0) {
+        let corners = projected_corners(b, pr.projection, axis, pr.src, pr.sign);
+        let c = interpolate(corners, s);
+        let value = run_program(first, count, c.p, c.dx, c.dy);
+        if (slot == SLOT_NORMAL) {
+          let frame = tangent_frame(corners, s, s.normal);
+          normal = normal + mapped_normal(value, frame, s.normal, wordf(mb + 13u)) * w;
+        } else {
+          rgba = rgba + value * w;
+        }
+      }
+    }
+    switch (slot) {
+      case 0u: {  // SLOT_BASE_COLOR: an image's alpha is coverage
+        v.base = v.base * rgba.xyz;
+        if ((word(b) & BINDING_IMAGE) != 0u) {
+          v.alpha = v.alpha * rgba.w;
+        }
+      }
+      case 1u: {  // SLOT_OPACITY
+        v.alpha = v.alpha * channel(rgba, binding_channel(sb));
+      }
+      case 2u: {  // SLOT_METALLIC
+        v.metallic = v.metallic * channel(rgba, binding_channel(sb));
+      }
+      case 3u: {  // SLOT_ROUGHNESS
+        v.roughness = v.roughness * channel(rgba, binding_channel(sb));
+      }
+      case 4u: {  // SLOT_NORMAL: the blended tilted normals, or the surface normal
+        let len = length(normal);
+        if (len > 1e-12) {
+          v.normal = normal / len;
+        }
+      }
+      case 5u: {  // SLOT_EMISSIVE
+        v.emissive = v.emissive * rgba.xyz;
+      }
+      default: {  // SLOT_OCCLUSION
+        v.occlusion = 1.0 + wordf(mb + 14u) * (channel(rgba, binding_channel(sb)) - 1.0);
+      }
+    }
   }
   return v;
 }
