@@ -12,6 +12,8 @@
 
 const INSTANCE_MIRRORED: u32 = 1u;     // world determinant < 0: screen winding is reversed
 const INSTANCE_HAS_NORMALS: u32 = 2u;  // the mesh has vertex normals
+const INSTANCE_HAS_UVS: u32 = 4u;      // the mesh has texture coordinates
+const INSTANCE_HAS_GROUPS: u32 = 8u;   // the mesh has per-triangle face groups
 
 struct Instance {
   model: array<vec4<f32>, 3>,   // rows of the camera-relative model matrix (3 x 4)
@@ -29,6 +31,8 @@ struct Instance {
 @group(1) @binding(0) var<storage, read> mesh_positions: array<f32>;  // 3 floats per vertex
 @group(1) @binding(1) var<storage, read> mesh_normals: array<f32>;    // 3 floats per vertex
 @group(1) @binding(2) var<storage, read> mesh_indices: array<u32>;    // 3 per triangle
+@group(1) @binding(3) var<storage, read> mesh_uvs: array<f32>;        // 2 floats per vertex
+@group(1) @binding(4) var<storage, read> mesh_groups: array<u32>;     // 1 per triangle
 
 fn mesh_position(vertex: u32) -> vec3<f32> {
   let b = 3u * vertex;
@@ -38,6 +42,11 @@ fn mesh_position(vertex: u32) -> vec3<f32> {
 fn mesh_normal(vertex: u32) -> vec3<f32> {
   let b = 3u * vertex;
   return vec3<f32>(mesh_normals[b], mesh_normals[b + 1u], mesh_normals[b + 2u]);
+}
+
+fn mesh_uv(vertex: u32) -> vec2<f32> {
+  let b = 2u * vertex;
+  return vec2<f32>(mesh_uvs[b], mesh_uvs[b + 1u]);
 }
 
 fn triangle_vertices(triangle: u32) -> vec3<u32> {

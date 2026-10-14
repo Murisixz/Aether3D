@@ -43,9 +43,11 @@ CACHE_ENV = "AETHER3D_GPU_CACHE_MB"
 INSTANCE_FLOATS = 32  # 128 bytes, see `struct Instance` in common.wgsl
 LIGHT_FLOATS = 12  # 48 bytes, `struct Light` in scene.wgsl
 SHADOW_FLOATS = 20  # 80 bytes, `struct ShadowMap` in scene.wgsl
-FRAME_FLOATS = 28  # 112 bytes, `struct Frame` in scene.wgsl
+FRAME_FLOATS = 32  # 128 bytes, `struct Frame` in scene.wgsl
 MIRRORED = 1
 HAS_NORMALS = 2
+HAS_UVS = 4
+HAS_GROUPS = 8
 MAX_GPU_INSTANCES = 2**24 - 1
 """Object indices travel through a float32 target, exact up to 2**24."""
 
@@ -86,22 +88,24 @@ class GPUMesh:
     triangles: int
     nbytes: int
     bounds: np.ndarray  # (2, 3) float64: min and max corner
+    uvs: Any | None = None
+    groups: Any | None = None
 
     def destroy(self) -> None:
-        for buffer in (self.positions, self.normals, self.indices):
+        for buffer in (self.positions, self.normals, self.indices, self.uvs, self.groups):
             if buffer is not None:
                 buffer.destroy()
 
 
-def _mesh_key(mesh: RenderMesh) -> tuple[int, int, int] | None:
-    arrays = [mesh.positions, mesh.triangles] + ([mesh.normals] if mesh.normals is not None else [])
+def _mesh_arrays(mesh: RenderMesh) -> list[np.ndarray | None]:
+    return [mesh.positions, mesh.triangles, mesh.normals, mesh.uvs, mesh.groups]
+
+
+def _mesh_key(mesh: RenderMesh) -> tuple[int, ...] | None:
+    arrays = [a for a in _mesh_arrays(mesh) if a is not None]
     if any(a.flags.writeable for a in arrays):
         return None  # mutable data: identity says nothing about content
-    return (
-        id(mesh.positions),
-        id(mesh.triangles),
-        id(mesh.normals) if mesh.normals is not None else 0,
-    )
+    return tuple(id(a) if a is not None else 0 for a in _mesh_arrays(mesh))
 
 
 class MeshCache:
@@ -171,8 +175,8 @@ class MeshCache:
             entry = self._entries.get(key)
             if entry is not None:
                 refs, gpu_mesh, _ = entry
-                arrays = [mesh.positions, mesh.triangles, mesh.normals]
-                if all(r() is a for r, a in zip(refs, arrays, strict=False)):
+                arrays = [a for a in _mesh_arrays(mesh) if a is not None]
+                if all(r() is a for r, a in zip(refs, arrays, strict=True)):
                     self._entries.move_to_end(key)
                     self.hits += 1
                     return gpu_mesh, False
@@ -184,9 +188,7 @@ class MeshCache:
         self.uploads += 1
         self.upload_bytes += gpu_mesh.nbytes
         if key is not None:
-            arrays = [mesh.positions, mesh.triangles] + (
-                [mesh.normals] if mesh.normals is not None else []
-            )
+            arrays = [a for a in _mesh_arrays(mesh) if a is not None]
             self._serial += 1
             serial = self._serial
             refs = [weakref.ref(a, lambda _, k=key, n=serial: self._forget(k, n)) for a in arrays]
@@ -222,33 +224,46 @@ class MeshCache:
             data=np.ascontiguousarray(mesh.triangles, dtype=np.uint32),
             usage=usage,
         )
-        normals = None
-        if mesh.normals is not None:
-            normals = device.create_buffer_with_data(
-                label="aether3d-normals",
-                data=np.ascontiguousarray(mesh.normals, dtype=np.float32),
-                usage=usage,
-            )
+        optional = {}
+        for name, array, dtype in (
+            ("normals", mesh.normals, np.float32),
+            ("uvs", mesh.uvs, np.float32),
+            ("groups", mesh.groups, np.uint32),  # one 32-bit word per triangle
+        ):
+            optional[name] = None
+            if array is not None:
+                optional[name] = device.create_buffer_with_data(
+                    label=f"aether3d-{name}",
+                    data=np.ascontiguousarray(array, dtype=dtype),
+                    usage=usage,
+                )
+        dummy = ctx.utility.dummy_storage
         bind_group = device.create_bind_group(
             layout=ctx.shaders.layout("mesh"),
             entries=[
                 {"binding": 0, "resource": {"buffer": positions}},
-                {"binding": 1, "resource": {"buffer": normals or ctx.utility.dummy_storage}},
+                {"binding": 1, "resource": {"buffer": optional["normals"] or dummy}},
                 {"binding": 2, "resource": {"buffer": indices}},
+                {"binding": 3, "resource": {"buffer": optional["uvs"] or dummy}},
+                {"binding": 4, "resource": {"buffer": optional["groups"] or dummy}},
             ],
         )
         nbytes = mesh.positions.nbytes + mesh.triangles.nbytes
         nbytes += 0 if mesh.normals is None else mesh.normals.nbytes
+        nbytes += 0 if mesh.uvs is None else mesh.uvs.nbytes
+        nbytes += 0 if mesh.groups is None else 4 * mesh.groups.shape[0]
         bounds = np.stack([mesh.positions.min(axis=0), mesh.positions.max(axis=0)])
         return GPUMesh(
             positions,
-            normals,
+            optional["normals"],
             indices,
             bind_group,
             int(mesh.positions.shape[0]),
             int(mesh.triangles.shape[0]),
             nbytes,
             bounds.astype(np.float64),
+            optional["uvs"],
+            optional["groups"],
         )
 
 
@@ -544,20 +559,28 @@ class TargetCache:
 
 
 def draw_order(
-    rs: RenderScene, cull: str, keep: np.ndarray | None = None
+    rs: RenderScene,
+    cull: str,
+    keep: np.ndarray | None = None,
+    masked: np.ndarray | None = None,
 ) -> tuple[np.ndarray, list[tuple[int, bool, int, int]]]:
     """Instance order for drawing, and draws ``(mesh, mirrored, first, count)``.
 
     Instances sharing a mesh (and, when culling, the same winding) become one
     instanced draw call; ``first`` indexes the instance records in draw order.
-    Instances where ``keep`` is ``False`` are left out.
+    Instances where ``keep`` is ``False`` are left out. Within a draw, instances
+    whose ``masked`` flag is set come last, so shadow passes can split draws
+    into alpha-tested and depth-only ranges (:func:`shadow_draws`).
     """
 
     def winding(i: int) -> bool:
         return rs.instances[i].mirrored if cull != "none" else False
 
+    def alpha(i: int) -> bool:
+        return bool(masked[i]) if masked is not None else False
+
     indices = [i for i in range(len(rs.instances)) if keep is None or keep[i]]
-    keyed = sorted(indices, key=lambda i: (rs.instances[i].mesh, winding(i), i))
+    keyed = sorted(indices, key=lambda i: (rs.instances[i].mesh, winding(i), alpha(i), i))
     draws: list[tuple[int, bool, int, int]] = []
     for position, index in enumerate(keyed):
         mesh, mirrored = rs.instances[index].mesh, winding(index)
@@ -566,6 +589,33 @@ def draw_order(
         else:
             draws.append((mesh, mirrored, position, 1))
     return np.array(keyed, dtype=np.int64), draws
+
+
+def shadow_draws(
+    order: np.ndarray, draws: list[tuple[int, bool, int, int]], masked: np.ndarray
+) -> list[tuple[int, bool, int, int]]:
+    """Scene draws split into alpha-tested and depth-only runs: ``(mesh, masked, first, count)``."""
+    out: list[tuple[int, bool, int, int]] = []
+    for mesh, _, first, count in draws:
+        for row in range(first, first + count):
+            flag = bool(masked[int(order[row])])
+            if out and out[-1][0] == mesh and out[-1][1] == flag and out[-1][2] + out[-1][3] == row:
+                out[-1] = (mesh, flag, out[-1][2], out[-1][3] + 1)
+            else:
+                out.append((mesh, flag, row, 1))
+    return out
+
+
+def instance_masks(rs: RenderScene) -> np.ndarray:
+    """Which instances use an alpha-masked material (on any face group)."""
+    masked_materials = np.array([m.masked for m in rs.materials], dtype=bool)
+    out = np.zeros(len(rs.instances), dtype=bool)
+    if not masked_materials.any():
+        return out
+    for i, inst in enumerate(rs.instances):
+        used = [inst.material] + [m for _, m in inst.group_materials]
+        out[i] = bool(masked_materials[used].any())
+    return out
 
 
 def pack_instances(rs: RenderScene, order: np.ndarray, eye: np.ndarray) -> np.ndarray:
@@ -587,9 +637,16 @@ def pack_instances(rs: RenderScene, order: np.ndarray, eye: np.ndarray) -> np.nd
     data[:, 27] = [inst.specular for inst in instances]
     data[:, 28] = [inst.shininess for inst in instances]
     has_normals = np.array([m.normals is not None for m in rs.meshes], dtype=bool)
+    has_uvs = np.array([m.uvs is not None for m in rs.meshes], dtype=bool)
+    has_groups = np.array([m.groups is not None for m in rs.meshes], dtype=bool)
     mesh = np.fromiter((inst.mesh for inst in instances), dtype=np.int64, count=n)
     mirrored = np.fromiter((inst.mirrored for inst in instances), dtype=bool, count=n)
-    words[:n, 29] = np.where(mirrored, MIRRORED, 0) | np.where(has_normals[mesh], HAS_NORMALS, 0)
+    words[:n, 29] = (
+        np.where(mirrored, MIRRORED, 0)
+        | np.where(has_normals[mesh], HAS_NORMALS, 0)
+        | np.where(has_uvs[mesh], HAS_UVS, 0)
+        | np.where(has_groups[mesh], HAS_GROUPS, 0)
+    )
     words[:n, 30] = order
     return data
 
@@ -652,6 +709,7 @@ def pack_frame(rs: RenderScene, aspect: float, plan: ShadowPlan | None) -> np.nd
     if plan is not None and plan.maps:
         signed[25] = plan.settings.pcf_radius
         data[26] = 1.0 / plan.settings.map_size
+    data[28:31] = rs.camera.frame.position  # world-space texture coordinates add it back
     return data
 
 

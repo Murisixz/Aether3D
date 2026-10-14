@@ -3,15 +3,19 @@
 The shaders live in ``wgsl/*.wgsl`` as package data:
 
 * ``common.wgsl`` -- instance and mesh declarations, vertex pulling helpers;
-* ``scene.wgsl`` -- the scene pass (vertex + fragment: shading, shadows);
-* ``shadow.wgsl`` -- the depth-only shadow pass;
+* ``material.wgsl`` -- material data, the texture program interpreter, image
+  sampling, texture coordinates and normal mapping, the shared vertex stage;
+* ``scene.wgsl`` -- the scene pass (vertex + fragment: materials, shading, shadows);
+* ``shadow.wgsl`` -- the shadow pass (depth only, or with alpha-tested materials);
 * ``finalize.wgsl`` -- the compute pass that resolves samples and encodes sRGB.
 
-Modules are assembled from these fixed files only (``common`` is prepended to
-the scene and shadow shaders, and ``finalize`` has two variants, single- and
-multi-sampled); nothing from a scene, project or command line is ever
-compiled. Compilation errors become ``RenderError("GPU_SHADER_ERROR")`` with
-the compiler's message in ``details``.
+Modules are assembled from these fixed files only (``common`` and
+``material`` are prepended to the scene and shadow shaders, and
+``finalize`` has two variants, single- and multi-sampled); nothing from a
+scene, project or command line is ever compiled: materials and procedural
+textures reach the GPU as numbers in storage buffers. Compilation errors
+become ``RenderError("GPU_SHADER_ERROR")`` with the compiler's message in
+``details``.
 """
 
 from __future__ import annotations
@@ -45,14 +49,14 @@ _FINALIZE_VARIANTS = {
 
 
 def shader_source(name: str) -> str:
-    """The text of a bundled WGSL file: ``"common"``, ``"scene"``, ``"shadow"``, ``"finalize"``."""
+    """The text of a bundled WGSL file (``"common"``, ``"material"``, ``"scene"``, ...)."""
     return resources.files(__package__).joinpath("wgsl", f"{name}.wgsl").read_text("utf-8")
 
 
 def module_source(kind: str, multisampled: bool = False) -> str:
     """The complete WGSL of a shader module: ``"scene"``, ``"shadow"`` or ``"finalize"``."""
     if kind in ("scene", "shadow"):
-        return shader_source("common") + "\n" + shader_source(kind)
+        return "\n".join(shader_source(k) for k in ("common", "material", kind))
     if kind == "finalize":
         text = shader_source("finalize")
         for marker, value in _FINALIZE_VARIANTS[bool(multisampled)].items():
@@ -131,8 +135,13 @@ class ShaderLibrary:
         vertex, fragment = wgpu.ShaderStage.VERTEX, wgpu.ShaderStage.FRAGMENT
         storage = {"type": wgpu.BufferBindingType.read_only_storage}
         uniform = {"type": wgpu.BufferBindingType.uniform}
+        material_entries = [
+            {"binding": 6, "visibility": vertex | fragment, "buffer": storage},  # material data
+            {"binding": 7, "visibility": fragment, "buffer": storage},  # texels
+        ]
         if name == "mesh":
-            entries = [{"binding": b, "visibility": vertex, "buffer": storage} for b in range(3)]
+            # positions, normals, indices, uvs, face groups
+            entries = [{"binding": b, "visibility": vertex, "buffer": storage} for b in range(5)]
         elif name == "frame":
             entries = [
                 {"binding": 0, "visibility": vertex | fragment, "buffer": uniform},
@@ -152,11 +161,13 @@ class ShaderLibrary:
                     "visibility": fragment,
                     "sampler": {"type": wgpu.SamplerBindingType.comparison},
                 },
+                *material_entries,
             ]
         elif name == "shadow":
             entries = [
-                {"binding": 0, "visibility": vertex, "buffer": uniform},
-                {"binding": 1, "visibility": vertex, "buffer": storage},
+                {"binding": 0, "visibility": vertex | fragment, "buffer": uniform},
+                {"binding": 1, "visibility": vertex | fragment, "buffer": storage},
+                *material_entries,
             ]
         elif name in ("finalize", "finalize-ms"):
             multisampled = name == "finalize-ms"
@@ -230,17 +241,29 @@ class ShaderLibrary:
 
         return self._cached(("scene", msaa, color_format, cull, front), create)
 
-    def shadow_pipeline(self) -> Any:
+    def shadow_pipeline(self, masked: bool = False) -> Any:
+        """The shadow pass: depth only, or (``masked``) with the alpha test of masked materials."""
         wgpu = self.context.wgpu
 
         def create() -> Any:
             layout = self.context.device.create_pipeline_layout(
                 bind_group_layouts=[self.layout("shadow"), self.layout("mesh")]
             )
+            module = self.module("shadow")
+            options: dict[str, Any] = {}
+            if masked:
+                options["fragment"] = {
+                    "module": module,
+                    "entry_point": "fs_shadow_masked",
+                    "targets": [],
+                }
             return self.context.device.create_render_pipeline(
-                label="aether3d-shadow",
+                label="aether3d-shadow-masked" if masked else "aether3d-shadow",
                 layout=layout,
-                vertex={"module": self.module("shadow"), "entry_point": "vs_shadow"},
+                vertex={
+                    "module": module,
+                    "entry_point": "vs_shadow_masked" if masked else "vs_shadow",
+                },
                 primitive={
                     "topology": wgpu.PrimitiveTopology.triangle_list,
                     "cull_mode": wgpu.CullMode.none,
@@ -250,9 +273,10 @@ class ShaderLibrary:
                     "depth_write_enabled": True,
                     "depth_compare": wgpu.CompareFunction.less,
                 },
+                **options,
             )
 
-        return self._cached(("shadow",), create)
+        return self._cached(("shadow", masked), create)
 
     def finalize_pipeline(self, multisampled: bool) -> Any:
         name = "finalize-ms" if multisampled else "finalize"

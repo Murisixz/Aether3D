@@ -1,17 +1,18 @@
-// Aether3D GPU renderer -- the scene pass (appended to common.wgsl).
+// Aether3D GPU renderer -- the scene pass (appended to common.wgsl and material.wgsl).
 //
-// Vertex stage: camera-relative positions, world normals and the exact face
-// normal of every triangle. Fragment stage: the Stage 5 shading model
-// (docs/RENDERING.md), evaluated in linear light:
+// Vertex stage: camera-relative positions, world normals, the exact face
+// normal of every triangle, its corner UVs and its material (build_vertex).
+// Fragment stage: the material (textures, normal maps, alpha cut-outs,
+// single-sided culling; material.wgsl), then one of two shading models in
+// linear light (docs/RENDERING.md, docs/MATERIALS.md):
 //
-//   radiance = base * (ambient + sum(light * max(n.l, 0) * attenuation * shadow))
-//            + sum(light * specular * max(n.h, 0)^shininess * attenuation * shadow)
+//   simple:   base * (ambient * ao + sum(light * max(n.l, 0) * attenuation * shadow))
+//             + sum(light * specular * max(n.h, 0)^shininess * attenuation * shadow)
+//   standard: glTF metallic-roughness (GGX, height-correlated Smith, Schlick), times pi
 //
-// with two-sided lighting (normals turned toward the camera). Outputs are the
-// linear radiance and the object index + 1 of every sample (0 = background).
-//
-// `surface()` is the only place where an object's look enters shading; a
-// material system (Stage 7) replaces it without touching lighting or passes.
+// plus emission, with two-sided lighting (normals turned toward the camera).
+// Outputs are the linear radiance and the object index + 1 of every sample
+// (0 = background).
 
 const MIN_LIGHT_DISTANCE: f32 = 1e-4;
 
@@ -23,6 +24,7 @@ struct Frame {
   pcf_radius: i32,         // shadow filter radius in texels
   shadow_texel: f32,       // one shadow-map texel in texture coordinates
   _pad: u32,
+  eye: vec4<f32>,          // xyz: the camera position in world space (for world coordinates)
 };
 
 struct Light {
@@ -50,70 +52,13 @@ struct ShadowMap {
 @group(0) @binding(4) var shadow_texture: texture_depth_2d_array;
 @group(0) @binding(5) var shadow_sampler: sampler_comparison;
 
-struct VertexOut {
-  @builtin(position) clip: vec4<f32>,
-  @location(0) @interpolate(perspective, centroid) position: vec3<f32>,  // camera-relative world
-  @location(1) @interpolate(perspective, centroid) normal: vec3<f32>,    // world, unit (or zero)
-  @location(2) @interpolate(flat) face: vec3<f32>,                       // world face normal (outward)
-  @location(3) @interpolate(flat) instance: u32,
-  @location(4) @interpolate(perspective, centroid) barycentric: vec3<f32>,
-  // The whole triangle (camera-relative corners and their world normals), for shadow lookups.
-  @location(5) @interpolate(flat) p0: vec3<f32>,
-  @location(6) @interpolate(flat) p1: vec3<f32>,
-  @location(7) @interpolate(flat) p2: vec3<f32>,
-  @location(8) @interpolate(flat) n0: vec3<f32>,
-  @location(9) @interpolate(flat) n1: vec3<f32>,
-  @location(10) @interpolate(flat) n2: vec3<f32>,
-};
+fn camera_eye() -> vec3<f32> {
+  return frame.eye.xyz;
+}
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance: u32) -> VertexOut {
-  let inst = instances[instance];
-  let tri = triangle_vertices(vertex / 3u);
-  let q0 = mesh_position(tri.x);
-  let q1 = mesh_position(tri.y);
-  let q2 = mesh_position(tri.z);
-  let corner = vertex % 3u;
-  var q = q0;
-  if (corner == 1u) {
-    q = q1;
-  } else if (corner == 2u) {
-    q = q2;
-  }
-  var out: VertexOut;
-  out.p0 = relative_position(inst, q0);
-  out.p1 = relative_position(inst, q1);
-  out.p2 = relative_position(inst, q2);
-  var position = out.p0;
-  out.barycentric = vec3<f32>(1.0, 0.0, 0.0);
-  if (corner == 1u) {
-    position = out.p1;
-    out.barycentric = vec3<f32>(0.0, 1.0, 0.0);
-  } else if (corner == 2u) {
-    position = out.p2;
-    out.barycentric = vec3<f32>(0.0, 0.0, 1.0);
-  }
-  out.clip = frame.view_proj * vec4<f32>(position, 1.0);
-  out.position = position;
-  // Object-space face normal through the normal matrix: outward, also for mirrored instances.
-  out.face = safe_normalize(world_normal(inst, cross(q1 - q0, q2 - q0)));
-  out.normal = vec3<f32>(0.0);
-  out.n0 = vec3<f32>(0.0);
-  out.n1 = vec3<f32>(0.0);
-  out.n2 = vec3<f32>(0.0);
-  if ((inst.flags & INSTANCE_HAS_NORMALS) != 0u) {
-    out.n0 = safe_normalize(world_normal(inst, mesh_normal(tri.x)));
-    out.n1 = safe_normalize(world_normal(inst, mesh_normal(tri.y)));
-    out.n2 = safe_normalize(world_normal(inst, mesh_normal(tri.z)));
-    out.normal = out.n0;
-    if (corner == 1u) {
-      out.normal = out.n1;
-    } else if (corner == 2u) {
-      out.normal = out.n2;
-    }
-  }
-  out.instance = instance;
-  return out;
+  return build_vertex(vertex, instance, frame.view_proj);
 }
 
 // The point on the smooth surface that the vertex normals describe, above a flat triangle
@@ -132,17 +77,6 @@ fn smooth_surface_point(in: VertexOut, side: f32) -> vec3<f32> {
   let d1 = min(0.0, dot(p - in.p1, n1));
   let d2 = min(0.0, dot(p - in.p2, n2));
   return p - (b.x * d0) * n0 - (b.y * d1) * n1 - (b.z * d2) * n2;
-}
-
-struct Surface {
-  base_color: vec3<f32>,
-  specular: f32,
-  shininess: f32,
-};
-
-// The look of an object at one fragment (Stage 7: materials evaluate here).
-fn surface(inst: Instance) -> Surface {
-  return Surface(inst.base_color, inst.specular, inst.shininess);
 }
 
 // Fraction of a directional light reaching `position` (1 = fully lit), from its shadow map.
@@ -169,53 +103,117 @@ fn shadow_visibility(layer: i32, position: vec3<f32>, n: vec3<f32>, l: vec3<f32>
   return lit / f32((2 * r + 1) * (2 * r + 1));
 }
 
-// Linear radiance leaving `position` toward the camera; shadow lookups start at `shadow_origin`.
-fn shade(surf: Surface, position: vec3<f32>, n: vec3<f32>, shadow_origin: vec3<f32>) -> vec3<f32> {
-  var v = -frame.forward.xyz;
+fn view_direction(position: vec3<f32>) -> vec3<f32> {
   if (frame.forward.w > 0.5) {
-    v = safe_normalize(-position);
+    return safe_normalize(-position);
   }
-  var diffuse = frame.ambient.rgb;
+  return -frame.forward.xyz;
+}
+
+struct LightSample {
+  l: vec3<f32>,        // unit direction toward the light
+  attenuation: f32,
+};
+
+fn light_at(light: Light, position: vec3<f32>) -> LightSample {
+  if (light.kind == 0u) {
+    return LightSample(-light.vector, 1.0);
+  }
+  let to_light = light.vector - position;
+  let distance = length(to_light);
+  let l = to_light / max(distance, 1e-30);
+  let d = max(distance, MIN_LIGHT_DISTANCE);
+  var attenuation = 1.0;
+  if (light.falloff == 1u) {
+    attenuation = 1.0 / (d * d);
+  }
+  if (light.range > 0.0) {
+    let ratio = d / light.range;
+    let window = clamp(1.0 - ratio * ratio * ratio * ratio, 0.0, 1.0);
+    attenuation = attenuation * window * window;
+  }
+  return LightSample(l, attenuation);
+}
+
+// The simple model (Aether3D 0.5): Lambert plus an optional Blinn-Phong highlight.
+fn shade_simple(
+  base: vec3<f32>, specular: f32, shininess: f32, occlusion: f32,
+  position: vec3<f32>, n: vec3<f32>, shadow_origin: vec3<f32>
+) -> vec3<f32> {
+  let v = view_direction(position);
+  var diffuse = frame.ambient.rgb * occlusion;
   var highlight = vec3<f32>(0.0);
   for (var i = 0u; i < frame.light_count; i++) {
     let light = lights[i];
-    var l: vec3<f32>;
-    var attenuation = 1.0;
-    if (light.kind == 0u) {
-      l = -light.vector;
-    } else {
-      let to_light = light.vector - position;
-      let distance = length(to_light);
-      l = to_light / max(distance, 1e-30);
-      let d = max(distance, MIN_LIGHT_DISTANCE);
-      if (light.falloff == 1u) {
-        attenuation = 1.0 / (d * d);
-      }
-      if (light.range > 0.0) {
-        let ratio = d / light.range;
-        let window = clamp(1.0 - ratio * ratio * ratio * ratio, 0.0, 1.0);
-        attenuation = attenuation * window * window;
-      }
-    }
-    let ndl = dot(n, l);
+    let ls = light_at(light, position);
+    let ndl = dot(n, ls.l);
     if (ndl <= 0.0) {
       continue;
     }
     var visibility = 1.0;
     if (light.shadow >= 0) {
-      visibility = shadow_visibility(light.shadow, shadow_origin, n, l);
+      visibility = shadow_visibility(light.shadow, shadow_origin, n, ls.l);
     }
-    let weight = attenuation * visibility;
+    let weight = ls.attenuation * visibility;
     diffuse += light.radiance * (ndl * weight);
-    if (surf.specular > 0.0) {
-      let h = l + v;
+    if (specular > 0.0) {
+      let h = ls.l + v;
       let ndh = dot(n, h) / max(length(h), 1e-30);
       if (ndh > 0.0) {
-        highlight += light.radiance * (surf.specular * pow(ndh, surf.shininess) * weight);
+        highlight += light.radiance * (specular * pow(ndh, shininess) * weight);
       }
     }
   }
-  return surf.base_color * diffuse + highlight;
+  return base * diffuse + highlight;
+}
+
+// Karis' analytic fit of the split-sum environment BRDF: F0 * x + y.
+fn env_brdf(roughness: f32, ndv: f32) -> vec2<f32> {
+  let r = roughness * vec4<f32>(-1.0, -0.0275, -0.572, 0.022) + vec4<f32>(1.0, 0.0425, 1.04, -0.04);
+  let a004 = min(r.x * r.x, exp2(-9.28 * ndv)) * r.x + r.y;
+  return vec2<f32>(-1.04, 1.04) * a004 + r.zw;
+}
+
+// The standard model: glTF 2.0 metallic-roughness, times pi (see docs/MATERIALS.md).
+fn shade_standard(
+  sv: SurfaceValues, specular: f32, position: vec3<f32>, n: vec3<f32>, shadow_origin: vec3<f32>
+) -> vec3<f32> {
+  let v = view_direction(position);
+  let metallic = clamp(sv.metallic, 0.0, 1.0);
+  let rough = clamp(sv.roughness, MIN_ROUGHNESS, 1.0);
+  let alpha = rough * rough;
+  let a2 = alpha * alpha;
+  let c_diff = sv.base * (1.0 - metallic);
+  let f0 = vec3<f32>(0.08 * specular * (1.0 - metallic)) + sv.base * metallic;
+  let ndv = max(dot(n, v), 1e-4);
+  let ab = env_brdf(rough, ndv);
+  var out = frame.ambient.rgb * sv.occlusion * (c_diff + f0 * ab.x + ab.y);
+  for (var i = 0u; i < frame.light_count; i++) {
+    let light = lights[i];
+    let ls = light_at(light, position);
+    let ndl = dot(n, ls.l);
+    if (ndl <= 0.0) {
+      continue;
+    }
+    var visibility = 1.0;
+    if (light.shadow >= 0) {
+      visibility = shadow_visibility(light.shadow, shadow_origin, n, ls.l);
+    }
+    let h = safe_normalize(ls.l + v);
+    let ndh = max(dot(n, h), 0.0);
+    let vdh = max(dot(v, h), 0.0);
+    let x = 1.0 - vdh;
+    let x2 = x * x;
+    let fresnel = f0 + (1.0 - f0) * (x2 * x2 * x);
+    let d = ndh * ndh * (a2 - 1.0) + 1.0;
+    let distribution = a2 / (PI * d * d);
+    let vis = 0.5 / max(
+      ndl * sqrt(ndv * ndv * (1.0 - a2) + a2) + ndv * sqrt(ndl * ndl * (1.0 - a2) + a2), 1e-30
+    );
+    let brdf = (1.0 - fresnel) * c_diff + PI * fresnel * distribution * vis;
+    out += light.radiance * (ndl * ls.attenuation * visibility) * brdf;
+  }
+  return out;
 }
 
 struct FragmentOut {
@@ -225,10 +223,18 @@ struct FragmentOut {
 
 @fragment
 fn fs_main(in: VertexOut, @builtin(front_facing) front: bool) -> FragmentOut {
+  // Derivatives first, in uniform control flow: every texture lookup derives from them.
+  let dbdx = dpdxFine(in.barycentric);
+  let dbdy = dpdyFine(in.barycentric);
   let inst = instances[in.instance];
   // The outward side faces the camera when the screen winding is counter-clockwise,
   // or clockwise for mirrored instances. Two-sided lighting turns normals toward it.
   let toward = select(-1.0, 1.0, front != ((inst.flags & INSTANCE_MIRRORED) != 0u));
+  let m = in.material;
+  let flags = material_flags(m);
+  if ((flags & MATERIAL_DOUBLE_SIDED) == 0u && toward < 0.0) {
+    discard;  // single-sided material seen from behind
+  }
   let face = in.face * toward;
   var n = face;
   var shadow_origin = in.position;
@@ -239,8 +245,27 @@ fn fs_main(in: VertexOut, @builtin(front_facing) front: bool) -> FragmentOut {
     }
     shadow_origin = smooth_surface_point(in, toward);
   }
+  let s = SurfaceInput(
+    in.instance, in.barycentric, dbdx, dbdy, in.p0, in.p1, in.p2,
+    in.uv01.xy, in.uv01.zw, in.uv2, n * toward
+  );
+  let has_uvs = (inst.flags & INSTANCE_HAS_UVS) != 0u;
+  let mb = material_base(m);
+  var sv = evaluate_surface(m, s, has_uvs, false);
+  if ((flags & MATERIAL_MASK) != 0u && sv.alpha < wordf(mb + 5u)) {
+    discard;  // alpha cut-out
+  }
+  if (slot_binding(m, SLOT_NORMAL) != NO_BINDING && binding_usable(slot_binding(m, SLOT_NORMAL), has_uvs)) {
+    n = sv.normal * toward;
+  }
+  var radiance: vec3<f32>;
+  if ((flags & MATERIAL_STANDARD) != 0u) {
+    radiance = shade_standard(sv, wordf(mb + 8u), in.position, n, shadow_origin);
+  } else {
+    radiance = shade_simple(sv.base, wordf(mb + 8u), wordf(mb + 9u), sv.occlusion, in.position, n, shadow_origin);
+  }
   var out: FragmentOut;
-  out.color = vec4<f32>(shade(surface(inst), in.position, n, shadow_origin), 1.0);
+  out.color = vec4<f32>(radiance + sv.emissive, 1.0);
   out.object = f32(inst.index + 1u);
   return out;
 }

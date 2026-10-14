@@ -37,14 +37,17 @@ from ..settings import RenderLimits
 from ..shadows import ShadowPlan, instance_corners
 from . import resources
 from .device import GPUContext, log_mark, translate_errors, validation_messages_since
+from .materials import HEADER_IMAGES, IMAGE_WORDS, image_key, pack_material_data
 from .resources import (
     MAX_GPU_INSTANCES,
     draw_order,
+    instance_masks,
     pack_finalize,
     pack_frame,
     pack_instances,
     pack_lights,
     pack_shadow_maps,
+    shadow_draws,
     target_bytes,
 )
 
@@ -221,7 +224,8 @@ def _render(
     bounds = np.stack([m.bounds for m in meshes]) if meshes else np.zeros((0, 2, 3))
     keep, finite_diags = _finite_instances(rs, eye, bounds)
     diagnostics += finite_diags
-    order, draws = draw_order(rs, cull, keep)
+    masked = instance_masks(rs)
+    order, draws = draw_order(rs, cull, keep, masked)
     storage = wgpu.BufferUsage.STORAGE
     uniform = wgpu.BufferUsage.UNIFORM
     frame_buffers = []
@@ -232,6 +236,15 @@ def _render(
         return created
 
     instance_buffer = buffer(pack_instances(rs, order, eye), storage, "aether3d-instances")
+    materials = pack_material_data(rs, order)
+    textures_before = (context.textures.uploads, context.textures.upload_bytes)
+    t_textures = time.perf_counter()
+    texel_buffer, offsets, _ = context.textures.prepare(materials.images)
+    t_textures = time.perf_counter() - t_textures
+    words = materials.words
+    for i, image in enumerate(materials.images):  # where each image's levels start in the pool
+        words[words[HEADER_IMAGES] + i * IMAGE_WORDS] = offsets[image_key(image)]
+    material_buffer = buffer(words, storage, "aether3d-materials")
     light_buffer = buffer(pack_lights(rs, eye, plan), storage, "aether3d-lights")
     shadow_buffer = buffer(pack_shadow_maps(plan), storage, "aether3d-shadow-maps")
     frame_buffer = buffer(pack_frame(rs, aspect, plan), uniform, "aether3d-frame")
@@ -241,7 +254,11 @@ def _render(
         "aether3d-finalize",
     )
     shadow_pass_buffers = [
-        buffer(m.matrix.T.reshape(-1).astype(np.float32), uniform, "aether3d-shadow-pass")
+        buffer(
+            np.concatenate([m.matrix.T.reshape(-1), eye, [0.0]]).astype(np.float32),
+            uniform,
+            "aether3d-shadow-pass",
+        )
         for m in (plan.maps if plan is not None else ())
     ]
     t_upload = time.perf_counter() - t0
@@ -266,6 +283,8 @@ def _render(
             {"binding": 3, "resource": {"buffer": shadow_buffer}},
             {"binding": 4, "resource": targets.shadow_view},
             {"binding": 5, "resource": utility.shadow_sampler},
+            {"binding": 6, "resource": {"buffer": material_buffer}},
+            {"binding": 7, "resource": {"buffer": texel_buffer}},
         ],
     )
     multisampled = aa.msaa > 1
@@ -302,13 +321,18 @@ def _render(
     encoder.clear_buffer(targets.output, layout.counts, resources._align(sizes["counts"], 4))
     draw_calls = 0
     if layers:
-        shadow_pipeline = context.shaders.shadow_pipeline()
+        shadow_runs = shadow_draws(order, draws, masked)
+        shadow_pipelines = {False: context.shaders.shadow_pipeline()}
+        if any(run[1] for run in shadow_runs):
+            shadow_pipelines[True] = context.shaders.shadow_pipeline(masked=True)
         for layer, view in enumerate(targets.shadow_layers):
             group = device.create_bind_group(
                 layout=context.shaders.layout("shadow"),
                 entries=[
                     {"binding": 0, "resource": {"buffer": shadow_pass_buffers[layer]}},
                     {"binding": 1, "resource": {"buffer": instance_buffer}},
+                    {"binding": 6, "resource": {"buffer": material_buffer}},
+                    {"binding": 7, "resource": {"buffer": texel_buffer}},
                 ],
             )
             writes = {}
@@ -329,9 +353,12 @@ def _render(
                 },
                 timestamp_writes=writes or None,
             )
-            shadow_pass.set_pipeline(shadow_pipeline)
             shadow_pass.set_bind_group(0, group)
-            for mesh, _, first, count in draws:
+            current_shadow = None
+            for mesh, alpha_tested, first, count in shadow_runs:
+                if current_shadow is not alpha_tested:
+                    shadow_pass.set_pipeline(shadow_pipelines[alpha_tested])
+                    current_shadow = alpha_tested
                 shadow_pass.set_bind_group(1, meshes[mesh].bind_group)
                 shadow_pass.draw(3 * meshes[mesh].triangles, count, 0, first)
                 draw_calls += 1
@@ -475,6 +502,16 @@ def _render(
         "mesh_uploads": uploads,
         "mesh_upload_bytes": upload_bytes,
         "mesh_cache": context.meshes.stats(),
+        "materials": len(rs.materials),
+        "textured_materials": materials.textured,
+        "texture_bindings": materials.bindings,
+        "texture_program_instructions": materials.instructions,
+        "material_data_bytes": int(materials.words.nbytes),
+        "images": len(materials.images),
+        "texel_uploads": context.textures.uploads - textures_before[0],
+        "texel_upload_bytes": context.textures.upload_bytes - textures_before[1],
+        "texel_upload_seconds": t_textures,
+        "texel_pool": context.textures.stats(),
         "target_bytes": targets.nbytes,
         "targets_allocated": allocated,
         "frame_buffer_bytes": int(sum(b.size for b in frame_buffers)),
