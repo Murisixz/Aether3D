@@ -779,6 +779,13 @@ Verified on the development machine:
   size (128 MiB on lavapipe, 2 GiB on the RTX 4060), which is about 11
   million vertices or triangles on lavapipe. Larger meshes report
   `GPU_LIMIT_EXCEEDED`; split them or use the CPU renderer.
+- **Shader compilation on Direct3D 12.** wgpu compiles D3D12 shaders with FXC,
+  which is slow on the material shader. On GitHub's Windows runner (WARP),
+  creating the device and its first pipelines took 14 s (1 s in 0.6). The
+  first render that needs another pipeline variant (an MSAA count, culling
+  mode or masked shadows) took about 9 s more. This happens once per process:
+  pipelines are cached for the device. Vulkan and Metal compile them in a
+  fraction of a second.
 - **Readback cost.** Every GPU render reads back all auxiliary maps (depth,
   object index, coverage, linear color). That keeps results identical in
   shape to the CPU's, but costs readback time at very large sizes.
