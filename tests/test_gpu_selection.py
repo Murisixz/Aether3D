@@ -238,5 +238,5 @@ def test_auto_only_falls_back_for_gpu_problems(monkeypatch):
 
 
 def test_backend_names():
-    assert backends.BACKENDS == ("cpu", "gpu", "auto", "path")
+    assert backends.BACKENDS == ("cpu", "gpu", "auto", "path", "gpu_path")
     assert backends.check_backend("auto") == "auto"

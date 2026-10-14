@@ -14,6 +14,12 @@
   light transport with global illumination, ray-traced reflections and
   shadows, computed on the CPU with NumPy (it does not use the GPU). Much
   slower than the rasterizers; see ``docs/RENDER_QUALITY.md``.
+* ``"gpu_path"`` -- the same path tracer on the GPU (``rendering/gpu/pathtrace.py``):
+  a wgpu compute kernel that traces the CPU path tracer's paths (same
+  estimator, same random numbers) with software BVH traversal. Needs a
+  working adapter like ``"gpu"`` (``GPU_*`` errors otherwise; it never falls
+  back to the CPU silently). ``"path"`` remains the reference and the
+  fallback.
 """
 
 from __future__ import annotations
@@ -24,7 +30,8 @@ from typing import Any
 from ..errors import RenderError
 from .settings import MAX_SAMPLES_PER_AXIS
 
-BACKENDS = ("cpu", "gpu", "auto", "path")
+BACKENDS = ("cpu", "gpu", "auto", "path", "gpu_path")
+PATH_BACKENDS = ("path", "gpu_path")
 MSAA_COUNTS = (1, 2, 4, 8, 16)
 """MSAA sample counts that can be requested (devices support a subset; 1 and 4 always)."""
 MAX_SUPERSAMPLE = 4

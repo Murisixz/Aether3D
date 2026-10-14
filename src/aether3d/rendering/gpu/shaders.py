@@ -54,8 +54,9 @@ def shader_source(name: str) -> str:
 
 
 def module_source(kind: str, multisampled: bool = False) -> str:
-    """The complete WGSL of a shader module: ``"scene"``, ``"shadow"`` or ``"finalize"``."""
-    if kind in ("scene", "shadow"):
+    """The complete WGSL of a shader module: ``"scene"``, ``"shadow"``, ``"finalize"`` or
+    ``"pathtrace"`` (the GPU path tracer, which evaluates materials with the same code)."""
+    if kind in ("scene", "shadow", "pathtrace"):
         return "\n".join(shader_source(k) for k in ("common", "material", kind))
     if kind == "finalize":
         text = shader_source("finalize")
@@ -191,6 +192,19 @@ class ShaderLibrary:
                 {"binding": 4, "visibility": compute, "buffer": storage},
                 *[{"binding": b, "visibility": compute, "buffer": writable} for b in (5, 6, 7, 8)],
             ]
+        elif name == "pathtrace":
+            compute = wgpu.ShaderStage.COMPUTE
+            writable = {"type": wgpu.BufferBindingType.storage}
+            entries = [
+                # instances, material data, texels, the path tracer's scene words
+                *[{"binding": b, "visibility": compute, "buffer": storage} for b in (1, 6, 7, 8)],
+                {"binding": 9, "visibility": compute, "buffer": uniform},
+                # accumulators, counters
+                *[{"binding": b, "visibility": compute, "buffer": writable} for b in (10, 11)],
+            ]
+        elif name == "pathtrace-mesh":
+            compute = wgpu.ShaderStage.COMPUTE
+            entries = [{"binding": b, "visibility": compute, "buffer": storage} for b in range(5)]
         else:  # pragma: no cover - internal misuse
             raise ValueError(name)
         return device.create_bind_group_layout(label=f"aether3d-{name}", entries=entries)
@@ -277,6 +291,21 @@ class ShaderLibrary:
             )
 
         return self._cached(("shadow", masked), create)
+
+    def pathtrace_pipeline(self) -> Any:
+        """The GPU path tracer's compute kernel (``backend="gpu_path"``)."""
+
+        def create() -> Any:
+            layout = self.context.device.create_pipeline_layout(
+                bind_group_layouts=[self.layout("pathtrace"), self.layout("pathtrace-mesh")]
+            )
+            return self.context.device.create_compute_pipeline(
+                label="aether3d-pathtrace",
+                layout=layout,
+                compute={"module": self.module("pathtrace"), "entry_point": "path_main"},
+            )
+
+        return self._cached(("pathtrace",), create)
 
     def finalize_pipeline(self, multisampled: bool) -> Any:
         name = "finalize-ms" if multisampled else "finalize"
