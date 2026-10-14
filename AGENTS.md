@@ -100,6 +100,18 @@ apply to agents too.
     deriving the new noise level.
   - **Every estimator stays unbiased** unless it is a documented, opt-in bias (`clamp`). An
     emitter must be counted once (MIS between light and BSDF sampling).
+- GPU path tracer (`rendering/gpu/pathtrace.py`, `gpu/wgsl/pathtrace.wgsl`):
+  - **It is a port of the CPU path tracer, kept in step.** Any change to the estimator,
+    its constants or its random-number slots goes into both, and
+    `tests/test_gpu_pathtrace.py` must still show the two tracing the same paths (same
+    random numbers: `test_the_gpu_draws_the_cpu_path_tracers_random_numbers`). Only
+    float32 margins may differ (documented in the kernel's header).
+  - **One material evaluation.** `evaluate_surface` is called at exactly one place in the
+    kernel (the state machine's loop): D3D12's FXC inlines every call site of the
+    texture-program interpreter.
+  - **Honest reports.** It runs on the adapter's shader cores with software BVH
+    traversal: never claim hardware ray tracing, and report `"device": "gpu"` with the
+    adapter. Without a usable GPU it fails with a `GPU_*` error, never a silent CPU render.
 
 ## Using Aether3D from an agent
 
@@ -144,7 +156,9 @@ apply to agents too.
     Match on `MaterialError.code`.
   - Keep image files inside the project's folder, or embed them (`--embed`, `texture.embed()`).
     Procedural meshes have no UVs: map their textures with `coordinates="object"`.
-- Path tracing: `aether3d render PROJECT -o out.png --backend path --spp 32 --bounces 4 --json`.
+- Path tracing: `aether3d render PROJECT -o out.png --backend path --spp 32 --bounces 4 --json`
+  (CPU), or `--backend gpu_path` for the same path tracer on the GPU (much faster; read
+  `backend.adapter`).
   Read `backend.device` (`"cpu"`), `stats.noise.mean_relative_error` (more `--spp` lowers
   it), `stats.rays` and `stats.timings`. It is much slower than the rasterizers: try small
   sizes and few samples first. `--ao-only` is a fast AO preview, `--passes DIR` writes the

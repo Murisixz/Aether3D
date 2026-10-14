@@ -829,8 +829,10 @@ Verified on the development machine:
   - Better filtering replaces the PCF loop in `shadow_visibility()`.
   - Post-processing slots in between the scene and finalize passes, where
     linear HDR color is available.
-- **GPU path tracing (future).** wgpu exposes compute shaders, ray queries
-  (where hardware supports them) and timestamp queries. A GPU path tracer can
-  reuse the device, caches and `RenderScene`, the flat BVH layout of
-  `rendering/raytrace/` and the counter-based sampling of the CPU path tracer,
-  which gives it a verified reference.
+- **GPU path tracing (0.8.1): `backend="gpu_path"`.** The path tracer's
+  compute kernel (`gpu/pathtrace.py`, `wgsl/pathtrace.wgsl`) runs on the
+  same devices, with the same adapter selection, errors and material data as
+  the rasterizer. It reuses the flat BVH of `rendering/raytrace/` and the
+  CPU path tracer's counter-based sampling, which makes the CPU path tracer
+  its verified reference. Traversal is software: wgpu's ray queries are not
+  used. See [RENDER_QUALITY.md](RENDER_QUALITY.md#on-the-gpu-backendgpu_path).

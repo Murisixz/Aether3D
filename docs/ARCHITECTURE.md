@@ -73,7 +73,7 @@ Aether3D/
 │   │   ├── light.py       Light parameters
 │   │   ├── settings.py    Appearance, World/Environment, RenderSettings, ShadowSettings,
 │   │   │                  PathSettings, AOSettings, RenderLimits
-│   │   ├── backends.py    Backend names (cpu/gpu/auto/path), option checks, antialiasing plan
+│   │   ├── backends.py    Backend names (cpu/gpu/auto/path/gpu_path), option checks, antialiasing plan
 │   │   ├── shadows.py     Backend-neutral shadow planning (lights, map fitting, bias)
 │   │   ├── color.py       sRGB <-> linear transfer functions, color parsing
 │   │   ├── scene_data.py  RenderScene extraction (backend-independent)
@@ -93,8 +93,9 @@ Aether3D/
 │   │   │   ├── resources.py   Mesh cache, render targets, exact shader data layouts
 │   │   │   ├── materials.py   Material data packing, texture programs, the texel pool
 │   │   │   ├── renderer.py    Shadow, scene and finalize passes; synchronized readback
+│   │   │   ├── pathtrace.py   The GPU path tracer (backend="gpu_path"): data, dispatch, readback
 │   │   │   ├── check.py       The self-test behind `aether3d gpu info --check`
-│   │   │   └── wgsl/          common, material, scene, shadow and finalize shaders
+│   │   │   └── wgsl/          common, material, scene, shadow, finalize and pathtrace shaders
 │   │   ├── raytrace/      Ray tracing core (CPU, NumPy; see docs/RENDER_QUALITY.md)
 │   │   │   ├── bvh.py         Binned-SAH BVH construction
 │   │   │   └── accel.py       Two-level structure, BLAS cache, traversal, watertight tests
@@ -502,3 +503,23 @@ it in full. Key decisions:
   are scene content, saved and migrated (version 4 files get the
   `"ambient"` environment and zero sizes, so they render unchanged).
   Sample counts, bounces, seeds and AO are render options, not saved.
+
+## GPU path tracing (v0.8.1)
+
+`backend="gpu_path"` (`rendering/gpu/pathtrace.py`, `gpu/wgsl/pathtrace.wgsl`)
+runs the path tracer on a GPU adapter. Key decisions:
+
+- **A port, not a second renderer.** The host side reuses the CPU path
+  tracer's scene preparation (`PathScene`: the BVH with its BLAS cache, the
+  emitter table, the environment) and the GPU rasterizer's material packing
+  and texel pool. The compute kernel reproduces the CPU estimator step by
+  step, with the same random numbers (SplitMix64 in 32-bit pairs), so the
+  CPU path tracer is its reference, path for path.
+- **One kernel, one material call.** Each invocation traces whole paths for
+  one pixel as a small state machine whose loop evaluates materials at one
+  place (`material.wgsl`'s `evaluate_surface`), as D3D12's shader compiler
+  requires. Traversal is software, over the BVH's flat arrays in one storage
+  buffer.
+- **Deterministic sums.** Each pixel's samples are added by one invocation,
+  in sample order, into float32 sums: no atomics on pixels, so images repeat
+  bit for bit on a device, however the image is tiled.

@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.8.0 (render quality: path tracing).** Aether3D provides:
+> **Status: v0.8.1 (render quality: path tracing on the CPU and the GPU).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -34,10 +34,11 @@ graphical interface required.
 >   fbm, voronoi, bricks, wood, ...), normal maps, alpha masks, emission,
 >   presets, several materials per mesh (face groups), and glTF material
 >   import and export;
-> - a **path tracer** (`backend="path"`, CPU): global illumination,
->   ray-traced shadows and reflections, emissive area lights, sky
->   environments, ambient occlusion, render passes and linear HDR output,
->   on a BVH ray tracing core, with reproducible seeds.
+> - a **path tracer** (`backend="path"` on the CPU, `backend="gpu_path"` on
+>   the GPU): global illumination, ray-traced shadows and reflections,
+>   emissive area lights, sky environments, ambient occlusion, render passes
+>   and linear HDR output, on a BVH ray tracing core, with reproducible
+>   seeds.
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
 > Animation, physics and other systems are intentionally **not** part of
@@ -306,11 +307,12 @@ Python 3.11+), adapters, shadows, verification and benchmarks.
 
 ### Path tracing
 
-![The castle at golden hour, path traced](examples/output/castle_path.png)
+![The castle at golden hour, path traced on the GPU](examples/output/gpu_path_castle.png)
 
 *The textured procedural castle lit by a low sun, a sky and its torches,
-path traced by Aether3D on the CPU
-([`examples/castle_path_render.py`](examples/castle_path_render.py)).*
+path traced by Aether3D on the GPU (`backend="gpu_path"`, an RTX 4060
+Laptop GPU: 1920x1080, 512 samples per pixel, 2.4 minutes;
+[`examples/gpu_path_showcase.py`](examples/gpu_path_showcase.py)).*
 
 ![Cornell box: rasterizer | direct light | 8 bounces](examples/output/cornell_comparison.png)
 
@@ -354,11 +356,17 @@ print(result.backend["device"], result.stats["noise"], sorted(result.passes))
   - a mirror against a mirrored camera;
   - a Cornell box, AO against its closed form, and material parity with the
     rasterizer.
-- **Honest about speed.** It runs in NumPy on the CPU (forked processes on
-  Linux) and never uses the GPU. It is much slower than the rasterizers: at
-  640x360 with 16 samples and 4 bounces the textured castle takes 15.5 s on
-  8 processes, against 1.4 s on the CPU rasterizer and 0.03 s on the GPU.
-  Previews take seconds and final images minutes (see
+- **On the CPU or the GPU.** `backend="path"` runs in NumPy on the CPU
+  (forked processes on Linux). `backend="gpu_path"` runs the same path
+  tracer in a wgpu compute kernel. It traces the same paths as the CPU (same
+  random numbers; images agree to float32 rounding), 51 to 65 times faster
+  on an RTX 4060 than on eight CPU processes. Traversal is software; no
+  hardware ray tracing is used. Reports say which ran (`backend["device"]`).
+- **Honest about speed.** The path tracer is much slower than the
+  rasterizers. At 640x360 with 16 samples and 4 bounces, the textured castle
+  takes 15.5 s on 8 CPU processes, against 1.4 s on the CPU rasterizer and
+  0.03 s on the GPU rasterizer. At 1920x1080 with 64 samples it takes 18 s
+  on the GPU path tracer and 15.6 minutes on the CPU (see
   [docs/RENDER_QUALITY.md](docs/RENDER_QUALITY.md#performance)).
 
 ## Command-line interface
@@ -399,6 +407,7 @@ $ aether3d render model.glb -o preview.png --frame          # any project or glT
 $ aether3d gpu info --check                                 # GPU adapters + a verified test render
 $ aether3d render castle.aether -o castle.png --backend gpu --shadows --width 1920 --height 1080
 $ aether3d render castle.aether -o castle_path.png --backend path --spp 64 --bounces 4 --tonemap neutral
+$ aether3d render castle.aether -o castle_gpu_path.png --backend gpu_path --spp 1024 --bounces 6   # on the GPU
 $ aether3d render castle.aether -o castle_ao.png --backend path --ao-only --ao-distance 0.5   # fast AO preview
 $ aether3d inspect model.glb                   # validate/inspect also read .glb/.gltf
 $ aether3d geometry examples/first_scene.aether

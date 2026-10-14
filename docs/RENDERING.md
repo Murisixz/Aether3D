@@ -19,7 +19,8 @@ alpha masks and emission, on both backends. See [MATERIALS.md](MATERIALS.md).
 Objects without a material render with their own color, exactly as before.
 
 Since 0.8, `backend="path"` renders with a **path tracer** instead of a
-rasterizer. It computes physically based light transport on the CPU:
+rasterizer (since 0.8.1 `backend="gpu_path"` runs the same path tracer on the
+GPU). It computes physically based light transport:
 - shadows from every light, soft with the light's size;
 - light bouncing between surfaces;
 - reflections of the scene;
@@ -430,7 +431,7 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
 | `scene.cameras`, `scene.lights`, `scene.active_camera` | Lookup and active camera (settable) |
 | `scene.world` | `World`: `background`, `ambient_color`, `ambient_intensity`, and `environment` (the path tracer's `Environment`: `"ambient"`, `"uniform"` or `"sky"`) |
 | `scene.render_settings` | `RenderSettings`: `width`, `height`, `samples`, `exposure`, `cull`, `default_lights`; saved with the project |
-| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows, path, ao, tonemap, progress)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md); `backend="path"`, `path`, `ao` and `progress` in [RENDER_QUALITY.md](RENDER_QUALITY.md). `tonemap` applies to every backend. Returns a `RenderResult`. |
+| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows, path, ao, tonemap, progress)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md); `backend="path"`, `"gpu_path"`, `path`, `ao` and `progress` in [RENDER_QUALITY.md](RENDER_QUALITY.md). `tonemap` applies to every backend. Returns a `RenderResult`. |
 | `obj.camera`, `obj.light`, `obj.kind` | Components (`Camera`/`Light` or `None`); `"mesh"`, `"procedural"`, `"camera"`, `"light"` or `"empty"`. An object holds at most one of mesh, camera and light. |
 | `obj.appearance`, `obj.color`, `obj.visible` | Appearance and render visibility |
 | `obj.material`, `obj.group_materials`, `scene.create_material(...)`, `scene.assign_material(...)`, `scene.materials` | Materials and textures ([MATERIALS.md](MATERIALS.md)) |
@@ -496,7 +497,7 @@ $ aether3d camera list castle.aether ; aether3d light list castle.aether
 
 | Command | Purpose |
 | --- | --- |
-| `render PATH [-o OUT.png\|.hdr\|.pfm] [--width W] [--height H] [--camera REF] [--samples N] [--exposure EV] [--tonemap none\|neutral] [--cull MODE] [--background C] [--no-default-lights] [--frame] [--margin M] [--force]` | Render a `.aether` project, or a `.glb`/`.gltf` file with `--frame`. The output defaults to `PATH.png`. Existing files need `--force`. The project is never modified. `--backend gpu` and its options: [GPU.md](GPU.md); `--backend path` and its options (`--spp`, `--bounces`, `--seed`, `--ao`, `--passes DIR`, ...): [RENDER_QUALITY.md](RENDER_QUALITY.md#python-and-cli-reference). |
+| `render PATH [-o OUT.png\|.hdr\|.pfm] [--width W] [--height H] [--camera REF] [--samples N] [--exposure EV] [--tonemap none\|neutral] [--cull MODE] [--background C] [--no-default-lights] [--frame] [--margin M] [--force]` | Render a `.aether` project, or a `.glb`/`.gltf` file with `--frame`. The output defaults to `PATH.png`. Existing files need `--force`. The project is never modified. `--backend gpu` and its options: [GPU.md](GPU.md); `--backend path` (CPU) or `gpu_path` (GPU) and their options (`--spp`, `--bounces`, `--seed`, `--ao`, `--passes DIR`, ...): [RENDER_QUALITY.md](RENDER_QUALITY.md#python-and-cli-reference). |
 | `camera add PATH [--name] [--projection] [--fov] [--fov-axis] [--ortho-scale] [--near] [--far] [--aspect-ratio] [--parent] [--position X Y Z] [--rotation-euler X Y Z] [--look-at X Y Z \| --look-at-object REF] [--up X Y Z] [--active \| --inactive] [--frame] [--frame-direction X Y Z] [--margin]` | Add a camera |
 | `camera set PATH CAMERA [...] [--activate]`, `camera frame PATH [CAMERA] [--object REF]... [--direction X Y Z] [--margin] [--no-fit-clipping]`, `camera activate PATH CAMERA\|none`, `camera list PATH` | Change, frame, activate, list cameras |
 | `light add PATH [--type directional\|point] [--name] [--color] [--intensity] [--range R\|none] [--falloff] [--radius R] [--angle DEG] [--direction X Y Z] [--position X Y Z] [--look-at ...] [--parent]`, `light set PATH LIGHT [...]`, `light list PATH` | Lights (list also shows ambient light and the environment) |
