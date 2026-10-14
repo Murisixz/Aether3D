@@ -5,7 +5,10 @@ clipping, fixed-point rasterization, visibility buffer or shading code. For
 every pixel center it builds the camera ray from the documented camera
 conventions, intersects it with every triangle (Moller-Trumbore), keeps the
 nearest hit within the near/far range, and shades it with the documented
-lighting equations (docs/RENDERING.md), written out here independently.
+lighting equations (docs/RENDERING.md, docs/MATERIALS.md), written out here
+independently: object colors and "simple" materials with Lambert and
+Blinn-Phong, "standard" materials with the glTF 2.0 metallic-roughness BRDF
+(factors only; textured materials are outside this reference's scope).
 
 Use it only for small images: the cost is pixels x triangles.
 """
@@ -33,9 +36,35 @@ def _world(obj) -> np.ndarray:
     return m
 
 
+def _surface(material, appearance) -> dict:
+    """Shading inputs of one material (``None``: the object's own color)."""
+    if material is None:
+        return {
+            "model": "simple",
+            "base": srgb_to_linear(appearance.color),
+            "specular": appearance.specular,
+            "shininess": appearance.shininess,
+            "emissive": np.zeros(3),
+        }
+    if material.textures:
+        raise NotImplementedError("the reference renderer shades material factors only")
+    p = material.params
+    out = {
+        "model": material.model,
+        "base": srgb_to_linear(p["base_color"]),
+        "specular": p["specular"],
+        "emissive": srgb_to_linear(p["emissive"]) * p["emissive_strength"],
+    }
+    if material.model == "simple":
+        out["shininess"] = p["shininess"]
+    else:
+        out["metallic"], out["roughness"] = p["metallic"], p["roughness"]
+    return out
+
+
 def gather(scene: Scene):
-    """World-space triangles, vertex normals, object index and appearance per triangle."""
-    tris, normals, has_normals, owners, objects = [], [], [], [], []
+    """World-space triangles, vertex normals, owner object and surface per triangle."""
+    tris, normals, has_normals, owners, objects, surfaces = [], [], [], [], [], []
     for obj in scene:
         if obj.camera is not None or obj.light is not None or not obj.visible:
             continue
@@ -56,6 +85,8 @@ def gather(scene: Scene):
             normals.append(np.zeros((len(t), 3, 3)))
             has_normals.append(np.zeros(len(t), bool))
         owners.append(np.full(len(t), len(objects)))
+        groups = mesh.groups if mesh.groups is not None else np.zeros(len(t), int)
+        surfaces += [_surface(obj.material_for_group(int(g)), obj.appearance) for g in groups]
         objects.append(
             {
                 "name": obj.name,
@@ -71,6 +102,7 @@ def gather(scene: Scene):
         np.concatenate(has_normals),
         np.concatenate(owners),
         objects,
+        surfaces,
     )
 
 
@@ -138,7 +170,7 @@ def raycast(scene: Scene, camera, width: int, height: int):
 
 def reference_image(scene: Scene, camera, width: int, height: int, *, default_lights=False):
     """Linear radiance (H, W, 3), object index map (H, W) and depth map (H, W)."""
-    tris, normals, has_normals, owners, objects = gather(scene)
+    tris, normals, has_normals, owners, objects, surfaces = gather(scene)
     tri, t, u, v = raycast(scene, camera, width, height)
     origins, dirs, eye, forward = camera_rays(scene, camera, width, height)
     hit = tri >= 0
@@ -162,12 +194,28 @@ def reference_image(scene: Scene, camera, width: int, height: int, *, default_li
         if perspective
         else (np.broadcast_to(-forward, pos.shape))
     )
-    base = np.array([objects[o]["base"] for o in owners[k]])
-    spec = np.array([objects[o]["specular"] for o in owners[k]])
-    shin = np.array([objects[o]["shininess"] for o in owners[k]])
+    hits = [surfaces[i] for i in k]
+    base = np.array([s["base"] for s in hits]).reshape(-1, 3)
+    spec = np.array([s["specular"] for s in hits])
+    shin = np.array([s.get("shininess", 1.0) for s in hits])
+    standard = np.array([s["model"] == "standard" for s in hits], dtype=bool)
+    metallic = np.array([s.get("metallic", 0.0) for s in hits])
+    rough = np.maximum(np.array([s.get("roughness", 1.0) for s in hits]), 0.045)
     world = scene.world
     ambient = srgb_to_linear(world.ambient_color) * world.ambient_intensity
-    color = base * ambient
+    # Standard materials (glTF 2.0 spec, appendix B, times pi): diffuse color and F0.
+    c_diff = base * (1 - metallic)[:, None]
+    f0 = (0.08 * spec * (1 - metallic))[:, None] + base * metallic[:, None]
+    ndv = np.maximum(np.einsum("ij,ij->i", n, view), 1e-4)
+    # Ambient light as a uniform environment: Karis' analytic split-sum fit.
+    r0 = -rough + 1.0
+    r1 = -0.0275 * rough + 0.0425
+    r2 = -0.572 * rough + 1.04
+    r3 = 0.022 * rough - 0.04
+    a004 = np.minimum(r0 * r0, 2.0 ** (-9.28 * ndv)) * r0 + r1
+    env = f0 * (a004 * -1.04 + r2)[:, None] + (a004 * 1.04 + r3)[:, None]
+    color = np.where(standard[:, None], ambient * (c_diff + env), base * ambient)
+    alpha2 = (rough * rough) ** 2
     for light_obj in scene.lights:
         if not light_obj.visible:
             continue
@@ -187,11 +235,23 @@ def reference_image(scene: Scene, camera, width: int, height: int, *, default_li
             if light.range is not None:
                 att = att * np.clip(1 - (dist / light.range) ** 4, 0, 1) ** 2
         ndl = np.maximum(np.einsum("ij,ij->i", n, L), 0)
-        color = color + base * radiance * (ndl * att)[:, None]
         h = L + view
         h = h / np.linalg.norm(h, axis=1, keepdims=True)
         ndh = np.maximum(np.einsum("ij,ij->i", n, h), 0)
-        color = color + radiance * (spec * np.where(ndl > 0, ndh**shin, 0) * att)[:, None]
+        simple = base * radiance * (ndl * att)[:, None]
+        simple = simple + radiance * (spec * np.where(ndl > 0, ndh**shin, 0) * att)[:, None]
+        vdh = np.maximum(np.einsum("ij,ij->i", view, h), 0)
+        fresnel = f0 + (1 - f0) * ((1 - vdh) ** 5)[:, None]
+        d = alpha2 / (math.pi * (ndh**2 * (alpha2 - 1) + 1) ** 2)
+        vis = 0.5 / np.maximum(
+            ndl * np.sqrt(ndv**2 * (1 - alpha2) + alpha2)
+            + ndv * np.sqrt(ndl**2 * (1 - alpha2) + alpha2),
+            1e-300,
+        )
+        brdf = (1 - fresnel) * c_diff + math.pi * fresnel * (d * vis)[:, None]
+        pbr = radiance * (ndl * att)[:, None] * brdf
+        color = color + np.where(standard[:, None], pbr, simple)
+    color = color + np.array([s["emissive"] for s in hits]).reshape(-1, 3)
     image = np.broadcast_to(srgb_to_linear(world.background), (len(tri), 3)).copy()
     image[hit] = color
     owner_map = np.full(len(tri), -1)

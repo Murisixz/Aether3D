@@ -1134,15 +1134,22 @@ class Scene:
 
     # -- interchange and inspection ----------------------------------------
 
-    def export(self, path: str | os.PathLike[str], *, allow_lossy: bool = False) -> ExportResult:
+    def export(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        allow_lossy: bool = False,
+        bake_textures: int | None = None,
+    ) -> ExportResult:
         """Export to an interchange format chosen by extension (``.glb`` or ``.gltf``).
 
         Returns an :class:`aether3d.gltf.ExportResult` describing what was
-        written. See :func:`aether3d.gltf.export_gltf` for details.
+        written. See :func:`aether3d.gltf.export_gltf` for details
+        (``bake_textures`` bakes procedural textures to PNG images of that size).
         """
         from .gltf import export_gltf
 
-        return export_gltf(self, path, allow_lossy=allow_lossy)
+        return export_gltf(self, path, allow_lossy=allow_lossy, bake_textures=bake_textures)
 
     @classmethod
     def import_file(
