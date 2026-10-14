@@ -68,7 +68,20 @@ jobs:
           python examples/hero_render.py ci_render --width 320 --height 180 --samples 2
           aether3d render ci_render/minecraft_castle_render.aether -o ci_render/cli_castle.png --width 480 --height 270 --json
           aether3d render ci_castle/castle.aether -o ci_render/framed_stage4_castle.png --frame --width 320 --height 180
-          python -c "from PIL import Image; import sys; [print(p, Image.open(p).size, Image.open(p).mode) for p in sys.argv[1:]]" ci_render/aether3d_first_render.png ci_render/minecraft_castle_render.png ci_render/blocky_hero_render.png ci_render/cli_castle.png ci_render/framed_stage4_castle.png
+          python -c "from PIL import Image; import sys; [print(p, Image.open(p).size, Image.open(p).mode) for p in sys.argv[1:]]" ci_render/aether3d_first_render.png ci_render/minecraft_castle_render.png ci_render/blocky_hero_render.png ci_render/cli_castle.png ci_render/framed_stage4_castle.png ci_render/castle_flat_vs_materials.png ci_render/hero_flat_vs_materials.png
+      - name: Materials and textures from the CLI
+        run: |
+          python examples/make_textures.py ci_textures
+          aether3d material list ci_render/minecraft_castle_render.aether
+          aether3d material validate ci_render/minecraft_castle_render.aether --json
+          aether3d texture list ci_render/minecraft_castle_render.aether --json
+          aether3d material create ci_example.aether Stone --preset stone --json
+          aether3d material assign ci_example.aether Stone Cube --json
+          aether3d material preview ci_example.aether Stone -o ci_render/stone_preview.png --size 128
+          aether3d material create ci_example.aether Bricks --preset brick --set coordinates=uv --json
+          aether3d material assign ci_example.aether Bricks Sphere --json
+          aether3d export ci_example.aether ci_render/baked.glb --bake-textures 64 --json
+          aether3d export ci_render/minecraft_castle_render.aether ci_render/castle_materials.glb --json
       - name: Upload the CI renders
         uses: actions/upload-artifact@v4
         with:
@@ -141,7 +154,7 @@ jobs:
           aether3d gpu info --check --adapter llvmpipe
           aether3d gpu info --check --adapter llvmpipe --json > gpu-info.json
       - name: GPU tests (must run, not skip)
-        run: pytest tests/test_gpu_selection.py tests/test_gpu_data.py tests/test_shadow_planning.py tests/test_gpu_render.py tests/test_gpu_shadows.py tests/test_gpu_faults.py tests/test_gpu_cli.py tests/test_gpu_performance.py -v -rs
+        run: pytest tests/test_gpu_selection.py tests/test_gpu_data.py tests/test_shadow_planning.py tests/test_gpu_render.py tests/test_gpu_shadows.py tests/test_gpu_faults.py tests/test_gpu_cli.py tests/test_gpu_performance.py tests/test_gpu_materials.py -v -rs
       - name: Whole suite with the GPU available
         run: pytest -rs
       - name: GPU examples, CLI and a benchmark smoke run (software adapter, not hardware speed)
@@ -183,7 +196,7 @@ jobs:
         shell: bash
         run: aether3d gpu info --check --json > gpu-info.json || echo "GPU rendering does not work on this runner (see gpu-info.json)"
       - name: GPU tests (skipped with the reason when no adapter works)
-        run: pytest tests/test_gpu_selection.py tests/test_gpu_data.py tests/test_shadow_planning.py tests/test_gpu_render.py tests/test_gpu_shadows.py tests/test_gpu_faults.py tests/test_gpu_cli.py tests/test_gpu_performance.py -rs
+        run: pytest tests/test_gpu_selection.py tests/test_gpu_data.py tests/test_shadow_planning.py tests/test_gpu_render.py tests/test_gpu_shadows.py tests/test_gpu_faults.py tests/test_gpu_cli.py tests/test_gpu_performance.py tests/test_gpu_materials.py -rs
       - name: GPU example (only if an adapter works)
         shell: bash
         run: |
@@ -222,7 +235,7 @@ jobs:
       - name: Validate exports with the Khronos glTF Validator
         env:
           AETHER3D_REQUIRE_GLTF_VALIDATOR: "1"
-        run: pytest tests/test_khronos_validator.py tests/test_editing_gltf.py tests/test_procedural_gltf.py tests/test_render_gltf.py -v
+        run: pytest tests/test_khronos_validator.py tests/test_editing_gltf.py tests/test_procedural_gltf.py tests/test_render_gltf.py tests/test_material_gltf_validator.py -v
       - name: Validate the demonstration scenes
         run: |
           python examples/gltf_roundtrip.py ci_gltf --require-validator
