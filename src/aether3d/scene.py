@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from .editing import EditSession
     from .gltf import ExportResult, ImportLimits
     from .inspection import SceneGeometryReport
+    from .materials import Material, MaterialLibrary
     from .procedural import ProceduralGeometry, ProceduralSystem
     from .rendering import RenderResult
     from .rendering.framing import Framing
@@ -54,8 +55,10 @@ class SceneObject:
     within its scene, a local :attr:`transform` relative to its parent, and at
     most one kind of data: a :attr:`mesh` (static or procedural), a
     :attr:`camera` or a :attr:`light`. Objects without data are useful as
-    groups/pivots. Mesh objects also have an :attr:`appearance` (color), and
-    every object a :attr:`visible` flag.
+    groups/pivots. Mesh objects have a :attr:`material` (from the scene's
+    material library), or else render with their own :attr:`appearance`
+    (color); faces can use other materials per face group
+    (:attr:`group_materials`). Every object has a :attr:`visible` flag.
 
     Objects are created through a :class:`Scene` (``scene.add_object()``,
     ``scene.add_cube()``, ...), never directly.
@@ -74,6 +77,8 @@ class SceneObject:
         "_light",
         "_appearance",
         "_visible",
+        "_material",
+        "_group_materials",
     )
 
     def __init__(
@@ -89,6 +94,8 @@ class SceneObject:
         self._light: Light | None = None
         self._appearance = Appearance()
         self._visible = True
+        self._material: str | None = None  # id of a material in scene.materials
+        self._group_materials: dict[int, str] = {}  # face group -> material id
         self._parent: SceneObject | None = None
         self._children: list[SceneObject] = []
 
@@ -185,12 +192,64 @@ class SceneObject:
 
     @property
     def color(self) -> tuple[float, float, float]:
-        """Display (sRGB) base color; accepts ``"#rrggbb"`` or three numbers in ``[0, 1]``."""
+        """Display (sRGB) base color; accepts ``"#rrggbb"`` or three numbers in ``[0, 1]``.
+
+        This is the object's own color (its :attr:`appearance`). While a
+        :attr:`material` is assigned the material decides the look, so
+        setting the color then raises ``MaterialError("OBJECT_HAS_MATERIAL")``.
+        """
         return self._appearance.color
 
     @color.setter
     def color(self, value: Any) -> None:
+        self._check_no_material("color")
         self._appearance.color = value
+
+    def _check_no_material(self, what: str) -> None:
+        if self._material is not None:
+            from .errors import MaterialError
+
+            material = self.material
+            raise MaterialError(
+                "OBJECT_HAS_MATERIAL",
+                f"object {self._name!r} uses material {material.name!r}; its {what} comes from "
+                "the material",
+                f"objects[{self._name}].{what}",
+                hint=f"change the material (scene.materials[{material.name!r}]) or remove it "
+                "(obj.material = None) to use the object's own color",
+            )
+
+    # -- materials ----------------------------------------------------------
+
+    @property
+    def material(self) -> Material | None:
+        """The object's material (``None``: it renders with its own color).
+
+        Assign a :class:`~aether3d.materials.Material` of the same scene, or its
+        id or name; ``None`` removes it.
+        """
+        if self._material is None:
+            return None
+        return self._require_scene().materials.material(self._material)
+
+    @material.setter
+    def material(self, value: Any) -> None:
+        self._require_scene().materials.assign(self, value)
+
+    @property
+    def group_materials(self) -> dict[int, Material]:
+        """Materials of individual face groups (``{group: material}``, a copy).
+
+        Faces whose group has no entry use :attr:`material` (or the object's
+        color). Change with ``scene.assign_material(obj, material, group=k)``.
+        """
+        library = self._require_scene().materials
+        return {g: library.material(m) for g, m in sorted(self._group_materials.items())}
+
+    def material_for_group(self, group: int) -> Material | None:
+        """The material faces of ``group`` render with (``None``: the object's color)."""
+        ref = self._group_materials.get(group, self._material)
+        return None if ref is None else self._require_scene().materials.material(ref)
 
     @property
     def visible(self) -> bool:
@@ -517,6 +576,9 @@ class Scene:
         self._active_camera: str | None = None
         self._world = World()
         self._render_settings = RenderSettings()
+        from .materials import MaterialLibrary
+
+        self._materials = MaterialLibrary(self)
 
     @property
     def name(self) -> str:
@@ -914,6 +976,42 @@ class Scene:
             item._scene = self
         obj._parent = parent
         (self._roots if parent is None else parent._children).insert(index, obj)
+
+    # -- materials -----------------------------------------------------------
+
+    @property
+    def materials(self) -> MaterialLibrary:
+        """The scene's materials and textures (see docs/MATERIALS.md)."""
+        return self._materials
+
+    def create_material(
+        self,
+        name: str | None = None,
+        *,
+        model: str = "standard",
+        preset: str | None = None,
+        **params: Any,
+    ) -> Material:
+        """Create a material in :attr:`materials` (see
+        :meth:`~aether3d.materials.MaterialLibrary.create_material`).
+
+        ``preset`` (``"stone"``, ``"brick"``, ``"wood"``, ``"metal"``, ``"grass"``,
+        ``"fabric"``) builds a material with procedural textures.
+        """
+        return self._materials.create_material(name, model=model, preset=preset, **params)
+
+    def assign_material(self, objects: Any, material: Any, *, group: int | None = None) -> None:
+        """Assign ``material`` (object, id, name or ``None``) to one or more objects,
+        or only to face group ``group`` of their meshes. Checked fully before any change."""
+        self._materials.assign(objects, material, group=group)
+
+    def add_image_texture(self, name: str | None = None, path: Any = None, **options: Any):
+        """Add a PNG/JPEG texture (see ``MaterialLibrary.add_image_texture``)."""
+        return self._materials.add_image_texture(name, path, **options)
+
+    def add_procedural_texture(self, name: str | None, graph: Any):
+        """Add a procedural texture from a node graph (see docs/MATERIALS.md)."""
+        return self._materials.add_procedural_texture(name, graph)
 
     # -- procedural geometry -----------------------------------------------
 
