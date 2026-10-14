@@ -431,3 +431,72 @@ def test_render_errors_leave_no_image(gpu, tmp_path):
         gpu.render(scene, width=64, height=48, shadows={"lights": ["Nope"]})
     assert info.value.code == "INVALID_SHADOWS"
     assert list(tmp_path.iterdir()) == []
+
+
+def bar_coverage(width, height, half_length, half_width, angle, extent, supersample=16):
+    """Exact-enough area of a rotated rectangle inside each pixel (dense supersampling)."""
+    n = supersample
+    xs = (np.arange(width * n) + 0.5) / (width * n) * 2 - 1
+    ys = 1 - (np.arange(height * n) + 0.5) / (height * n) * 2
+    x, y = np.meshgrid(xs * extent * width / height, ys * extent)
+    c, s = np.cos(angle), np.sin(angle)
+    u, v = x * c + y * s, -x * s + y * c
+    inside = (np.abs(u) <= half_length) & (np.abs(v) <= half_width)
+    return inside.reshape(height, n, width, n).mean(axis=(1, 3))
+
+
+def test_msaa_coverage_of_thin_diagonal_geometry_matches_its_area(gpu):
+    """A bar 3/4 pixel wide at 27 degrees: MSAA tracks its true area, one sample cannot."""
+    width, height, extent = 96, 64, 2.0  # orthographic: 4 units across 64 pixels vertically
+    pixel = 2 * extent / height
+    angle = np.radians(27.0)
+    scene = Scene("Thin")
+    bar = scene.add_cube("Bar", size=1)
+    bar.scale = (5.0, 0.75 * pixel, 0.1)  # 5 units long, three quarters of a pixel wide
+    bar.rotation_euler = (0, 0, 27.0)
+    bar.color = "#ffffff"
+    scene.world.configure(background="#000000", ambient_intensity=1.0)
+    cam = scene.add_camera(
+        "Top", projection="orthographic", ortho_scale=2 * extent, position=(0, 0, 10)
+    )
+    cam.look_along((0, 0, -1), up=(0, 1, 0))
+    area = bar_coverage(width, height, 2.5, 0.375 * pixel, angle, extent)
+    crossed = area > 0.02  # pixels the bar really passes through
+    aliased = gpu.render(scene, width=width, height=height, msaa=1, default_lights=False)
+    assert (aliased.coverage[crossed] == 0).mean() > 0.2  # one sample per pixel: gaps
+    aliased_error = np.abs(aliased.coverage - area)[crossed].mean()
+    for count in [m for m in gpu.msaa if m >= 4]:
+        result = gpu.render(scene, width=width, height=height, msaa=count, default_lights=False)
+        assert set(np.round(result.coverage.ravel() * count, 4)) <= set(range(count + 1))
+        assert (result.coverage[area > 0.5] > 0).all()  # no gaps where the bar really is
+        error = np.abs(result.coverage - area)[crossed]
+        assert error.mean() < aliased_error / 2 and error.mean() < 0.15
+        # White on black in linear light: the pixel's brightness is its coverage.
+        assert np.allclose(result.linear[..., 0], result.coverage, atol=1e-3)
+
+
+def test_saved_projects_render_on_both_backends_without_changes(gpu, tmp_path):
+    """A version 2 project (Aether3D 0.4.0) renders on CPU and GPU; nothing in it changes."""
+    import importlib.util as util
+
+    if util.find_spec("manifold3d") is None:
+        pytest.skip("the castle uses booleans (manifold3d)")
+    from aether3d import Scene as _Scene
+
+    source = DATA / "v0.4.0" / "castle.aether"
+    scene = _Scene.load(source)
+    before = json.dumps(scene.to_dict(), sort_keys=True)
+    stacks = {g.name: [m.name for m in g.modifiers] for g in scene.procedural.geometries}
+    options = {"width": 128, "height": 72, "samples": 2, "frame": True}
+    cpu = scene.render(**options)
+    parity = gpu.render(scene, supersample=2, msaa=1, **options)
+    msaa = gpu.render(scene, shadows=True, **options)
+    assert_parity(parity, cpu)
+    assert msaa.stats["pixels_covered"] > 0.2 * 128 * 72
+    assert json.dumps(scene.to_dict(), sort_keys=True) == before  # rendering changed nothing
+    scene.save(tmp_path / "castle.aether")
+    again = _Scene.load(tmp_path / "castle.aether")
+    assert {g.name: [m.name for m in g.modifiers] for g in again.procedural.geometries} == stacks
+    assert all(o.is_procedural for o in again if o.name in stacks)
+    reparity = gpu.render(again, supersample=2, msaa=1, **options)
+    assert np.array_equal(reparity.image, parity.image)
