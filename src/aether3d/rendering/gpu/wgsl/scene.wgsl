@@ -223,9 +223,10 @@ struct FragmentOut {
 
 @fragment
 fn fs_main(in: VertexOut, @builtin(front_facing) front: bool) -> FragmentOut {
-  // Derivatives first, in uniform control flow: every texture lookup derives from them.
-  let dbdx = dpdxFine(in.barycentric);
-  let dbdy = dpdyFine(in.barycentric);
+  // Derivatives first, in uniform control flow, at pixel centers: every texture lookup
+  // derives from them.
+  let dbdx = dpdxFine(in.center);
+  let dbdy = dpdyFine(in.center);
   let inst = instances[in.instance];
   // The outward side faces the camera when the screen winding is counter-clockwise,
   // or clockwise for mirrored instances. Two-sided lighting turns normals toward it.

@@ -167,6 +167,23 @@ def test_textured_scenes_render_alike_on_cpu_and_gpu(gpu, tmp_path):
     assert resources["textured_materials"] >= 5 and resources["images"] == 1
 
 
+def test_textured_msaa_renders_repeat_exactly(gpu, tmp_path):
+    """Image textures under MSAA render bit-identically run to run. Mip levels come from
+    derivatives at pixel centers, never of centroid-sampled values, whose helper-lane values
+    some GPUs leave undefined (Apple's: a few edge pixels changed from render to render)."""
+    scene = material_scene(tmp_path)
+    noise = png(tmp_path / "noise.png", np.random.default_rng(1).integers(0, 256, (64, 64, 3)))
+    stone = scene.create_material("Stone")
+    stone.set_texture("base_color", noise, coordinates="object", scale=3)  # triplanar
+    globe = scene.add_sphere("Globe", radius=0.5, segments=48, rings=24, position=(-0.4, 0.9, 1.4))
+    globe.material = stone  # many triangle edges inside one textured object
+    first = gpu.render(scene, width=240, height=160, samples=2)
+    assert first.backend["antialiasing"]["msaa"] > 1
+    for _ in range(3):
+        again = gpu.render(scene, width=240, height=160, samples=2)
+        assert np.array_equal(again.image, first.image)
+
+
 @pytest.mark.parametrize("node", sorted(set(NODE_TYPES) - {"image", "bump"}))
 def test_every_procedural_node_matches_the_cpu(gpu, node):
     scene = Scene(node)

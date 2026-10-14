@@ -100,6 +100,10 @@ struct VertexOut {
   @location(2) @interpolate(flat) face: vec3<f32>,                       // world face normal (outward)
   @location(3) @interpolate(flat) instance: u32,
   @location(4) @interpolate(perspective, centroid) barycentric: vec3<f32>,
+  // The same barycentrics at the pixel center, for screen-space derivatives: derivatives of
+  // centroid-interpolated values are unreliable along edges (the centroid moves with the
+  // coverage, and helper lanes have none), and they choose mip levels and bump steps.
+  @location(14) @interpolate(perspective) center: vec3<f32>,
   // The whole triangle (camera-relative corners and their world normals), for shadow lookups.
   @location(5) @interpolate(flat) p0: vec3<f32>,
   @location(6) @interpolate(flat) p1: vec3<f32>,
@@ -134,6 +138,7 @@ fn build_vertex(vertex: u32, instance: u32, view_proj: mat4x4<f32>) -> VertexOut
     position = out.p2;
     out.barycentric = vec3<f32>(0.0, 0.0, 1.0);
   }
+  out.center = out.barycentric;
   out.clip = view_proj * vec4<f32>(position, 1.0);
   out.position = position;
   // Object-space face normal through the normal matrix: outward, also for mirrored instances.

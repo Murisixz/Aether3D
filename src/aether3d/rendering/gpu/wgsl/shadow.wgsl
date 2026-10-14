@@ -32,8 +32,8 @@ fn vs_shadow_masked(@builtin(vertex_index) vertex: u32, @builtin(instance_index)
 
 @fragment
 fn fs_shadow_masked(in: VertexOut) {
-  let dbdx = dpdxFine(in.barycentric);
-  let dbdy = dpdyFine(in.barycentric);
+  let dbdx = dpdxFine(in.center);
+  let dbdy = dpdyFine(in.center);
   let m = in.material;
   if ((material_flags(m) & MATERIAL_MASK) == 0u) {
     return;
