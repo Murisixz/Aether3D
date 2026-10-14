@@ -1,6 +1,7 @@
 """The code examples in the documentation actually run and give the stated results."""
 
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -148,6 +149,8 @@ def test_gpu_quick_start(tmp_path, monkeypatch, gpu):
 
 def test_materials_quick_start(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)  # the example runs from the repository root: same layout here
+    if os.environ.get("AETHER3D_GPU_TESTS") == "skip":  # this job keeps off the GPU, so the
+        monkeypatch.setenv("AETHER3D_GPU_ADAPTER", "no adapter has this name")  # "auto": CPU
     shutil.copytree(ROOT / "examples" / "textures", tmp_path / "examples" / "textures")
     source = python_block(
         ROOT / "docs/MATERIALS.md", 'from aether3d import Scene\n\nscene = Scene("Courtyard")'
