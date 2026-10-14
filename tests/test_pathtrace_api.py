@@ -347,3 +347,57 @@ def test_the_environment_does_not_change_raster_renders():
 def test_top_level_names_are_exported():
     for name in ("PathSettings", "AOSettings", "Environment"):
         assert hasattr(a3, name) and name in a3.__all__
+
+
+# --------------------------------------------------------------------------- #
+# Parallel tracing
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.skipif(
+    not __import__("aether3d.rendering.pathtrace.parallel", fromlist=["x"]).fork_available(),
+    reason="parallel path tracing forks worker processes (Linux only)",
+)
+def test_worker_processes_give_the_same_image_bit_for_bit():
+    scene = small_scene()
+    options = {"samples": 3, "bounces": 2, "seed": 4}
+    one = render(scene, width=40, height=24, path={**options, "workers": 1}, ao=True)
+    three = render(scene, width=40, height=24, path={**options, "workers": 3}, ao=True)
+    assert one.backend["processes"] == 1 and three.backend["processes"] == 3
+    assert np.array_equal(one.linear, three.linear) and np.array_equal(one.image, three.image)
+    for name in one.passes:
+        assert np.array_equal(one.passes[name], three.passes[name]), name
+    for key in ("camera_rays", "bounce_rays", "shadow_rays", "ao_rays", "center_rays", "paths"):
+        assert one.stats[key] == three.stats[key], key
+    assert [o["visible_samples"] for o in one.objects] == [
+        o["visible_samples"] for o in three.objects
+    ]
+    calls = []
+    stopped = render(
+        scene,
+        width=40,
+        height=24,
+        path={**options, "workers": 2},
+        progress=lambda done, total, seconds: calls.append(done) or done < 2,
+    )
+    assert calls == [1, 2] and np.all(stopped.passes["sample_count"] == 2)
+
+
+def test_worker_plans():
+    from aether3d.rendering.pathtrace import parallel
+
+    assert parallel.plan_workers(1, 10**12)[0] == 1
+    if parallel.fork_available():
+        assert parallel.plan_workers(0, 10)[0] == 1  # too small to be worth processes
+        assert parallel.plan_workers(0, 10**9)[0] == min(parallel.cpu_count(), 12)
+        assert parallel.plan_workers(5, 10)[0] == 5
+    assert parallel.tiles(10, 4) == [(0, 2), (2, 5), (5, 8), (8, 10)]
+    assert parallel.tiles(3, 8) == [(0, 1), (1, 2), (2, 3)]
+
+
+def test_without_fork_renders_use_one_process(monkeypatch):
+    from aether3d.rendering.pathtrace import parallel
+
+    monkeypatch.setattr(parallel, "fork_available", lambda: False)
+    r = render(small_scene(), path={"samples": 2, "bounces": 1, "workers": 4})
+    assert r.backend["processes"] == 1 and "Linux only" in r.backend["parallel"]

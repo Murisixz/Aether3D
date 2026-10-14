@@ -579,6 +579,11 @@ class PathSettings(_Validated):
     * ``integrator`` -- ``"path"`` (default) or ``"ao"``: a fast preview that
       traces camera rays and ambient occlusion only (the image is the AO
       pass; see ``ao``).
+    * ``workers`` -- CPU processes to trace with: ``0`` (default) picks one
+      per CPU (at most 12) for renders big enough to gain from it, ``1``
+      traces in the calling process, ``N`` uses ``N``. Parallel tracing forks
+      processes and is available on Linux; elsewhere renders use one
+      process. The image does not depend on it.
     """
 
     _FIELDS = (
@@ -589,6 +594,7 @@ class PathSettings(_Validated):
         "russian_roulette",
         "clamp",
         "integrator",
+        "workers",
     )
     _CODE = "INVALID_PATH_SETTINGS"
     __slots__ = tuple(f"_{name}" for name in _FIELDS)
@@ -602,6 +608,7 @@ class PathSettings(_Validated):
         russian_roulette: int = 3,
         clamp: float = 0.0,
         integrator: str = "path",
+        workers: int = 0,
     ) -> None:
         self._assign(
             self._check(
@@ -613,6 +620,7 @@ class PathSettings(_Validated):
                     "russian_roulette": russian_roulette,
                     "clamp": clamp,
                     "integrator": integrator,
+                    "workers": workers,
                 },
                 "path",
             )
@@ -651,6 +659,7 @@ class PathSettings(_Validated):
             ),
             "clamp": _number(values["clamp"], c, "clamp", f"{location}.clamp", 0.0, 1e12),
             "integrator": integrator,
+            "workers": _integer(values["workers"], c, "workers", f"{location}.workers", 0, 256),
         }
 
     samples = _prop("samples")
@@ -660,6 +669,7 @@ class PathSettings(_Validated):
     russian_roulette = _prop("russian_roulette")
     clamp = _prop("clamp")
     integrator = _prop("integrator")
+    workers = _prop("workers")
 
     @classmethod
     def coerce(cls, value: Any) -> PathSettings:

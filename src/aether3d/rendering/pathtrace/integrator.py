@@ -44,6 +44,7 @@ from ...errors import RenderError
 from ..scene_data import RenderScene
 from ..settings import AOSettings, PathSettings, RenderLimits
 from ..surface import LUMINANCE
+from . import parallel
 from .bsdf import BSDF, MIN_COS
 from .lights import SHADOW_END, LightSet, mis_weight_emission
 from .sampling import (
@@ -64,6 +65,8 @@ from .scene import MAX_LAYERS, PathScene
 
 BATCH = 65_536
 """Paths traced together (bounds temporary memory)."""
+PATH_BYTES = 1536
+"""Upper estimate of the temporary memory of one path in flight (measured: ~800 bytes)."""
 DIFFUSE_SPREAD = 1.0
 """Ray-cone spread (radians) added by a diffuse bounce."""
 RR_MIN = 0.05
@@ -175,12 +178,13 @@ def estimate_work(rs: RenderScene, width: int, height: int, path: PathSettings, 
         vertices = path.bounces + 2
         rays = paths * (vertices + (vertices - 1) * lights * path.light_samples + ao_rays)
     tris = rs.triangle_count
+    workers, _ = parallel.plan_workers(path.workers, rays)
     memory = (
-        width * height * 200  # accumulators
+        width * height * 200  # accumulators and passes
         + tris * 250  # world-space shading arrays and the BVH
-        + BATCH * 4096  # one batch of paths in flight
+        + workers * BATCH * PATH_BYTES  # one batch of paths in flight per process
     )
-    return {"paths": int(paths), "rays": int(rays), "memory": int(memory)}
+    return {"paths": int(paths), "rays": int(rays), "memory": int(memory), "workers": workers}
 
 
 def render_scene(
@@ -228,58 +232,58 @@ def render_scene(
     cam = _camera(rs, width, height, path.samples)
     tracer = _Tracer(ps, lights, cam, path, ao, cull)
     n_pix = width * height
-    acc = {
-        "beauty": np.zeros((n_pix, 3)),
-        "squares": np.zeros((n_pix, 3)),
-        "direct": np.zeros((n_pix, 3)),
-        "indirect": np.zeros((n_pix, 3)),
-        "albedo": np.zeros((n_pix, 3)),
-        "normal": np.zeros((n_pix, 3)),
-        "ao": np.zeros(n_pix),
-        "hits": np.zeros(n_pix),
-    }
+    workers, why = parallel.plan_workers(path.workers, work["rays"])
+    acc = parallel.Accumulators(n_pix, shared=workers > 1)
     visible = np.zeros(len(rs.instances), dtype=np.int64)
-    total = n_pix * path.samples
+    tiles = parallel.tiles(n_pix, workers * parallel.TILES_PER_WORKER if workers > 1 else 1)
+    # One round of all samples; with a progress callback, one pass per round.
+    rounds = [(0, path.samples)] if progress is None else [(s, s + 1) for s in range(path.samples)]
     passes_done = 0
     stopped = False
     paths = 0
+    busy = 0.0
+    pids: set[int] = set()
+    # Totals of the tasks' own counts (tasks may run in this process or in workers).
+    ray_counts: dict[str, int] = {}
+    trace_timings: dict[str, float] = {}
+    pass_through = layer_limited = 0
     t_trace = time.perf_counter()
-    for start in range(0, total, BATCH):
-        idx = np.arange(start, min(total, start + BATCH), dtype=np.int64)
-        sample, pixel = np.divmod(idx, n_pix)
-        out = tracer.trace(pixel, sample)
-        end = int(idx[-1]) + 1
-        for s in np.unique(sample):  # per pixel, add samples in sample order
-            sel = np.flatnonzero(sample == s)
-            px = pixel[sel]
-            beauty = out["direct"][sel] + out["indirect"][sel]
-            acc["beauty"][px] += beauty
-            acc["squares"][px] += beauty * beauty
-            for name in ("direct", "indirect", "albedo", "normal"):
-                acc[name][px] += out[name][sel]
-            acc["ao"][px] += out["ao"][sel]
-            acc["hits"][px] += out["hit"][sel]
-            hit = out["hit"][sel]
-            visible += np.bincount(out["inst"][sel][hit], minlength=visible.size)
-            paths += sel.size
-            if (int(s) + 1) * n_pix > end:
-                continue  # this sample pass continues in the next batch
-            passes_done = int(s) + 1
-            if (
-                progress is not None
-                and progress(passes_done, path.samples, time.perf_counter() - t_start) is False
-                and passes_done < path.samples
-            ):
-                stopped = True
-                break
-        if stopped:
-            break
+    try:
+        with parallel.Runner(tracer, acc, workers, BATCH) as runner:
+            for s0, s1 in rounds:
+                for result in runner.run([(a, b, s0, s1) for a, b in tiles]):
+                    for k, v in result["counts"].items():
+                        ray_counts[k] = ray_counts.get(k, 0) + v
+                    for k, v in result["timings"].items():
+                        trace_timings[k] = trace_timings.get(k, 0.0) + v
+                    pass_through += result["pass_through_rays"]
+                    layer_limited += result["layer_limited"]
+                    visible += result["visible"]
+                    paths += result["paths"]
+                    busy += result["seconds"]
+                    pids.add(result["pid"])
+                passes_done = s1
+                if (
+                    progress is not None
+                    and progress(passes_done, path.samples, time.perf_counter() - t_start) is False
+                    and passes_done < path.samples
+                ):
+                    stopped = True
+                    break
+        sums = acc.copy()
+    finally:
+        acc.close()
     t_trace = time.perf_counter() - t_trace
     spp = passes_done
-    if spp == 0:  # pragma: no cover - every batch ends at least one pass or continues
+    if spp == 0:  # pragma: no cover - every round completes at least one pass
         raise RenderError("RENDER_FAILED", "no samples were rendered")
+    acc = sums
     t0 = time.perf_counter()
+    before = (ps.pass_through_rays, ps.layer_limited, tracer.counts["center_rays"])
     depth, instance = tracer.center(n_pix)
+    pass_through += ps.pass_through_rays - before[0]
+    layer_limited += ps.layer_limited - before[1]
+    ray_counts["center_rays"] = tracer.counts["center_rays"] - before[2]
     t_center = time.perf_counter() - t0
     inv = 1.0 / spp
     mean = acc["beauty"] * inv
@@ -322,7 +326,7 @@ def render_scene(
         "mean_standard_error": float(err[lit].mean()) if measured else None,
         "mean_relative_error": float((err[lit] / lum[lit]).mean()) if measured else None,
     }
-    counts = dict(tracer.counts)
+    counts = {k: ray_counts.get(k, 0) for k in tracer.counts}
     counts.update(
         {
             "triangles": ps.triangle_count,
@@ -333,13 +337,13 @@ def render_scene(
             "samples_per_pixel": int(spp),
         }
     )
-    counts["pass_through_rays"] = ps.pass_through_rays
-    if ps.layer_limited:
+    counts["pass_through_rays"] = pass_through
+    if layer_limited:
         diagnostics.append(
             Diagnostic(
                 "PASS_THROUGH_LIMIT",
                 WARNING,
-                f"{ps.layer_limited} rays crossed more than {MAX_LAYERS} cut-out or "
+                f"{layer_limited} rays crossed more than {MAX_LAYERS} cut-out or "
                 "single-sided surfaces; they were treated as leaving the scene",
                 "path",
             )
@@ -357,10 +361,15 @@ def render_scene(
             "bvh": ps.timings["bvh"],
             "trace": t_trace,
             "center": t_center,
-            **{f"trace_{k}": v for k, v in tracer.timings.items()},
+            # CPU seconds of the tracing stages, summed over the worker processes:
+            **{f"trace_{k}": v for k, v in trace_timings.items()},
         },
         diagnostics=diagnostics,
         info={
+            "workers": len(pids),
+            "workers_planned": workers,
+            "parallel": why,
+            "cpu_seconds": busy,
             "bvh": ps.accel.stats(),
             "lights": lights.to_dict(),
             "environment": ps.environment.to_dict(),

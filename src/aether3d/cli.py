@@ -746,6 +746,7 @@ _PATH_FLAGS = {
     "light_samples": "light_samples",
     "russian_roulette": "russian_roulette",
     "clamp": "clamp",
+    "workers": "workers",
 }
 _AO_FLAGS = {"ao_samples": "samples", "ao_distance": "distance", "ao_strength": "strength"}
 
@@ -1489,6 +1490,11 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     )
     p_render.add_argument(
         "--clamp", type=float, help="path: clamp indirect radiance per sample (0 = off)"
+    )
+    p_render.add_argument(
+        "--workers",
+        type=int,
+        help="path: CPU processes, 0 = one per CPU for big renders (default), 1 = this process",
     )
     p_render.add_argument(
         "--ao", action="store_true", help="path: compute the ambient occlusion pass"
