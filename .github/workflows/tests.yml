@@ -170,7 +170,7 @@ jobs:
           aether3d gpu info --check --adapter llvmpipe
           aether3d gpu info --check --adapter llvmpipe --json > gpu-info.json
       - name: GPU tests (must run, not skip)
-        run: pytest tests/test_gpu_selection.py tests/test_gpu_data.py tests/test_shadow_planning.py tests/test_gpu_render.py tests/test_gpu_shadows.py tests/test_gpu_faults.py tests/test_gpu_cli.py tests/test_gpu_performance.py tests/test_gpu_materials.py -v -rs
+        run: pytest tests/test_gpu_selection.py tests/test_gpu_data.py tests/test_shadow_planning.py tests/test_gpu_render.py tests/test_gpu_shadows.py tests/test_gpu_faults.py tests/test_gpu_cli.py tests/test_gpu_performance.py tests/test_gpu_materials.py tests/test_gpu_pathtrace.py -v -rs
       - name: Whole suite with the GPU available
         run: pytest -rs
       - name: GPU examples, CLI and a benchmark smoke run (software adapter, not hardware speed)
@@ -178,6 +178,8 @@ jobs:
           python examples/gpu_render.py ci_gpu --width 640 --height 360 --adapter llvmpipe --require-gpu
           aether3d render examples/output/minecraft_castle_render.aether -o ci_gpu/cli_castle_gpu.png --backend gpu --adapter llvmpipe --width 480 --height 270 --shadows --json > ci_gpu/cli_render.json
           python benchmarks/bench_gpu.py --quick --no-4k --adapter llvmpipe --json ci_gpu/bench_lavapipe.json
+          python examples/gpu_path_showcase.py ci_gpu --quick --adapter llvmpipe
+          aether3d render examples/output/minecraft_castle_render.aether -o ci_gpu/cli_castle_gpu_path.png --backend gpu_path --adapter llvmpipe --width 160 --height 90 --spp 4 --bounces 2 --json > ci_gpu/cli_render_gpu_path.json
           python -c "from PIL import Image; import sys; [print(p, Image.open(p).size, Image.open(p).info.get('Source')) for p in sys.argv[1:]]" ci_gpu/*.png
       - name: Upload the GPU renders
         uses: actions/upload-artifact@v4
@@ -212,7 +214,7 @@ jobs:
         shell: bash
         run: aether3d gpu info --check --json > gpu-info.json || echo "GPU rendering does not work on this runner (see gpu-info.json)"
       - name: GPU tests (skipped with the reason when no adapter works)
-        run: pytest tests/test_gpu_selection.py tests/test_gpu_data.py tests/test_shadow_planning.py tests/test_gpu_render.py tests/test_gpu_shadows.py tests/test_gpu_faults.py tests/test_gpu_cli.py tests/test_gpu_performance.py tests/test_gpu_materials.py -rs
+        run: pytest tests/test_gpu_selection.py tests/test_gpu_data.py tests/test_shadow_planning.py tests/test_gpu_render.py tests/test_gpu_shadows.py tests/test_gpu_faults.py tests/test_gpu_cli.py tests/test_gpu_performance.py tests/test_gpu_materials.py tests/test_gpu_pathtrace.py -rs
       - name: GPU example (only if an adapter works)
         shell: bash
         run: |
