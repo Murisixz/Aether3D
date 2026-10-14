@@ -544,8 +544,10 @@ disagree with the default settings, on both the RTX 4060 and llvmpipe.
 - **Same lighting rules.** Two-sided lighting, the default key light,
   exposure, the background and the sRGB policy are the same as on the CPU.
 - **Textures.** Texture coordinates and their derivatives are computed in
-  float32, and the mip level comes from `dpdxFine`/`dpdyFine` (the CPU uses
-  exact barycentric derivatives). In parity mode, a few samples near texel
+  float32. The mip level comes from `dpdxFine`/`dpdyFine` of the barycentrics
+  interpolated at pixel centers, never at the MSAA centroid, whose helper-lane
+  values some GPUs leave undefined. The CPU uses exact barycentric
+  derivatives. In parity mode, a few samples near texel
   and mip-level boundaries therefore round differently. On the textured
   castle at 1080p, 99.98% of the pixels away from edges are within 2 codes
   of the CPU (99.99% on lavapipe). With MSAA, the GPU evaluates materials
