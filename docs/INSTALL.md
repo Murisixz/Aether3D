@@ -1,7 +1,9 @@
 # Installing Aether3D
 
 Aether3D requires **Python 3.10 or newer** and **NumPy**. It has no other
-runtime dependencies and needs no GPU or graphical environment.
+runtime dependencies and needs no GPU or graphical environment. Rendering on
+a GPU is optional: it needs Python 3.11+, the `gpu` extra and a Vulkan,
+Metal or Direct3D 12 driver (see [GPU rendering](#gpu-rendering-optional)).
 
 ## Arch Linux
 
@@ -74,6 +76,7 @@ pytest
 ```bash
 pip install .              # core: NumPy is the only dependency
 pip install ".[boolean]"   # also solid booleans for procedural geometry
+pip install ".[gpu]"       # also GPU rendering (Python 3.11+)
 ```
 
 The first command installs only the `aether3d` package, its `aether3d`
@@ -88,3 +91,21 @@ The `boolean` extra adds [manifold3d](https://github.com/elalish/manifold)
 load. The `dev` extra includes it, and so do the tests and the castle demo.
 trimesh, Pillow (an independent PNG decoder) and the Khronos validator are
 used only by the tests.
+
+## GPU rendering (optional)
+
+The `gpu` extra installs [wgpu-py](https://github.com/pygfx/wgpu-py)
+(BSD-2-Clause), whose wheels include wgpu-native (MIT OR Apache-2.0) for
+Linux, macOS and Windows; it needs Python 3.11 or newer. The `dev` extra
+includes it on Python 3.11+. Then check what the machine offers:
+
+```bash
+aether3d gpu info --check   # adapters, the one Aether3D would use, and a verified test render
+```
+
+A graphics driver is still required: on Arch Linux, `vulkan-icd-loader` plus
+`nvidia-utils`, `vulkan-intel` or `vulkan-radeon` (and `vulkan-swrast` for a
+software Vulkan adapter); on Windows the vendor driver; on macOS nothing
+(Metal). [GPU.md](GPU.md#installing-gpu-support) has the per-platform
+details, hybrid-laptop notes and troubleshooting. Without wgpu or a driver,
+`backend="gpu"` reports `GPU_UNAVAILABLE` and everything else works.

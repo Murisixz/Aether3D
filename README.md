@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.5.0 (cameras, lights and the first renderer).** Aether3D provides:
+> **Status: v0.6.0 (the GPU rendering engine).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -24,12 +24,14 @@ graphical interface required.
 > - **cameras, lights and Aether3D's own CPU renderer**: perspective and
 >   orthographic cameras, directional, point and ambient light, solid colors,
 >   clipping, depth testing, antialiasing, and PNG output, all without
->   Blender, a GPU or a GUI.
+>   Blender, a GPU or a GUI;
+> - a **GPU rendering backend** (optional): real, headless GPU rasterization
+>   through wgpu on Vulkan, Metal or Direct3D 12, with MSAA, directional
+>   shadow maps, adapter discovery and selection, and automatic CPU fallback.
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
-> GPU rendering, materials and textures, animation, physics and other systems
-> are intentionally **not** part of this stage. See the
-> [changelog](CHANGELOG.md).
+> Materials and textures, animation, physics and other systems are
+> intentionally **not** part of this stage. See the [changelog](CHANGELOG.md).
 
 ## Quick start
 
@@ -202,6 +204,43 @@ See [docs/RENDERING.md](docs/RENDERING.md).
 [`examples/first_render.py`](examples/first_render.py) and
 [`examples/hero_render.py`](examples/hero_render.py) render more scenes.
 
+### GPU rendering
+
+![The castle: CPU renderer | GPU | GPU with shadows](examples/output/castle_comparison.png)
+
+*The same scene and camera, rendered by Aether3D's CPU renderer, its GPU
+backend, and the GPU backend with a sun shadow map
+([`examples/gpu_render.py`](examples/gpu_render.py)).*
+
+```python
+result = scene.render(backend="gpu", width=1920, height=1080, samples=2, shadows=True)
+print(result.backend["adapter"]["name"])  # e.g. NVIDIA GeForce RTX 4060 Laptop GPU
+```
+
+- **Real GPU rendering.** WGSL shaders, instanced draw calls, a hardware depth
+  buffer, MSAA, shadow maps and framebuffer readback run on Vulkan, Metal or
+  Direct3D 12 through [wgpu](https://github.com/pygfx/wgpu-py). No window or
+  display is needed.
+- **Same scenes, same results.** The GPU renders everything the CPU renderer
+  does. It matches the CPU pixel for pixel in parity mode (the CPU's sample
+  positions) up to sub-pixel edge snapping. The castle at 1080p shows the
+  same object at 100% of pixels.
+- **Fast.** Measured on an RTX 4060 Laptop GPU with 4 samples per pixel:
+  - the castle at 1080p renders in 44 ms instead of 1.24 s (28×);
+  - at 4K, 89 ms instead of 4.5 s (51×);
+  - a 1M-triangle mesh at 1080p takes 47 ms (22×);
+  - 10,000 objects take 0.21 s (9×).
+
+  Shadows cost a few milliseconds.
+- **Honest fallback and discovery.**
+  - `backend="auto"` uses the GPU when it works, else the CPU, and says why.
+  - `backend="gpu"` never silently falls back.
+  - `aether3d gpu info --check` lists the adapters, selects one, renders a
+    verified test image and reports the result.
+
+See [docs/GPU.md](docs/GPU.md) for installation (`pip install "aether3d[gpu]"`,
+Python 3.11+), adapters, shadows, verification and benchmarks.
+
 ## Command-line interface
 
 ```console
@@ -232,6 +271,8 @@ $ aether3d light add castle.aether --direction 0.5 0.6 -0.8 --intensity 2.4
 $ aether3d object set castle.aether Keep --color "#8c7356"
 $ aether3d render castle.aether -o castle.png --width 1920 --height 1080
 $ aether3d render model.glb -o preview.png --frame          # any project or glTF, no setup
+$ aether3d gpu info --check                                 # GPU adapters + a verified test render
+$ aether3d render castle.aether -o castle.png --backend gpu --shadows --width 1920 --height 1080
 $ aether3d inspect model.glb                   # validate/inspect also read .glb/.gltf
 $ aether3d geometry examples/first_scene.aether
 Geometry of "First Scene": OK
@@ -277,7 +318,7 @@ git clone https://github.com/Murisixz/Aether3D.git
 cd Aether3D
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"     # editable install + pytest, ruff, trimesh, manifold3d, pillow
+pip install -e ".[dev]"     # editable install + pytest, ruff, trimesh, manifold3d, pillow, wgpu
 pytest                      # run the test suite
 ```
 
@@ -305,6 +346,10 @@ pip install -e ".[dev]"
 
 Procedural booleans additionally need the optional `boolean` extra
 (`pip install "aether3d[boolean]"`, which installs manifold3d, Apache-2.0).
+GPU rendering needs the optional `gpu` extra (`pip install "aether3d[gpu]"`,
+Python 3.11+, which installs wgpu, BSD-2-Clause, with wgpu-native, MIT or
+Apache-2.0) and a Vulkan, Metal or Direct3D 12 driver; see
+[docs/GPU.md](docs/GPU.md#installing-gpu-support).
 
 ## Documentation
 
@@ -317,6 +362,7 @@ Procedural booleans additionally need the optional `boolean` extra
 | [docs/EDITING.md](docs/EDITING.md) | Mesh editing: topology, ids, sessions, operations, scripts, limitations |
 | [docs/PROCEDURAL.md](docs/PROCEDURAL.md) | Procedural geometry: parameters, expressions, modifiers, caching, scripts, CLI, limitations |
 | [docs/RENDERING.md](docs/RENDERING.md) | Cameras, lights, the CPU renderer: pipeline, conventions, shading model, API, CLI, verification, performance, limitations |
+| [docs/GPU.md](docs/GPU.md) | The GPU backend: installation, adapters, pipeline, antialiasing, shadows, memory, CPU/GPU differences, benchmarks, debugging, the backend decision |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
@@ -335,7 +381,8 @@ Procedural booleans additionally need the optional `boolean` extra
 - Procedural geometry nodes and modifiers have stable UUID ids; objects reference nodes by id.
 - Cameras and lights look along their local −Y axis with +Z up (the same "front faces −Y" rule).
 - User-facing colors are display sRGB (`"#rrggbb"`); lighting happens in linear light.
-- Images: row 0 at the top, pixel centers at `+0.5`; NDC depth runs from 0 (near) to 1 (far).
+- Images: row 0 at the top, pixel centers at `+0.5`; NDC depth runs from 0 (near) to 1 (far)
+  (the GPU backend uses reversed depth internally, for precision).
 
 ## License
 

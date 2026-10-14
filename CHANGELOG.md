@@ -4,6 +4,93 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.6.0: GPU rendering engine
+
+### Added
+
+- **A GPU rendering backend** (`scene.render(backend="gpu")`,
+  `aether3d render --backend gpu`; guide: [docs/GPU.md](docs/GPU.md)): real,
+  headless GPU rasterization through wgpu (WebGPU) on Vulkan, Metal or
+  Direct3D 12, written for Aether3D.
+  - **WGSL shaders:** vertex pulling from cached storage buffers (exact face
+    normals, shared meshes uploaded once, instanced draws) and the Stage 5
+    shading model.
+  - **Depth and culling:** camera-relative float64-to-float32 instance
+    matrices, reversed float32 depth with hardware depth testing, and
+    hardware back/front-face culling that is correct for mirrored instances.
+  - **The compute finalize pass:** linear-light resolve, exposure, 8-bit sRGB
+    encoding identical to the CPU's, view depth, object index, coverage and
+    per-object visible-sample counts.
+  - **Synchronized readback** and per-pass GPU timestamps.
+  - **The same `RenderResult`** as the CPU renderer, plus `backend` (adapter,
+    API, antialiasing, shadows, resources). GPU PNGs name their adapter in a
+    `Source` text chunk.
+- **Backend selection:**
+  - `backend="cpu"` (default, unchanged);
+  - `"gpu"` (an actionable `GPU_*` error, never a silent CPU fallback);
+  - `"auto"` (GPU when it works, otherwise CPU with a `BACKEND_FALLBACK`
+    diagnostic).
+- **Adapter discovery and selection** (`aether3d.list_adapters()`,
+  `aether3d.gpu_status()`, `aether3d gpu info [--check]`, `adapter=` /
+  `--adapter` / `AETHER3D_GPU_ADAPTER`):
+  - real API enumeration with types, APIs, drivers, features, limits and
+    MSAA counts;
+  - ranking: discrete GPU, then integrated, then software;
+  - selection by index, kind, API or name;
+  - a verified self-test render (`--check`).
+- **MSAA** with device-supported sample counts (1/2/4/8/16 where available;
+  unsupported counts are refused) and GPU supersampling. `samples` keeps its
+  meaning (`samples²` per pixel). `supersample=s, msaa=1` reproduces the CPU
+  renderer's sample positions (parity mode).
+- **Directional-light shadow maps** (`shadows=True`, `ShadowSettings`, `--shadows`).
+  - Fitting: maps fitted to the view frustum ∩ the scene, with square
+    texels.
+  - Bias: a constant depth bias plus a footprint-aware normal offset that
+    keeps flat receivers free of acne at any angle.
+  - Smooth surfaces: lookups start from the smooth surface the vertex
+    normals describe (Hanika's shadow-terminator offset).
+  - Filtering: PCF.
+  - Verified against analytic shadows and an independent ray tracer.
+- **GPU resource management:**
+  - a mesh cache keyed by mesh identity, with weak references and an LRU
+    budget (`AETHER3D_GPU_CACHE_MB`);
+  - reusable render targets and per-device pipeline caches;
+  - recovery from lost devices;
+  - `RenderLimits.max_gpu_memory`;
+  - resource statistics in every GPU result.
+- **Validation and diagnostics:** `AETHER3D_GPU_DEBUG=1` enables wgpu and
+  Vulkan validation layers (messages become `GPU_VALIDATION_MESSAGE`
+  diagnostics). Error codes: `GPU_UNAVAILABLE`, `GPU_ADAPTER_NOT_FOUND`,
+  `GPU_DEVICE_FAILED`, `GPU_FEATURE_UNSUPPORTED`, `GPU_LIMIT_EXCEEDED`,
+  `GPU_OUT_OF_MEMORY`, `GPU_DEVICE_LOST`, `GPU_SHADER_ERROR`, and others.
+- **Examples and benchmarks:**
+  - `examples/gpu_render.py`: the castle on the CPU, on the GPU, and on the
+    GPU with shadows, side by side, plus the hero and the primitives,
+    checked against the CPU renderer and the CLI;
+  - `benchmarks/bench_gpu.py`: CPU vs GPU on identical scenes, with the cold
+    start separate, synchronized timings and memory.
+- **Tests:** the GPU and its selection logic are checked by:
+  - parity with the CPU renderer and with the independent ray caster;
+  - analytic shading and projection values;
+  - every geometry source;
+  - culling with mirrored instances, extreme coordinates and 2,500 objects;
+  - shadows against ray-traced references;
+  - faults: device loss, shader errors, limits, validation layers;
+  - the CLI, and selection on simulated adapters.
+- **CI:**
+  - a required GPU job renders on Mesa lavapipe (software Vulkan) with
+    `AETHER3D_REQUIRE_GPU=1`;
+  - Windows and macOS GPU jobs use whatever adapter the runner offers;
+  - jobs without wgpu check that everything else still works.
+- Optional dependency `gpu` = `wgpu>=0.32,<0.33` (Python 3.11+; BSD-2-Clause,
+  with wgpu-native MIT OR Apache-2.0). The `dev` extra includes it.
+
+### Unchanged
+
+- The `.aether` format stays at version 3: shadows, MSAA and adapters are
+  render options, not scene content, and 0.5.0 can read 0.6.0 projects.
+- The CPU renderer, its defaults, its output and its tests are unchanged.
+
 ## 0.5.0: Cameras, lighting and the first renderer
 
 ### Added

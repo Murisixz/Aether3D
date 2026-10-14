@@ -1,11 +1,17 @@
 # Rendering
 
-Aether3D 0.5 renders images **with its own implementation**: a deterministic,
-headless, CPU rasterizer written in Python and NumPy. It turns any Aether3D
+Aether3D renders images **with its own implementation**. This guide covers
+cameras, lights, the shading model and the default renderer: a deterministic,
+headless CPU rasterizer written in Python and NumPy. It turns any Aether3D
 scene into a correctly projected, depth-tested, lit PNG. Scenes can contain
 static meshes, imported glTF meshes, meshes made with the editing engine, and
 procedural geometry. No external renderer, GPU, OpenGL context or GUI is
 involved, and the PNG encoder is Aether3D's own.
+
+Since 0.6, the same scenes also render on graphics hardware with
+`backend="gpu"`: real GPU rasterization through wgpu (Vulkan, Metal,
+Direct3D 12), with MSAA and directional shadow maps. See [GPU.md](GPU.md).
+The CPU renderer stays the default and the reference.
 
 ![The procedural Minecraft-inspired castle, rendered by Aether3D](../examples/output/minecraft_castle_render.png)
 
@@ -389,7 +395,7 @@ not a material system: there are no textures, PBR parameters or shaders yet
 | `scene.cameras`, `scene.lights`, `scene.active_camera` | Lookup and active camera (settable) |
 | `scene.world` | `World`: `background`, `ambient_color`, `ambient_intensity` |
 | `scene.render_settings` | `RenderSettings`: `width`, `height`, `samples`, `exposure`, `cull`, `default_lights`; saved with the project |
-| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). Returns a `RenderResult`. |
+| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md). Returns a `RenderResult`. |
 | `obj.camera`, `obj.light`, `obj.kind` | Components (`Camera`/`Light` or `None`); `"mesh"`, `"procedural"`, `"camera"`, `"light"` or `"empty"`. An object holds at most one of mesh, camera and light. |
 | `obj.appearance`, `obj.color`, `obj.visible` | Appearance and render visibility |
 | `obj.look_at(target, *, up)`, `obj.look_along(direction, *, up)`, `obj.world_forward`, `obj.set_world_position(p)` | Aiming and placement |
@@ -659,13 +665,15 @@ Diagnostics (in `result.diagnostics`):
 
 ## Limitations
 
-- **Lighting:** no shadows, no reflections or indirect light, no
-  transparency, and no textures or materials beyond one solid color and a
-  simple highlight per object.
+- **Lighting:** the CPU renderer draws no shadows (the GPU backend renders
+  directional-light shadow maps, see [GPU.md](GPU.md#shadows)). There are no
+  reflections or indirect light, no transparency, and no textures or
+  materials beyond one solid color and a simple highlight per object.
 - **Antialiasing:** ordered-grid supersampling only. Specular highlights on
   coarse tessellations can still alias.
 - **Speed:** single-threaded CPU rendering. Previews take seconds at 1080p,
-  not real time. The GPU backend is Stage 6.
+  not real time. The GPU backend ([GPU.md](GPU.md)) renders the same scenes in
+  milliseconds on graphics hardware.
 - **Limits:** perspective cameras need `far / near ≤ 10⁹`, which keeps the
   packed depth precise. There is no tone mapping beyond exposure and
   clamping.
@@ -678,24 +686,17 @@ Diagnostics (in `result.diagnostics`):
 
 ## Toward later stages
 
-- **Stage 6 (GPU rendering).** `extract_render_scene` already produces
-  backend-independent data:
-  - shared mesh arrays, which can be uploaded once;
-  - per-instance world and normal matrices;
-  - world-space lights;
-  - the camera's frame and projection.
-
-  A GPU backend consumes the same `RenderScene` and returns the same
-  `RenderResult`, so `scene.render`, the CLI and the tests stay unchanged.
-  The conventions (clip space, depth [0, 1], pixel centers) are those of
-  Vulkan, Direct3D and WebGPU.
+- **Stage 6 (GPU rendering) is implemented.** The GPU backend consumes the
+  same `RenderScene` and returns the same `RenderResult`, so `scene.render`,
+  the CLI and the CPU tests stayed unchanged. See [GPU.md](GPU.md).
 - **Stage 7 (materials and textures).** `Appearance` is the single place
   where surface properties enter shading, and shading is one function over
   per-sample data. A material system replaces `Appearance` and extends the
   per-triangle table (UVs are already carried by meshes) without touching
   projection, clipping or visibility.
 - **Stage 8 (quality).** The visibility buffer and deferred shading are the
-  natural base for shadows (shadow maps from the same rasterizer), better
+  natural base for CPU shadows (shadow maps from the same rasterizer, fitted
+  by the backend-neutral `rendering/shadows.py` the GPU already uses), better
   antialiasing and post-processing.
 - **Later: path tracing.** The camera frame and ray generation documented
   here, already implemented independently in the test reference ray caster,
