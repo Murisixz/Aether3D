@@ -23,6 +23,8 @@ jobs:
 
   test:
     # Portable tests: everything except GPU rendering, which the gpu jobs below cover.
+    # The CPU path tracer is portable and runs here, including its deterministic image
+    # test (tests/test_pathtrace_golden.py) and the showcase scenes in quick mode.
     name: test (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     env:
@@ -82,11 +84,25 @@ jobs:
           aether3d material assign ci_example.aether Bricks Sphere --json
           aether3d export ci_example.aether ci_render/baked.glb --bake-textures 64 --json
           aether3d export ci_render/minecraft_castle_render.aether ci_render/castle_materials.glb --json
+      - name: Path tracer (CPU) - showcase scenes with their checks, CLI and passes
+        run: |
+          python examples/cornell_box.py ci_path --quick
+          python examples/metal_spheres.py ci_path --quick
+          python examples/ao_contact.py ci_path --quick
+          python examples/castle_path_render.py ci_path --quick
+          python examples/window_room.py ci_path --quick
+          python examples/hero_path_render.py ci_path --quick
+          aether3d render ci_render/minecraft_castle_render.aether -o ci_path/cli_castle_path.png --backend path --width 160 --height 90 --spp 4 --bounces 2 --ao --passes ci_path/passes --json
+          aether3d render ci_render/minecraft_castle_render.aether -o ci_path/cli_castle_path.hdr --backend path --width 64 --height 36 --spp 2 --tonemap neutral
+          python benchmarks/bench_raytrace.py --quick
       - name: Upload the CI renders
         uses: actions/upload-artifact@v4
         with:
           name: renders-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: ci_render/*.png
+          path: |
+            ci_render/*.png
+            ci_path/*.png
+            ci_path/*.json
           if-no-files-found: error
 
   optional-dependencies:
