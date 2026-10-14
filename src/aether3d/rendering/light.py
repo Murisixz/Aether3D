@@ -14,7 +14,8 @@ This is a deliberately simple, **non-physically-based** lighting model (see
   at that distance with the window ``clamp(1 - (d / range)^4, 0, 1)^2``.
 
 Ambient light is a scene-wide setting (``scene.world``), not a light object.
-Lights do not cast shadows in this renderer.
+The CPU renderer draws no shadows; the GPU backend renders shadow maps for
+directional lights when asked (``render(backend="gpu", shadows=True)``).
 """
 
 from __future__ import annotations

@@ -311,6 +311,135 @@ class RenderSettings(_Validated):
     default_lights = _prop("default_lights")
 
 
+MAX_SHADOW_MAPS = 4
+"""Most directional lights that cast shadows in one render (one shadow map each)."""
+
+
+class ShadowSettings(_Validated):
+    """Shadow-map settings for one render (GPU backend only; not saved in projects).
+
+    Pass ``shadows=True`` (these defaults), a ``ShadowSettings`` or a dict of
+    its fields to :func:`~aether3d.rendering.render`.
+
+    * ``lights`` -- ``None`` (default): every directional light casts shadows
+      (at most :data:`MAX_SHADOW_MAPS`, the brightest first); or a list of
+      directional light object ids or names.
+    * ``map_size`` -- width and height of each shadow map in texels
+      (256-16384, default 2048).
+    * ``bias`` -- constant depth bias in shadow-map texels (default 0.5).
+    * ``normal_offset`` -- extra texels the receiving point moves along its
+      face normal (scaled by the sine of the light angle), beyond the
+      ``sqrt(2) * (pcf_radius + 1)`` texels that keep flat surfaces from
+      shadowing themselves (default 0.5).
+    * ``pcf_radius`` -- percentage-closer filtering: ``(2r + 1)^2`` bilinear
+      depth comparisons around each point (0-4, default 1; 0 is the
+      hardest edge the map can give).
+
+    See ``docs/GPU.md`` for how the shadow map is fitted and what these mean.
+    """
+
+    _FIELDS = ("lights", "map_size", "bias", "normal_offset", "pcf_radius")
+    _CODE = "INVALID_SHADOWS"
+    __slots__ = ("_lights", "_map_size", "_bias", "_normal_offset", "_pcf_radius")
+
+    def __init__(
+        self,
+        lights: Any = None,
+        map_size: int = 2048,
+        bias: float = 0.5,
+        normal_offset: float = 0.5,
+        pcf_radius: int = 1,
+    ) -> None:
+        self._assign(
+            self._check(
+                {
+                    "lights": lights,
+                    "map_size": map_size,
+                    "bias": bias,
+                    "normal_offset": normal_offset,
+                    "pcf_radius": pcf_radius,
+                },
+                "shadows",
+            )
+        )
+
+    def _location(self) -> str:
+        return "shadows"
+
+    def _check(self, values: dict[str, Any], location: str) -> dict[str, Any]:
+        lights = values["lights"]
+        if lights is not None:
+            if isinstance(lights, str) or not isinstance(lights, (list, tuple)):
+                raise RenderError(
+                    self._CODE,
+                    f"lights must be null or a list of light ids or names, got {lights!r}",
+                    f"{location}.lights",
+                )
+            if len(lights) > MAX_SHADOW_MAPS:
+                raise RenderError(
+                    self._CODE,
+                    f"at most {MAX_SHADOW_MAPS} lights can cast shadows, got {len(lights)}",
+                    f"{location}.lights",
+                )
+            for i, ref in enumerate(lights):
+                if not isinstance(ref, str) or not ref:
+                    raise RenderError(
+                        self._CODE,
+                        f"light references must be non-empty strings, got {ref!r}",
+                        f"{location}.lights[{i}]",
+                    )
+            lights = tuple(lights)
+        return {
+            "lights": lights,
+            "map_size": _integer(
+                values["map_size"], self._CODE, "map_size", f"{location}.map_size", 256, 16384
+            ),
+            "bias": _number(values["bias"], self._CODE, "bias", f"{location}.bias", 0.0, 100.0),
+            "normal_offset": _number(
+                values["normal_offset"],
+                self._CODE,
+                "normal_offset",
+                f"{location}.normal_offset",
+                0.0,
+                100.0,
+            ),
+            "pcf_radius": _integer(
+                values["pcf_radius"], self._CODE, "pcf_radius", f"{location}.pcf_radius", 0, 4
+            ),
+        }
+
+    lights = _prop("lights")
+    map_size = _prop("map_size")
+    bias = _prop("bias")
+    normal_offset = _prop("normal_offset")
+    pcf_radius = _prop("pcf_radius")
+
+    @classmethod
+    def coerce(cls, value: Any) -> ShadowSettings | None:
+        """``None``/``False`` -> no shadows; ``True`` -> defaults; a dict or instance as given."""
+        if value is None or value is False:
+            return None
+        if value is True:
+            return cls()
+        if isinstance(value, cls):
+            return value.copy()
+        if isinstance(value, dict):
+            unknown = sorted(set(value) - set(cls._FIELDS))
+            if unknown:
+                raise RenderError(
+                    cls._CODE,
+                    f"unknown shadow setting(s): {', '.join(unknown)}",
+                    "shadows",
+                    hint=f"settings: {', '.join(cls._FIELDS)}",
+                )
+            return cls(**value)
+        raise RenderError(
+            cls._CODE,
+            f"shadows must be true, false, a dict or a ShadowSettings, got {value!r}",
+            "shadows",
+        )
+
+
 @dataclass(frozen=True)
 class RenderLimits:
     """Safety limits checked before any memory is allocated (raise ``RESOURCE_LIMIT``).
@@ -319,8 +448,12 @@ class RenderLimits:
     * ``max_samples`` -- largest number of supersamples (``width x height x samples^2``);
       the renderer needs about 8 bytes per sample plus a few bytes per pixel.
     * ``max_triangles`` -- largest number of triangles to render (counting every instance).
+    * ``max_gpu_memory`` -- largest estimated GPU memory, in bytes, for one
+      GPU render's images, shadow maps and output buffers (meshes are cached
+      separately within their own budget).
     """
 
     max_dimension: int = 16384
     max_samples: int = 40_000_000
     max_triangles: int = 20_000_000
+    max_gpu_memory: int = 4 * 2**30

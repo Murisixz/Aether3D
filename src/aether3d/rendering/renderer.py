@@ -12,15 +12,23 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from .._version import __version__
-from ..diagnostics import INFO, Diagnostic, worst_severity
+from ..diagnostics import INFO, WARNING, Diagnostic, worst_severity
 from ..errors import RenderError
 from . import cpu
+from .backends import Antialiasing, antialiasing_plan, check_backend
 from .camera import Camera, CameraFrame, frame_from_matrix
 from .color import linear_to_srgb, quantize
 from .framing import AUTO_VIEW_DIRECTION, compute_framing, orientation_frame, target_points
 from .png import encode_png
-from .scene_data import RenderCamera, extract_render_scene, resolve_camera, world_matrices
-from .settings import RenderLimits, RenderSettings
+from .scene_data import (
+    RenderCamera,
+    RenderScene,
+    extract_render_scene,
+    resolve_camera,
+    world_matrices,
+)
+from .settings import RenderLimits, RenderSettings, ShadowSettings
+from .shadows import ShadowPlan, plan_shadows
 
 if TYPE_CHECKING:
     from ..scene import Scene, SceneObject
@@ -28,7 +36,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class RenderResult:
-    """An image rendered by Aether3D's CPU renderer, with everything known about it.
+    """An image rendered by Aether3D (CPU or GPU backend), with everything known about it.
 
     * ``image`` -- ``(height, width, 3) uint8`` sRGB pixels (row 0 at the top).
     * ``linear`` -- ``(height, width, 3) float32`` linear-light values after
@@ -43,9 +51,13 @@ class RenderResult:
       samples of each are visible.
     * ``camera``, ``settings``, ``stats`` (counts and timings in seconds),
       ``diagnostics`` and ``output`` (set by :meth:`save`).
+    * ``backend`` -- which backend rendered it: ``{"name": "cpu"}``, or for
+      the GPU the adapter, graphics API, antialiasing, shadow maps, GPU pass
+      timings and resource statistics.
 
     ``depth`` and ``object_index`` describe one representative sample per pixel
-    (the center sample for odd ``samples``).
+    (the center sample for odd ``samples``; on the GPU with MSAA, the first
+    MSAA sample of the center of the supersampled block).
     """
 
     image: np.ndarray
@@ -59,6 +71,7 @@ class RenderResult:
     stats: dict[str, Any]
     diagnostics: list[Diagnostic] = field(default_factory=list)
     output: Path | None = None
+    backend: dict[str, Any] = field(default_factory=lambda: {"name": "cpu"})
 
     @property
     def width(self) -> int:
@@ -79,8 +92,18 @@ class RenderResult:
         return (r, g, b)
 
     def png_bytes(self) -> bytes:
-        """The image encoded as PNG."""
-        return encode_png(self.image, text={"Software": f"Aether3D {__version__}"})
+        """The image encoded as PNG.
+
+        A ``Software`` text chunk names Aether3D; GPU renders also carry a
+        ``Source`` chunk naming the graphics API and adapter that drew them.
+        """
+        text = {"Software": f"Aether3D {__version__}"}
+        if self.backend.get("name") == "gpu":
+            adapter = self.backend.get("adapter", {})
+            text["Source"] = (
+                f"Aether3D GPU renderer (wgpu, {adapter.get('backend')}) on {adapter.get('name')}"
+            )
+        return encode_png(self.image, text=text)
 
     def save(self, path: str | os.PathLike[str]) -> Path:
         """Write the image as a PNG file, atomically; returns the resolved path.
@@ -120,6 +143,7 @@ class RenderResult:
             "height": self.height,
             "status": self.status,
             "output": None if self.output is None else str(self.output),
+            "backend": self.backend,
             "camera": self.camera,
             "settings": self.settings,
             "stats": self.stats,
@@ -154,8 +178,13 @@ def render(
     frame: bool = False,
     margin: float = 0.05,
     limits: RenderLimits | None = None,
+    backend: str = "cpu",
+    adapter: int | str | None = None,
+    msaa: int | None = None,
+    supersample: int | None = None,
+    shadows: bool | dict[str, Any] | ShadowSettings | None = None,
 ) -> RenderResult:
-    """Render ``scene`` with the CPU rasterizer and return a :class:`RenderResult`.
+    """Render ``scene`` and return a :class:`RenderResult`.
 
     * ``camera`` -- camera object, id or name; default: ``scene.active_camera``.
     * ``width``, ``height``, ``samples``, ``exposure``, ``cull``,
@@ -166,7 +195,20 @@ def render(
       only (the scene keeps its camera placement). With no camera at all, a
       temporary perspective camera looking from the front-right and above is
       used. ``margin`` is the free border fraction.
-    * ``limits`` -- :class:`RenderLimits` (image size, samples, triangles).
+    * ``limits`` -- :class:`RenderLimits` (image size, samples, triangles,
+      GPU memory).
+    * ``backend`` -- ``"cpu"`` (default: Aether3D's NumPy rasterizer),
+      ``"gpu"`` (wgpu: Vulkan, Metal or Direct3D 12; fails with a ``GPU_*``
+      error if no usable GPU) or ``"auto"`` (the GPU when available, else the
+      CPU, with a ``BACKEND_FALLBACK`` diagnostic). See ``docs/GPU.md``.
+    * ``adapter`` -- GPU adapter selection (index, ``"discrete"``, ``"nvidia"``,
+      ``"vulkan"``, ...); default ``AETHER3D_GPU_ADAPTER`` or the best one.
+    * ``msaa``, ``supersample`` -- GPU antialiasing: MSAA samples per pixel and
+      supersampling factor per axis. By default the GPU uses ``samples^2``
+      samples per pixel like the CPU (``samples=2``: 4x MSAA).
+      ``supersample=samples, msaa=1`` reproduces the CPU's sample positions.
+    * ``shadows`` -- GPU shadow maps for directional lights: ``True``, a
+      :class:`ShadowSettings` or a dict of its fields; default off.
 
     The scene is never modified. Procedural objects render their current
     evaluated geometry. Errors raise :class:`~aether3d.errors.RenderError`
@@ -178,6 +220,25 @@ def render(
         raise RenderError("INVALID_SETTINGS", "limits must be a RenderLimits instance")
     if not isinstance(frame, bool):
         raise RenderError("INVALID_SETTINGS", f"frame must be True or False, got {frame!r}")
+    requested = check_backend(backend)
+    shadow_settings = ShadowSettings.coerce(shadows)
+    if requested == "cpu":
+        for name, value in (("msaa", msaa), ("supersample", supersample)):
+            if value is not None:
+                raise RenderError(
+                    "INVALID_SETTINGS",
+                    f"{name} applies to the GPU backend; the CPU renderer antialiases with "
+                    "samples (samples x samples per pixel)",
+                    name,
+                    hint="use backend='gpu' or 'auto', or remove the option",
+                )
+        if shadow_settings is not None:
+            raise RenderError(
+                "BACKEND_UNSUPPORTED",
+                "the CPU renderer does not render shadows",
+                "shadows",
+                hint="use backend='gpu' (or 'auto'), or render without shadows",
+            )
     diagnostics: list[Diagnostic] = []
 
     camera_obj: SceneObject | None
@@ -204,6 +265,7 @@ def render(
         if v is not None
     }
     settings.configure(**overrides)
+    antialiasing = antialiasing_plan(settings.samples, msaa, supersample)
     aspect = settings.width / settings.height
     if settings.width > limits.max_dimension or settings.height > limits.max_dimension:
         raise RenderError(
@@ -246,6 +308,79 @@ def render(
         scene, render_camera, default_lights=settings.default_lights, aspect=aspect
     )
     diagnostics += list(rs.diagnostics)
+    plan = None if shadow_settings is None else plan_shadows(rs, shadow_settings, aspect)
+
+    if requested in ("gpu", "auto"):
+        try:
+            return _finish_gpu(
+                rs,
+                settings,
+                antialiasing,
+                plan,
+                adapter,
+                limits,
+                requested,
+                diagnostics,
+                frame,
+                aspect,
+                t_start,
+            )
+        except RenderError as exc:
+            if requested == "gpu" or not exc.code.startswith("GPU_"):
+                raise
+            diagnostics.append(
+                Diagnostic(
+                    "BACKEND_FALLBACK",
+                    INFO,
+                    f"backend 'auto' used the CPU renderer: [{exc.code}] {exc.message}",
+                    "backend",
+                )
+            )
+            if msaa is not None or supersample is not None:
+                diagnostics.append(
+                    Diagnostic(
+                        "GPU_OPTIONS_IGNORED",
+                        WARNING,
+                        "msaa/supersample apply to the GPU backend and were ignored; the CPU "
+                        f"renderer used {settings.samples}x{settings.samples} samples per pixel",
+                        "backend",
+                    )
+                )
+            if plan is not None and plan.maps:
+                diagnostics.append(
+                    Diagnostic(
+                        "SHADOWS_NOT_RENDERED",
+                        WARNING,
+                        "shadows need the GPU backend; the CPU renderer rendered without them",
+                        "shadows",
+                    )
+                )
+    return _finish_cpu(rs, settings, limits, requested, diagnostics, frame, aspect, t_start)
+
+
+def _objects(rs: RenderScene, visible: np.ndarray) -> list[dict[str, Any]]:
+    return [
+        {
+            "index": k,
+            "id": inst.object_id,
+            "name": inst.name,
+            "triangles": int(rs.meshes[inst.mesh].triangles.shape[0]),
+            "visible_samples": int(visible[k]),
+        }
+        for k, inst in enumerate(rs.instances)
+    ]
+
+
+def _finish_cpu(
+    rs: RenderScene,
+    settings: RenderSettings,
+    limits: RenderLimits,
+    requested: str,
+    diagnostics: list[Diagnostic],
+    frame: bool,
+    aspect: float,
+    t_start: float,
+) -> RenderResult:
     frame_data = cpu.render_scene(
         rs, settings.width, settings.height, settings.samples, settings.cull, limits
     )
@@ -260,16 +395,6 @@ def render(
         image[r0 : r0 + 128] = quantize(linear_to_srgb(linear[r0 : r0 + 128]))
     t_output = time.perf_counter() - t0
 
-    objects = [
-        {
-            "index": k,
-            "id": inst.object_id,
-            "name": inst.name,
-            "triangles": int(rs.meshes[inst.mesh].triangles.shape[0]),
-            "visible_samples": int(frame_data.visible_samples[k]),
-        }
-        for k, inst in enumerate(rs.instances)
-    ]
     counts = frame_data.counts
     timings = {
         "evaluate": rs.timings.get("evaluate", 0.0),
@@ -293,9 +418,122 @@ def render(
         depth=frame_data.depth,
         coverage=frame_data.coverage,
         object_index=frame_data.instance,
-        objects=objects,
+        objects=_objects(rs, frame_data.visible_samples),
         camera=cam_info,
         settings=settings.to_dict(),
         stats=stats,
         diagnostics=diagnostics,
+        backend={"name": "cpu", "requested": requested},
+    )
+
+
+def _finish_gpu(
+    rs: RenderScene,
+    settings: RenderSettings,
+    antialiasing: Antialiasing,
+    plan: ShadowPlan | None,
+    adapter: Any,
+    limits: RenderLimits,
+    requested: str,
+    diagnostics: list[Diagnostic],
+    frame: bool,
+    aspect: float,
+    t_start: float,
+) -> RenderResult:
+    from .gpu import device as gpu_device
+    from .gpu import renderer as gpu_renderer
+
+    t0 = time.perf_counter()
+    context, failures = gpu_device.get_context(adapter)
+    t_init = time.perf_counter() - t0
+    fresh = context.renders == 0
+    gpu_frame = gpu_renderer.render_scene(
+        context,
+        rs,
+        width=settings.width,
+        height=settings.height,
+        antialiasing=antialiasing,
+        cull=settings.cull,
+        exposure=settings.exposure,
+        shadows=plan,
+        limits=limits,
+    )
+    notes: list[Diagnostic] = []
+    info = context.info
+    for failure in failures:
+        notes.append(
+            Diagnostic(
+                "ADAPTER_FALLBACK",
+                WARNING,
+                f"{failure['adapter']} could not be used ([{failure['code']}] "
+                f"{failure['message']}); rendered on {info.label} instead",
+                "adapter",
+            )
+        )
+    if requested == "auto":
+        notes.append(
+            Diagnostic(
+                "BACKEND_SELECTED",
+                INFO,
+                f"backend 'auto' rendered on the GPU: {info.label}",
+                "backend",
+            )
+        )
+    if info.software:
+        notes.append(
+            Diagnostic(
+                "SOFTWARE_ADAPTER",
+                INFO,
+                f"{info.name} is a software implementation of {info.backend}: the GPU "
+                "pipeline ran on the CPU, not on graphics hardware",
+                "adapter",
+            )
+        )
+    if plan is not None:
+        notes += list(plan.diagnostics)
+    diagnostics += notes + gpu_frame.diagnostics
+    if not math.isfinite(float(np.max(gpu_frame.linear, initial=0.0))):
+        raise RenderError("RENDER_FAILED", "the rendered image contains non-finite values")
+    timings = {
+        "evaluate": rs.timings.get("evaluate", 0.0),
+        "extract": rs.timings.get("extract", 0.0),
+        "init": t_init + gpu_frame.timings["compile"],
+        "upload": gpu_frame.timings["upload"],
+        "prepare": gpu_frame.timings["prepare"],
+        "gpu": gpu_frame.timings["gpu"],
+        "readback": gpu_frame.timings["readback"],
+    }
+    timings["total"] = time.perf_counter() - t_start
+    stats = {
+        **gpu_frame.counts,
+        "pixels_covered": int(np.count_nonzero(gpu_frame.coverage > 0)),
+        "timings": timings,
+        "gpu_timings": gpu_frame.gpu_timings,
+    }
+    cam_info = rs.camera.to_dict(aspect)
+    cam_info["temporary"] = frame
+    backend_info = {
+        "name": "gpu",
+        "requested": requested,
+        "api": "wgpu",
+        "versions": gpu_device.wgpu_versions(),
+        "adapter": info.to_dict(features=False),
+        "antialiasing": antialiasing.to_dict(),
+        "shadows": None if plan is None or not plan.maps else plan.to_dict(),
+        "device_created": fresh,
+        "device_init_seconds": context.init_seconds if fresh else 0.0,
+        "resources": gpu_frame.resources,
+    }
+    return RenderResult(
+        image=gpu_frame.image,
+        linear=gpu_frame.linear,
+        depth=gpu_frame.depth,
+        coverage=gpu_frame.coverage,
+        object_index=gpu_frame.instance,
+        objects=_objects(rs, gpu_frame.visible_samples),
+        camera=cam_info,
+        settings=settings.to_dict(),
+        stats=stats,
+        diagnostics=diagnostics,
+        backend=backend_info,
     )

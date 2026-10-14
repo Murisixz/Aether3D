@@ -881,11 +881,13 @@ class Scene:
         self._render_settings = value.copy()
 
     def render(self, **options: Any) -> RenderResult:
-        """Render an image with Aether3D's CPU renderer (see :func:`aether3d.rendering.render`).
+        """Render an image (see :func:`aether3d.rendering.render`).
 
         Options override the saved :attr:`render_settings` for this render
         only: ``camera``, ``width``, ``height``, ``samples``, ``exposure``,
-        ``cull``, ``default_lights``, ``frame``, ``limits``. The scene is not
+        ``cull``, ``default_lights``, ``frame``, ``limits``; and choose the
+        renderer: ``backend`` (``"cpu"`` by default, ``"gpu"`` or ``"auto"``),
+        ``adapter``, ``msaa``, ``supersample``, ``shadows``. The scene is not
         modified. Save the image with ``result.save("image.png")``.
         """
         from .rendering import render

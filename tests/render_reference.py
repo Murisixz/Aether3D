@@ -211,3 +211,49 @@ def reference_image(scene: Scene, camera, width: int, height: int, *, default_li
         objects,
         normal_map.reshape(*shape, 3),
     )
+
+
+def occluded(tris: np.ndarray, origins: np.ndarray, direction: np.ndarray) -> np.ndarray:
+    """Whether a ray from each origin along ``direction`` (toward a light) hits any triangle."""
+    blocked = np.zeros(len(origins), dtype=bool)
+    v0, e1, e2 = tris[:, 0], tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0]
+    pvec = np.cross(direction, e2)  # the same direction for every ray
+    det = np.einsum("tk,tk->t", e1, pvec)
+    ok = np.abs(det) > 1e-14
+    inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+    for start in range(0, len(origins), 256):
+        o = origins[start : start + 256, None, :]
+        tvec = o - v0[None]
+        u = np.einsum("rtk,tk->rt", tvec, pvec) * inv
+        qvec = np.cross(tvec, e1[None])
+        v = (qvec @ direction) * inv
+        t = np.einsum("tk,rtk->rt", e2, qvec) * inv
+        hit = ok & (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 0)
+        blocked[start : start + 256] = hit.any(axis=1)
+    return blocked
+
+
+def shadow_mask(scene: Scene, camera, width: int, height: int, light_obj) -> np.ndarray:
+    """(H, W) bool: the surface seen at each pixel center is hidden from a directional light.
+
+    Independent of Aether3D's shadow maps: a ray from every visible surface
+    point toward the light, tested against every triangle. Points start a tiny
+    distance off their surface (toward the light) so they never hit themselves.
+    """
+    tris, *_ = gather(scene)
+    tri, t, u, v = raycast(scene, camera, width, height)
+    origins, dirs, _, _ = camera_rays(scene, camera, width, height)
+    m = _world(light_obj)
+    direction = -m[:3, 1] / np.linalg.norm(m[:3, 1])
+    to_light = -direction
+    hit = tri >= 0
+    k = tri[hit]
+    pos = origins[hit] + t[hit, None] * dirs[hit]
+    geo = np.cross(tris[k, 1] - tris[k, 0], tris[k, 2] - tris[k, 0])
+    geo /= np.linalg.norm(geo, axis=1, keepdims=True)
+    facing = np.where((geo @ to_light)[:, None] >= 0, geo, -geo)
+    scale = max(1.0, float(np.abs(tris).max()))
+    start = pos + facing * (1e-6 * scale)
+    mask = np.zeros(len(tri), dtype=bool)
+    mask[hit] = occluded(tris, start, to_light)
+    return mask.reshape(height, width)
