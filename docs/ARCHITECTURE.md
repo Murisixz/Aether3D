@@ -67,11 +67,13 @@ Aether3D/
 │   │   ├── graph.py       Procedural node graphs: validation, CPU evaluation, GPU programs
 │   │   ├── library.py     MaterialLibrary: a scene's materials, textures and assignments
 │   │   └── presets.py     Stone, brick, wood, metal, grass and fabric presets
-│   ├── rendering/         Cameras, lights, the CPU and GPU renderers (docs/RENDERING.md, GPU.md)
+│   ├── rendering/         Cameras, lights, the rasterizers and the path tracer
+│   │                      (docs/RENDERING.md, GPU.md, RENDER_QUALITY.md)
 │   │   ├── camera.py      Camera parameters, projection matrices, camera frames
 │   │   ├── light.py       Light parameters
-│   │   ├── settings.py    Appearance, World, RenderSettings, ShadowSettings, RenderLimits
-│   │   ├── backends.py    Backend names (cpu/gpu/auto), option checks, antialiasing plan
+│   │   ├── settings.py    Appearance, World/Environment, RenderSettings, ShadowSettings,
+│   │   │                  PathSettings, AOSettings, RenderLimits
+│   │   ├── backends.py    Backend names (cpu/gpu/auto/path), option checks, antialiasing plan
 │   │   ├── shadows.py     Backend-neutral shadow planning (lights, map fitting, bias)
 │   │   ├── color.py       sRGB <-> linear transfer functions, color parsing
 │   │   ├── scene_data.py  RenderScene extraction (backend-independent)
@@ -80,17 +82,30 @@ Aether3D/
 │   │   ├── raster.py      Clipping, fixed-point rasterization, visibility buffer
 │   │   ├── cpu.py         CPU backend: geometry, raster, deferred shading, resolve
 │   │   ├── renderer.py    render() and RenderResult
+│   │   ├── tonemap.py     Output transform: exposure, the optional tone mapper, sRGB encoding
+│   │   ├── hdr.py         Radiance .hdr and .pfm writers (linear high dynamic range)
 │   │   ├── framing.py     Exact camera framing
 │   │   ├── png.py         PNG encoder (zlib from the standard library)
 │   │   ├── script.py      Declarative scene-setup scripts
-│   │   └── gpu/           The GPU backend (optional wgpu; see docs/GPU.md)
-│   │       ├── device.py      Adapters, selection, devices, GPUContext, wgpu error mapping
-│   │       ├── shaders.py     WGSL modules, bind group layouts, pipeline cache
-│   │       ├── resources.py   Mesh cache, render targets, exact shader data layouts
-│   │       ├── materials.py   Material data packing, texture programs, the texel pool
-│   │       ├── renderer.py    Shadow, scene and finalize passes; synchronized readback
-│   │       ├── check.py       The self-test behind `aether3d gpu info --check`
-│   │       └── wgsl/          common, material, scene, shadow and finalize shaders
+│   │   ├── gpu/           The GPU backend (optional wgpu; see docs/GPU.md)
+│   │   │   ├── device.py      Adapters, selection, devices, GPUContext, wgpu error mapping
+│   │   │   ├── shaders.py     WGSL modules, bind group layouts, pipeline cache
+│   │   │   ├── resources.py   Mesh cache, render targets, exact shader data layouts
+│   │   │   ├── materials.py   Material data packing, texture programs, the texel pool
+│   │   │   ├── renderer.py    Shadow, scene and finalize passes; synchronized readback
+│   │   │   ├── check.py       The self-test behind `aether3d gpu info --check`
+│   │   │   └── wgsl/          common, material, scene, shadow and finalize shaders
+│   │   ├── raytrace/      Ray tracing core (CPU, NumPy; see docs/RENDER_QUALITY.md)
+│   │   │   ├── bvh.py         Binned-SAH BVH construction
+│   │   │   └── accel.py       Two-level structure, BLAS cache, traversal, watertight tests
+│   │   └── pathtrace/     The path tracer (backend="path")
+│   │       ├── integrator.py  Camera rays, the bounce loop, passes, accumulation
+│   │       ├── scene.py       Shading data, hit points, materials, pass-through surfaces
+│   │       ├── bsdf.py        The metallic-roughness BRDF: evaluation and sampling
+│   │       ├── lights.py      Point/directional lights, emissive triangles, NEE
+│   │       ├── environment.py Ambient, uniform and sky environments
+│   │       ├── sampling.py    Counter-based random numbers, warps, MIS
+│   │       └── parallel.py    Tiles, rounds and forked worker processes
 │   ├── gltf/              glTF 2.0 interchange (no third-party dependencies)
 │   │   ├── axes.py        Exact Z-up <-> Y-up conversion
 │   │   ├── materials.py   glTF materials, textures and samplers, in and out
@@ -100,10 +115,11 @@ Aether3D/
 │   ├── _cli_materials.py  `aether3d material` and `aether3d texture`
 │   └── __main__.py        `python -m aether3d`
 ├── tests/                 pytest suite, one file per module
-│   └── data/              Khronos samples (pinned), v0.1.0/v0.4.0 projects, reference renders
+│   └── data/              Khronos samples (pinned), v0.1.0/v0.4.0/v0.7.0 projects, reference renders
 ├── examples/              Runnable examples, a sample project, example textures, renders (output/)
 ├── tools/gltf-validator/  Pinned Khronos glTF Validator runner (Node.js, dev only)
-├── benchmarks/            Editing, procedural, rendering and materials benchmarks (bench_*.py)
+├── benchmarks/            Editing, procedural, rendering, materials, ray tracing and path
+│                          tracing benchmarks (bench_*.py)
 ├── docs/                  API, file formats, glTF, inspection, architecture, install
 └── .github/workflows/     Continuous integration
 ```
@@ -131,6 +147,8 @@ Aether3D/
 | `rendering.gpu.*` | `rendering` (scene data, settings, shadows, color, backends), `errors`, `diagnostics`; `wgpu` (optional, imported lazily on the first GPU call; never by `import aether3d`) |
 | `materials.*` | `errors`, `diagnostics`, `rendering.color`, `_fileio`; `scene` only for type hints; Pillow (optional, lazily, JPEG only) |
 | `rendering.materials`, `rendering.surface` | `materials`, `rendering` (scene data, settings, color), `diagnostics`, `errors` |
+| `rendering.raytrace.*` | `rendering.scene_data` (types only); NumPy only |
+| `rendering.pathtrace.*` | `rendering.raytrace`, `rendering.surface` (material evaluation), `rendering` (scene data, settings, color), `diagnostics`, `errors`; the standard library's `multiprocessing` and `mmap` for worker processes |
 | `gltf.materials` | `materials`, `rendering.color`, `diagnostics`, `errors` |
 | `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `errors` |
 
@@ -213,7 +231,8 @@ large meshes later need binary storage, that becomes a new format version
 | Procedural modeling | Implemented in v0.4.0 (`procedural/`): new primitive and modifier types are registry entries (see below). |
 | Materials / shaders | Replace `Appearance` (the only place surface properties enter shading) with materials; extend the per-triangle shading table. Format version bump. |
 | Asset management / interop | Importers/exporters that convert to/from `Scene` and `Mesh`, outside the core. |
-| Native acceleration | Replace `math3d` functions or mesh generation with Rust/C++ (e.g. PyO3) behind the same Python signatures. |
+| Native acceleration | Replace `math3d` functions or mesh generation with Rust/C++ (e.g. PyO3) behind the same Python signatures; a compiled or GPU ray traversal can answer `SceneAccel.closest_hit`/`occluded` from the same flat BVH arrays. |
+| Path tracing on the GPU | A wgpu compute integrator consuming the same `RenderScene`, BVH layout and counter-based sampling, verified against the CPU path tracer (future stage). |
 
 Ground rules for extensions:
 
@@ -452,5 +471,34 @@ persistence, glTF and the CLI. Key decisions:
   group changes, propagation by every operation) and procedural modifiers
   (including booleans, through Manifold's face ids) all carry face groups.
   glTF primitives map to groups.
-- **The project format is version 4**, migrated from version 3 by adding
+- **The project format became version 4**, migrated from version 3 by adding
   empty libraries.
+
+## Path tracing (v0.8.0)
+
+The path tracer (`rendering/raytrace/`, `rendering/pathtrace/`) is a third
+consumer of `RenderScene`; [RENDER_QUALITY.md](RENDER_QUALITY.md) explains
+it in full. Key decisions:
+
+- **A separate backend, `backend="path"`.** It never replaces or changes the
+  rasterizers (`"cpu"`, `"gpu"` and `"auto"` render exactly as before), and
+  it runs on the CPU only. Its report and PNG metadata say so.
+- **Shared semantics, not shared shortcuts.** Materials are evaluated by the
+  rasterizer's own `surface.evaluate_material`, and the lights' intensities
+  are given physical units that reproduce the rasterizers' direct lighting.
+  Everything the rasterizers approximate is computed instead: shadows,
+  bounce light, reflections and emissive area lights.
+- **A reusable ray tracing core.** `raytrace/` knows nothing about shading:
+  it builds BVHs (binned SAH, vectorized, chunked) and answers closest-hit
+  and any-hit queries for batches of rays. It uses a two-level structure (one
+  cached BVH per mesh, one over instances) and watertight triangle tests.
+  Its flat arrays are the layout a compiled or GPU traversal would use.
+- **Vectorized wavefront integrator.** Paths advance in NumPy batches; random
+  numbers are counter-based hashes of `(seed, pixel, sample, dimension)`. The
+  image therefore does not depend on batching or on the number of processes:
+  forked workers (Linux) trace tiles of pixels into shared-memory sums, in
+  sample order, bitwise identically to one process.
+- **The scene format is version 5.** Light sizes and the world environment
+  are scene content, saved and migrated (version 4 files get the
+  `"ambient"` environment and zero sizes, so they render unchanged).
+  Sample counts, bounces, seeds and AO are render options, not saved.

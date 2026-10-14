@@ -46,7 +46,8 @@ from ..scene_data import RenderScene
 from .environment import EnvironmentModel
 
 MAX_LAYERS = 256
-"""Most pass-through surfaces one ray crosses before it is treated as blocked."""
+"""Most pass-through surfaces one ray crosses; rays still passing through after that are
+treated as leaving the scene (a ``PASS_THROUGH_LIMIT`` diagnostic counts them)."""
 OFFSET = 1e-9
 """Ray origins move this far (times the scale of the point) off surfaces."""
 

@@ -16,7 +16,9 @@ apply to agents too.
 - Procedural geometry: [docs/PROCEDURAL.md](docs/PROCEDURAL.md) (parameters, expressions, modifiers,
   caching, transactions, scripts).
 - Cameras, lights and rendering: [docs/RENDERING.md](docs/RENDERING.md) (conventions, pipeline,
-  shading model, API, CLI, verification); the GPU backend: [docs/GPU.md](docs/GPU.md).
+  shading model, API, CLI, verification); the GPU backend: [docs/GPU.md](docs/GPU.md); the
+  path tracer: [docs/RENDER_QUALITY.md](docs/RENDER_QUALITY.md) (BVH, light transport, BSDF,
+  lights, environment, AO, sampling, color management, passes, performance).
 - Materials, textures and procedural shaders: [docs/MATERIALS.md](docs/MATERIALS.md) (models and
   formulas, slots, images, coordinates, node graphs, presets, face groups, CLI, security).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
@@ -80,6 +82,25 @@ apply to agents too.
   - **Face groups.** Editing operations and procedural modifiers must carry face groups to the
     faces they create (`tests/test_material_groups.py`).
 
+- Path tracer (`rendering/raytrace/`, `rendering/pathtrace/`):
+  - **CPU only, and say so.** It must never touch wgpu or claim GPU use; reports carry
+    `"device": "cpu"`. It must never change what the rasterizers render.
+  - **One material semantics.** Evaluate materials with `surface.evaluate_material`; do not fork
+    material logic into the path tracer. Lights keep the raster-equivalent units documented in
+    `pathtrace/lights.py`.
+  - **Counter-based randomness only.** Draw random numbers with
+    `sampling.uniform(keys, dimension(vertex, slot))`, a distinct slot per decision; never
+    `np.random`. Images must not depend on batch sizes or `workers`
+    (`test_renders_repeat_bit_for_bit_and_do_not_depend_on_batching`,
+    `test_worker_processes_give_the_same_image_bit_for_bit`).
+  - **Verify against references.** Check radiometry changes against the analytic tests in
+    `tests/test_pathtrace.py`, BSDF changes against the quadrature tests in
+    `tests/test_pathtrace_bsdf.py`, and BVH or traversal changes against the brute-force
+    and watertightness tests in `tests/test_raytrace.py`. Never loosen a tolerance without
+    deriving the new noise level.
+  - **Every estimator stays unbiased** unless it is a documented, opt-in bias (`clamp`). An
+    emitter must be counted once (MIS between light and BSDF sampling).
+
 ## Using Aether3D from an agent
 
 - Prefer ids (`obj.id`) over names for durable references.
@@ -123,6 +144,14 @@ apply to agents too.
     Match on `MaterialError.code`.
   - Keep image files inside the project's folder, or embed them (`--embed`, `texture.embed()`).
     Procedural meshes have no UVs: map their textures with `coordinates="object"`.
+- Path tracing: `aether3d render PROJECT -o out.png --backend path --spp 32 --bounces 4 --json`.
+  Read `backend.device` (`"cpu"`), `stats.noise.mean_relative_error` (more `--spp` lowers
+  it), `stats.rays` and `stats.timings`. It is much slower than the rasterizers: try small
+  sizes and few samples first. `--ao-only` is a fast AO preview, `--passes DIR` writes the
+  passes (`.pfm`), `-o out.hdr` keeps linear HDR, `--tonemap neutral` tames highlights. Give
+  lights a size (`light set --radius/--angle`) for soft shadows and set the sky with
+  `scene set --environment sky`. Python: `scene.render(backend="path", path={"samples": 32},
+  ao=True)`, then `result.passes`.
 - GPU: `aether3d gpu info --check --json` says whether GPU rendering works here and which adapter
   is used (exit code 3 if it does not). Render with `--backend gpu` (fails with a `GPU_*` code if
   unavailable -- never a silent CPU render) or `--backend auto` (read `backend.name` and the

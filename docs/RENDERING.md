@@ -18,6 +18,19 @@ metallic-roughness model of glTF, image and procedural textures, normal maps,
 alpha masks and emission, on both backends. See [MATERIALS.md](MATERIALS.md).
 Objects without a material render with their own color, exactly as before.
 
+Since 0.8, `backend="path"` renders with a **path tracer** instead of a
+rasterizer. It computes physically based light transport on the CPU:
+- shadows from every light, soft with the light's size;
+- light bouncing between surfaces;
+- reflections of the scene;
+- emissive surfaces that light their surroundings;
+- an environment (uniform or procedural sky);
+- ambient occlusion.
+
+See [RENDER_QUALITY.md](RENDER_QUALITY.md). The rasterizers described here are
+unchanged; the new scene data the path tracer reads (light `radius`/`angle`,
+`scene.world.environment`) does not affect them.
+
 ![The procedural Minecraft-inspired castle, rendered by Aether3D](../examples/output/minecraft_castle_render.png)
 
 *The Stage 4 procedural castle with its Stage 7 materials (image and procedural
@@ -276,7 +289,10 @@ What the numbers mean:
 - A point light of intensity *I* does the same at distance √*I*.
 - Lights add up linearly.
 - **There are no shadows**: lights are not occluded. There are no
-  reflections and no indirect light.
+  reflections and no indirect light. (The path tracer computes all three; it
+  reads these intensities as physical units that reproduce this direct
+  lighting exactly, see
+  [RENDER_QUALITY.md](RENDER_QUALITY.md#lights-emission-and-the-environment).)
 - Hidden light objects (`visible = False`) do not shine.
 - If a scene has no light objects and `default_lights` is on (the default), a
   built-in white key light of intensity 1 shines from the camera's upper left
@@ -328,7 +344,11 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
   then add up linearly.
 - **Output:**
   1. Linear values are multiplied by `2^exposure` (EV stops).
-  2. They are clamped to [0, 1] (no tone mapping).
+  2. They are clamped to [0, 1] (`tonemap="none"`, the default). Since 0.8,
+     `tonemap="neutral"` (Khronos PBR Neutral, any backend) instead lowers
+     colors by up to 0.04 and compresses values above about 0.76 smoothly
+     toward 1; see
+     [RENDER_QUALITY.md](RENDER_QUALITY.md#color-management-and-output).
   3. They are encoded with the sRGB transfer function.
   4. They are quantized to 8 bits, rounding to nearest with ties to even.
 
@@ -406,11 +426,11 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
 | Call | Description |
 | --- | --- |
 | `scene.add_camera(name=None, *, projection, fov, fov_axis, ortho_scale, near, far, aspect_ratio, parent, position, rotation, look_at, up, active)` | Add a camera object |
-| `scene.add_light(type="directional", name=None, *, color, intensity, range, falloff, parent, position, rotation, direction, look_at, up)` | Add a light object; also `add_directional_light(name, direction=...)` and `add_point_light(name, position=...)` |
+| `scene.add_light(type="directional", name=None, *, color, intensity, range, falloff, radius, angle, parent, position, rotation, direction, look_at, up)` | Add a light object; also `add_directional_light(name, direction=...)` and `add_point_light(name, position=...)`. `radius` (point) and `angle` (directional, degrees) size the light for the path tracer's soft shadows |
 | `scene.cameras`, `scene.lights`, `scene.active_camera` | Lookup and active camera (settable) |
-| `scene.world` | `World`: `background`, `ambient_color`, `ambient_intensity` |
+| `scene.world` | `World`: `background`, `ambient_color`, `ambient_intensity`, and `environment` (the path tracer's `Environment`: `"ambient"`, `"uniform"` or `"sky"`) |
 | `scene.render_settings` | `RenderSettings`: `width`, `height`, `samples`, `exposure`, `cull`, `default_lights`; saved with the project |
-| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md). Returns a `RenderResult`. |
+| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows, path, ao, tonemap, progress)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md); `backend="path"`, `path`, `ao` and `progress` in [RENDER_QUALITY.md](RENDER_QUALITY.md). `tonemap` applies to every backend. Returns a `RenderResult`. |
 | `obj.camera`, `obj.light`, `obj.kind` | Components (`Camera`/`Light` or `None`); `"mesh"`, `"procedural"`, `"camera"`, `"light"` or `"empty"`. An object holds at most one of mesh, camera and light. |
 | `obj.appearance`, `obj.color`, `obj.visible` | Appearance and render visibility |
 | `obj.material`, `obj.group_materials`, `scene.create_material(...)`, `scene.assign_material(...)`, `scene.materials` | Materials and textures ([MATERIALS.md](MATERIALS.md)) |
@@ -435,7 +455,10 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
 | `stats` | Counts and timings |
 | `diagnostics` | `Diagnostic` list |
 | `output` | Set by `save()` |
-| `save(path)` | Atomic PNG write; `.png` only |
+| `backend` | Which backend rendered it, and how |
+| `color` | The output transform: working space, exposure, tone mapper, encoding |
+| `passes` | Path tracer only: `beauty`, `direct`, `indirect`, `albedo`, `normal`, `depth`, `ao`, `sample_count`, `variance` (empty for the rasterizers) |
+| `save(path)` | Atomic write: `.png`, or `.hdr`/`.pfm` (linear, unclipped) |
 | `png_bytes()`, `pixel(x, y)`, `to_dict()` | Encoded PNG, one pixel, JSON-compatible report |
 
 `stats` holds:
@@ -450,7 +473,8 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
 **`RenderLimits`** are checked before any large allocation (`RESOURCE_LIMIT`):
 - `max_dimension`: 16384 pixels per side;
 - `max_samples`: 40,000,000 samples (width × height × samples²);
-- `max_triangles`: 20,000,000 triangles, counting instances.
+- `max_triangles`: 20,000,000 triangles, counting instances;
+- `max_gpu_memory` (GPU) and `max_path_rays`, `max_path_memory` (path tracer).
 
 Errors raise `RenderError` (code, message, location, hint, details), and
 nothing is written or changed.
@@ -472,12 +496,12 @@ $ aether3d camera list castle.aether ; aether3d light list castle.aether
 
 | Command | Purpose |
 | --- | --- |
-| `render PATH [-o OUT.png] [--width W] [--height H] [--camera REF] [--samples N] [--exposure EV] [--cull MODE] [--background C] [--no-default-lights] [--frame] [--margin M] [--force]` | Render a `.aether` project, or a `.glb`/`.gltf` file with `--frame`. The output defaults to `PATH.png`. Existing files need `--force`. The project is never modified. |
+| `render PATH [-o OUT.png\|.hdr\|.pfm] [--width W] [--height H] [--camera REF] [--samples N] [--exposure EV] [--tonemap none\|neutral] [--cull MODE] [--background C] [--no-default-lights] [--frame] [--margin M] [--force]` | Render a `.aether` project, or a `.glb`/`.gltf` file with `--frame`. The output defaults to `PATH.png`. Existing files need `--force`. The project is never modified. `--backend gpu` and its options: [GPU.md](GPU.md); `--backend path` and its options (`--spp`, `--bounces`, `--seed`, `--ao`, `--passes DIR`, ...): [RENDER_QUALITY.md](RENDER_QUALITY.md#python-and-cli-reference). |
 | `camera add PATH [--name] [--projection] [--fov] [--fov-axis] [--ortho-scale] [--near] [--far] [--aspect-ratio] [--parent] [--position X Y Z] [--rotation-euler X Y Z] [--look-at X Y Z \| --look-at-object REF] [--up X Y Z] [--active \| --inactive] [--frame] [--frame-direction X Y Z] [--margin]` | Add a camera |
 | `camera set PATH CAMERA [...] [--activate]`, `camera frame PATH [CAMERA] [--object REF]... [--direction X Y Z] [--margin] [--no-fit-clipping]`, `camera activate PATH CAMERA\|none`, `camera list PATH` | Change, frame, activate, list cameras |
-| `light add PATH [--type directional\|point] [--name] [--color] [--intensity] [--range R\|none] [--falloff] [--direction X Y Z] [--position X Y Z] [--look-at ...] [--parent]`, `light set PATH LIGHT [...]`, `light list PATH` | Lights (list also shows ambient light) |
+| `light add PATH [--type directional\|point] [--name] [--color] [--intensity] [--range R\|none] [--falloff] [--radius R] [--angle DEG] [--direction X Y Z] [--position X Y Z] [--look-at ...] [--parent]`, `light set PATH LIGHT [...]`, `light list PATH` | Lights (list also shows ambient light and the environment) |
 | `object set PATH OBJECT [--position] [--rotation-euler] [--scale] [--look-at ...] [--color] [--specular] [--shininess] [--visible true\|false]`, `object remove PATH OBJECT` | Any object |
-| `scene set PATH [--background] [--ambient-color] [--ambient-intensity] [--width] [--height] [--samples] [--exposure] [--cull] [--default-lights true\|false] [--active-camera REF\|none]` | World and saved render settings |
+| `scene set PATH [--background] [--ambient-color] [--ambient-intensity] [--environment ambient\|uniform\|sky] [--environment-color] [--environment-intensity] [--sky-zenith] [--sky-horizon] [--sky-ground] [--width] [--height] [--samples] [--exposure] [--cull] [--default-lights true\|false] [--active-camera REF\|none]` | World and saved render settings |
 | `scene run PATH SCRIPT.json\|-` | Apply a declarative scene script |
 
 How the commands behave:
@@ -513,12 +537,12 @@ built on them:
 | Operation | Keys |
 | --- | --- |
 | `add_camera` | Camera parameters, `name`, `parent`, `position`, `rotation_euler`, `look_at` (point or object), `up`, `active`, and `frame` with `frame_targets`, `frame_direction`, `frame_margin` |
-| `add_light` | `type`, light parameters, `name`, `parent`, `position`, `rotation_euler`, `direction`, `look_at`, `up` |
+| `add_light` | `type`, light parameters (including `radius` and `angle`), `name`, `parent`, `position`, `rotation_euler`, `direction`, `look_at`, `up` |
 | `set_camera`, `set_light` | `camera`/`light` plus parameters |
 | `set_object` | `object`, `position`, `rotation_euler`, `scale`, `look_at` or `look_along`, `up`, `color`, `specular`, `shininess`, `visible` |
 | `frame_camera` | `camera` (default: active), `targets`, `direction`, `up`, `margin`, `fit_clipping` |
 | `set_active_camera` | `camera` or `null` |
-| `set_world` | `background`, `ambient_color`, `ambient_intensity` |
+| `set_world` | `background`, `ambient_color`, `ambient_intensity`, `environment` (an object of environment fields) |
 | `set_render_settings` | `width`, `height`, `samples`, `exposure`, `cull`, `default_lights` |
 | `remove` | `object` (and its children) |
 | `info` | Read-only summary |
@@ -535,8 +559,9 @@ the planned MCP server (Stage 11).
 
 ## Persistence
 
-Projects are saved as `.aether` **format version 4** (version 3 added
-rendering, version 4 materials); see [FILE_FORMAT.md](FILE_FORMAT.md).
+Projects are saved as `.aether` **format version 5** (version 3 added
+rendering, version 4 materials, version 5 the path tracer's environment and
+light sizes); see [FILE_FORMAT.md](FILE_FORMAT.md).
 
 - `scene.active_camera`, `scene.world` and `scene.render` (the render
   settings) are saved.
@@ -544,9 +569,10 @@ rendering, version 4 materials); see [FILE_FORMAT.md](FILE_FORMAT.md).
   `visible`.
 - Every object has `material` and `group_materials`, and the scene its
   `materials` and `textures` (since version 4).
-- Versions 1–3 load unchanged: versions 1 and 2 have no cameras, the default
-  world and the default settings, and no version before 4 has materials.
-  Saving writes version 4.
+- Versions 1–4 load unchanged: versions 1 and 2 have no cameras, the default
+  world and the default settings, no version before 4 has materials, and
+  version 4 projects get the `"ambient"` environment and unsized lights.
+  Saving writes version 5.
 - Rendering a reloaded procedural project still evaluates its definitions.
   Nothing is baked, and parameters stay editable.
 
@@ -663,7 +689,8 @@ Errors (`RenderError.code`):
 | `NO_CAMERA`, `NOT_A_CAMERA`, `OBJECT_NOT_FOUND` | No usable camera, or an unknown reference |
 | `INVALID_CAMERA`, `INVALID_CAMERA_TRANSFORM` | A bad camera parameter, or a degenerate camera world transform |
 | `INVALID_LIGHT`, `INVALID_APPEARANCE`, `INVALID_WORLD`, `INVALID_COLOR`, `INVALID_SETTINGS`, `INVALID_FRAMING` | Bad values |
-| `RESOURCE_LIMIT` | Image size, samples or triangles beyond `RenderLimits` |
+| `INVALID_PATH_SETTINGS`, `INVALID_AO_SETTINGS` | Bad path tracer or AO settings |
+| `RESOURCE_LIMIT` | Image size, samples or triangles beyond `RenderLimits`; for the path tracer also its estimated rays (`max_path_rays`) or memory (`max_path_memory`) |
 | `GEOMETRY_EVALUATION_FAILED` | Procedural geometry could not be evaluated |
 | `NONFINITE_TRANSFORM` | A world matrix overflowed |
 | `NOTHING_TO_FRAME` | Framing with no geometry |
@@ -685,13 +712,17 @@ Diagnostics (in `result.diagnostics`):
 | `NONFINITE_GEOMETRY` | warning | Triangles with non-finite coordinates were skipped |
 | `TEXTURE_MISSING`, `TEXTURE_INVALID`, `UNSAFE_PATH`, ... | warning | A material's texture cannot be used; that slot renders with its factor ([MATERIALS.md](MATERIALS.md#errors-and-diagnostics)) |
 | `MISSING_UVS` | warning | A UV-mapped texture on a mesh without UVs is ignored for that object |
+| `RENDER_STOPPED` | info | Path tracer: the `progress` callback stopped the render; the image averages the samples done |
+| `PASS_THROUGH_LIMIT` | warning | Path tracer: rays crossed more than 256 cut-out or single-sided surfaces and were treated as leaving the scene |
+| `CULL_CAMERA_RAYS` | info | Path tracer: `cull` hid faces from camera rays only |
 
 ## Limitations
 
 - **Lighting:** the CPU renderer draws no shadows (the GPU backend renders
   directional-light shadow maps, see [GPU.md](GPU.md#shadows)). There are no
   reflections, environment maps or indirect light. Emissive surfaces do not
-  light other objects.
+  light other objects. The path tracer (`backend="path"`,
+  [RENDER_QUALITY.md](RENDER_QUALITY.md)) computes all of these, more slowly.
 - **Transparency:** alpha masks only (cutouts); no blended transparency.
   Material limitations are listed in
   [MATERIALS.md](MATERIALS.md#limitations).
@@ -701,8 +732,8 @@ Diagnostics (in `result.diagnostics`):
   not real time. The GPU backend ([GPU.md](GPU.md)) renders the same scenes in
   milliseconds on graphics hardware.
 - **Limits:** perspective cameras need `far / near ≤ 10⁹`, which keeps the
-  packed depth precise. There is no tone mapping beyond exposure and
-  clamping.
+  packed depth precise. The only tone mapper is the optional Khronos PBR
+  Neutral curve.
 - **glTF export:** cameras and lights are written as plain nodes (their
   transforms are kept, and the files pass the Khronos validator). glTF
   cameras and `KHR_lights_punctual` are not written yet, and imported glTF
@@ -723,10 +754,11 @@ Diagnostics (in `result.diagnostics`):
   Projection, clipping and visibility were untouched, apart from the
   per-triangle culling of single-sided materials and alpha-mask tests during
   rasterization. See [MATERIALS.md](MATERIALS.md).
-- **Stage 8 (quality).** The visibility buffer and deferred shading are the
-  natural base for CPU shadows (shadow maps from the same rasterizer, fitted
-  by the backend-neutral `rendering/shadows.py` the GPU already uses), better
-  antialiasing and post-processing.
-- **Later: path tracing.** The camera frame and ray generation documented
-  here, already implemented independently in the test reference ray caster,
-  together with the `RenderScene` data, are what a path tracer needs.
+- **Stage 8 (render quality) is implemented as a path tracer.** It consumes
+  the same `RenderScene` and camera conventions and evaluates materials with
+  `rendering/surface.py`, so the rasterizers stayed untouched. See
+  [RENDER_QUALITY.md](RENDER_QUALITY.md).
+- **Later.** The visibility buffer and deferred shading remain the natural
+  base for CPU shadow maps (fitted by the backend-neutral
+  `rendering/shadows.py` the GPU already uses), better antialiasing and
+  post-processing for the rasterizer.

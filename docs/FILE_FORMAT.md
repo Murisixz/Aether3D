@@ -22,12 +22,17 @@ diffable, and safely editable by people, scripts, and AI agents.
 ```json
 {
   "format": "aether3d.project",
-  "format_version": 4,
-  "generator": "aether3d 0.7.0",
+  "format_version": 5,
+  "generator": "aether3d 0.8.0",
   "scene": {
     "name": "First Scene",
     "active_camera": "5b0f1c2e-…",
-    "world": {"background": [0.2, 0.2, 0.2], "ambient_color": [1.0, 1.0, 1.0], "ambient_intensity": 0.1},
+    "world": {
+      "background": [0.2, 0.2, 0.2], "ambient_color": [1.0, 1.0, 1.0], "ambient_intensity": 0.1,
+      "environment": {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": 1.0,
+                      "zenith_color": [0.22, 0.42, 0.78], "horizon_color": [0.78, 0.85, 0.93],
+                      "ground_color": [0.32, 0.3, 0.27]}
+    },
     "render": {"width": 1280, "height": 720, "samples": 2, "exposure": 0.0, "cull": "none", "default_lights": true},
     "parameters": [],
     "rules": [],
@@ -262,11 +267,22 @@ Cameras look along their object's local −Y axis with local +Z up.
 | `intensity` | number in [0, 10⁹] | Unitless multiplier (see [RENDERING.md](RENDERING.md)). |
 | `range` | number > 0 or `null` | Point lights: smooth fade-out distance. |
 | `falloff` | `"inverse_square"` or `"none"` | Point lights: distance attenuation. |
+| `radius` | number in [0, 10⁹] | Point lights: radius of the emitting sphere (path tracer soft shadows; 0: a point). Since version 5. |
+| `angle` | number in [0, 180] | Directional lights: angular diameter in degrees (path tracer soft shadows; 0: parallel rays). Since version 5. |
 
 **`appearance`:** `color` (color), `specular` (0–1) and `shininess` (1–10000).
 
-**`world`:** `background` (color), `ambient_color` (color) and
-`ambient_intensity` (≥ 0).
+**`world`:** `background` (color), `ambient_color` (color),
+`ambient_intensity` (≥ 0) and, since version 5, `environment`:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `type` | `"ambient"`, `"uniform"` or `"sky"` | What the path tracer sees where rays leave the scene: the ambient light as a uniform environment (camera rays show `background`), a uniform `color`, or a procedural sky. See [RENDER_QUALITY.md](RENDER_QUALITY.md). |
+| `color` | color | Uniform environment color. |
+| `intensity` | number in [0, 10⁶] | Radiance multiplier of `"uniform"` and `"sky"`. |
+| `zenith_color`, `horizon_color`, `ground_color` | colors | The sky gradient: straight up (+Z), at the horizon, below it. |
+
+All six keys are always written. The rasterizers ignore `environment`.
 
 **`render`:** `width` and `height` (1–16384), `samples` (1–4; antialiasing
 is samples × samples per pixel), `exposure` (−20 to 20 EV), `cull`
@@ -386,6 +402,7 @@ Every error names the offending element with a dotted path, such as
 | 2 | 0.4.0 | Procedural geometry: `scene.parameters`, `scene.rules`, `scene.geometry`, and a `geometry` reference on every object. The migration from 1 adds empty lists and `"geometry": null`. |
 | 3 | 0.5.0 | Rendering: `scene.active_camera`, `scene.world`, `scene.render`, and `camera`, `light`, `appearance` and `visible` on every object. The migration from 2 adds `null`, the default world and the default render settings, and `null`, `null`, `null` and `true` on objects. |
 | 4 | 0.7.0 | Materials: `scene.materials`, `scene.textures`, `material` and `group_materials` on every object, and optional per-triangle `groups` on meshes. The migration from 3 adds empty lists, and `null` and `{}` on objects, so every object keeps rendering with its color. |
+| 5 | 0.8.0 | Path tracing: `scene.world.environment` and the light sizes `radius` and `angle`. The migration from 4 adds the `"ambient"` environment (the path tracer then lights with the ambient light, as the rasterizers do) and sizes of 0 (point lights and parallel directional lights), so every project renders unchanged on the rasterizers. |
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged, and Aether3D
 0.6.0 reads and writes version 3 unchanged (GPU rendering added render

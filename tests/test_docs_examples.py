@@ -181,3 +181,18 @@ def test_materials_scene_script_example(tmp_path):
     walls = [scene.get_by_name(n).material.name for n in ("Wall 1", "Wall 2")]
     floor = scene.get_by_name("Floor").material
     assert walls == ["Wall", "Wall"] and floor.texture("base_color").status()["format"] == "jpeg"
+
+
+def test_path_tracing_quick_start(tmp_path, monkeypatch):
+    """The path tracer's quick start runs as written (at a smaller size and sample count)."""
+    monkeypatch.chdir(tmp_path)
+    source = python_block(ROOT / "docs/RENDER_QUALITY.md", "from aether3d import Scene\n")
+    small = source.replace("width=960", "width=48").replace("height=540", "height=27")
+    small = small.replace('"samples": 64', '"samples": 2')
+    assert small != source
+    namespace: dict = {}
+    exec(compile(small, "RENDER_QUALITY.md", "exec"), namespace)
+    result = namespace["result"]
+    assert result.backend["name"] == "path" and result.backend["device"] == "cpu"
+    assert "ao" in result.passes and (tmp_path / "studio.hdr").is_file()
+    assert (tmp_path / "studio.png").read_bytes().startswith(b"\x89PNG")
