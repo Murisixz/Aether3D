@@ -13,10 +13,16 @@ Since 0.6, the same scenes also render on graphics hardware with
 Direct3D 12), with MSAA and directional shadow maps. See [GPU.md](GPU.md).
 The CPU renderer stays the default and the reference.
 
+Since 0.7, surfaces can have **materials**: the physically based
+metallic-roughness model of glTF, image and procedural textures, normal maps,
+alpha masks and emission, on both backends. See [MATERIALS.md](MATERIALS.md).
+Objects without a material render with their own color, exactly as before.
+
 ![The procedural Minecraft-inspired castle, rendered by Aether3D](../examples/output/minecraft_castle_render.png)
 
-*The Stage 4 procedural castle, rendered by Aether3D's CPU renderer at
-1920×1080 with 3×3 samples per pixel
+*The Stage 4 procedural castle with its Stage 7 materials (image and procedural
+textures), rendered by Aether3D's CPU renderer at 1920×1080 with 3×3 samples
+per pixel
 ([`examples/minecraft_castle_render.py`](../examples/minecraft_castle_render.py)).*
 
 - [Quick start](#quick-start)
@@ -233,6 +239,11 @@ independently. The closed-form solution is in
 
 ## Lights and the shading model
 
+Objects without a material, and objects with a `"simple"` material, are
+shaded with the model below. Materials of the default `"standard"` model use
+glTF's physically based metallic-roughness BRDF, with the same lights; its
+equations are in [MATERIALS.md](MATERIALS.md#the-shading-models).
+
 This is a deliberately simple, **non-physically-based** model. Intensities are
 unitless multipliers, not photometric units. The equations are exactly what
 the renderer computes, in linear light:
@@ -281,9 +292,11 @@ What the numbers mean:
 | `shininess` | Highlight exponent | 1–10000 (32) |
 
 `obj.color` is a shortcut for `obj.appearance.color`. The highlight is a
-simple, non-energy-conserving Blinn–Phong term, in the light's color. This is
-not a material system: there are no textures, PBR parameters or shaders yet
-(see [Toward later stages](#toward-later-stages)).
+simple, non-energy-conserving Blinn–Phong term, in the light's color. An
+appearance is exactly a `"simple"` material without textures. An object with
+a material (`obj.material`) renders with the material instead; while it has
+one, setting its color raises `OBJECT_HAS_MATERIAL`. See
+[MATERIALS.md](MATERIALS.md).
 
 **Normals.**
 - Meshes with normals are shaded with the vertex normals, interpolated
@@ -300,7 +313,8 @@ not a material system: there are no textures, PBR parameters or shaders yet
   mirrored instances (negative world determinant).
 - **Two-sided lighting:** triangles seen from behind are lit with their
   normals turned toward the camera, so open surfaces and interiors render
-  sensibly.
+  sensibly. Materials with `double_sided=False` drop their back faces
+  instead, per triangle.
 - `cull="back"` or `"front"` removes back-facing or front-facing triangles
   instead.
 
@@ -383,6 +397,7 @@ not a material system: there are no textures, PBR parameters or shaders yet
 | Procedural objects | **The current evaluation**, through the procedural cache. Nothing is baked, and the modifier stack, parameters and base meshes are untouched. A geometry that fails to evaluate raises `GEOMETRY_EVALUATION_FAILED` with the object's location; hide the object (`visible = False`) to render without it. |
 | Objects sharing a mesh | Separate instances with their own transform, color and visibility. The mesh is extracted once. |
 | Hierarchies | Each object uses its full world matrix, including non-uniform, sheared and mirrored transforms. |
+| Objects with materials | Their material, or each face group's material. Alpha-masked samples are dropped (`stats["alpha_discarded"]`). Textures that cannot be used are reported, and the slot uses its factor. |
 | Hidden objects (`visible = False`), cameras, lights, empties | Nothing. Visibility is not inherited by children. |
 | An empty scene | The background, with `NOTHING_TO_RENDER` (warning). |
 
@@ -398,6 +413,7 @@ not a material system: there are no textures, PBR parameters or shaders yet
 | `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md). Returns a `RenderResult`. |
 | `obj.camera`, `obj.light`, `obj.kind` | Components (`Camera`/`Light` or `None`); `"mesh"`, `"procedural"`, `"camera"`, `"light"` or `"empty"`. An object holds at most one of mesh, camera and light. |
 | `obj.appearance`, `obj.color`, `obj.visible` | Appearance and render visibility |
+| `obj.material`, `obj.group_materials`, `scene.create_material(...)`, `scene.assign_material(...)`, `scene.materials` | Materials and textures ([MATERIALS.md](MATERIALS.md)) |
 | `obj.look_at(target, *, up)`, `obj.look_along(direction, *, up)`, `obj.world_forward`, `obj.set_world_position(p)` | Aiming and placement |
 | `cam.frame(targets=None, *, direction, up, margin, fit_clipping, aspect)` | Exact framing; returns `Framing` |
 | `aether3d.render(scene, ...)` | Same as `scene.render(...)` |
@@ -425,9 +441,11 @@ not a material system: there are no textures, PBR parameters or shaders yet
 `stats` holds:
 - counts: `instances`, `meshes`, `lights`, `triangles`, `culled_backface`,
   `culled_frustum`, `clipped`, `rasterized`, `degenerate`, `fragments`,
-  `samples`, `samples_covered`, `pixels_covered`;
-- `timings` in seconds: `evaluate`, `extract`, `geometry`, `raster`,
-  `shade`, `output`, `total`, plus `encode` and `write` after `save`.
+  `samples`, `samples_covered`, `pixels_covered`, `alpha_discarded`;
+- `timings` in seconds: `evaluate`, `textures` (resolving materials:
+  decoding images and building mip chains, which are cached), `extract`,
+  `geometry`, `raster`, `shade`, `output`, `total`, plus `encode` and `write`
+  after `save`.
 
 **`RenderLimits`** are checked before any large allocation (`RESOURCE_LIMIT`):
 - `max_dimension`: 16384 pixels per side;
@@ -517,15 +535,18 @@ the planned MCP server (Stage 11).
 
 ## Persistence
 
-Projects are saved as `.aether` **format version 3**; see
-[FILE_FORMAT.md](FILE_FORMAT.md).
+Projects are saved as `.aether` **format version 4** (version 3 added
+rendering, version 4 materials); see [FILE_FORMAT.md](FILE_FORMAT.md).
 
 - `scene.active_camera`, `scene.world` and `scene.render` (the render
   settings) are saved.
 - Every object has `camera`, `light`, `appearance` (`null` = default) and
   `visible`.
-- Versions 1 and 2 load unchanged: they have no cameras, the default world
-  and the default settings. Saving writes version 3.
+- Every object has `material` and `group_materials`, and the scene its
+  `materials` and `textures` (since version 4).
+- Versions 1–3 load unchanged: versions 1 and 2 have no cameras, the default
+  world and the default settings, and no version before 4 has materials.
+  Saving writes version 4.
 - Rendering a reloaded procedural project still evaluates its definitions.
   Nothing is baked, and parameters stay editable.
 
@@ -662,13 +683,18 @@ Diagnostics (in `result.diagnostics`):
 | `ZERO_WORLD_SCALE` | warning | An object collapses (singular world matrix) and was skipped |
 | `LIGHT_DIRECTION_UNDEFINED` | warning | A directional light with zero forward scale was skipped |
 | `NONFINITE_GEOMETRY` | warning | Triangles with non-finite coordinates were skipped |
+| `TEXTURE_MISSING`, `TEXTURE_INVALID`, `UNSAFE_PATH`, ... | warning | A material's texture cannot be used; that slot renders with its factor ([MATERIALS.md](MATERIALS.md#errors-and-diagnostics)) |
+| `MISSING_UVS` | warning | A UV-mapped texture on a mesh without UVs is ignored for that object |
 
 ## Limitations
 
 - **Lighting:** the CPU renderer draws no shadows (the GPU backend renders
   directional-light shadow maps, see [GPU.md](GPU.md#shadows)). There are no
-  reflections or indirect light, no transparency, and no textures or
-  materials beyond one solid color and a simple highlight per object.
+  reflections, environment maps or indirect light. Emissive surfaces do not
+  light other objects.
+- **Transparency:** alpha masks only (cutouts); no blended transparency.
+  Material limitations are listed in
+  [MATERIALS.md](MATERIALS.md#limitations).
 - **Antialiasing:** ordered-grid supersampling only. Specular highlights on
   coarse tessellations can still alias.
 - **Speed:** single-threaded CPU rendering. Previews take seconds at 1080p,
@@ -681,19 +707,22 @@ Diagnostics (in `result.diagnostics`):
   transforms are kept, and the files pass the Khronos validator). glTF
   cameras and `KHR_lights_punctual` are not written yet, and imported glTF
   cameras and lights are still skipped (reported as before).
-- **Colors stay in Aether3D:** exported glTF files do not carry object colors
-  (no materials yet).
+- **Materials in glTF** are written as metallic-roughness materials
+  (object colors included); procedural textures need explicit baking
+  ([GLTF.md](GLTF.md#materials-and-textures)).
 
 ## Toward later stages
 
 - **Stage 6 (GPU rendering) is implemented.** The GPU backend consumes the
   same `RenderScene` and returns the same `RenderResult`, so `scene.render`,
   the CLI and the CPU tests stayed unchanged. See [GPU.md](GPU.md).
-- **Stage 7 (materials and textures).** `Appearance` is the single place
-  where surface properties enter shading, and shading is one function over
-  per-sample data. A material system replaces `Appearance` and extends the
-  per-triangle table (UVs are already carried by meshes) without touching
-  projection, clipping or visibility.
+- **Stage 7 (materials and textures) is implemented.** Materials are
+  resolved once per render into backend-neutral records
+  (`rendering/materials.py`). The CPU's per-triangle table gained material
+  ids, and shading evaluates textures per sample (`rendering/surface.py`).
+  Projection, clipping and visibility were untouched, apart from the
+  per-triangle culling of single-sided materials and alpha-mask tests during
+  rasterization. See [MATERIALS.md](MATERIALS.md).
 - **Stage 8 (quality).** The visibility buffer and deferred shading are the
   natural base for CPU shadows (shadow maps from the same rasterizer, fitted
   by the backend-neutral `rendering/shadows.py` the GPU already uses), better

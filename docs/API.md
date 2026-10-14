@@ -18,6 +18,8 @@ from aether3d import ProceduralError, run_procedural_script
 from aether3d import Camera, Light, Appearance, World, RenderSettings, RenderLimits
 from aether3d import RenderResult, RenderError, render, run_scene_script
 from aether3d import ShadowSettings, list_adapters, gpu_status, release_gpu
+from aether3d import Material, MaterialLibrary, ImageTexture, ProceduralTexture
+from aether3d import TextureBinding, TextureGraph, MaterialError
 from aether3d import AetherError  # and the specific error classes below
 ```
 
@@ -54,6 +56,10 @@ Scene(name: str = "Untitled Scene")
 | `cameras`, `lights` | Tuples of camera and light objects. |
 | `active_camera` | The default render camera, or `None` (settable with an object, id, name or `None`). |
 | `world`, `render_settings` | `World` (background, ambient light) and `RenderSettings` (saved output settings). Edit them in place. |
+| `materials` | The scene's `MaterialLibrary`: materials and textures (see [Materials and textures](#materials-and-textures)). |
+| `create_material(name=None, *, model="standard", preset=None, **params)` | Create a material from parameters, or from a preset and its options. Returns the `Material`. |
+| `assign_material(objects, material, *, group=None)` | Give one or more mesh objects (objects, ids or names) a material (object, id, name, or `None` to unassign), or only their face group `group`. |
+| `add_image_texture(name=None, path=None, **options)`, `add_procedural_texture(name, graph)` | Add a PNG/JPEG texture (`data=`, `embed=`, `wrap`, `filter`, `mipmaps`, `color_space`) or a procedural texture. |
 | `render(**options)` | Render with the CPU renderer; returns a `RenderResult` (see [Rendering](#rendering)). |
 | `add_geometry(name, primitive=None, *, mesh=None, source=None, overrides=None, after=None, parameters=None, **params)` | Create a procedural geometry node: from a primitive (with `**params`), a stored `mesh`, or another node (`source`, with `overrides` and an optional `after` modifier). `parameters` declares node-local parameters as `{name: value}` or `{name: {"value": ..., "min": ...}}`. |
 | `add_procedural(name=None, primitive="box", *, parent=None, position=None, rotation=None, scale=None, parameters=None, **params)` | Create a primitive node and an object that uses it, in one step. |
@@ -69,7 +75,7 @@ Scene(name: str = "Untitled Scene")
 | `save(path)` | Write a `.aether` file (atomically). |
 | `Scene.load(path)` | Read and validate a `.aether` file. |
 | `to_dict()` / `Scene.from_dict(doc)` | Convert to/from the JSON-compatible document stored in `.aether` files. |
-| `export(path, *, allow_lossy=False)` | Export to `.glb` or `.gltf` (by extension); returns an `ExportResult`. |
+| `export(path, *, allow_lossy=False, bake_textures=None)` | Export to `.glb` or `.gltf` (by extension); returns an `ExportResult`. `bake_textures=SIZE` bakes UV-mapped procedural textures into PNG images. |
 | `Scene.import_file(path, *, allow_lossy=False, limits=None)` | Import a `.glb` or `.gltf` file as a new scene. |
 | `inspect_geometry()` | Analyse all geometry; returns a `SceneGeometryReport`. |
 | `unique_name(base)` | `base` if unused, else the first free `base.001`, `base.002`, … |
@@ -97,7 +103,9 @@ Created only through a `Scene`.
 | `geometry` | The `ProceduralGeometry` the object uses, or `None`. |
 | `kind` | `"mesh"`, `"procedural"`, `"camera"`, `"light"` or `"empty"`. An object holds at most one of mesh, camera and light. |
 | `camera`, `light` | The `Camera` or `Light` component, or `None`. Edit it in place. |
-| `appearance`, `color` | `Appearance` (color, specular, shininess); `color` is a shortcut. |
+| `appearance`, `color` | `Appearance` (color, specular, shininess); `color` is a shortcut. While the object has a material, setting them raises `MaterialError("OBJECT_HAS_MATERIAL")`. |
+| `material` | The object's `Material`, or `None` (it renders with its color). Settable with a material, id, name or `None`. |
+| `group_materials`, `material_for_group(group)` | Materials of individual face groups (`{group: Material}`, a copy), and the material a group renders with. |
 | `visible` | Whether the object renders (lights: whether they shine). Not inherited by children. |
 | `look_at(target, *, up=(0, 0, 1))`, `look_along(direction, *, up)` | Turn the object's front (local −Y) toward a point or object, or along a direction. Exact under any parent. |
 | `world_forward` | Unit world direction of the object's front (local −Y). |
@@ -140,7 +148,7 @@ Transform(position=(0, 0, 0), rotation=(0, 0, 0, 1), scale=(1, 1, 1))
 ## `Mesh`
 
 ```python
-Mesh(positions, triangles, normals=None, uvs=None)
+Mesh(positions, triangles, normals=None, uvs=None, groups=None)
 ```
 
 An immutable indexed triangle mesh. Inputs may be nested sequences or NumPy
@@ -152,6 +160,9 @@ arrays, `(N, 3)` or flat. Data is validated, copied, and stored read-only:
 | `triangles` | `(M, 3) uint32` |
 | `normals` | `(N, 3) float32` or `None` |
 | `uvs` | `(N, 2) float32` or `None` |
+| `groups` | `(M,) uint16` face group of every triangle (0–65535), or `None` (all in group 0) |
+| `group_ids` | The face groups used, ascending (`(0,)` without groups) |
+| `with_groups(groups)` | A copy sharing this mesh's arrays, with other face groups (`None` removes them) |
 | `vertex_count`, `triangle_count` | Counts |
 | `bounds()` | `((min_x, min_y, min_z), (max_x, max_y, max_z))` in local space |
 | `==` | Exact data equality |
@@ -183,7 +194,7 @@ safety rules, are in [GLTF.md](GLTF.md).
 
 | Name | Description |
 | --- | --- |
-| `export_gltf(scene, path, *, allow_lossy=False)` | Write `.glb` or `.gltf` (embedded buffer). Returns `ExportResult`. Raises `UnsupportedFeatureError` (nothing written) for content glTF cannot store, unless `allow_lossy=True`. |
+| `export_gltf(scene, path, *, allow_lossy=False, bake_textures=None)` | Write `.glb` or `.gltf` (embedded buffer), with materials and textures. Returns `ExportResult`. Raises `UnsupportedFeatureError` (nothing written) for content glTF cannot store, unless `allow_lossy=True`. `bake_textures` (16–8192) bakes UV-mapped procedural textures into PNG images. |
 | `import_gltf(path, *, allow_lossy=False, limits=None)` | Read `.glb`/`.gltf`. Returns `ImportResult`. Raises `AssetFormatError`, `ResourceLimitError`, `UnsupportedFeatureError`, `FileNotFoundError`. |
 | `ImportLimits(max_file_bytes, max_buffer_bytes, max_nodes, max_vertices, max_triangles)` | Safety limits for untrusted files (frozen dataclass with defaults). |
 
@@ -269,6 +280,9 @@ Full guide: [EDITING.md](EDITING.md).
   `separate_faces`.
 - Triangulation: `triangulate_faces`.
 - Orientation and shading: `flip_faces`, `set_smooth`, `set_sharp`.
+- Face groups: `set_group(faces, group)`; query with `face_group(f)`,
+  `has_groups` and `select(..., group=k)`. New faces inherit their source
+  face's group.
 
 ## Procedural geometry
 
@@ -349,6 +363,27 @@ Colors are display (sRGB) values: `"#rrggbb"`, `"#rgb"`, or three numbers in
 value has `to_dict()`, `from_dict()` and `copy()`. Setting an invalid value
 raises `RenderError`, and nothing changes.
 
+## Materials and textures
+
+Full guide: [MATERIALS.md](MATERIALS.md). Materials and textures belong to a
+scene's `MaterialLibrary` (`scene.materials`); they are never constructed
+directly.
+
+| Name | Description |
+| --- | --- |
+| `MaterialLibrary` | `materials`, `textures` (tuples); `material(ref)`, `texture(ref)` (raise when missing), `find_material(ref)`, `find_texture(ref)` (or `None`); `library["name"]`; `create_material(...)`, `add_image_texture(...)`, `add_procedural_texture(...)`; `assign(objects, material, *, group=None)`; `users(material)` (`[(object, group or None)]`); `remove_material(ref, *, force=False)`, `remove_texture(ref, *, force=False)`; `convert_appearances(objects=None, *, dedupe=True)`; `transaction()` (all-or-nothing block); `validate()` (`Diagnostic` list); `inspect()`, `inspect_material(ref)`; `base_dir` (where relative texture paths resolve) |
+| `Material` | `id`, `name` (settable), `model` (settable), `params` (a copy); `configure(**changes)` (all or nothing); `set_texture(slot, texture_or_path, **binding)`, `set_procedural_texture(slot, graph, *, name=None, **options)` (a node type name with its parameters as keywords, or a graph dict; keywords that are not node parameters are binding options), `set_texture_options(slot, **binding)`, `clear_texture(slot)`, `texture(slot)`, `textures` (bindings by slot); `linear(name)`; `inspect()`; `to_dict()` |
+| `TextureBinding` | `texture` (id), `channel`, `coordinates`, `projection`, `offset`, `scale`, `rotation`, `blend`; `matrix` (the 3 × 4 transform), `channel_for(slot, kind)`, `to_dict()` |
+| `ImageTexture` | `id`, `name`, `path`, `file`, `source` (`"file"`/`"embedded"`), `wrap`, `filter`, `mipmaps`, `color_space`; `configure(**settings)`; `embed()`, `extract(path)`, `embedded_bytes`, `mime_type`; `load()`, `status()`, `info()` |
+| `ProceduralTexture` | `id`, `name`, `graph` (`TextureGraph`); `set_graph(graph)`, `set_params(node=None, **params)`; `evaluate(points)` (`(N, 4)` linear RGBA); `preview(width, height=None, *, region)` (8-bit sRGB array); `bake(path, width=1024, height=None)` (PNG); `info()` |
+| `TextureGraph` | A validated node graph: `TextureGraph.from_dict(data)`, `to_dict()` |
+| `MaterialError` | See [Errors](#errors) |
+
+`aether3d.materials` also provides the schemas, `material_schema()` and
+`node_types()`; the presets, `preset_names()` and `preset_info()`; the
+decoder, `decode_image(data, *, limits=None)` with `ImageLimits` and
+`jpeg_available()`; and the image cache, `IMAGE_CACHE` (`stats()`, `clear()`).
+
 ## `aether3d.math3d`
 
 Stateless helpers used by the engine, available for scripts:
@@ -375,6 +410,7 @@ All deliberate errors derive from `AetherError`.
 | `ScriptError` | `ValueError` | An edit or procedural script is malformed, or a step failed. `.code`, `.location` (e.g. `edits[0].operations[3]`), `.details` |
 | `RenderError` | `ValueError` | A camera, light, appearance, world or render setting is invalid, or rendering failed (including GPU problems: `GPU_UNAVAILABLE`, `GPU_ADAPTER_NOT_FOUND`, `GPU_DEVICE_LOST`, ...; see [GPU.md](GPU.md#errors-diagnostics-and-debugging)); nothing changed and no file was written. `.code` (stable), `.location`, `.hint`, `.details` |
 | `ProceduralError` | `ValueError` | A procedural definition, parameter or evaluation is invalid; nothing changed. `.code` (stable), `.location` (e.g. `geometry[Tower].modifiers[Row].params.count`), `.hint`, `.details` |
+| `MaterialError` | `ValueError` | A material, texture, graph or image is invalid or cannot be used (`INVALID_MATERIAL`, `TEXTURE_MISSING`, `IMAGE_TOO_LARGE`, `UNSAFE_PATH`, ...; see [MATERIALS.md](MATERIALS.md#errors-and-diagnostics)); nothing changed. `.code` (stable), `.location` (e.g. `materials[Stone].roughness`), `.hint`, `.details` |
 
 Missing files raise the standard `FileNotFoundError`.
 
@@ -386,7 +422,7 @@ aether3d validate PATH [--allow-lossy] [--json]
 aether3d inspect PATH [--allow-lossy] [--json]
 aether3d geometry PATH [--allow-lossy] [--json]
 aether3d import SOURCE.glb|.gltf DESTINATION.aether [--allow-lossy] [--force] [--json]
-aether3d export SOURCE DESTINATION.glb|.gltf [--allow-lossy] [--force] [--json]
+aether3d export SOURCE DESTINATION.glb|.gltf [--allow-lossy] [--bake-textures SIZE] [--force] [--json]
 aether3d topology PATH --object ID_OR_NAME [--elements] [--limit N] [--triangles] [--json]
 aether3d edit PROJECT.aether SCRIPT.json|- [--output PATH] [--dry-run] [--json]
 aether3d procedural types [--json]
@@ -403,6 +439,8 @@ aether3d camera add|set|frame|activate|list PROJECT ... [--output PATH] [--dry-r
 aether3d light add|set|list PROJECT ... [--output PATH] [--dry-run] [--json]
 aether3d object set|remove PROJECT OBJECT ... [--output PATH] [--dry-run] [--json]
 aether3d scene set PROJECT ... | scene run PROJECT SCRIPT.json|- [--output PATH] [--dry-run] [--json]
+aether3d material list|presets|schema|create|set|assign|texture|inspect|validate|remove|convert-colors|preview ...
+aether3d texture list|add|procedural|set|inspect|preview|remove ...
 aether3d --version
 ```
 
@@ -418,8 +456,8 @@ object has:
 
 - `type` and `message`;
 - `location`, when known;
-- `code`, for `AssetFormatError`, `ScriptError`, `ProceduralError` and `RenderError` (with `hint`
-  and `details` when available);
+- `code`, for `AssetFormatError`, `ScriptError`, `ProceduralError`, `RenderError` and
+  `MaterialError` (with `hint` and `details` when available);
 - `diagnostics`, for `UnsupportedFeatureError`.
 
 Exit codes:
@@ -429,7 +467,7 @@ Exit codes:
 | `0` | Success |
 | `1` | Failure |
 | `2` | Usage error |
-| `3` | `geometry`, `topology` or `procedural validate` completed but found error-severity problems, or `gpu info --check` found that GPU rendering does not work |
+| `3` | `geometry`, `topology`, `procedural validate` or `material validate` completed but found error-severity problems, or `gpu info --check` found that GPU rendering does not work |
 
 The `import`, `export` and `geometry` commands report:
 

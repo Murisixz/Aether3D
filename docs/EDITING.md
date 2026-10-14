@@ -29,10 +29,11 @@ with crate.edit_mesh() as edit:  # an EditSession
 5. [Selection](#selection)
 6. [Operations](#operations)
 7. [Attributes: UVs and normals](#attributes-uvs-and-normals)
-8. [Validation](#validation)
-9. [Edit scripts (JSON) and the CLI](#edit-scripts-json-and-the-cli)
-10. [Performance](#performance)
-11. [Limitations](#limitations)
+8. [Face groups](#face-groups)
+9. [Validation](#validation)
+10. [Edit scripts (JSON) and the CLI](#edit-scripts-json-and-the-cli)
+11. [Performance](#performance)
+12. [Limitations](#limitations)
 
 ## Topology representation
 
@@ -259,7 +260,7 @@ Per-corner attributes live in **corner layers**: `"uv"` (2D) and `"normal"`
 through the same code path, so future per-corner data such as vertex colours
 or extra UV sets is added as a new `CornerLayer` with no change to the
 operations. Per-face data (the smooth flag) and per-edge data (the sharp
-flag) are kept the same way; a material slot would be another per-face value.
+flag) are kept the same way, and so is each face's group (see below).
 
 | Situation | Policy |
 | --- | --- |
@@ -281,6 +282,42 @@ sharp.
   its corner normals differ from its face normal, and an edge is sharp if the
   normals of its two faces differ across it.
 - New faces inherit the flag of the face they came from.
+
+## Face groups
+
+Every face belongs to a face group, an integer from 0 to 65535 (0 by
+default). An object can give each group its own material
+(`scene.assign_material(obj, material, group=k)`; see
+[MATERIALS.md](MATERIALS.md#face-groups-several-materials-on-one-mesh)).
+Groups are a per-face value, carried like the smooth flag:
+
+```python
+with crate.edit_mesh() as m:
+    lid = m.select_faces(normal=((0, 0, 1), 1), expect=1)
+    m.set_group(lid, 1)                     # an undoable operation
+    m.inset_faces(lid, 0.1)                 # the inset border joins group 1 too
+    print(m.face_group(next(iter(lid.faces))), m.has_groups)
+    m.select_faces(group=1)                 # every face of group 1
+scene.assign_material(crate, "Lid", group=1)
+```
+
+- **Inheritance.** New faces inherit the group of the face they come from:
+  extrusion walls, inset borders, subdivision and loop-cut pieces, and split
+  and triangulated parts. Ripping and separating keep faces, and so their
+  groups. Faces between two faces take one of their groups:
+  - a bevel chamfer takes the group of the beveled edge's lower-id face, and
+    a bevel corner patch that of the corner's lowest-id face;
+  - a face created with `create_face` takes the group of a neighbouring face
+    (0 without neighbours).
+- **Merging.**
+  - `join_triangles` never merges faces of different groups.
+  - `dissolve_edges` across two groups keeps the surviving face's group and
+    reports `FACE_GROUP_CHANGED`.
+- **Round trip.** `from_mesh` reads `Mesh.groups`, and a commit writes them
+  back. A mesh without groups stays without them until `set_group` is used.
+- **History.** `undo()` and `redo()` restore groups with everything else.
+- **Scripts.** `set_group` is available in edit scripts, and `"group": k` is
+  a selection criterion.
 
 ## Validation
 

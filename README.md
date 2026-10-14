@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.6.0 (the GPU rendering engine).** Aether3D provides:
+> **Status: v0.7.0 (materials, textures and procedural shaders).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -27,10 +27,16 @@ graphical interface required.
 >   Blender, a GPU or a GUI;
 > - a **GPU rendering backend** (optional): real, headless GPU rasterization
 >   through wgpu on Vulkan, Metal or Direct3D 12, with MSAA, directional
->   shadow maps, adapter discovery and selection, and automatic CPU fallback.
+>   shadow maps, adapter discovery and selection, and automatic CPU fallback;
+> - **materials, textures and procedural shaders** on both renderers:
+>   physically based metallic-roughness materials, PNG/JPEG image textures
+>   (with Aether3D's own safe PNG decoder), procedural node graphs (noise,
+>   fbm, voronoi, bricks, wood, ...), normal maps, alpha masks, emission,
+>   presets, several materials per mesh (face groups), and glTF material
+>   import and export.
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
-> Materials and textures, animation, physics and other systems are
+> Animation, physics, global illumination and other systems are
 > intentionally **not** part of this stage. See the [changelog](CHANGELOG.md).
 
 ## Quick start
@@ -85,7 +91,9 @@ for d in result.diagnostics:
 - **Exact conversion.** Aether3D's +Z-up space converts exactly to glTF's
   +Y-up space, using the same convention as Blender.
 - **Unsupported content is reported, never silently dropped.**
-  - Non-geometric content (materials, animations, cameras, …) is skipped and
+  - Materials and textures are imported and exported (glTF's
+    metallic-roughness model).
+  - Other non-geometric content (animations, cameras, …) is skipped and
     listed in the diagnostics.
   - Content whose loss would change geometry (skins, morph targets, points
     and lines) is refused unless you pass `allow_lossy=True`.
@@ -170,9 +178,10 @@ validator and, optionally, Blender.
 
 ![A procedural Minecraft-style castle rendered by Aether3D](examples/output/minecraft_castle_render.png)
 
-*Rendered by Aether3D's own CPU rasterizer:
+*Rendered by Aether3D's own CPU rasterizer, with its materials:
 [`examples/minecraft_castle_render.py`](examples/minecraft_castle_render.py),
-1920×1080, about 2 s.*
+1920×1080 at 3×3 samples per pixel, about 25 s. The GPU backend renders it
+with 4× MSAA in under 0.05 s.*
 
 ```python
 from aether3d import Scene
@@ -194,22 +203,71 @@ result.save("crate.png")  # a real PNG, written by Aether3D
 - **Scenes from every stage render.** That includes static meshes, imported
   glTF, edited meshes, and procedural objects, which render their current
   evaluation without being baked.
-- **Persistent setup.** Cameras, lights, colors, the background and render
-  settings are saved in the project (`.aether` format version 3).
+- **Persistent setup.** Cameras, lights, colors, materials, the background
+  and render settings are saved in the project (`.aether` format version 4).
 - **Verified.** Correctness is checked against analytic results and an
-  independent ray caster. Blender, as an external check, agrees with the
-  castle's silhouette on all but 2 of 2,073,600 pixels.
+  independent ray caster. Blender, as an external check, agreed with the
+  Stage 5 castle's silhouette on all but 2 of 2,073,600 pixels.
 
 See [docs/RENDERING.md](docs/RENDERING.md).
 [`examples/first_render.py`](examples/first_render.py) and
 [`examples/hero_render.py`](examples/hero_render.py) render more scenes.
 
+### Materials and textures
+
+![The castle in flat colors and with materials](examples/output/castle_flat_vs_materials.png)
+
+*The same castle in Aether3D 0.6's flat colors and with 0.7's materials:
+image textures with a normal map, procedural textures and emissive torches.*
+
+```python
+stone = scene.create_material("Stone", roughness=0.85)
+stone.set_texture("base_color", "textures/bricks.png", coordinates="object", scale=0.5)
+stone.set_texture("normal", "textures/bricks_normal.png", coordinates="object", scale=0.5)
+wall.material = stone
+
+scene.create_material("Lawn", preset="grass")            # procedural: no images, no UVs
+scene.assign_material(ground, "Lawn")
+
+roof = scene.create_material("Roof", base_color="#9c3a27", roughness=0.7)
+roof.set_procedural_texture("roughness", {"type": "fbm", "scale": 8, "octaves": 4})
+scene.assign_material(tower, roof, group=1)              # one face group of a mesh
+```
+
+- **Two shading models.** The default is glTF's physically based
+  metallic-roughness BRDF (GGX). An object's own color is exactly a
+  `"simple"` material, so existing scenes render unchanged.
+- **Textures.**
+  - PNG (decoded by Aether3D itself) and JPEG (Pillow) images, with mipmaps,
+    sRGB handling, wrap modes and filtering.
+  - Mapped by UV, or by object or world coordinates with triplanar
+    projection, so procedural meshes need no UVs.
+  - Normal maps and alpha masks.
+- **Procedural textures** are node graphs stored as data: noise, fbm,
+  voronoi, bricks, tiles, wood, ramps, math, bump and more. They are
+  evaluated per sample on the CPU and by a shader interpreter on the GPU,
+  never baked unless you ask. Presets give stone, brick, wood, metal, grass
+  and fabric.
+- **Everywhere.** Materials are:
+  - saved in projects (`.aether` format version 4), with texture paths
+    relative to the project;
+  - imported from and exported to glTF;
+  - scriptable with `aether3d material ...`, `aether3d texture ...` and JSON
+    scene scripts.
+- **Safe with untrusted files.** Image limits are checked before decoding,
+  paths stay inside the project, malformed images are reported, and graphs
+  are validated data, never code.
+
+See [docs/MATERIALS.md](docs/MATERIALS.md).
+[`examples/hero_render.py`](examples/hero_render.py) gives the blocky hero
+fabric, a diamond blade and a grass block with per-face-group materials.
+
 ### GPU rendering
 
 ![The castle: CPU renderer | GPU | GPU with shadows](examples/output/castle_comparison.png)
 
-*The same scene and camera, rendered by Aether3D's CPU renderer, its GPU
-backend, and the GPU backend with a sun shadow map
+*The same scene and camera, with materials, rendered by Aether3D's CPU
+renderer, its GPU backend, and the GPU backend with a sun shadow map
 ([`examples/gpu_render.py`](examples/gpu_render.py)).*
 
 ```python
@@ -229,7 +287,8 @@ print(result.backend["adapter"]["name"])  # e.g. NVIDIA GeForce RTX 4060 Laptop 
   - the castle at 1080p renders in 44 ms instead of 1.24 s (28×);
   - at 4K, 89 ms instead of 4.5 s (51×);
   - a 1M-triangle mesh at 1080p takes 47 ms (22×);
-  - 10,000 objects take 0.21 s (9×).
+  - 10,000 objects take 0.21 s (9×);
+  - the castle with its materials, at 1080p: 37 ms instead of 11.7 s.
 
   Shadows cost a few milliseconds.
 - **Honest fallback and discovery.**
@@ -269,6 +328,11 @@ $ aether3d procedural types --json                         # primitive/modifier 
 $ aether3d camera add castle.aether --frame --fov 30      # camera framed on everything
 $ aether3d light add castle.aether --direction 0.5 0.6 -0.8 --intensity 2.4
 $ aether3d object set castle.aether Keep --color "#8c7356"
+$ aether3d material create castle.aether Stone --preset stone      # procedural material
+$ aether3d material assign castle.aether Stone "Curtain Wall"
+$ aether3d material texture castle.aether Stone normal --image textures/stone_normal.png
+$ aether3d material validate castle.aether --json                  # exit code 3 on errors
+$ aether3d export castle.aether castle.glb --bake-textures 1024     # procedural -> PNG on request
 $ aether3d render castle.aether -o castle.png --width 1920 --height 1080
 $ aether3d render model.glb -o preview.png --frame          # any project or glTF, no setup
 $ aether3d gpu info --check                                 # GPU adapters + a verified test render
@@ -304,8 +368,8 @@ Exit codes:
 - `0`: success
 - `1`: failure (invalid file, missing file, unsupported content, …)
 - `2`: usage error
-- `3`: `geometry`, `topology` or `procedural validate` found error-severity
-  problems
+- `3`: `geometry`, `topology`, `procedural validate` or `material validate`
+  found error-severity problems
 `python -m aether3d` works the same as `aether3d`.
 
 ## Installation
@@ -346,6 +410,9 @@ pip install -e ".[dev]"
 
 Procedural booleans additionally need the optional `boolean` extra
 (`pip install "aether3d[boolean]"`, which installs manifold3d, Apache-2.0).
+JPEG textures need the optional `images` extra (`pip install
+"aether3d[images]"`, which installs Pillow, MIT-CMU); PNG textures need
+nothing.
 GPU rendering needs the optional `gpu` extra (`pip install "aether3d[gpu]"`,
 Python 3.11+, which installs wgpu, BSD-2-Clause, with wgpu-native, MIT or
 Apache-2.0) and a Vulkan, Metal or Direct3D 12 driver; see
@@ -363,6 +430,7 @@ Apache-2.0) and a Vulkan, Metal or Direct3D 12 driver; see
 | [docs/PROCEDURAL.md](docs/PROCEDURAL.md) | Procedural geometry: parameters, expressions, modifiers, caching, scripts, CLI, limitations |
 | [docs/RENDERING.md](docs/RENDERING.md) | Cameras, lights, the CPU renderer: pipeline, conventions, shading model, API, CLI, verification, performance, limitations |
 | [docs/GPU.md](docs/GPU.md) | The GPU backend: installation, adapters, pipeline, antialiasing, shadows, memory, CPU/GPU differences, benchmarks, debugging, the backend decision |
+| [docs/MATERIALS.md](docs/MATERIALS.md) | Materials, textures and procedural shaders: models and formulas, slots, images, coordinates, node graphs, presets, face groups, persistence, glTF, CLI, GPU, security, performance, limitations |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
@@ -381,6 +449,8 @@ Apache-2.0) and a Vulkan, Metal or Direct3D 12 driver; see
 - Procedural geometry nodes and modifiers have stable UUID ids; objects reference nodes by id.
 - Cameras and lights look along their local −Y axis with +Z up (the same "front faces −Y" rule).
 - User-facing colors are display sRGB (`"#rrggbb"`); lighting happens in linear light.
+- Texture UVs have their origin at the bottom-left of the image (`v` up); image textures in
+  projects are paths relative to the project's directory.
 - Images: row 0 at the top, pixel centers at `+0.5`; NDC depth runs from 0 (near) to 1 (far)
   (the GPU backend uses reversed depth internally, for precision).
 

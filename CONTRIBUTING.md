@@ -25,12 +25,13 @@ ruff format --check .   # formatting (run `ruff format .` to fix)
 pytest                  # tests
 ```
 
-All three must pass. If you change glTF export, also run the official Khronos
-glTF Validator (CI always does):
+All three must pass. If you change glTF export (materials included), also run
+the official Khronos glTF Validator (CI always does):
 
 ```bash
 npm ci --prefix tools/gltf-validator
-AETHER3D_REQUIRE_GLTF_VALIDATOR=1 pytest tests/test_khronos_validator.py
+AETHER3D_REQUIRE_GLTF_VALIDATOR=1 pytest tests/test_khronos_validator.py \
+    tests/test_material_gltf_validator.py
 ```
 
 ## Guidelines
@@ -55,6 +56,11 @@ AETHER3D_REQUIRE_GLTF_VALIDATOR=1 pytest tests/test_khronos_validator.py
   and update [docs/FILE_FORMAT.md](docs/FILE_FORMAT.md).
 - **Dependencies.** New runtime dependencies need a strong justification and
   must use a license compatible with Apache-2.0.
+- **Images and assets.** Textures, renders and models added to the repository
+  must be original or clearly licensed for redistribution. Generate example
+  textures with code (as `examples/make_textures.py` does), and record the
+  source and license of third-party test assets (see
+  `tests/data/khronos/README.md`). Never commit copyrighted textures.
 - **Style.** Formatting and linting are enforced by ruff (configured in
   `pyproject.toml`). Use type hints on public functions.
 - **Portability.** Use `pathlib`, avoid OS-specific assumptions, and keep CI

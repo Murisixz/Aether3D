@@ -4,6 +4,158 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.7.0: Materials, textures and procedural shaders
+
+### Added
+
+- **Materials** ([docs/MATERIALS.md](docs/MATERIALS.md)): a scene's
+  `MaterialLibrary` (`scene.materials`) holds materials and textures with
+  stable ids and unique names. Objects refer to them, and so can each face
+  group of a mesh (`obj.material`, `obj.group_materials`,
+  `scene.assign_material(..., group=k)`). Changes are validated all or
+  nothing, and `transaction()` makes a block atomic. `inspect()` and
+  `validate()` report bindings, users and problems.
+  - **Models:**
+    - `"standard"`: glTF 2.0's metallic-roughness BRDF (GGX, Smith
+      height-correlated visibility, Schlick Fresnel; ambient light through
+      Karis' environment BRDF fit);
+    - `"simple"`: the 0.6 model. An object's color is exactly a simple
+      material.
+  - **Parameters:** base color, opacity with alpha masks, metallic,
+    roughness, specular, shininess, emission and its strength, normal and
+    occlusion strengths, double-sidedness.
+  - **Texture slots:** base color, opacity, metallic, roughness, normal
+    (tangent-space), emissive and occlusion. Each binding chooses a channel,
+    UV/object/world coordinates, a projection (triplanar, planar, volume) and
+    a transform.
+- **Image textures:**
+  - **PNG** decoded by Aether3D's own decoder (every color type and bit
+    depth, Adam7, palettes, `tRNS`), with CRC, zlib-bound and size checks
+    before allocating. **JPEG** through Pillow (the new `images` extra).
+  - **Sampling:** mip chains (sRGB-correct, renormalized for normal maps),
+    bilinear and trilinear filtering, repeat/clamp/mirror wrapping and
+    isotropic level selection, shared by both renderers.
+  - **Files:** stored as paths relative to the project, or embedded. A
+    content-addressed image cache re-reads edited files.
+- **Procedural textures:** node graphs stored as data. 16 node types:
+  constant, coordinates, checker, gradient, stripes, noise, fbm, voronoi,
+  bricks, tiles, wood, mix, ramp, math, bump, image.
+  - Evaluated per sample with NumPy on the CPU, and compiled to fixed
+    instructions run by an interpreter in the GPU shader.
+  - Reproducible integer hashing (PCG3D) gives the same patterns on both.
+  - `preview()` renders a texture to an image; `bake()` (an explicit,
+    optional output) writes a PNG.
+- **Presets:** stone, brick, wood, metal, grass and fabric, with options.
+- **Face groups:** `Mesh(groups=...)`, `mesh.with_groups(...)`.
+  - Mesh editing: `set_group`, `select(group=)`; every operation
+    propagates groups, and `FACE_GROUP_CHANGED` reports a merge across
+    groups.
+  - Procedural modifiers keep groups, booleans included (through Manifold's
+    face ids; `FACE_GROUPS_DROPPED` otherwise).
+- **Rendering:**
+  - **CPU:** materials are evaluated per sample, with exact barycentric
+    derivatives for mip levels and bump steps, normal maps, triplanar
+    projections, alpha masks during rasterization, single-sided culling and
+    emission.
+  - **GPU:** the same materials, from two storage buffers (material data
+    with texture programs, and a texel pool keyed by image content); a
+    masked shadow pipeline gives cut-out materials holes in their shadows.
+  - Missing or broken textures and missing UVs are reported, with a factor
+    fallback; they never abort a render.
+- **glTF:** materials import and export: pbrMetallicRoughness, alpha
+  modes, double-sided, normal, occlusion and emissive textures, samplers,
+  `KHR_texture_transform`, `KHR_materials_emissive_strength` and
+  `KHR_materials_specular`.
+  - Primitives with different materials become face groups.
+  - Face groups export as primitives.
+  - `TANGENT` attributes are written for normal-mapped meshes.
+  - Procedural textures are baked into PNG only on request
+    (`bake_textures=SIZE`, `aether3d export --bake-textures SIZE`).
+  - Everything glTF cannot express is reported.
+- **CLI and scripts:**
+  - `aether3d material` (`list`, `presets`, `schema`, `create`, `set`,
+    `assign`, `texture`, `inspect`, `validate`, `remove`, `convert-colors`,
+    `preview`) and `aether3d texture` (`list`, `add`, `procedural`, `set`,
+    `inspect`, `preview`, `remove`). All are atomic, with `--dry-run`,
+    `--output` and `--json`; `material validate` exits with code 3 on
+    errors.
+  - Scene-script operations for materials and textures, rolled back with
+    the rest of a failed script. Script image paths must stay inside the
+    project.
+- **Public API:** `Material`, `MaterialLibrary`, `ImageTexture`,
+  `ProceduralTexture`, `TextureBinding`, `TextureGraph` and `MaterialError`
+  are exported from `aether3d`. `result.stats["timings"]["textures"]`
+  reports material and texture preparation; the CPU adds
+  `stats["alpha_discarded"]`.
+- **Examples:**
+  - `examples/make_textures.py` generates original example textures,
+    baked from procedural graphs: stone bricks (color and normal map), wood
+    planks (JPEG) and a UV grid.
+  - The castle and the hero render with materials, beside their flat
+    versions (`castle_flat_vs_materials.png`, `hero_flat_vs_materials.png`).
+  - `examples/gpu_render.py` checks the textured castle on the GPU against
+    the CPU.
+- **Benchmarks:** `benchmarks/bench_materials.py` measures image decoding,
+  mip chains, procedural nodes, shading cost per kind of material on both
+  backends, texture uploads and memory.
+- **Tests:** 11 new test modules (`tests/test_material*.py`,
+  `tests/test_gpu_materials.py`). They cover:
+  - image decoding: every PNG variant, malformed and hostile files;
+  - sampling, noise and graphs;
+  - the library and its transactions;
+  - CPU rendering against analytic BRDF values;
+  - CPU/GPU parity for textures and every node type;
+  - persistence and migration;
+  - face groups through editing and modifiers;
+  - glTF in both directions, with the Khronos validator;
+  - the CLI and scripts.
+
+### Changed
+
+- **`.aether` format version 4:** `scene.materials`, `scene.textures`,
+  `material` and `group_materials` on objects, and optional `groups` on
+  meshes. Version 3 files are migrated on load (no materials).
+- **Object colors and materials:** while an object has a material, setting
+  its color raises `MaterialError("OBJECT_HAS_MATERIAL")`, so a color never
+  silently does nothing.
+- **glTF import:** materials, textures, images and samplers are now
+  imported. The `MATERIALS_IGNORED`, `TEXTURES_IGNORED`, `IMAGES_IGNORED`
+  and `SAMPLERS_IGNORED` diagnostics are gone. Images are read from buffer
+  views, data URIs and files in the asset's directory.
+- **glTF export:** objects with a material, or a color other than the
+  default, export glTF materials.
+- **Dependencies:** new optional extra `images` = `pillow>=10` (JPEG
+  textures). NumPy is still the only required runtime dependency.
+
+### Compatibility
+
+- **Old projects load:** projects from 0.1.0–0.6.0 (format versions 1–3)
+  load unchanged, and saving writes version 4. Aether3D 0.6.0 cannot read
+  version 4 files.
+- **Unchanged images:** scenes without materials render bit-identically to
+  0.6.0, on the CPU and on the GPU. Verified on 11 scenes on the CPU, and
+  on the castle, hero and primitives renders committed with 0.6.0 on an
+  RTX 4060.
+- **Changed tests:** every earlier test passes. Assertions that encoded
+  0.6.0 behavior changed:
+  - `tests/test_render_persistence.py`: three assertions hard-coded
+    `format_version == 3` and now use `FORMAT_VERSION`. One checked the last
+    four object keys and now checks the four before `material` and
+    `group_materials`.
+  - `tests/test_gltf_import.py`: the Box sample's import now reports no
+    diagnostics (its material is imported, not `MATERIALS_IGNORED`) and
+    checks the material. `test_unicode_percent_encoded_uris_and_images` (was
+    `..._images_never_loaded`) now checks that the image becomes a texture,
+    and that a missing image gives `TEXTURE_MISSING`.
+  - `tests/test_cli.py`: `validate`/`inspect` of a glTF file now report no
+    import diagnostics.
+  - `tests/render_reference.py` (the independent ray caster) learned
+    material factors and the glTF BRDF, so the unchanged
+    `test_gltf_imported_meshes_render` still compares like with like.
+- **Examples:** `build_scene()` of the castle and hero examples still
+  builds the flat-colored scenes (the render goldens use them); materials are
+  `build_scene(..., materials=True)`.
+
 ## 0.6.0: GPU rendering engine
 
 ### Added

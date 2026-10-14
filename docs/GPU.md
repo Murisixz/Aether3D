@@ -10,12 +10,14 @@ It runs through [wgpu](https://github.com/gfx-rs/wgpu), the WebGPU
 implementation, on Vulkan, Metal or Direct3D 12. It is headless: no window,
 desktop or display server is needed. Rendering a scene on the GPU takes the
 same `scene.render()` call as on the CPU, with `backend="gpu"`. Aether3D's
-NumPy CPU renderer (Stage 5) stays the default and the reference.
+NumPy CPU renderer (Stage 5) stays the default and the reference. Since 0.7,
+the GPU renders materials and textures too: image and procedural textures,
+normal maps, alpha masks and emission ([MATERIALS.md](MATERIALS.md)).
 
 ![The procedural castle: CPU | GPU | GPU with shadows](../examples/output/castle_comparison.png)
 
-*The Stage 5 procedural castle, rendered by Aether3D three ways from one scene and
-camera
+*The procedural castle with its Stage 7 materials, rendered by Aether3D three ways
+from one scene and camera
 ([`examples/gpu_render.py`](../examples/gpu_render.py)):*
 - *the CPU renderer, 2×2 samples per pixel;*
 - *the GPU, 4× MSAA;*
@@ -256,7 +258,8 @@ per render, one command buffer:
 | `rendering/shadows.py` | Backend-neutral shadow planning: which lights, and how each map is fitted |
 | `rendering/gpu/device.py` | wgpu loading, adapter enumeration, ranking and selection, device creation, the per-device `GPUContext`, mapping wgpu errors to `RenderError` |
 | `rendering/gpu/shaders.py` | WGSL sources, compilation, bind group layouts, the pipeline cache |
-| `rendering/gpu/wgsl/*.wgsl` | The shaders: `common` (instances, vertex pulling), `scene`, `shadow`, `finalize` |
+| `rendering/gpu/wgsl/*.wgsl` | The shaders: `common` (instances, vertex pulling), `material` (material data, noise, image sampling, the texture-program interpreter, surface evaluation), `scene`, `shadow`, `finalize` |
+| `rendering/gpu/materials.py` | Packing materials, bindings and texture programs into one storage buffer; the texel pool |
 | `rendering/gpu/resources.py` | Mesh buffer cache, reusable targets, exact byte layouts of all shader data |
 | `rendering/gpu/renderer.py` | The passes, synchronization, readback and statistics |
 | `rendering/gpu/check.py` | The self-test |
@@ -302,12 +305,22 @@ Design decisions:
   the GPU to finish. Times never stop at command submission. GPU timestamp
   queries additionally time each pass on the GPU itself when the device
   supports them.
-- **Shader layout.** Shading is split so that materials (Stage 7) only have
-  to replace one function:
-  - `surface()` returns what an object looks like at a fragment: base color,
-    highlight;
-  - `shade()` applies the lights;
+- **Shader layout.**
+  - `evaluate_surface()` (`material.wgsl`) returns what a material looks like
+    at a fragment: base color, opacity, metallic, roughness, the perturbed
+    normal, occlusion and emission. It samples images and runs texture
+    programs with the same arithmetic as the CPU renderer.
+  - `shade_simple()` and `shade_standard()` apply the lights for the two
+    material models.
   - `shadow_visibility()` evaluates the shadow maps.
+- **Materials are data.** Material factors, texture bindings, procedural
+  graphs and image descriptors are packed into one storage buffer per render.
+  Procedural graphs are compiled to fixed-format instructions, run by an
+  interpreter in the shader. All images' mip levels live in one storage
+  buffer (the texel pool) and are sampled manually: wrap, bilinear,
+  trilinear. Materials therefore need no per-material shaders, bind groups
+  or pipelines. The one exception is a second shadow pipeline that runs the
+  fragment stage, used for alpha-masked materials.
 
   Shaders are compiled from the bundled `.wgsl` files only; nothing from a
   scene, project or command line is ever compiled.
@@ -485,12 +498,23 @@ disagree with the default settings, on both the RTX 4060 and llvmpipe.
     `RenderLimits.max_gpu_memory` (default 4 GiB). This is checked before
     allocating, as are the device's texture and binding limits
     (`GPU_LIMIT_EXCEEDED`).
+- **Textures** live in one texel pool per device, holding every mip level of
+  the images of the last render:
+  - it is keyed by image content (SHA-256), decoding mode and mipmaps, so an
+    edited file can never leave a stale image on the GPU;
+  - it is uploaded again only when a render needs images it does not hold;
+    a render that needs a subset reuses it;
+  - it must fit one storage binding (`GPU_LIMIT_EXCEEDED`, location
+    `textures`, otherwise).
 - **Pipelines and shader modules** are compiled once per device.
 - **Statistics:** `result.backend["resources"]` reports:
   - this render's mesh uploads (count, bytes);
   - the mesh cache (meshes, bytes, budget, hits, evictions);
   - target memory and whether targets were reallocated;
-  - frame-buffer bytes, color format and pipeline count.
+  - frame-buffer bytes, color format and pipeline count;
+  - materials: textured materials, texture bindings, program instructions,
+    material data bytes, images, texel uploads (count, bytes, seconds) and
+    the texel pool.
 
   `result.stats` adds `draw_calls` and `shadow_maps`.
 - **Devices** live as long as the process, and `release_gpu()` frees them.
@@ -519,6 +543,15 @@ disagree with the default settings, on both the RTX 4060 and llvmpipe.
   GPUs or drivers can differ within these tolerances.
 - **Same lighting rules.** Two-sided lighting, the default key light,
   exposure, the background and the sRGB policy are the same as on the CPU.
+- **Textures.** Texture coordinates and their derivatives are computed in
+  float32, and the mip level comes from `dpdxFine`/`dpdyFine` (the CPU uses
+  exact barycentric derivatives). In parity mode, a few samples near texel
+  and mip-level boundaries therefore round differently. On the textured
+  castle at 1080p, 99.98% of the pixels away from edges are within 2 codes
+  of the CPU (99.99% on lavapipe). With MSAA, the GPU evaluates materials
+  once per pixel, where the CPU evaluates every sample, so fine texture
+  detail is filtered differently. Average colors per object agree within a
+  few codes.
 
 ## Performance
 
@@ -614,7 +647,7 @@ Errors (`RenderError.code`), in addition to those in
 | `GPU_ADAPTER_NOT_FOUND` | No adapter matches `adapter=`; `details["adapters"]` lists them |
 | `GPU_DEVICE_FAILED` | No matching adapter could create a working device; `details["attempts"]` |
 | `GPU_FEATURE_UNSUPPORTED` | The device cannot do what was asked (an MSAA count); `details["supported_msaa"]` |
-| `GPU_LIMIT_EXCEEDED` | Larger than the device's limits (texture size, mesh buffer, object count) |
+| `GPU_LIMIT_EXCEEDED` | Larger than the device's limits (texture size, mesh buffer, object count, the texel pool of a scene's textures) |
 | `GPU_OUT_OF_MEMORY` | The GPU ran out of memory |
 | `GPU_DEVICE_LOST` | The device was lost (driver reset, sleep, GPU switch); the next render creates a new one |
 | `GPU_SHADER_ERROR`, `GPU_PIPELINE_ERROR`, `GPU_RESOURCE_ERROR`, `GPU_ERROR` | wgpu or driver errors, with the compiler or driver message in `details` |
@@ -657,6 +690,7 @@ Other environment variables:
 | `test_gpu_shadows.py` | a GPU adapter | Analytic box shadows (acne, edges), filtering and map size, ray-traced shadows for the castle and a mirrored hierarchy, two lights and the shading equation |
 | `test_gpu_faults.py` | a GPU adapter | Unknown adapters, unsupported MSAA, device and memory limits, shader errors, device loss and recovery, no files on failure, a validation-layer run |
 | `test_gpu_cli.py` | a GPU adapter | `render --backend gpu` reproducing the Python API exactly, shadow and MSAA flags, `gpu info --check` |
+| `test_gpu_materials.py` | a GPU adapter for most tests | Shader layout constants vs the packer, texture programs vs graph evaluation, textured scenes and every procedural node vs the CPU, normal maps, bump nodes and triplanar projections, alpha masks and single-sided faces, shadows of cut-out materials, texture uploads and re-uploads, texel limits and `auto` fallback, face groups and missing UVs |
 | `test_gpu_performance.py` | a hardware GPU | The GPU at least 3× faster than the CPU renderer on a 200,000-triangle scene (skipped on software adapters, and on CI unless `AETHER3D_PERFORMANCE_TESTS=1`) |
 
 Without an adapter, GPU tests are skipped and the skip reason says why.
@@ -753,17 +787,19 @@ Verified on the development machine:
     Vulkan driver installed there;
   - the OpenGL backend: it could not create a device with compute shaders on
     the test machine.
-- **Nothing beyond Stage 5's appearance model.** There are no textures,
-  materials, reflections, transparency, global illumination or
-  post-processing (Stages 7, 8 and 26).
+- **Materials** have the limitations listed in
+  [MATERIALS.md](MATERIALS.md#limitations): alpha masks but no blended
+  transparency, no reflections or global illumination, and no
+  post-processing (Stages 8 and 26).
 
 ## Toward later stages
 
-- **Stage 7 (materials and textures).** `surface()` in `scene.wgsl` is the only
-  place an object's look enters shading. A material system replaces it (with
-  textures bound in a new bind group, and UVs pulled like normals) without
-  touching lighting, shadows, passes or readback. Instance records have room
-  for a material index.
+- **Stage 7 (materials and textures) is implemented.** Materials replaced the
+  single `surface()` function. UVs and face groups are pulled like normals,
+  and material data and texels are two more storage buffers. Lighting,
+  passes and readback were unchanged, apart from the standard model's
+  BRDF; alpha-masked materials get a masked shadow pipeline. See
+  [MATERIALS.md](MATERIALS.md#on-the-gpu).
 - **Stage 8 (quality).**
   - Cascaded and point-light shadow maps extend `rendering/shadows.py` (fitting
     is backend-neutral) and the shadow-map array.

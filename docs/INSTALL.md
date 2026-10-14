@@ -4,6 +4,8 @@ Aether3D requires **Python 3.10 or newer** and **NumPy**. It has no other
 runtime dependencies and needs no GPU or graphical environment. Rendering on
 a GPU is optional: it needs Python 3.11+, the `gpu` extra and a Vulkan,
 Metal or Direct3D 12 driver (see [GPU rendering](#gpu-rendering-optional)).
+JPEG textures are optional too: they need the `images` extra (PNG textures
+need nothing).
 
 ## Arch Linux
 
@@ -76,21 +78,30 @@ pytest
 ```bash
 pip install .              # core: NumPy is the only dependency
 pip install ".[boolean]"   # also solid booleans for procedural geometry
+pip install ".[images]"    # also JPEG textures (Pillow)
 pip install ".[gpu]"       # also GPU rendering (Python 3.11+)
 ```
 
 The first command installs only the `aether3d` package, its `aether3d`
-command, and NumPy. glTF import/export, mesh editing, rendering (including
-PNG output) and every procedural feature except the `boolean` modifier need
-nothing else.
+command, and NumPy. Everything else needs nothing more:
+- glTF import and export;
+- mesh editing;
+- rendering, including PNG output;
+- materials, procedural textures and PNG textures (Aether3D decodes PNG
+  itself);
+- every procedural feature except the `boolean` modifier.
 
 The `boolean` extra adds [manifold3d](https://github.com/elalish/manifold)
 (Apache-2.0; prebuilt wheels for Linux, macOS and Windows on Python
 3.10–3.14). Without it, a procedural boolean fails with
 `BOOLEAN_BACKEND_UNAVAILABLE`, while projects that contain booleans still
 load. The `dev` extra includes it, and so do the tests and the castle demo.
-trimesh, Pillow (an independent PNG decoder) and the Khronos validator are
-used only by the tests.
+The `images` extra adds [Pillow](https://python-pillow.org) (MIT-CMU) to
+decode JPEG textures. Without it, a JPEG texture fails with
+`IMAGE_DECODER_MISSING` (renders keep the material's factors and report it).
+PNG textures, and everything else, keep working. The `dev` extra includes it.
+trimesh and the Khronos validator are used only by the tests, and so is
+Pillow as an independent PNG decoder.
 
 ## GPU rendering (optional)
 
