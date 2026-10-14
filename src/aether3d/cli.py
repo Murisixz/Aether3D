@@ -4,8 +4,11 @@ Commands: ``new``, ``validate``, ``inspect``, ``geometry``, ``import``,
 ``export``, ``topology``, ``edit``, ``procedural`` (``types``, ``inspect``,
 ``validate``, ``run``, ``set``, ``bake``), ``render``, ``camera`` (``add``,
 ``set``, ``list``, ``frame``, ``activate``), ``light`` (``add``, ``set``,
-``list``), ``object`` (``set``, ``remove``), ``scene`` (``set``, ``run``) and
-``gpu`` (``info``).
+``list``), ``object`` (``set``, ``remove``), ``scene`` (``set``, ``run``),
+``gpu`` (``info``), ``material`` (``list``, ``presets``, ``schema``,
+``create``, ``set``, ``assign``, ``texture``, ``inspect``, ``validate``,
+``remove``, ``convert-colors``, ``preview``) and ``texture`` (``list``,
+``add``, ``procedural``, ``set``, ``inspect``, ``preview``, ``remove``).
 
 Every command accepts ``--json`` to emit a single machine-readable JSON
 object on stdout, both on success (``"ok": true``) and on failure
@@ -14,9 +17,9 @@ object on stdout, both on success (``"ok": true``) and on failure
 * ``0`` -- success
 * ``1`` -- the command failed (invalid file, missing file, unsupported content, ...)
 * ``2`` -- invalid command-line usage
-* ``3`` -- ``geometry``/``topology``/``procedural validate`` completed but found
-  error-severity problems, or ``gpu info --check`` found that GPU rendering
-  does not work
+* ``3`` -- ``geometry``/``topology``/``procedural validate``/``material validate``
+  completed but found error-severity problems, or ``gpu info --check`` found
+  that GPU rendering does not work
 
 Commands that read a scene accept native ``.aether`` projects as well as
 ``.glb``/``.gltf`` files (which are imported in memory).
@@ -86,6 +89,10 @@ def _command_error(exc: BaseException, path: Path) -> CommandError:
 
     if isinstance(exc, ProceduralError):
         return CommandError("ProceduralError", exc.message, exc.location, _procedural_details(exc))
+    from .errors import MaterialError, RenderError
+
+    if isinstance(exc, (MaterialError, RenderError)):
+        return CommandError(type(exc).__name__, exc.message, exc.location, _procedural_details(exc))
     if isinstance(exc, AetherError):
         return CommandError(type(exc).__name__, str(exc))
     if isinstance(exc, OSError):
@@ -113,7 +120,7 @@ def _read_project(path: Path) -> tuple[Scene, int]:
     try:
         document = loads(text)
         version = document.get("format_version") if isinstance(document, dict) else None
-        return scene_from_dict(document), version
+        return scene_from_dict(document, path.absolute().parent), version
     except ProjectFormatError as exc:
         raise _command_error(exc, path) from None
 
@@ -211,6 +218,12 @@ def _object_info(obj: SceneObject, depth: int) -> dict[str, Any]:
         "camera": None if obj.camera is None else obj.camera.to_dict(),
         "light": None if obj.light is None else obj.light.to_dict(),
         "appearance": obj.appearance.to_dict(),
+        "material": None
+        if obj._material is None
+        else {"id": obj._material, "name": obj.material.name},
+        "group_materials": {
+            str(g): {"id": m.id, "name": m.name} for g, m in obj.group_materials.items()
+        },
         "visible": obj.visible,
     }
 
@@ -386,7 +399,9 @@ def cmd_export(args: argparse.Namespace) -> CommandOutput:
     _check_destination(destination, args.force)
     scene, info = _load_scene(source, args.allow_lossy)
     try:
-        result = export_gltf(scene, destination, allow_lossy=args.allow_lossy)
+        result = export_gltf(
+            scene, destination, allow_lossy=args.allow_lossy, bake_textures=args.bake_textures
+        )
     except (AetherError, OSError) as exc:
         raise _command_error(exc, destination) from None
     data = {"source": str(source), **info, **result.to_dict()}
@@ -844,7 +859,13 @@ def cmd_gpu_info(args: argparse.Namespace) -> CommandOutput:
     return status, "\n".join(lines), code
 
 
-def _run_scene(args: argparse.Namespace, operations: list[dict[str, Any]], command: str):
+def _run_scene(
+    args: argparse.Namespace,
+    operations: list[dict[str, Any]],
+    command: str,
+    *,
+    trusted_paths: bool = False,
+):
     from .editing.script import ScriptError
     from .rendering.script import run_scene_script
 
@@ -853,7 +874,9 @@ def _run_scene(args: argparse.Namespace, operations: list[dict[str, Any]], comma
     scene, _ = _load_scene(path)
     script = {"format": "aether3d.scene-script", "version": 1, "operations": operations}
     try:
-        result = run_scene_script(scene, script)
+        result = run_scene_script(
+            scene, script, base_dir=path.absolute().parent, trusted_paths=trusted_paths
+        )
     except ScriptError as exc:
         details = {k: v for k, v in exc.to_dict().items() if k not in ("message", "location")}
         raise CommandError("ScriptError", exc.message, exc.location, details) from None
@@ -1138,8 +1161,8 @@ def cmd_scene_run(args: argparse.Namespace) -> CommandOutput:
     _project_only(path, "scene run")
     scene, _ = _load_scene(path)
     script = _read_script(args.script)
-    try:
-        result = run_scene_script(scene, script)
+    try:  # image paths in a script stay inside the project's directory
+        result = run_scene_script(scene, script, base_dir=path.absolute().parent)
     except ScriptError as exc:
         details = {k: v for k, v in exc.to_dict().items() if k not in ("message", "location")}
         raise CommandError("ScriptError", exc.message, exc.location, details) from None
@@ -1207,6 +1230,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_export.add_argument("source", help="a .aether project (or a .glb/.gltf file)")
     p_export.add_argument("destination", help="the .glb or .gltf file to write")
     p_export.add_argument("--force", action="store_true", help="overwrite an existing file")
+    p_export.add_argument(
+        "--bake-textures",
+        type=int,
+        metavar="SIZE",
+        help="bake procedural textures into SIZE x SIZE PNG images (16-8192); without it they "
+        "are left out, with a warning",
+    )
     p_export.set_defaults(handler=cmd_export)
 
     p_topology = sub.add_parser(
@@ -1276,6 +1306,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_bake.set_defaults(handler=cmd_procedural_bake)
 
     _add_render_parsers(sub, common, lossy, writing)
+    from ._cli_materials import add_material_parsers
+
+    add_material_parsers(sub, common, lossy, writing)
     return parser
 
 

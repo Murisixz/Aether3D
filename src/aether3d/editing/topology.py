@@ -95,6 +95,7 @@ class TopologyMixin:
         )
         if smooth is None:
             smooth = bool(neighbours) and self._smooth[neighbours[0]]
+        group = self._group.get(neighbours[0], 0) if neighbours else 0
         corners: dict[str, list[tuple]] = {}
         if UV in self._layers:
             uvs, undefined = [], []
@@ -121,7 +122,7 @@ class TopologyMixin:
                         tuple(undefined[:10]),
                     )
                 )
-        fid = self._new_face(loop, corners, smooth=smooth)
+        fid = self._new_face(loop, corners, smooth=smooth, group=group)
         return {"face": fid}
 
     @operation
@@ -250,6 +251,26 @@ class TopologyMixin:
         for f in fids:
             self._set_smooth(f, smooth)
         self._mark_dirty(fids)
+        return {}
+
+    @operation
+    def set_group(self, faces: Elements, group: int):
+        """Put faces into face group ``group`` (0-65535); objects can give each group its own
+        material (``scene.assign_material(obj, material, group=k)``)."""
+        from ..mesh import MAX_GROUP
+
+        fids = self._elements(faces, "faces")
+        if (
+            isinstance(group, bool)
+            or not isinstance(group, (int, np.integer))
+            or not 0 <= group <= MAX_GROUP
+        ):
+            raise ValidationError(f"group must be an integer in [0, {MAX_GROUP}], got {group!r}")
+        if not self._has_groups:
+            self._log(("groups", False))
+            self._has_groups = True
+        for f in fids:
+            self._set_group(f, int(group))
         return {}
 
     @operation
@@ -519,6 +540,19 @@ class TopologyMixin:
                 f"merging faces {f} and {g} gives an invalid polygon",
                 elements={"faces": [f, g]},
             ) from None
+        if self._group.get(f, 0) != self._group.get(g, 0):
+            self._diagnose(
+                Diagnostic(
+                    "FACE_GROUP_CHANGED",
+                    WARNING,
+                    f"faces {f} (group {self._group.get(f, 0)}) and {g} (group "
+                    f"{self._group.get(g, 0)}) were merged; the merged face {f} keeps group "
+                    f"{self._group.get(f, 0)}",
+                    None,
+                    2,
+                    (f, g),
+                )
+            )
         self._delete_face(g)
         self._replace_face(f, loop, self._split_corners(corners), dirty=False)
         return f
@@ -595,6 +629,8 @@ class TopologyMixin:
 
     def _attributes_agree_across(self, e: int) -> bool:
         f, g = self._edge_faces[e]
+        if self._group.get(f, 0) != self._group.get(g, 0):
+            return False  # faces of different groups (materials) stay apart
         lf, lg = self._faces[f], self._faces[g]
         for v in self._edge_verts[e]:
             kf, kg = lf.index(v), lg.index(v)
@@ -719,6 +755,7 @@ class TopologyMixin:
             [loop[k] for k in second],
             self._split_corners([corners[k] for k in second]),
             smooth=self._smooth[f],
+            group=self._group.get(f, 0),
             dirty=False,
         )
         return {"face": new, "edge": self.edge_between(a, b)}
@@ -810,6 +847,7 @@ class TopologyMixin:
                         [loop[k] for k in tri],
                         self._split_corners([corners[k] for k in tri]),
                         smooth=self._smooth[f],
+                        group=self._group.get(f, 0),
                         dirty=False,
                     )
                 )

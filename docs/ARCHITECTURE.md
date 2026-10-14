@@ -58,6 +58,15 @@ Aether3D/
 │   │   ├── graph.py       ProceduralSystem: nodes, dependencies, evaluation, cache, undo
 │   │   ├── session.py     Editing a node's stored base mesh with the editing engine
 │   │   └── script.py      Declarative JSON procedural scripts
+│   ├── materials/         Materials, textures, procedural shaders (see docs/MATERIALS.md)
+│   │   ├── material.py    Material, parameters, slots, TextureBinding, schemas
+│   │   ├── textures.py    ImageTexture, ProceduralTexture, the image cache, project paths
+│   │   ├── images.py      Safe PNG decoder (own) and JPEG decoding (optional Pillow)
+│   │   ├── sampling.py    Mip chains, wrap modes, bilinear/trilinear sampling, LOD
+│   │   ├── noise.py       Integer hashes (PCG3D), value/gradient noise, fbm, voronoi
+│   │   ├── graph.py       Procedural node graphs: validation, CPU evaluation, GPU programs
+│   │   ├── library.py     MaterialLibrary: a scene's materials, textures and assignments
+│   │   └── presets.py     Stone, brick, wood, metal, grass and fabric presets
 │   ├── rendering/         Cameras, lights, the CPU and GPU renderers (docs/RENDERING.md, GPU.md)
 │   │   ├── camera.py      Camera parameters, projection matrices, camera frames
 │   │   ├── light.py       Light parameters
@@ -66,6 +75,8 @@ Aether3D/
 │   │   ├── shadows.py     Backend-neutral shadow planning (lights, map fitting, bias)
 │   │   ├── color.py       sRGB <-> linear transfer functions, color parsing
 │   │   ├── scene_data.py  RenderScene extraction (backend-independent)
+│   │   ├── materials.py   Materials resolved per render (RenderMaterial), shared by both backends
+│   │   ├── surface.py     CPU material evaluation, projections, normal maps, lighting models
 │   │   ├── raster.py      Clipping, fixed-point rasterization, visibility buffer
 │   │   ├── cpu.py         CPU backend: geometry, raster, deferred shading, resolve
 │   │   ├── renderer.py    render() and RenderResult
@@ -76,20 +87,23 @@ Aether3D/
 │   │       ├── device.py      Adapters, selection, devices, GPUContext, wgpu error mapping
 │   │       ├── shaders.py     WGSL modules, bind group layouts, pipeline cache
 │   │       ├── resources.py   Mesh cache, render targets, exact shader data layouts
+│   │       ├── materials.py   Material data packing, texture programs, the texel pool
 │   │       ├── renderer.py    Shadow, scene and finalize passes; synchronized readback
 │   │       ├── check.py       The self-test behind `aether3d gpu info --check`
-│   │       └── wgsl/          common, scene, shadow and finalize shaders
+│   │       └── wgsl/          common, material, scene, shadow and finalize shaders
 │   ├── gltf/              glTF 2.0 interchange (no third-party dependencies)
 │   │   ├── axes.py        Exact Z-up <-> Y-up conversion
+│   │   ├── materials.py   glTF materials, textures and samplers, in and out
 │   │   ├── writer.py      Export: scene -> glTF document + buffer -> .glb/.gltf
 │   │   └── reader.py      Import: validated, resource-limited, path-confined
 │   ├── cli.py             `aether3d` command-line interface
+│   ├── _cli_materials.py  `aether3d material` and `aether3d texture`
 │   └── __main__.py        `python -m aether3d`
 ├── tests/                 pytest suite, one file per module
 │   └── data/              Khronos samples (pinned), v0.1.0/v0.4.0 projects, reference renders
-├── examples/              Runnable examples, a sample project, and the first renders (output/)
+├── examples/              Runnable examples, a sample project, example textures, renders (output/)
 ├── tools/gltf-validator/  Pinned Khronos glTF Validator runner (Node.js, dev only)
-├── benchmarks/            Editing, procedural and rendering benchmarks (bench_*.py)
+├── benchmarks/            Editing, procedural, rendering and materials benchmarks (bench_*.py)
 ├── docs/                  API, file formats, glTF, inspection, architecture, install
 └── .github/workflows/     Continuous integration
 ```
@@ -115,7 +129,10 @@ Aether3D/
 | `rendering.camera`, `.light`, `.settings`, `.color` | `errors`, `diagnostics` (value types; imported by `scene` and `serialization`) |
 | `rendering.*` (others) | the above, `mesh`, `math3d`, `_fileio`; `scene` only for type hints and lazily for lookups |
 | `rendering.gpu.*` | `rendering` (scene data, settings, shadows, color, backends), `errors`, `diagnostics`; `wgpu` (optional, imported lazily on the first GPU call; never by `import aether3d`) |
-| `cli` | `editing`, `procedural`, `rendering`, `gltf`, `serialization`, `scene`, `errors` |
+| `materials.*` | `errors`, `diagnostics`, `rendering.color`, `_fileio`; `scene` only for type hints; Pillow (optional, lazily, JPEG only) |
+| `rendering.materials`, `rendering.surface` | `materials`, `rendering` (scene data, settings, color), `diagnostics`, `errors` |
+| `gltf.materials` | `materials`, `rendering.color`, `diagnostics`, `errors` |
+| `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `errors` |
 
 Lower layers never import higher ones. `scene` provides convenience methods
 (`save`/`load`, `export`/`import_file`, `inspect_geometry`, `edit_mesh`) by importing
@@ -163,7 +180,8 @@ arrays. It is the natural first candidate for a native implementation.
 ### Geometry
 
 `Mesh` is an immutable indexed triangle mesh: `float32` positions, optional
-normals and UVs, `uint32` triangle indices. These contiguous NumPy arrays
+normals and UVs, `uint32` triangle indices, and optional per-triangle face
+groups (`uint16`, since 0.7.0; they select materials). These contiguous NumPy arrays
 match what GPUs and native libraries consume, and they expose the buffer
 protocol for zero-copy handoff to Rust/C++ extensions. Immutability makes
 sharing a mesh between objects (instancing) safe.
@@ -387,5 +405,52 @@ The GPU backend (`rendering/gpu/`) is a second consumer of the same
   - **Targets** are reused while the configuration repeats.
   - **Lost devices** are replaced on the next render.
 - **Shading is split for materials.** `surface()`, `shade()` and
-  `shadow_visibility()` are separate WGSL functions, so Stage 7 can replace
+  `shadow_visibility()` were separate WGSL functions, so Stage 7 replaced
   `surface()` with materials without touching lighting, shadows or passes.
+
+## Materials (v0.7.0)
+
+Materials, textures and procedural shaders ([MATERIALS.md](MATERIALS.md))
+are a separate package, `materials/`, used by the scene, both renderers,
+persistence, glTF and the CLI. Key decisions:
+
+- **Separate from objects, referenced by id.** A scene's `MaterialLibrary`
+  owns materials and textures. Objects refer to a material, and optionally to
+  one per face group; materials refer to textures through bindings. Removing
+  something in use is refused unless forced. Library changes and scene
+  scripts are transactions (snapshot and restore).
+- **One source of truth for colors.** An object's `Appearance` is exactly a
+  `"simple"` material. Objects without a material render bit-identically to
+  0.6, and an object with a material refuses color changes.
+- **Resolved once per render, shared by both backends.**
+  `rendering/materials.py` turns the materials of visible objects into
+  immutable `RenderMaterial` records: linear factors, bindings, decoded mip
+  chains and graphs. Backends never touch the scene. Problems become
+  diagnostics with a documented fallback, never a failed render.
+- **CPU: per-sample, deferred.** The CPU renderer already shaded each covered
+  sample once, from its visibility buffer. Each sample knows its triangle,
+  barycentrics and their exact screen derivatives, so texture coordinates
+  come with derivatives (mip levels, bump steps). `rendering/surface.py`
+  evaluates materials over arrays of samples. Alpha masks are tested during
+  rasterization, so masked samples never win the depth test.
+- **GPU: data, not code.** Material records, bindings and compiled texture
+  programs are one storage buffer; every image's mip levels share another
+  (the texel pool). A fixed WGSL interpreter runs the programs, and images
+  are sampled manually with the CPU's arithmetic. Scenes therefore never
+  generate shaders, and pipelines do not depend on materials.
+- **Reproducible procedural textures.** Noise uses integer hashes (PCG3D)
+  computed identically in NumPy and WGSL, and parameters are rounded to
+  float32 on both backends, so a graph renders the same everywhere.
+- **Untrusted input is data.**
+  - PNG is decoded by Aether3D's own validated decoder; JPEG goes through
+    Pillow, only when installed.
+  - Images are limited before allocation.
+  - Texture paths are confined to the project's directory, symbolic links
+    included.
+  - Graphs are validated against a schema and size limits.
+- **Face groups flow through geometry.** Meshes, the editing engine (journaled
+  group changes, propagation by every operation) and procedural modifiers
+  (including booleans, through Manifold's face ids) all carry face groups.
+  glTF primitives map to groups.
+- **The project format is version 4**, migrated from version 3 by adding
+  empty libraries.

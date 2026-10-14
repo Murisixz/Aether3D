@@ -191,12 +191,15 @@ def rasterize(
     keys: np.ndarray,
     id_bits: int,
     stats: RasterStats,
+    keep_fragment=None,
 ) -> None:
     """Rasterize snapped triangles into the visibility buffer ``keys`` (updated in place).
 
     ``keys`` has ``width * height`` entries (row-major, row 0 at the top) and
     holds ``(depth_q << id_bits) | id`` of the nearest fragment, or
-    :data:`EMPTY`.
+    :data:`EMPTY`. ``keep_fragment(ids, rows, cols)``, if given, decides
+    which fragments take part in the depth test (alpha testing); it returns
+    ``None`` to keep them all.
     """
     stats.triangles += int(X.shape[0])
     nonzero = A2 != 0
@@ -256,6 +259,7 @@ def rasterize(
             id_bits,
             qscale,
             stats,
+            keep_fragment,
         )
         start = stop
 
@@ -279,6 +283,7 @@ def _rasterize_batch(
     id_bits,
     qscale,
     stats,
+    keep_fragment=None,
 ) -> None:
     n_rows = rows[sel]
     total = int(n_rows.sum())
@@ -328,6 +333,10 @@ def _rasterize_batch(
             depth = z[t, 0] + dzdx[t] * ((j + 0.5) - xf[t, 0]) + dzdy[t] * ((rr + 0.5) - yf[t, 0])
             q = (np.clip(depth, 0.0, 1.0) * qscale).astype(np.int64)
             key = (q << id_bits) | ids[t]
-            np.minimum.at(keys, rr * width + j, key)
             stats.fragments += n
+            if keep_fragment is not None:
+                keep = keep_fragment(ids[t], rr, j)
+                if keep is not None:
+                    rr, j, key = rr[keep], j[keep], key[keep]
+            np.minimum.at(keys, rr * width + j, key)
         s0 = s1

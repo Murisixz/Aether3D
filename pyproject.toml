@@ -24,10 +24,12 @@ dependencies = ["numpy>=1.24"]
 [project.optional-dependencies]
 # Solid booleans (the "boolean" modifier) use Manifold (Apache-2.0).
 boolean = ["manifold3d>=3.4"]
+# JPEG textures are decoded with Pillow (MIT-CMU); PNG textures need nothing extra.
+images = ["pillow>=10"]
 # GPU rendering uses wgpu-py (BSD-2-Clause) with wgpu-native (MIT OR Apache-2.0), which
 # needs Python 3.11+. Pinned to the tested minor series: wgpu-py's API is not yet stable.
 gpu = ["wgpu>=0.32,<0.33; python_version >= '3.11'"]
-# Test-only: Pillow decodes PNGs independently of Aether3D's own encoder.
+# Test-only: Pillow decodes PNGs independently of Aether3D's own encoder and decoder.
 dev = [
     "pytest>=7",
     "ruff>=0.5",

@@ -158,3 +158,42 @@ class RenderError(AetherError, ValueError):
             "hint": self.hint,
             "details": self.details,
         }
+
+
+class MaterialError(AetherError, ValueError):
+    """A material, texture, procedural texture or image is invalid, missing or unsafe;
+    nothing was changed and no file was written.
+
+    ``code`` is a stable identifier (e.g. ``"INVALID_MATERIAL"``, ``"MATERIAL_NOT_FOUND"``,
+    ``"INVALID_IMAGE"``, ``"IMAGE_TOO_LARGE"``, ``"UNSAFE_PATH"``), ``location`` names the
+    offending element (e.g. ``materials[Stone].roughness``), ``hint`` suggests how to
+    proceed and ``details`` carries structured context.
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        location: str | None = None,
+        *,
+        hint: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.location = location
+        self.hint = hint
+        self.details = dict(details or {})
+        text = f"[{code}] " + (f"{location}: " if location else "") + message
+        if hint:
+            text += f". Hint: {hint}"
+        super().__init__(text)
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "location": self.location,
+            "hint": self.hint,
+            "details": self.details,
+        }

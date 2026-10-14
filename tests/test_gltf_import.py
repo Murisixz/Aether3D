@@ -40,10 +40,13 @@ def test_box_variants_are_identical(variant):
     result = import_gltf(KHRONOS / "Box" / variant)
     assert result.format == ("glb" if variant.endswith(".glb") else "gltf")
     assert result.generator == "COLLADA2GLTF"
-    assert codes(result) == ["MATERIALS_IGNORED"]
+    assert codes(result) == []
     scene = result.scene
     assert [o.name for o in scene] == ["Node", "Mesh"]
     mesh_obj = scene.objects[1]
+    # Box's material "Red": baseColorFactor (0.8, 0, 0) in linear light, metallic 0.
+    assert mesh_obj.material.name == "Red" and mesh_obj.material.metallic == 0.0
+    np.testing.assert_allclose(mesh_obj.material.linear("base_color"), [0.8, 0.0, 0.0], atol=1e-9)
     assert mesh_obj.parent is scene.objects[0]
     assert mesh_obj.mesh.vertex_count == 24 and mesh_obj.mesh.triangle_count == 12
     np.testing.assert_array_equal(mesh_obj.mesh.positions, reference.objects[1].mesh.positions)
@@ -163,15 +166,20 @@ def test_cameras_and_vertex_colors_are_reported():
     assert diag.code == "ATTRIBUTES_IGNORED" and "COLOR_0" in diag.message
 
 
-def test_unicode_percent_encoded_uris_and_images_never_loaded(tmp_path):
+def test_unicode_percent_encoded_uris_and_images(tmp_path):
     source = KHRONOS / "Unicode❤♻Test/glTF"
     result = import_gltf(source / "Unicode❤♻Test.gltf")
     assert result.scene.objects[0].name == "Unicode❤♻Mesh"  # unnamed node -> mesh name
-    assert "IMAGES_IGNORED" in codes(result)
-    # The texture is never read: the import still works without it.
+    # The percent-encoded image URI resolves to its file and becomes a texture.
+    (texture,) = result.scene.materials.textures
+    assert texture.name == "Unicode❤♻Texture.png" and texture.status()["ok"]
+    assert result.scene.objects[0].material.texture("base_color") is texture
+    # Without the image file the import still works; the material keeps its factor.
     for name in ("Unicode❤♻Test.gltf", "Unicode❤♻Binary.bin"):
         (tmp_path / name).write_bytes((source / name).read_bytes())
-    assert len(import_gltf(tmp_path / "Unicode❤♻Test.gltf").scene) == 1
+    missing = import_gltf(tmp_path / "Unicode❤♻Test.gltf")
+    assert len(missing.scene) == 1 and "TEXTURE_MISSING" in codes(missing)
+    assert missing.scene.materials.textures == ()
 
 
 def test_orientation_test_matches_independent_parser():

@@ -268,7 +268,10 @@ class BevelMixin:
                 poly.project(self._pos[hole], poly.newell_normal(self._pos[hole]))
             ):
                 smooth = all(self._smooth[f] for f, *_ in fans[v])
-                corner_faces.append(self._new_face(hole, self._split_corners(attrs), smooth=smooth))
+                group = self._group.get(min(f for f, *_ in fans[v]), 0)  # the corner's first face
+                corner_faces.append(
+                    self._new_face(hole, self._split_corners(attrs), smooth=smooth, group=group)
+                )
                 continue
             touching = [e for e in eids if v in edge_ends[e]]
             if len(touching) != 1:
@@ -312,6 +315,7 @@ class BevelMixin:
                 chamfer_loops[e],
                 self._split_corners(chamfer_corners[e]),
                 smooth=self._smooth[f] and self._smooth[g],
+                group=self._group.get(min(f, g), 0),  # the lower-id face of the beveled edge
             )
 
         for v in vertices:

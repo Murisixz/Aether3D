@@ -1,7 +1,9 @@
 """The code examples in the documentation actually run and give the stated results."""
 
 import json
+import os
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -143,3 +145,39 @@ def test_gpu_quick_start(tmp_path, monkeypatch, gpu):
     assert (tmp_path / "studio.png").is_file() and result.width == 1920
     assert result.backend["name"] == "gpu" and result.backend["adapter"]["name"] == gpu.name
     assert [m["light"] for m in result.backend["shadows"]["maps"]] == ["Sun"]
+
+
+def test_materials_quick_start(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # the example runs from the repository root: same layout here
+    if os.environ.get("AETHER3D_GPU_TESTS") == "skip":  # this job keeps off the GPU, so the
+        monkeypatch.setenv("AETHER3D_GPU_ADAPTER", "no adapter has this name")  # "auto": CPU
+    shutil.copytree(ROOT / "examples" / "textures", tmp_path / "examples" / "textures")
+    source = python_block(
+        ROOT / "docs/MATERIALS.md", 'from aether3d import Scene\n\nscene = Scene("Courtyard")'
+    )
+    namespace: dict = {}
+    exec(compile(source, "MATERIALS.md", "exec"), namespace)
+    assert (tmp_path / "courtyard.png").is_file() and (tmp_path / "courtyard_gpu.png").is_file()
+    project = Scene.load(tmp_path / "courtyard.aether")
+    assert {m.name for m in project.materials.materials} == {"Lawn", "Bricks", "Wood"}
+    paths = sorted(t.path for t in project.materials.textures if getattr(t, "path", None))
+    assert paths == [f"examples/textures/stone_bricks_{n}.png" for n in ("color", "normal")]
+    result = project.render(width=96, height=54)
+    assert result.diagnostics == [] and all(o["visible_samples"] for o in result.objects)
+
+
+def test_materials_scene_script_example(tmp_path):
+    pytest.importorskip("PIL.Image")  # the example's JPEG texture
+    from aether3d import run_scene_script
+
+    text = (ROOT / "docs/MATERIALS.md").read_text(encoding="utf-8")
+    block = re.search(r'```json\n(\{\n  "format": "aether3d.scene-script".*?)\n```', text, re.S)
+    (tmp_path / "textures").mkdir()
+    shutil.copyfile(ROOT / "examples/textures/wood_planks.jpg", tmp_path / "textures/planks.jpg")
+    scene = Scene()
+    for name in ("Wall 1", "Wall 2", "Floor"):
+        scene.add_cube(name)
+    run_scene_script(scene, json.loads(block.group(1)), base_dir=tmp_path)
+    walls = [scene.get_by_name(n).material.name for n in ("Wall 1", "Wall 2")]
+    floor = scene.get_by_name("Floor").material
+    assert walls == ["Wall", "Wall"] and floor.texture("base_color").status()["format"] == "jpeg"

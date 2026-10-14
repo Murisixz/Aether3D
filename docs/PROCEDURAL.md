@@ -171,6 +171,13 @@ geometry. Results that are valid but noteworthy are reported as
 *diagnostics* (see [codes](#error-and-diagnostic-codes)). `MAX_FACES`
 (5,000,000) bounds what any modifier may produce (`PROCEDURAL_LIMIT`).
 
+**Face groups** select per-face materials (see
+[MATERIALS.md](MATERIALS.md#face-groups-several-materials-on-one-mesh)). They
+come from a stored base mesh (`Mesh.groups`, or `geometry.edit_source()` with
+`set_group`) and flow through every modifier: copies, mirrored halves,
+solidify shells and rims, subdivided and beveled faces all keep the group of
+the face they come from. Primitives have no groups (every face is in group 0).
+
 ### `transform`
 
 `translation`, `rotation` (XYZ Euler, degrees), `scale` (non-zero), `pivot`.
@@ -292,6 +299,9 @@ consistently wound and of positive volume; otherwise the modifier fails with
 - UVs are interpolated by the backend. If only one input has UVs, they are
   dropped and reported (`UVS_DROPPED`).
 - Smooth/flat shading follows the face each triangle came from.
+- Face groups follow it too: Manifold reports every output triangle's source
+  face. If a backend did not, the groups would be dropped and reported
+  (`FACE_GROUPS_DROPPED`).
 - An empty result is reported (`BOOLEAN_EMPTY_RESULT`), not an error.
 
 Operands whose pieces overlap *each other* (a self-intersecting operand)
@@ -581,6 +591,7 @@ Diagnostics (results that are valid but noteworthy):
 | `UV_DEGENERATE_FACES` | warning | Some faces have zero UV area (solidify rims) |
 | `UVS_DROPPED` | warning | Only one boolean input had UVs |
 | `BOOLEAN_EMPTY_RESULT` | warning | The boolean result is empty |
+| `FACE_GROUPS_DROPPED` | warning | The boolean backend did not report source faces, so face groups were lost |
 | `BEVEL_NO_EDGES` | info | No edge matched the bevel limit |
 
 `proc.validate()` additionally reports polygon topology codes: those of

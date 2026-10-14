@@ -9,13 +9,17 @@ The reader treats every file as untrusted input:
 * external files are only read from the asset's own directory (or below it);
   absolute paths, ``..`` escapes, symlinks leading outside, and non-``data:``
   URI schemes (``http:``, ``file:``, ...) are refused;
-* only buffers needed for imported geometry are read -- images are never loaded;
+* only buffers needed for imported geometry and materials are read; images
+  are decoded with the same safeguards as texture files (signature, size
+  limits, no decompression bombs);
 * a new :class:`Scene` is built in isolation and returned only on success, so
   a failed import has no side effects.
 
 Content that Aether3D cannot represent is reported, never silently changed.
-Non-geometric data (materials, textures, cameras, animations, extensions that
-are not required) is skipped and listed in ``ImportResult.diagnostics``.
+Materials and their textures are imported (see :mod:`aether3d.gltf.materials`);
+primitives with different materials become face groups of one mesh. Other
+non-geometric data (cameras, animations, extensions that are not required)
+is skipped and listed in ``ImportResult.diagnostics``.
 Content whose omission would change the imported geometry (skins, morph
 targets, point/line primitives, sheared node matrices) raises
 :class:`UnsupportedFeatureError` unless ``allow_lossy=True`` is passed.
@@ -48,6 +52,7 @@ from ..mesh import Mesh
 from ..scene import Scene, SceneObject
 from ..transform import Transform
 from . import axes
+from .materials import MaterialImporter, assign
 from .writer import CHUNK_BIN, CHUNK_JSON, EXTRAS_KEY, GLB_MAGIC
 
 COMPONENT_TYPES = {
@@ -169,6 +174,8 @@ class _Reader:
         self.vertex_total = 0
         self.triangle_total = 0
         self.meshes: dict[int, Mesh | None] = {}
+        self.mesh_materials: dict[int, tuple[dict[int, Any], bool]] = {}
+        self.importer: MaterialImporter | None = None
         self.doc: dict[str, Any] = {}
         self.format = "gltf"
 
@@ -551,7 +558,7 @@ class _Reader:
             part = self.primitive(prim, f"{where}/primitives/{p_index}")
             if part is not None:
                 parts.append(part)
-        mesh = self.merge(parts, where) if parts else None
+        mesh = self.merge(parts, where, index) if parts else None
         if mesh is None:
             self.note(
                 "MESH_WITHOUT_TRIANGLES",
@@ -636,7 +643,17 @@ class _Reader:
             raise ResourceLimitError(
                 f"{loc}: more than {self.limits.max_triangles} triangles in total"
             )
-        return positions, triangles, extra.get("NORMAL"), extra.get("TEXCOORD_0")
+        material = prim.get("material")
+        if material is not None:
+            self.item("materials", material, f"{loc}/material")
+        group = None  # a face group stored by Aether3D's exporter
+        extras = prim.get("extras")
+        stored = extras.get(EXTRAS_KEY) if isinstance(extras, dict) else None
+        if isinstance(stored, dict) and "group" in stored:
+            value = stored["group"]
+            if _is_int(value) and 0 <= value <= 65535:
+                group = value
+        return positions, triangles, extra.get("NORMAL"), extra.get("TEXCOORD_0"), material, group
 
     @staticmethod
     def triangulate(indices: np.ndarray, mode: int, loc: str) -> np.ndarray:
@@ -656,15 +673,33 @@ class _Reader:
             return np.stack([indices[i], indices[i + 1 + i % 2], indices[i + 2 - i % 2]], axis=1)
         return np.stack([indices[i + 1], indices[i + 2], np.full(n - 2, indices[0])], axis=1)
 
-    def merge(self, parts, loc: str) -> Mesh:
-        if len(parts) > 1:
+    def merge(self, parts, loc: str, mesh_index: int) -> Mesh:
+        materials = [p[4] for p in parts]
+        stored_groups = [p[5] for p in parts]
+        grouped = len(set(materials)) > 1 or any(g is not None for g in stored_groups)
+        group_of = [
+            (g if g is not None else k) if grouped else 0 for k, g in enumerate(stored_groups)
+        ]
+        self.mesh_materials[mesh_index] = (
+            {group_of[k]: m for k, m in enumerate(materials) if m is not None},
+            grouped,
+        )
+        if len(parts) > 1 and not grouped:
             self.note(
                 "PRIMITIVES_MERGED",
                 INFO,
-                f"{len(parts)} primitives merged into one mesh (materials are not imported)",
+                f"{len(parts)} primitives with the same material merged into one mesh",
+                loc,
+            )
+        elif len(parts) > 1:
+            self.note(
+                "PRIMITIVES_AS_GROUPS",
+                INFO,
+                f"{len(parts)} primitives became face groups of one mesh (each keeps its material)",
                 loc,
             )
         positions, triangles, normals, uvs, offset = [], [], [], [], 0
+        groups = []
         has_normals = all(p[2] is not None for p in parts)
         has_uvs = all(p[3] is not None for p in parts)
         for name, has, index in (("NORMAL", has_normals, 2), ("TEXCOORD_0", has_uvs, 3)):
@@ -675,9 +710,10 @@ class _Reader:
                     f"{name} is present on only some primitives; dropped for the whole mesh",
                     loc,
                 )
-        for pos, tri, nor, uv in parts:
+        for k, (pos, tri, nor, uv, _, _) in enumerate(parts):
             positions.append(pos)
             triangles.append(tri + offset)
+            groups.append(np.full(len(tri), group_of[k], dtype=np.int64))
             offset += len(pos)
             if has_normals:
                 normals.append(nor)
@@ -691,6 +727,7 @@ class _Reader:
                 if has_normals
                 else None,
                 uvs=axes.flip_uvs(np.concatenate(uvs)) if has_uvs else None,
+                groups=np.concatenate(groups) if grouped else None,
             )
         except ValidationError as exc:
             raise AssetFormatError(str(exc), loc, "INVALID_MESH_DATA") from None
@@ -740,13 +777,7 @@ class _Reader:
             raise AssetFormatError(str(exc), loc, "INVALID_TRANSFORM") from None
 
     def report_ignored(self) -> None:
-        for key, code, what in (
-            ("materials", "MATERIALS_IGNORED", "materials"),
-            ("textures", "TEXTURES_IGNORED", "textures"),
-            ("images", "IMAGES_IGNORED", "images (not loaded)"),
-            ("samplers", "SAMPLERS_IGNORED", "texture samplers"),
-            ("cameras", "CAMERAS_IGNORED", "cameras"),
-        ):
+        for key, code, what in (("cameras", "CAMERAS_IGNORED", "cameras"),):
             if self.array(key):
                 self.note(
                     code,
@@ -764,7 +795,11 @@ class _Reader:
                 len(self.array("animations")),
             )
         used = self.doc.get("extensionsUsed", [])
+        from .materials import SUPPORTED_MATERIAL_EXTENSIONS
+
         for name in used if isinstance(used, list) else []:
+            if name in SUPPORTED_MATERIAL_EXTENSIONS:
+                continue
             self.note(
                 "EXTENSION_IGNORED",
                 INFO,
@@ -874,6 +909,7 @@ class _Reader:
                 self.note("NO_SCENE", INFO, "asset defines no scene; all root nodes are imported")
 
         scene = Scene(name or self.path.stem.strip() or "Imported Scene")
+        self.importer = MaterialImporter(self, scene)
         objects: list[dict[str, Any]] = []
         used_ids: set[str] = set()
         stack: list[tuple[int, SceneObject | None]] = [(r, None) for r in reversed(roots)]
@@ -883,6 +919,15 @@ class _Reader:
             obj = self.create_object(scene, node, index, where, parent_obj, used_ids, objects)
             for child in reversed(node.get("children", [])):
                 stack.append((child, obj))
+        unused = self.importer.unused()
+        if unused:
+            self.note(
+                "MATERIALS_UNUSED",
+                INFO,
+                f"{unused} materials are not used by imported meshes and were not imported",
+                "/materials",
+                unused,
+            )
         skipped = len(nodes) - len(objects)
         if skipped:
             self.note(
@@ -955,6 +1000,13 @@ class _Reader:
                 )
         obj = scene.add_object(name, mesh=mesh, parent=parent_obj, object_id=object_id)
         obj.transform = transform
+        if mesh is not None and node["mesh"] in self.mesh_materials:
+            materials, grouped = self.mesh_materials[node["mesh"]]
+            assign(
+                obj,
+                {g: self.importer.material(m, f"{where}/mesh") for g, m in materials.items()},
+                grouped,
+            )
         used_ids.add(obj.id)
         objects.append({"node": index, "id": obj.id, "name": obj.name, "id_source": source})
         return obj

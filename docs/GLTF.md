@@ -1,10 +1,12 @@
 # glTF 2.0 interoperability
 
-Aether3D imports and exports **static geometry** in the
+Aether3D imports and exports **static geometry and materials** in the
 [Khronos glTF 2.0](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html)
-format, both as binary `.glb` and as JSON `.gltf`. The implementation lives in
-`aether3d.gltf`, has no dependencies beyond NumPy, and is checked against the
-official Khronos glTF Validator and an independent parser (trimesh).
+format, both as binary `.glb` and as JSON `.gltf`. Materials use glTF's
+metallic-roughness model, with PNG/JPEG textures (since 0.7.0). The
+implementation lives in `aether3d.gltf`. It needs nothing beyond NumPy (plus
+Pillow for JPEG textures) and is checked against the official Khronos glTF
+Validator and an independent parser (trimesh).
 
 ```python
 from aether3d import Scene, import_gltf
@@ -18,6 +20,7 @@ result.scene, result.objects, result.diagnostics
 
 ```console
 $ aether3d export project.aether world.glb --json
+$ aether3d export project.aether world.glb --bake-textures 1024   # procedural -> PNG
 $ aether3d import world.glb project.aether --json
 $ aether3d inspect world.glb
 $ aether3d geometry world.glb --json
@@ -33,17 +36,28 @@ $ aether3d geometry world.glb --json
 | Non-indexed triangles, triangle strips, triangle fans | n/a | yes (converted to indexed triangles) |
 | `POSITION`, `NORMAL`, `TEXCOORD_0` | yes (float) | yes (float; normalized unsigned byte/short texcoords) |
 | Mesh instancing (several nodes using one mesh) | yes | yes |
-| Several primitives per mesh | n/a | merged into one mesh |
+| Several primitives per mesh | one primitive per face group, each with its group's material | merged into one mesh; primitives with different materials become face groups |
+| Materials (`pbrMetallicRoughness`, alpha modes, double-sided, normal, occlusion, emission) | yes | yes |
+| PNG and JPEG textures, samplers | yes (original image bytes) | yes (decoded and embedded in the scene) |
+| `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_specular` | yes | yes |
+| `TANGENT` | for meshes with UV-mapped normal maps | ignored (tangents are derived per triangle) |
+| Object colors | as materials | restored exactly from `extras` |
 | Interleaved buffer views (`byteStride`), sparse accessors, accessors without buffer views | n/a | yes |
 | Embedded (`data:` URI), GLB-binary, and external `.bin` buffers | GLB binary; `.gltf` with an embedded buffer | yes |
 | Object ids | stored in `node.extras.aether3d.id` | restored from `extras` when present and unique; generated otherwise |
 | Scene name | `scenes[0].name` | from the imported scene, else the file name |
 
-Export writes one glTF mesh per distinct Aether3D mesh (one primitive,
-`TRIANGLES`, 16-bit indices when there are at most 65 535 vertices, 32-bit
-otherwise), one node per object in depth-first order, no materials, and a
-single buffer. Output is deterministic and atomic (written to a temporary
-file and renamed).
+Export writes:
+- **Meshes.** One glTF mesh per distinct Aether3D mesh: `TRIANGLES`, 16-bit
+  indices when there are at most 65 535 vertices, 32-bit otherwise. A mesh
+  gets one primitive per face group. Objects that share a mesh but not its
+  materials get separate glTF meshes over the same accessors.
+- **Nodes.** One node per object, in depth-first order.
+- **Materials.** A material for every object that has one, or a color other
+  than the default gray, with its images and samplers.
+- **One buffer.**
+
+Output is deterministic and atomic (written to a temporary file and renamed).
 
 ## Coordinate systems
 
@@ -88,14 +102,18 @@ glTF features that Aether3D does not model fall into two groups.
 
 | Content | Diagnostic code | Severity |
 | --- | --- | --- |
-| materials, textures, images, samplers | `MATERIALS_IGNORED`, `TEXTURES_IGNORED`, `IMAGES_IGNORED`, `SAMPLERS_IGNORED` | info |
+| material features Aether3D does not draw or model (see [Materials and textures](#materials-and-textures)) | `ALPHA_BLEND_UNSUPPORTED`, `MATERIAL_EXTENSION_IGNORED`, `TEXCOORD_UNSUPPORTED`, ... | warning or info |
+| materials no imported mesh uses | `MATERIALS_UNUSED` | info |
 | cameras | `CAMERAS_IGNORED`, `NODE_CAMERA_IGNORED` | info |
 | animations (nodes keep their rest transforms) | `ANIMATIONS_IGNORED` | warning |
 | optional extensions (`extensionsUsed`) | `EXTENSION_IGNORED` | info |
 | other vertex attributes (`COLOR_0`, `TANGENT`, `TEXCOORD_1`, ...) | `ATTRIBUTES_IGNORED` | info |
 | scenes other than the default scene, and nodes outside it | `OTHER_SCENES_IGNORED`, `NODES_NOT_IN_SCENE` | warning |
 
-Images are never read from disk.
+Images are read only from buffer views, base64 `data:` URIs, or files in the
+asset's own directory (with the same rules as external buffers). A missing or
+broken image is reported (`TEXTURE_MISSING`, `TEXTURE_INVALID`); its materials
+keep their factors.
 
 **Content whose omission changes the geometry**: the import fails with
 `UnsupportedFeatureError`, listing every such item, unless
@@ -120,6 +138,76 @@ Export has the same policy. Content glTF cannot store raises
 | a mesh with no triangles | `EMPTY_MESH_NOT_EXPORTED` (lossy) | objects exported without geometry |
 | zero-length normals (glTF requires unit normals) | `ZERO_NORMALS_NOT_EXPORTED` (lossy) | the mesh's normals are omitted |
 | non-unit normals | `NORMALS_RENORMALIZED` (warning, not lossy) | always renormalized; direction is kept |
+
+Material content glTF cannot express is reported as a warning and left out.
+It is not lossy geometry, so the export does not fail. See [Materials and
+textures](#materials-and-textures).
+
+## Materials and textures
+
+**Import.** Every glTF material used by imported nodes becomes a `"standard"`
+Aether3D material ([MATERIALS.md](MATERIALS.md)):
+
+| glTF | Aether3D |
+| --- | --- |
+| `baseColorFactor`, `baseColorTexture` | `base_color` (alpha → `opacity`), `base_color` texture (its alpha multiplies opacity) |
+| `metallicFactor`, `roughnessFactor`, `metallicRoughnessTexture` | `metallic`, `roughness`; the texture binds to both slots (blue → metallic, green → roughness) |
+| `normalTexture` (`scale`) | `normal` texture, `normal_strength` |
+| `occlusionTexture` (`strength`) | `occlusion` texture (red), `occlusion_strength` |
+| `emissiveFactor`, `emissiveTexture`, `KHR_materials_emissive_strength` | `emissive`, `emissive` texture, `emissive_strength` |
+| `alphaMode` `OPAQUE` / `MASK`, `alphaCutoff` | `alpha_mode`, `alpha_cutoff` |
+| `alphaMode` `BLEND` | opaque, with `ALPHA_BLEND_UNSUPPORTED` (Aether3D draws no blended transparency) |
+| `doubleSided` | `double_sided` |
+| `KHR_materials_specular` | `specular = 0.5 × specularFactor × mean(specularColorFactor)`, clamped to [0, 1] (`SPECULAR_COLOR_APPROXIMATED` for colored factors; specular textures: `SPECULAR_TEXTURE_IGNORED`) |
+| sampler `wrapS`/`wrapT`, `magFilter`/`minFilter` | `wrap`, `filter`, `mipmaps` (`SAMPLER_APPROXIMATED` when the filters differ) |
+| `KHR_texture_transform` | the binding's `offset`, `rotation`, `scale`, converted exactly to Aether3D's bottom-left uv origin |
+
+- **Images.** PNG and JPEG images become embedded textures of the scene. They
+  are saved inside the project; `texture.extract(path)` turns one into a file.
+- **What is left out is reported, and the rest of the material is kept:**
+  - textures that use `TEXCOORD_1` or another set (`TEXCOORD_UNSUPPORTED`);
+  - images in other formats (`IMAGE_FORMAT_UNSUPPORTED`,
+    `TEXTURE_FORMAT_UNSUPPORTED`);
+  - other material extensions (`MATERIAL_EXTENSION_IGNORED`);
+  - factors out of range, which are clamped (`FACTOR_CLAMPED`).
+- **Exact parameters.** A material written by Aether3D carries its exact
+  parameters in `extras.aether3d`. Simple materials and object colors come
+  back exactly, and a damaged record is ignored (`STORED_MATERIAL_REJECTED`).
+- **Primitives and face groups.** Primitives of one glTF mesh that use the
+  same material are merged (`PRIMITIVES_MERGED`). With different materials
+  they become face groups of one mesh, each with its material
+  (`PRIMITIVES_AS_GROUPS`).
+
+**Export.** Each object's material, per face group, becomes a glTF material;
+an object without one exports its color.
+- **Images** keep their original PNG/JPEG bytes and their sampler.
+- **Bindings.** Binding transforms are written with `KHR_texture_transform`.
+- **Emission.** Emission brighter than glTF's 0..1 `emissiveFactor`
+  (`emissive × emissive_strength`) is written with
+  `KHR_materials_emissive_strength`.
+- **Specular.** Dielectric `specular` other than 0.5 is written with
+  `KHR_materials_specular`.
+- **Simple materials** are written as metallic-roughness, with roughness
+  `(2 / (shininess + 2))^¼` from the Blinn-Phong exponent
+  (`SIMPLE_MATERIAL_APPROXIMATED`, information).
+- **Tangents.** Meshes drawn with a UV-mapped normal map get `TANGENT`
+  attributes.
+
+What glTF cannot express is left out with a warning:
+
+| Content | Diagnostic code |
+| --- | --- |
+| procedural textures (unless baked, below) | `PROCEDURAL_TEXTURE_NOT_EXPORTED` |
+| textures mapped by object or world coordinates | `TEXTURE_MAPPING_NOT_EXPORTED` |
+| a separate opacity texture (glTF reads alpha from the base color texture) | `OPACITY_TEXTURE_NOT_EXPORTED` |
+| channel packings glTF cannot express (metallic not in blue, roughness not in green, occlusion not in red, different metallic and roughness textures) | `TEXTURE_CHANNEL_NOT_EXPORTED` |
+| a texture whose color space is forced (glTF decodes each slot in its own space) | `TEXTURE_COLOR_SPACE_NOT_EXPORTED` |
+
+`bake_textures=SIZE` (`scene.export`, `export_gltf`) or `--bake-textures SIZE`
+(`aether3d export`), with SIZE from 16 to 8192, is an explicit, optional
+output. It renders UV-mapped procedural textures into SIZE × SIZE PNG images
+over the unit uv square. A metallic and a roughness texture are baked
+together into glTF's packed texture. Each bake is reported (`TEXTURE_BAKED`).
 
 ## Identifiers and names
 
@@ -157,6 +245,11 @@ Export has the same policy. Content glTF cannot store raises
   Exceeding a limit raises `ResourceLimitError`.
 - **Malformed JSON is rejected:** invalid UTF-8, duplicate keys,
   `NaN`/`Infinity`, and excessive nesting.
+- **Images are decoded safely:** with Aether3D's own PNG decoder (or Pillow for
+  JPEG), within `ImageLimits` (16384 pixels per side, 8192² in total), and
+  with every chunk, CRC and the compressed stream checked. A broken image is
+  reported, never fatal (see
+  [MATERIALS.md](MATERIALS.md#untrusted-textures-and-graphs)).
 - **No partial results:** a failed import has no side effects, and a
   failed export leaves any existing file untouched.
 
@@ -173,6 +266,12 @@ Export has the same policy. Content glTF cannot store raises
   CI runs it on Linux and Windows. Locally:
   `npm ci --prefix tools/gltf-validator`, then
   `node tools/gltf-validator/validate.mjs FILE...`.
+- `tests/test_material_gltf_validator.py` runs the same validator on exports
+  with materials, textures, face groups, texture transforms, emission,
+  specular, normal maps (with `TANGENT`) and baked textures. They also need
+  zero errors and zero warnings. `tests/test_material_gltf.py` checks the
+  material mappings in both directions, round trips, texture orientation and
+  the diagnostics.
 - `tests/test_gltf_independent.py` reads Aether3D's exports with
   **trimesh**, an independent implementation, and compares world-space
   vertices, triangle winding, instancing and enclosed volumes.
@@ -180,7 +279,8 @@ Export has the same policy. Content glTF cannot store raises
   [Khronos sample assets](https://github.com/KhronosGroup/glTF-Sample-Assets).
   They cover separate, embedded and binary buffers; interleaved, sparse and
   non-indexed data; every primitive mode; skins, morph targets and multiple
-  scenes; and percent-encoded Unicode URIs.
+  scenes; percent-encoded Unicode URIs; and texture coordinates, samplers and
+  texture settings (`TextureCoordinateTest`, `TextureSettingsTest`).
   - Imports are compared with trimesh, except for triangle fans and sparse
     accessors, which trimesh does not handle. Those are checked against
     independent decoding and analytic values.
@@ -190,26 +290,30 @@ Export has the same policy. Content glTF cannot store raises
 
 ## Limitations
 
-- Only static geometry: no materials, textures, cameras, lights, animation,
+- Static geometry and materials only: no cameras, lights, animation,
   skinning or morph targets (see the tables above).
+- **Materials** are glTF's core metallic-roughness model plus three
+  extensions. Other material extensions (clearcoat, transmission, sheen,
+  volume, IOR...) are not imported. Procedural textures exist in glTF only
+  when baked. Only `TEXCOORD_0` is used.
 - **Exported cameras and lights (since 0.5.0)** are written as plain nodes:
   - their transforms, names and ids are kept, and the files pass the Khronos
     validator;
   - glTF `camera` objects and `KHR_lights_punctual` lights are not written
-    yet;
-  - object colors are not exported, because there are no materials yet.
+    yet.
 
   An exported glTF camera would also need a 180° turn about the up axis.
   Aether3D cameras look along their local −Y; glTF cameras look along −Z in
   Y-up space, which is +Y in Aether3D's world (see
   [RENDERING.md](RENDERING.md)).
 - Several primitives in one glTF mesh are merged into one Aether3D mesh.
-  Per-primitive material assignment is not preserved.
+  Their materials are kept as face groups (since 0.7.0).
 - Normals or UVs present on only some primitives of a mesh are dropped for
   the whole mesh (`ATTRIBUTE_DROPPED`).
-- No glTF extensions are supported, including `KHR_mesh_quantization`,
-  `KHR_draco_mesh_compression`, `EXT_meshopt_compression`, and
-  `KHR_texture_transform`.
+- Apart from `KHR_texture_transform`, `KHR_materials_emissive_strength` and
+  `KHR_materials_specular`, no glTF extensions are supported, including
+  `KHR_mesh_quantization`, `KHR_draco_mesh_compression` and
+  `EXT_meshopt_compression`.
 - Export writes only `.glb`, or `.gltf` with an embedded base64 buffer.
   Separate `.bin` files are not written.
 - Only the default scene of a multi-scene asset is imported.

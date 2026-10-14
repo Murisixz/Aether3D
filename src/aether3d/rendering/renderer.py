@@ -398,6 +398,7 @@ def _finish_cpu(
     counts = frame_data.counts
     timings = {
         "evaluate": rs.timings.get("evaluate", 0.0),
+        "textures": rs.timings.get("textures", 0.0),
         "extract": rs.timings.get("extract", 0.0),
         **frame_data.timings,
         "output": t_output,
@@ -496,6 +497,7 @@ def _finish_gpu(
         raise RenderError("RENDER_FAILED", "the rendered image contains non-finite values")
     timings = {
         "evaluate": rs.timings.get("evaluate", 0.0),
+        "textures": rs.timings.get("textures", 0.0),
         "extract": rs.timings.get("extract", 0.0),
         "init": t_init + gpu_frame.timings["compile"],
         "upload": gpu_frame.timings["upload"],

@@ -22,6 +22,8 @@ BoxTextured and Duck) were deliberately not included.
 | SimpleMeshes | `glTF/SimpleMeshes.bin`, `glTF/SimpleMeshes.gltf` | CC0-1.0 — © 2017 Public (artist: Marco Hutter (https://github.com/javagl/)) |
 | SimpleSkin | `glTF-Embedded/SimpleSkin.gltf` | CC0-1.0 — © 2017 Public (artist: Marco Hutter (https://github.com/javagl/)) |
 | SimpleSparseAccessor | `glTF/SimpleSparseAccessor.bin`, `glTF/SimpleSparseAccessor.gltf` | CC-BY-4.0 — © 2017 Public (artist: Marco Hutter (https://github.com/javagl/)) |
+| TextureCoordinateTest | `glTF-Binary/TextureCoordinateTest.glb` | CC0-1.0 — © 2017 Analytical Graphics, Inc. (artist: Ed Mackey) |
+| TextureSettingsTest | `glTF-Binary/TextureSettingsTest.glb` | CC-BY-4.0 — © 2017 Analytical Graphics, Inc. (artist: Ed Mackey) |
 | Triangle | `glTF/Triangle.bin`, `glTF/Triangle.gltf` | CC0-1.0 — © 2017 Public (artist: Marco Hutter (https://github.com/javagl/)) |
 | TriangleWithoutIndices | `glTF/TriangleWithoutIndices.bin`, `glTF/TriangleWithoutIndices.gltf` | CC0-1.0 — © 2017 Public (artist: Marco Hutter (https://github.com/javagl/)) |
 | Unicode❤♻Test | `glTF/Unicode❤♻Binary.bin`, `glTF/Unicode❤♻Test.gltf`, `glTF/Unicode❤♻Texture.png` | CC0-1.0 — © 2017 Public (artist: Viktor Kovács) |

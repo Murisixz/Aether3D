@@ -17,6 +17,8 @@ apply to agents too.
   caching, transactions, scripts).
 - Cameras, lights and rendering: [docs/RENDERING.md](docs/RENDERING.md) (conventions, pipeline,
   shading model, API, CLI, verification); the GPU backend: [docs/GPU.md](docs/GPU.md).
+- Materials, textures and procedural shaders: [docs/MATERIALS.md](docs/MATERIALS.md) (models and
+  formulas, slots, images, coordinates, node graphs, presets, face groups, CLI, security).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 
 ## Conventions to preserve
@@ -61,6 +63,22 @@ apply to agents too.
   used or available without a created device, and label software adapters as such.
 - Run GPU tests locally with `AETHER3D_REQUIRE_GPU=1 pytest tests/test_gpu_*.py` (optionally
   `AETHER3D_TEST_GPU_ADAPTER=llvmpipe` or `=nvidia`); `AETHER3D_GPU_DEBUG=1` enables validation.
+- Materials (`materials/`, `rendering/materials.py`, `rendering/surface.py`,
+  `rendering/gpu/materials.py`, `wgsl/material.wgsl`):
+  - **Graphs are data.** Procedural graphs are validated against the node schema and evaluated
+    by the NumPy evaluator or the fixed WGSL interpreter; never generate Python or WGSL from them.
+  - **Both backends compute the same thing.** Sampling, noise and shading changes must stay
+    identical in `sampling.py`/`noise.py`/`graph.py`/`surface.py` and `material.wgsl`. Check
+    them with `tests/test_gpu_materials.py`, and keep the packer's layout constants in sync
+    with the shader (`test_shader_constants_match_the_packer`). A new node type needs a schema,
+    CPU evaluation, a GPU opcode and parity tests.
+  - **Objects without a material render bit-identically to 0.6.** The `simple` model's
+    arithmetic is frozen; the render goldens and examples depend on it.
+  - **Untrusted images.** Decoders check sizes before allocating and raise `MaterialError`
+    with a code. Texture paths stay inside the project's directory, textually and after
+    resolving symbolic links.
+  - **Face groups.** Editing operations and procedural modifiers must carry face groups to the
+    faces they create (`tests/test_material_groups.py`).
 
 ## Using Aether3D from an agent
 
@@ -93,6 +111,18 @@ apply to agents too.
   with `aether3d camera add --frame`, `light add`, `object set --color`, `scene set`, or one
   atomic `aether3d scene run PROJECT script.json`. In Python: `scene.add_camera(...).frame()`,
   `scene.add_directional_light(...)`, `scene.render(...)`, `result.save("x.png")`.
+- Materials:
+  - Discover with `aether3d material schema --json` (parameters, slots, binding options, node
+    types) and `aether3d material presets --json`.
+  - Build with `material create`, `material assign` (`--group K` for a face group) and
+    `material texture` (`--image`, `--procedural`, `--texture`).
+  - Check with `aether3d material validate PROJECT --json` (exit code 3 on errors), then render
+    and read `diagnostics` (`TEXTURE_MISSING`, `MISSING_UVS`, ...).
+  - Python: `scene.create_material(...)`, `material.set_texture(slot, path_or_texture, ...)`,
+    `material.set_procedural_texture(...)`, `scene.assign_material(obj, material, group=k)`.
+    Match on `MaterialError.code`.
+  - Keep image files inside the project's folder, or embed them (`--embed`, `texture.embed()`).
+    Procedural meshes have no UVs: map their textures with `coordinates="object"`.
 - GPU: `aether3d gpu info --check --json` says whether GPU rendering works here and which adapter
   is used (exit code 3 if it does not). Render with `--backend gpu` (fails with a `GPU_*` code if
   unavailable -- never a silent CPU render) or `--backend auto` (read `backend.name` and the

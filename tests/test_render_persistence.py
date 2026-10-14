@@ -78,7 +78,7 @@ def test_round_trip_and_rerender(tmp_path):
 
 def test_document_layout():
     doc = scene_to_dict(build_scene())
-    assert doc["format_version"] == FORMAT_VERSION == 3
+    assert doc["format_version"] == FORMAT_VERSION
     s = doc["scene"]
     assert s["world"] == {
         "background": [0x8E / 255, 0xC5 / 255, 0xF2 / 255],
@@ -107,7 +107,7 @@ def test_document_layout():
     assert objects["Rig"]["appearance"] is None  # defaults are not written
     assert objects["Ghost"]["visible"] is False and objects["Crate"]["visible"] is True
     for o in s["objects"]:
-        assert list(o)[-4:] == ["camera", "light", "appearance", "visible"]
+        assert list(o)[-6:-2] == ["camera", "light", "appearance", "visible"]
 
 
 def test_version_1_and_2_projects_load_unchanged(tmp_path):
@@ -118,11 +118,11 @@ def test_version_1_and_2_projects_load_unchanged(tmp_path):
     r = old.render(width=64, height=36, frame=True)  # needs a camera: a temporary one
     assert r.camera["temporary"] and r.stats["pixels_covered"] > 0
     doc = scene_to_dict(old)
-    assert doc["format_version"] == 3 and doc["scene"]["active_camera"] is None
+    assert doc["format_version"] == FORMAT_VERSION and doc["scene"]["active_camera"] is None
     v2 = loads(V040.read_text(encoding="utf-8"))
     assert v2["format_version"] == 2
     migrated = migrate(copy.deepcopy(v2))
-    assert migrated["format_version"] == 3
+    assert migrated["format_version"] == FORMAT_VERSION
     assert all(o["camera"] is None and o["visible"] is True for o in migrated["scene"]["objects"])
     assert migrated["scene"]["render"]["width"] == 1280
 

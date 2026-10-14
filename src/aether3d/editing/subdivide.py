@@ -42,7 +42,10 @@ class SubdivideMixin:
                     elements={"faces": [f]},
                     hint="use cuts=1 or triangulate first",
                 )
-        originals = {f: (list(self._faces[f]), self._corners_of(f), self._smooth[f]) for f in fids}
+        originals = {
+            f: (list(self._faces[f]), self._corners_of(f), self._smooth[f], self._group.get(f, 0))
+            for f in fids
+        }
         params = [k / (cuts + 1) for k in range(1, cuts + 1)]
         points: dict[tuple[int, int], list[int]] = {}
         for f in fids:
@@ -55,7 +58,7 @@ class SubdivideMixin:
         pieces: dict[int, list[int]] = {}
         new_vertices: list[int] = []
         for f in fids:
-            loop, corners, smooth = originals[f]
+            loop, corners, smooth, group = originals[f]
 
             def side(a: int, b: int) -> list[int]:
                 ids = points[(min(a, b), max(a, b))]
@@ -74,7 +77,9 @@ class SubdivideMixin:
                     self._replace_face(f, piece_loop, split, dirty=False)
                     built.append(f)
                 else:
-                    built.append(self._new_face(piece_loop, split, smooth=smooth, dirty=False))
+                    built.append(
+                        self._new_face(piece_loop, split, smooth=smooth, group=group, dirty=False)
+                    )
             pieces[f] = built
         return {"faces": pieces, "vertices": Selection.of(new_vertices)}
 
@@ -280,7 +285,13 @@ class SubdivideMixin:
                     built.append(face)
                 else:
                     built.append(
-                        self._new_face(strip, split, smooth=self._smooth[face], dirty=False)
+                        self._new_face(
+                            strip,
+                            split,
+                            smooth=self._smooth[face],
+                            group=self._group.get(face, 0),
+                            dirty=False,
+                        )
                     )
             pieces[face] = built
             for m in range(1, len(A) - 1):

@@ -122,8 +122,18 @@ def transform_mesh(mesh: PolyMesh, m: np.ndarray, location: str) -> PolyMesh:
     )
 
 
+def concat_groups(meshes: list[PolyMesh]) -> np.ndarray | None:
+    """Face groups of meshes placed one after the other (missing groups are group 0)."""
+    if all(m.groups is None for m in meshes):
+        return None
+    return np.concatenate(
+        [m.groups if m.groups is not None else np.zeros(m.face_count, np.int64) for m in meshes]
+    )
+
+
 def concat(meshes: list[PolyMesh]) -> PolyMesh:
-    """Disjoint union of meshes (layers kept only if every mesh has them)."""
+    """Disjoint union of meshes (layers kept only if every mesh has them; face groups if any
+    has them)."""
     meshes = [m for m in meshes if m.face_count or m.vertex_count]
     if not meshes:
         return PolyMesh.empty()
@@ -145,6 +155,7 @@ def concat(meshes: list[PolyMesh]) -> PolyMesh:
         sharp_edges=np.concatenate(
             [m.sharp_edges + vb for m, vb in zip(meshes, vertex_base, strict=True)]
         ),
+        groups=concat_groups(meshes),
     )
 
 
@@ -183,6 +194,7 @@ def _drop_degenerate_faces(mesh: PolyMesh, fv: np.ndarray) -> tuple[PolyMesh, np
         normals_valid=mesh.normals_valid[keep_face] if mesh.normals is not None else None,
         smooth=mesh.smooth[keep_face],
         sharp_edges=mesh.sharp_edges,
+        groups=None if mesh.groups is None else mesh.groups[keep_face],
     )
     return out, removed
 
@@ -484,6 +496,7 @@ def _select_faces(mesh: PolyMesh, keep: np.ndarray) -> PolyMesh:
         normals_valid=mesh.normals_valid[keep] if mesh.normals is not None else None,
         smooth=mesh.smooth[keep],
         sharp_edges=mesh.sharp_edges,
+        groups=None if mesh.groups is None else mesh.groups[keep],
     )
 
 
@@ -500,6 +513,7 @@ def concat_shared(a: PolyMesh, b: PolyMesh) -> PolyMesh:
         normals_valid=np.concatenate([a.normals_valid, b.normals_valid]) if has_n else None,
         smooth=np.concatenate([a.smooth, b.smooth]),
         sharp_edges=np.concatenate([a.sharp_edges, b.sharp_edges]),
+        groups=concat_groups([a, b]),
     )
 
 
@@ -733,6 +747,8 @@ class SolidifyModifier(ModifierType):
                 normals=np.zeros((4 * k, 3)) if out.normals is not None else None,
                 normals_valid=np.zeros(k, bool) if out.normals is not None else None,
                 smooth=np.zeros(k, bool),
+                # A rim face belongs to the group of the face whose boundary edge it closes.
+                groups=None if mesh.groups is None else mesh.groups[mesh.corner_face[boundary]],
             )
             out = concat_shared(out, rims)
         elif len(boundary):
@@ -850,6 +866,7 @@ def catmull_clark(mesh: PolyMesh) -> PolyMesh:
         normals_valid=np.zeros(c, bool) if mesh.normals is not None else None,
         smooth=mesh.smooth[cf],
         sharp_edges=sharp,
+        groups=None if mesh.groups is None else mesh.groups[cf],
     )
 
 
@@ -1032,10 +1049,20 @@ class BooleanModifier(ModifierType):
             with_uv,
             np.concatenate([mesh.smooth, operand.smooth]),
             mesh.normals is not None,
+            concat_groups([mesh, operand]),
         )
         if out.face_count == 0:
             diagnostics.append(
                 _diag("BOOLEAN_EMPTY_RESULT", WARNING, f"the {op} is empty", ctx.location)
+            )
+        elif out.groups is None and concat_groups([mesh, operand]) is not None:
+            diagnostics.append(
+                _diag(
+                    "FACE_GROUPS_DROPPED",
+                    WARNING,
+                    "the boolean backend did not report source faces; face groups were lost",
+                    ctx.location,
+                )
             )
         return out, diagnostics
 
@@ -1099,7 +1126,9 @@ def _to_manifold(manifold3d, mesh: PolyMesh, with_uv: bool, face_base: int):
     return manifold3d.Manifold(gl)
 
 
-def _from_manifold(gl, with_uv: bool, smooth: np.ndarray, normals: bool) -> PolyMesh:
+def _from_manifold(
+    gl, with_uv: bool, smooth: np.ndarray, normals: bool, groups: np.ndarray | None = None
+) -> PolyMesh:
     props = np.asarray(gl.vert_properties, dtype=np.float64)
     tris = np.asarray(gl.tri_verts, dtype=np.int64).reshape(-1, 3)
     if len(tris) == 0:
@@ -1119,6 +1148,8 @@ def _from_manifold(gl, with_uv: bool, smooth: np.ndarray, normals: bool) -> Poly
         normals=np.zeros((3 * k, 3)) if normals else None,
         normals_valid=np.zeros(k, bool) if normals else None,
         smooth=smooth[face_id] if len(face_id) == k else np.zeros(k, bool),
+        # Manifold reports every output triangle's source face, so groups follow it.
+        groups=None if groups is None else (groups[face_id] if len(face_id) == k else None),
     )
 
 

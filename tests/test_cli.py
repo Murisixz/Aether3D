@@ -241,7 +241,7 @@ def test_validate_and_inspect_accept_gltf(capsys):
     box = KHRONOS / "Box/glTF-Binary/Box.glb"
     code, data = run_json(capsys, "validate", str(box))
     assert code == 0 and data["source_format"] == "glb"
-    assert [d["code"] for d in data["import_diagnostics"]] == ["MATERIALS_IGNORED"]
+    assert [d["code"] for d in data["import_diagnostics"]] == []  # Box's material is imported
     code, out, _ = run(capsys, "inspect", str(box))
     assert code == 0 and "imported from GLB" in out.splitlines()[0]
 
