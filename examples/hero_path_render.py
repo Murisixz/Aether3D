@@ -12,7 +12,11 @@ Run from the repository root:
    instead of the flat ambient light. The rim light stays.
 2. Renders, every image by Aether3D from the same camera and materials:
 
-   * ``hero_path.png`` -- the path tracer, 4 bounces;
+   * ``hero_path.png`` -- the path tracer, 4 bounces. The polished hilt
+     reflects the sun onto the grass (a caustic), which a path tracer finds
+     only rarely, as bright speckles; this render clamps indirect light at 3
+     per sample (``path={"clamp": 3}``, a documented, biased option) to
+     remove them;
    * ``hero_path_comparison.png`` -- half size: the GPU rasterizer with sun
      shadow maps (the CPU rasterizer without shadows if there is no GPU), and
      the path tracer with 4 bounces.
@@ -37,6 +41,9 @@ from hero_render import build_scene as build_hero  # noqa: E402
 from showcase import caption_strip, half, record, save_report, timed_render, write  # noqa: E402
 
 from aether3d import RenderError  # noqa: E402
+
+CLAMP = 3.0
+"""Indirect radiance cap per sample (removes the hilt's caustic speckles)."""
 
 
 def build_scene(width: int, height: int):
@@ -72,7 +79,7 @@ def main(argv: list[str]) -> int:
         width=args.width,
         height=args.height,
         backend="path",
-        path={"samples": args.samples, "bounces": 4},
+        path={"samples": args.samples, "bounces": 4, "clamp": CLAMP},
     )
     full.save(out / "hero_path.png")
     record("hero_path", full, seconds, out / "hero_path.png")
@@ -92,8 +99,9 @@ def main(argv: list[str]) -> int:
         out / "hero_path_comparison.png",
         caption_strip(
             [
-                (f"Rasterizer ({raster.backend['name'].upper()}, Stage 7)", half(raster.image)),
-                ("Path tracer: 4 bounces", half(full.image)),
+                # The rasterizer renders at half size; the path tracer's image is halved.
+                (f"Rasterizer ({raster.backend['name'].upper()}, Stage 7)", raster.image),
+                (f"Path tracer: 4 bounces (clamp {CLAMP:g})", half(full.image)),
             ]
         ),
     )

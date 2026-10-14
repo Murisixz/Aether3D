@@ -23,9 +23,9 @@ Run from the repository root (booleans need ``pip install 'aether3d[boolean]'``)
 
    The rasterizer cannot use the sky (it keeps the world's ambient light) or
    the sun's size.
-3. Checks that bounced light brightens the castle where the direct light
-   leaves it dark, that nothing is reported, and writes settings, times and
-   ray counts to ``castle_path.json``.
+3. Checks that bounced light brightens the image where the direct light
+   leaves it dark (its darkest quarter), that nothing is reported, and
+   writes settings, times and ray counts to ``castle_path.json``.
 
 Exits with status 1 if a check fails. ``--quick`` renders small and fast.
 """
@@ -50,9 +50,13 @@ from aether3d import RenderError  # noqa: E402
 def build_scene(width: int, height: int):
     scene = build_castle(width, height, 2, materials=True)
     scene.remove(scene.get_by_name("Fill"))
-    # Meadow all around (the castle's ground is a raised slab with its top at z = 0).
-    meadow = scene.add_plane("Meadow", size=600, position=(0, 0, -0.15))
+    # A meadow all around, level with the top of the castle's ground slab (z = 0), replaces
+    # the slab: in low sunlight the slab's edges would show as lines.
+    scene.get_by_name("Ground").visible = False
+    meadow = scene.add_plane("Meadow", size=600)
     meadow.material = "Meadow"
+    # The camera was framed on the castle; let it see the meadow up to the top of the image.
+    scene.active_camera.camera.far = 2000.0
     sun = scene.get_by_name("Sun")
     sun.look_along((0.82, 0.38, -0.27), up=(0, 0, 1))  # about 15 degrees above the horizon
     sun.light.configure(color="#ffc988", intensity=4.0, angle=0.53)
@@ -129,11 +133,11 @@ def main(argv: list[str]) -> int:
     dark = covered & (direct.linear.mean(axis=2) < np.percentile(direct.linear[covered], 25))
     dark_gain = bounced.linear[dark].mean() / max(direct.linear[dark].mean(), 1e-9)
     print(
-        f"  bounced light: +{100 * (gain - 1):.0f}% on the castle, "
+        f"  bounced light: +{100 * (gain - 1):.0f}% over the image, "
         f"+{100 * (dark_gain - 1):.0f}% on its darkest quarter"
     )
     if gain < 1.0 or dark_gain < 1.15:
-        problems.append("bounced light does not brighten the castle's darker parts")
+        problems.append("bounced light does not brighten the image's darker parts")
     save_report(out / "castle_path.json", "Castle at golden hour (path traced)")
     for problem in problems:
         print(f"  FAILED: {problem}")

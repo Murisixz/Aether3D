@@ -9,14 +9,19 @@ Run from the repository root:
    table, a bench and a shelf, under a low sun and a sky outside.
 2. Renders it from inside, every image by Aether3D:
 
-   * ``window_direct.png`` -- the path tracer with ``bounces=0``: only the
-     patch of floor the sun reaches through the window and the surfaces
-     facing the window are lit; the rest of the room stays dark;
+   * ``window_direct.png`` -- the path tracer with ``bounces=0``: only what
+     the sun reaches through the window (a patch of the floor, the table
+     top) is lit, and, dimly, the walls that can see the sky through it; the
+     rest of the room stays dark;
    * ``window_path.png`` -- the path tracer with 6 bounces: the sunlit patch
      lights the whole room;
    * ``window_comparison.png`` -- both side by side, half size.
 
-   Both use one stop of exposure, so the window clips to white.
+   Both use one stop of exposure: the sky seen through the window is bright,
+   and its horizon clips. The defaults (960x640, 512 samples per pixel) take
+   about an hour on a 20-thread laptop CPU: most of the room is lit by light
+   from the small sunlit patch, which a path finds only rarely, so it needs
+   many samples to converge. ``--samples 64`` gives a grainy preview.
 
 3. Checks that the walls the sun cannot reach get light only from bounces,
    and writes settings, times and ray counts to ``window_room.json``.
@@ -111,7 +116,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("output", nargs="?", default=str(HERE / "output"))
     parser.add_argument("--width", type=int, default=960)
     parser.add_argument("--height", type=int, default=640)
-    parser.add_argument("--samples", type=int, default=128, help="path tracing samples per pixel")
+    parser.add_argument("--samples", type=int, default=512, help="path tracing samples per pixel")
     parser.add_argument("--quick", action="store_true", help="240x160, 16 samples")
     args = parser.parse_args(argv)
     if args.quick:
