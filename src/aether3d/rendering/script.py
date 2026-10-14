@@ -22,8 +22,8 @@ Operations (``object``/``camera``/``light``/``parent`` are object ids or names;
   ``look_at``, ``up``, ``active``; ``frame: true`` then frames it on ``frame_targets``
   (default: all visible geometry) along ``frame_direction`` with ``frame_margin``.
 * ``add_light`` -- ``type`` (``directional``/``point``), ``name``, ``color``, ``intensity``,
-  ``range``, ``falloff``, ``parent``, ``position``, ``rotation_euler``, ``direction``,
-  ``look_at``, ``up``.
+  ``range``, ``falloff``, ``radius``, ``angle``, ``parent``, ``position``,
+  ``rotation_euler``, ``direction``, ``look_at``, ``up``.
 * ``set_camera`` / ``set_light`` -- ``camera``/``light`` plus any of their parameters.
 * ``set_object`` -- ``object`` plus ``position``, ``rotation_euler``, ``scale``,
   ``look_at`` or ``look_along`` (with ``up``), ``color``, ``specular``, ``shininess``,
@@ -31,7 +31,8 @@ Operations (``object``/``camera``/``light``/``parent`` are object ids or names;
 * ``frame_camera`` -- ``camera`` (default: the active camera), ``targets``, ``direction``,
   ``up``, ``margin``, ``fit_clipping``.
 * ``set_active_camera`` -- ``camera`` (or ``null``).
-* ``set_world`` -- ``background``, ``ambient_color``, ``ambient_intensity``.
+* ``set_world`` -- ``background``, ``ambient_color``, ``ambient_intensity``,
+  ``environment`` (an object of environment fields; the others keep their values).
 * ``set_render_settings`` -- ``width``, ``height``, ``samples``, ``exposure``, ``cull``,
   ``default_lights``.
 * ``remove`` -- ``object`` (and its children).
@@ -86,7 +87,7 @@ VERSION = 1
 MAX_OPERATIONS = 10_000
 
 _CAMERA = {"projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio"}
-_LIGHT = {"color", "intensity", "range", "falloff"}
+_LIGHT = {"color", "intensity", "range", "falloff", "radius", "angle"}
 _PLACE = {"parent", "position", "rotation_euler", "look_at", "up"}
 _SPECS: dict[str, tuple[set[str], set[str]]] = {
     "add_camera": (
@@ -115,7 +116,7 @@ _SPECS: dict[str, tuple[set[str], set[str]]] = {
     ),
     "frame_camera": (set(), {"camera", "targets", "direction", "up", "margin", "fit_clipping"}),
     "set_active_camera": ({"camera"}, set()),
-    "set_world": (set(), {"background", "ambient_color", "ambient_intensity"}),
+    "set_world": (set(), {"background", "ambient_color", "ambient_intensity", "environment"}),
     "set_render_settings": (
         set(),
         {"width", "height", "samples", "exposure", "cull", "default_lights"},
@@ -395,9 +396,7 @@ def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> di
         active = scene.active_camera
         return {"active_camera": None if active is None else _ref(active)}
     if op == "set_world":
-        scene.world.configure(
-            **{k: s[k] for k in ("background", "ambient_color", "ambient_intensity") if k in s}
-        )
+        scene.world.configure(**{k: s[k] for k in _SPECS[op][1] if k in s})
         return {"world": scene.world.to_dict()}
     if op == "set_render_settings":
         scene.render_settings.configure(**{k: s[k] for k in _SPECS[op][1] if k in s})

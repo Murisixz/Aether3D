@@ -739,10 +739,73 @@ def _shadow_options(args: argparse.Namespace) -> dict[str, Any] | None:
     return {_SHADOW_FLAGS[k][0]: v for k, v in given.items()}
 
 
+_PATH_FLAGS = {
+    "spp": "samples",
+    "bounces": "bounces",
+    "seed": "seed",
+    "light_samples": "light_samples",
+    "russian_roulette": "russian_roulette",
+    "clamp": "clamp",
+}
+_AO_FLAGS = {"ao_samples": "samples", "ao_distance": "distance", "ao_strength": "strength"}
+
+
+def _path_options(args: argparse.Namespace) -> tuple[dict | None, Any]:
+    """``path`` and ``ao`` options from the path tracer's flags (None: not given)."""
+    path = {key: getattr(args, flag) for flag, key in _PATH_FLAGS.items()}
+    path = {k: v for k, v in path.items() if v is not None}
+    if args.ao_only:
+        path["integrator"] = "ao"
+    ao_given = {key: getattr(args, flag) for flag, key in _AO_FLAGS.items()}
+    ao_given = {k: v for k, v in ao_given.items() if v is not None}
+    ao: Any = ao_given or (True if (args.ao or args.ao_only) else None)
+    if args.backend != "path":
+        given = [f"--{f.replace('_', '-')}" for f in _PATH_FLAGS if getattr(args, f) is not None]
+        given += [f"--{f.replace('_', '-')}" for f in _AO_FLAGS if getattr(args, f) is not None]
+        given += [
+            flag
+            for flag in ("--ao", "--ao-only", "--passes")
+            if getattr(args, flag[2:].replace("-", "_"))
+        ]
+        if given:
+            verb = "applies" if len(given) == 1 else "apply"
+            raise CommandError(
+                "UsageError", f"{', '.join(given)} {verb} to the path tracer: add --backend path"
+            )
+        return None, None
+    if args.samples is not None:
+        raise CommandError(
+            "UsageError",
+            "--samples is raster antialiasing; give the path tracer's samples per pixel with --spp",
+        )
+    return path or None, ao
+
+
+def _write_passes(result: Any, directory: Path, force: bool) -> list[str]:
+    from ._fileio import write_atomic
+    from .rendering.hdr import encode_pfm
+
+    directory.mkdir(parents=True, exist_ok=True)
+    written = []
+    for name, values in sorted(result.passes.items()):
+        target = directory / f"{name}.pfm"
+        _check_destination(target, force)
+        write_atomic(target, encode_pfm(values))
+        written.append(str(target))
+    return written
+
+
 def _render_summary(result: Any, path: Path, written: Path) -> str:
     stats = result.stats
     backend = result.backend
-    if backend["name"] == "gpu":
+    if backend["name"] == "path":
+        what = "AO preview" if backend["integrator"] == "ao" else f"{backend['bounces']} bounces"
+        how = (
+            f"path tracer on the CPU: {backend['samples_rendered']} samples per pixel, {what}, "
+            f"seed {backend['seed']}, {stats['rays']:,} rays "
+            f"({stats['rays_per_second'] / 1e6:.2f} M rays/s)"
+        )
+    elif backend["name"] == "gpu":
         aa = backend["antialiasing"]
         adapter = backend["adapter"]
         how = f"GPU: {adapter['name']} ({adapter['backend']}), {aa['msaa']}x MSAA"
@@ -765,10 +828,13 @@ def cmd_render(args: argparse.Namespace) -> CommandOutput:
     from .rendering import render
 
     shadows = _shadow_options(args)
+    path_options, ao = _path_options(args)
     path = Path(args.path)
     output = Path(args.output) if args.output else path.with_suffix(".png")
-    if output.suffix.lower() != ".png":
-        raise CommandError("ValidationError", f"output must be a .png file, got {output}")
+    if output.suffix.lower() not in (".png", ".hdr", ".pfm"):
+        raise CommandError(
+            "ValidationError", f"output must be a .png, .hdr or .pfm file, got {output}"
+        )
     _check_destination(output, args.force)
     scene, info = _load_scene(path, args.allow_lossy)
     try:
@@ -790,11 +856,16 @@ def cmd_render(args: argparse.Namespace) -> CommandOutput:
             msaa=args.msaa,
             supersample=args.supersample,
             shadows=shadows,
+            path=path_options,
+            ao=ao,
+            tonemap=args.tonemap,
         )
         written = result.save(output)
     except RenderError as exc:
         raise _render_error(exc) from None
     data = {"path": str(path), **info, **result.to_dict()}
+    if args.passes:
+        data["pass_files"] = _write_passes(result, Path(args.passes), args.force)
     lines = [
         _render_summary(result, path, written),
         *_diagnostic_lines([d.to_dict() for d in result.diagnostics]),
@@ -1029,7 +1100,7 @@ def cmd_camera_list(args: argparse.Namespace) -> CommandOutput:
 
 def _light_params(args: argparse.Namespace) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for key in ("color", "intensity", "falloff"):
+    for key in ("color", "intensity", "falloff", "radius", "angle"):
         value = getattr(args, key, None)
         if value is not None:
             out[key] = value
@@ -1092,10 +1163,17 @@ def cmd_light_list(args: argparse.Namespace) -> CommandOutput:
             else f"along {_fmt_vec(light['direction'] or (0, 0, 0))}"
         )
         hidden = " (hidden)" if not light["visible"] else ""
+        size = ""
+        if light["type"] == "point" and light["radius"]:
+            size = f", radius {light['radius']:g}"
+        elif light["type"] == "directional" and light["angle"]:
+            size = f", angle {light['angle']:g} deg"
         lines.append(
             f"  {light['name']}: {light['type']} {_fmt_vec(light['color'])} x "
-            f"{light['intensity']:g} {where}{hidden}"
+            f"{light['intensity']:g} {where}{size}{hidden}"
         )
+    env = world["environment"]
+    lines.append(f"  environment (path tracer): {env['type']}")
     return {"path": str(path), **info, **summary}, "\n".join(lines), EXIT_OK
 
 
@@ -1135,6 +1213,21 @@ def cmd_scene_set(args: argparse.Namespace) -> CommandOutput:
         for k in ("background", "ambient_color", "ambient_intensity")
         if getattr(args, k) is not None
     }
+    env_flags = {
+        "environment": "type",
+        "environment_color": "color",
+        "environment_intensity": "intensity",
+        "sky_zenith": "zenith_color",
+        "sky_horizon": "horizon_color",
+        "sky_ground": "ground_color",
+    }
+    environment = {
+        key: getattr(args, flag)
+        for flag, key in env_flags.items()
+        if getattr(args, flag) is not None
+    }
+    if environment:
+        world["environment"] = environment
     if world:
         operations.append({"op": "set_world", **world})
     settings = {
@@ -1318,10 +1411,16 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p_render = sub.add_parser(
         "render",
         parents=[common, lossy],
-        help="render a PNG image with Aether3D's CPU (default) or GPU renderer",
+        help="render an image with Aether3D's CPU rasterizer (default), GPU rasterizer or "
+        "CPU path tracer",
     )
     p_render.add_argument("path", help="a .aether project (or a .glb/.gltf file, with --frame)")
-    p_render.add_argument("-o", "--output", help="the .png file to write (default: PATH.png)")
+    p_render.add_argument(
+        "-o",
+        "--output",
+        help="the image to write: .png, or .hdr/.pfm for linear high dynamic range "
+        "(default: PATH.png)",
+    )
     p_render.add_argument("--width", type=int, help="image width in pixels")
     p_render.add_argument("--height", type=int, help="image height in pixels")
     p_render.add_argument("--camera", help="camera object id or name (default: active camera)")
@@ -1342,9 +1441,17 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p_render.add_argument("--force", action="store_true", help="overwrite an existing image")
     p_render.add_argument(
         "--backend",
-        choices=["cpu", "gpu", "auto"],
+        choices=["cpu", "gpu", "auto", "path"],
         default="cpu",
-        help="cpu (default), gpu (fails if no usable GPU) or auto (GPU if available, else CPU)",
+        help="cpu (default), gpu (fails if no usable GPU), auto (GPU if available, else CPU) "
+        "or path (the path tracer: global illumination on the CPU, much slower)",
+    )
+    p_render.add_argument(
+        "--tonemap",
+        choices=["none", "neutral"],
+        default="none",
+        help="map linear light to the PNG: none (clip, default) or neutral (Khronos PBR "
+        "Neutral: compresses highlights)",
     )
     p_render.add_argument(
         "--adapter",
@@ -1368,6 +1475,37 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     )
     p_render.add_argument(
         "--shadow-pcf-radius", type=int, help="shadow filter radius in texels, 0-4 (1)"
+    )
+    p_render.add_argument("--spp", type=int, help="path: samples (paths) per pixel (16)")
+    p_render.add_argument(
+        "--bounces", type=int, help="path: indirect bounces, 0 = direct light only (4)"
+    )
+    p_render.add_argument("--seed", type=int, help="path: random seed (0)")
+    p_render.add_argument(
+        "--light-samples", type=int, help="path: shadow rays per light per vertex (1)"
+    )
+    p_render.add_argument(
+        "--russian-roulette", type=int, help="path: bounce from which dim paths may stop (3)"
+    )
+    p_render.add_argument(
+        "--clamp", type=float, help="path: clamp indirect radiance per sample (0 = off)"
+    )
+    p_render.add_argument(
+        "--ao", action="store_true", help="path: compute the ambient occlusion pass"
+    )
+    p_render.add_argument(
+        "--ao-only",
+        action="store_true",
+        help="path: fast preview rendering only ambient occlusion (implies --ao)",
+    )
+    p_render.add_argument("--ao-samples", type=int, help="path: AO rays per camera sample (4)")
+    p_render.add_argument("--ao-distance", type=float, help="path: AO reach in scene units (1)")
+    p_render.add_argument("--ao-strength", type=float, help="path: AO strength in [0, 1] (1)")
+    p_render.add_argument(
+        "--passes",
+        metavar="DIR",
+        help="path: also write every render pass (beauty, direct, indirect, albedo, normal, "
+        "depth, sample_count, variance, ao) to DIR as .pfm float images",
     )
     p_render.set_defaults(handler=cmd_render)
 
@@ -1465,6 +1603,14 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
         p.add_argument("--range", help="point lights: fade-out distance, or 'none'")
         p.add_argument("--falloff", choices=["inverse_square", "none"], help="point light falloff")
         p.add_argument("--direction", **vec, help="directional lights: travel direction")
+        p.add_argument(
+            "--radius", type=float, help="point lights: sphere radius (path tracer soft shadows)"
+        )
+        p.add_argument(
+            "--angle",
+            type=float,
+            help="directional lights: angular diameter in degrees (path tracer soft shadows)",
+        )
 
     p = lights.add_parser("add", parents=[common, writing], help="add a light")
     p.add_argument("path", help="the .aether project")
@@ -1511,6 +1657,18 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p.add_argument("--background", help="background color (#rrggbb)")
     p.add_argument("--ambient-color", help="ambient light color (#rrggbb)")
     p.add_argument("--ambient-intensity", type=float, help="ambient light strength (>= 0)")
+    p.add_argument(
+        "--environment",
+        choices=["ambient", "uniform", "sky"],
+        help="path tracer environment: ambient (the ambient light), uniform or sky",
+    )
+    p.add_argument("--environment-color", help="uniform environment color (#rrggbb)")
+    p.add_argument(
+        "--environment-intensity", type=float, help="uniform/sky environment strength (>= 0)"
+    )
+    p.add_argument("--sky-zenith", help="sky color straight up (#rrggbb)")
+    p.add_argument("--sky-horizon", help="sky color at the horizon (#rrggbb)")
+    p.add_argument("--sky-ground", help="color below the horizon (#rrggbb)")
     p.add_argument("--width", type=int, help="default image width")
     p.add_argument("--height", type=int, help="default image height")
     p.add_argument("--samples", type=int, help="default antialiasing (1-4)")

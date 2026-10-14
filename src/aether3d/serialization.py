@@ -35,7 +35,7 @@ from .transform import Transform
 FORMAT_ID = "aether3d.project"
 """Value of the top-level ``format`` field identifying an Aether3D project."""
 
-FORMAT_VERSION = 4
+FORMAT_VERSION = 5
 """Version written by this release. Files with a higher version are rejected.
 
 * Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
@@ -46,6 +46,8 @@ FORMAT_VERSION = 4
 * Version 4 (Aether3D 0.7.0) adds materials: ``scene.materials``,
   ``scene.textures``, per-triangle ``groups`` on meshes and, on every object,
   ``material`` and ``group_materials``.
+* Version 5 (Aether3D 0.8.0) adds path-tracing data: ``scene.world.environment``
+  and the light sizes ``radius`` and ``angle``.
 
 Older files are upgraded on load by the functions in :data:`MIGRATIONS`.
 """
@@ -117,10 +119,36 @@ def _migrate_v3_to_v4(document: dict[str, Any]) -> dict[str, Any]:
     return doc
 
 
+def _migrate_v4_to_v5(document: dict[str, Any]) -> dict[str, Any]:
+    """v4 -> v5: the default ("ambient") environment; lights without size."""
+    from .rendering.settings import Environment
+
+    doc = dict(document)
+    scene = doc.get("scene")
+    if isinstance(scene, dict):
+        scene = dict(scene)
+        world = scene.get("world")
+        if isinstance(world, dict) and "environment" not in world:
+            scene["world"] = {**world, "environment": Environment().to_dict()}
+        objects = scene.get("objects")
+        if isinstance(objects, list):
+            upgraded = []
+            for o in objects:
+                light = o.get("light") if isinstance(o, dict) else None
+                if isinstance(light, dict):
+                    sizes = {k: 0.0 for k in ("radius", "angle") if k not in light}
+                    o = {**o, "light": {**light, **sizes}}
+                upgraded.append(o)
+            scene["objects"] = upgraded
+        doc["scene"] = scene
+    return doc
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
+    4: _migrate_v4_to_v5,
 }
 """``MIGRATIONS[n]`` upgrades a version-``n`` document to version ``n + 1``."""
 

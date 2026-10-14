@@ -17,7 +17,6 @@ from ..errors import RenderError
 from . import cpu
 from .backends import Antialiasing, antialiasing_plan, check_backend
 from .camera import Camera, CameraFrame, frame_from_matrix
-from .color import linear_to_srgb, quantize
 from .framing import AUTO_VIEW_DIRECTION, compute_framing, orientation_frame, target_points
 from .png import encode_png
 from .scene_data import (
@@ -27,8 +26,9 @@ from .scene_data import (
     resolve_camera,
     world_matrices,
 )
-from .settings import RenderLimits, RenderSettings, ShadowSettings
+from .settings import AOSettings, PathSettings, RenderLimits, RenderSettings, ShadowSettings
 from .shadows import ShadowPlan, plan_shadows
+from .tonemap import check_tonemap, color_info, display
 
 if TYPE_CHECKING:
     from ..scene import Scene, SceneObject
@@ -51,13 +51,22 @@ class RenderResult:
       samples of each are visible.
     * ``camera``, ``settings``, ``stats`` (counts and timings in seconds),
       ``diagnostics`` and ``output`` (set by :meth:`save`).
-    * ``backend`` -- which backend rendered it: ``{"name": "cpu"}``, or for
+    * ``backend`` -- which backend rendered it: ``{"name": "cpu"}``, for
       the GPU the adapter, graphics API, antialiasing, shadow maps, GPU pass
-      timings and resource statistics.
+      timings and resource statistics, for the path tracer
+      (``{"name": "path", "device": "cpu", ...}``) its settings, BVH and
+      light statistics.
+    * ``passes`` -- path tracer only: named linear buffers computed by the
+      renderer (``beauty``, ``direct``, ``indirect``, ``albedo``, ``normal``,
+      ``depth``, ``sample_count``, ``variance`` and ``ao`` when enabled;
+      before exposure). Empty for the rasterizers.
+    * ``color`` -- the output transform: working space, exposure, tone
+      mapper and encoding.
 
     ``depth`` and ``object_index`` describe one representative sample per pixel
     (the center sample for odd ``samples``; on the GPU with MSAA, the first
-    MSAA sample of the center of the supersampled block).
+    MSAA sample of the center of the supersampled block; for the path tracer
+    a ray through the pixel center).
     """
 
     image: np.ndarray
@@ -72,6 +81,8 @@ class RenderResult:
     diagnostics: list[Diagnostic] = field(default_factory=list)
     output: Path | None = None
     backend: dict[str, Any] = field(default_factory=lambda: {"name": "cpu"})
+    passes: dict[str, np.ndarray] = field(default_factory=dict)
+    color: dict[str, Any] = field(default_factory=lambda: color_info(0.0, "none"))
 
     @property
     def width(self) -> int:
@@ -103,23 +114,41 @@ class RenderResult:
             text["Source"] = (
                 f"Aether3D GPU renderer (wgpu, {adapter.get('backend')}) on {adapter.get('name')}"
             )
+        elif self.backend.get("name") == "path":
+            b = self.backend
+            text["Source"] = (
+                f"Aether3D path tracer on the CPU (NumPy), {b.get('samples')} samples per pixel, "
+                f"{b.get('bounces')} bounces, seed {b.get('seed')}"
+            )
         return encode_png(self.image, text=text)
 
     def save(self, path: str | os.PathLike[str]) -> Path:
-        """Write the image as a PNG file, atomically; returns the resolved path.
+        """Write the image to a file, atomically; returns the resolved path.
 
-        The file is written to a temporary sibling and renamed into place, so
-        a failure never leaves a partial or corrupted image.
+        ``.png`` writes the 8-bit display image; ``.hdr`` (Radiance RGBE) and
+        ``.pfm`` (float32) write :attr:`linear` -- high dynamic range, after
+        exposure and before tone mapping. The file is written to a temporary
+        sibling and renamed into place, so a failure never leaves a partial
+        or corrupted image.
         """
         from .._fileio import write_atomic
+        from .hdr import encode_hdr, encode_pfm
 
         target = Path(path)
-        if target.suffix.lower() != ".png":
+        suffix = target.suffix.lower()
+        if suffix not in (".png", ".hdr", ".pfm"):
             raise RenderError(
-                "INVALID_OUTPUT", f"output must be a .png file, got {str(target)!r}", "output"
+                "INVALID_OUTPUT",
+                f"output must be a .png, .hdr or .pfm file, got {str(target)!r}",
+                "output",
             )
         t0 = time.perf_counter()
-        data = self.png_bytes()
+        if suffix == ".png":
+            data = self.png_bytes()
+        elif suffix == ".hdr":
+            data = encode_hdr(self.linear)
+        else:
+            data = encode_pfm(self.linear)
         t1 = time.perf_counter()
         try:
             written = write_atomic(target, data)
@@ -132,7 +161,7 @@ class RenderResult:
             ) from None
         self.stats["timings"]["encode"] = t1 - t0
         self.stats["timings"]["write"] = time.perf_counter() - t1
-        self.stats["png_bytes"] = len(data)
+        self.stats["png_bytes" if suffix == ".png" else "file_bytes"] = len(data)
         self.output = written
         return written
 
@@ -146,6 +175,8 @@ class RenderResult:
             "backend": self.backend,
             "camera": self.camera,
             "settings": self.settings,
+            "color": self.color,
+            "passes": sorted(self.passes),
             "stats": self.stats,
             "objects": self.objects,
             "diagnostics": [d.to_dict() for d in self.diagnostics],
@@ -183,6 +214,10 @@ def render(
     msaa: int | None = None,
     supersample: int | None = None,
     shadows: bool | dict[str, Any] | ShadowSettings | None = None,
+    path: dict[str, Any] | PathSettings | None = None,
+    ao: bool | dict[str, Any] | AOSettings | None = None,
+    tonemap: str = "none",
+    progress: Any = None,
 ) -> RenderResult:
     """Render ``scene`` and return a :class:`RenderResult`.
 
@@ -209,6 +244,21 @@ def render(
       ``supersample=samples, msaa=1`` reproduces the CPU's sample positions.
     * ``shadows`` -- GPU shadow maps for directional lights: ``True``, a
       :class:`ShadowSettings` or a dict of its fields; default off.
+    * ``path`` -- path tracer settings (``backend="path"``): a
+      :class:`PathSettings` or a dict of its fields (``samples`` per pixel,
+      ``bounces``, ``seed``, ``light_samples``, ...). ``samples`` above
+      means raster antialiasing and does not apply to the path tracer.
+    * ``ao`` -- ambient occlusion pass of the path tracer: ``True``, an
+      :class:`AOSettings` or a dict of its fields (``samples``,
+      ``distance``, ``strength``). ``path={"integrator": "ao"}`` renders
+      only AO (a fast preview).
+    * ``tonemap`` -- ``"none"`` (default: clip, as always) or ``"neutral"``
+      (Khronos PBR Neutral): how linear light is mapped to the PNG (any
+      backend); ``result.color`` reports it.
+    * ``progress`` -- path tracer only: called after every completed sample
+      pass as ``progress(samples_done, samples_total, seconds)``; returning
+      ``False`` stops the render there (the image averages the samples done
+      and a ``RENDER_STOPPED`` diagnostic says so).
 
     The scene is never modified. Procedural objects render their current
     evaluated geometry. Errors raise :class:`~aether3d.errors.RenderError`
@@ -221,7 +271,52 @@ def render(
     if not isinstance(frame, bool):
         raise RenderError("INVALID_SETTINGS", f"frame must be True or False, got {frame!r}")
     requested = check_backend(backend)
+    tonemap = check_tonemap(tonemap)
     shadow_settings = ShadowSettings.coerce(shadows)
+    if requested != "path":
+        for name, value in (("path", path), ("ao", ao), ("progress", progress)):
+            if value is not None:
+                raise RenderError(
+                    "INVALID_SETTINGS",
+                    f"{name} applies to the path tracer (backend='path'), not to "
+                    f"backend={requested!r}",
+                    name,
+                    hint="use backend='path', or remove the option",
+                )
+    path_settings = ao_settings = None
+    if requested == "path":
+        for name, value in (
+            ("msaa", msaa),
+            ("supersample", supersample),
+            ("adapter", adapter),
+            ("samples", samples),
+        ):
+            if value is not None:
+                hint = (
+                    "set the path tracer's samples per pixel with path={'samples': N}"
+                    if name == "samples"
+                    else "remove the option (the path tracer runs on the CPU)"
+                )
+                raise RenderError(
+                    "INVALID_SETTINGS",
+                    f"{name} does not apply to the path tracer (backend='path')",
+                    name,
+                    hint=hint,
+                )
+        if shadow_settings is not None:
+            raise RenderError(
+                "INVALID_SETTINGS",
+                "the path tracer always traces shadow rays; shadow maps (shadows=) are a GPU "
+                "raster feature",
+                "shadows",
+                hint="remove shadows=, or use backend='gpu'",
+            )
+        path_settings = PathSettings.coerce(path)
+        ao_settings = AOSettings.coerce(ao)
+        if path_settings.integrator == "ao" and ao_settings is None:
+            ao_settings = AOSettings()  # the AO preview needs AO settings: the defaults
+        if progress is not None and not callable(progress):
+            raise RenderError("INVALID_SETTINGS", "progress must be callable", "progress")
     if requested == "cpu":
         for name, value in (("msaa", msaa), ("supersample", supersample)):
             if value is not None:
@@ -310,6 +405,20 @@ def render(
     diagnostics += list(rs.diagnostics)
     plan = None if shadow_settings is None else plan_shadows(rs, shadow_settings, aspect)
 
+    if requested == "path":
+        return _finish_path(
+            rs,
+            settings,
+            path_settings,
+            ao_settings,
+            limits,
+            diagnostics,
+            frame,
+            aspect,
+            t_start,
+            tonemap,
+            progress,
+        )
     if requested in ("gpu", "auto"):
         try:
             return _finish_gpu(
@@ -324,6 +433,7 @@ def render(
                 frame,
                 aspect,
                 t_start,
+                tonemap,
             )
         except RenderError as exc:
             if requested == "gpu" or not exc.code.startswith("GPU_"):
@@ -355,7 +465,9 @@ def render(
                         "shadows",
                     )
                 )
-    return _finish_cpu(rs, settings, limits, requested, diagnostics, frame, aspect, t_start)
+    return _finish_cpu(
+        rs, settings, limits, requested, diagnostics, frame, aspect, t_start, tonemap
+    )
 
 
 def _objects(rs: RenderScene, visible: np.ndarray) -> list[dict[str, Any]]:
@@ -380,6 +492,7 @@ def _finish_cpu(
     frame: bool,
     aspect: float,
     t_start: float,
+    tonemap: str = "none",
 ) -> RenderResult:
     frame_data = cpu.render_scene(
         rs, settings.width, settings.height, settings.samples, settings.cull, limits
@@ -390,9 +503,7 @@ def _finish_cpu(
     linear = frame_data.linear
     if settings.exposure != 0.0:
         linear *= 2.0**settings.exposure
-    image = np.empty(linear.shape, dtype=np.uint8)
-    for r0 in range(0, linear.shape[0], 128):  # bounded temporaries
-        image[r0 : r0 + 128] = quantize(linear_to_srgb(linear[r0 : r0 + 128]))
+    image = display(linear, tonemap)  # in row blocks: bounded temporaries
     t_output = time.perf_counter() - t0
 
     counts = frame_data.counts
@@ -425,6 +536,7 @@ def _finish_cpu(
         stats=stats,
         diagnostics=diagnostics,
         backend={"name": "cpu", "requested": requested},
+        color=color_info(settings.exposure, tonemap),
     )
 
 
@@ -440,6 +552,7 @@ def _finish_gpu(
     frame: bool,
     aspect: float,
     t_start: float,
+    tonemap: str = "none",
 ) -> RenderResult:
     from .gpu import device as gpu_device
     from .gpu import renderer as gpu_renderer
@@ -526,8 +639,9 @@ def _finish_gpu(
         "device_init_seconds": context.init_seconds if fresh else 0.0,
         "resources": gpu_frame.resources,
     }
+    image = gpu_frame.image if tonemap == "none" else display(gpu_frame.linear, tonemap)
     return RenderResult(
-        image=gpu_frame.image,
+        image=image,
         linear=gpu_frame.linear,
         depth=gpu_frame.depth,
         coverage=gpu_frame.coverage,
@@ -538,4 +652,100 @@ def _finish_gpu(
         stats=stats,
         diagnostics=diagnostics,
         backend=backend_info,
+        color=color_info(settings.exposure, tonemap),
+    )
+
+
+def _finish_path(
+    rs: RenderScene,
+    settings: RenderSettings,
+    path: PathSettings,
+    ao: AOSettings | None,
+    limits: RenderLimits,
+    diagnostics: list[Diagnostic],
+    frame: bool,
+    aspect: float,
+    t_start: float,
+    tonemap: str,
+    progress: Any,
+) -> RenderResult:
+    from . import pathtrace
+
+    data = pathtrace.render_scene(
+        rs,
+        settings.width,
+        settings.height,
+        path,
+        ao,
+        cull=settings.cull,
+        limits=limits,
+        progress=progress,
+    )
+    diagnostics += data.diagnostics
+    t0 = time.perf_counter()
+    linear = data.linear
+    if settings.exposure != 0.0:
+        linear = linear * 2.0**settings.exposure
+    if not math.isfinite(float(np.max(linear, initial=0.0))):
+        raise RenderError("RENDER_FAILED", "the rendered image contains non-finite values")
+    image = display(linear, tonemap)
+    t_output = time.perf_counter() - t0
+    timings = {
+        "evaluate": rs.timings.get("evaluate", 0.0),
+        "textures": rs.timings.get("textures", 0.0),
+        "extract": rs.timings.get("extract", 0.0),
+        **data.timings,
+        "output": t_output,
+    }
+    timings["total"] = time.perf_counter() - t_start
+    counts = data.counts
+    rays = sum(counts.get(k, 0) for k in ("camera_rays", "bounce_rays", "shadow_rays", "ao_rays"))
+    stats = {
+        **counts,
+        "rays": rays + counts.get("center_rays", 0),
+        "rays_per_second": rays / max(timings.get("trace", 0.0), 1e-9),
+        "pixels_covered": int(np.count_nonzero(data.coverage > 0)),
+        "noise": data.info["noise"],
+        "timings": timings,
+    }
+    cam_info = rs.camera.to_dict(aspect)
+    cam_info["temporary"] = frame
+    backend_info = {
+        "name": "path",
+        "requested": "path",
+        "device": "cpu",
+        "implementation": "Aether3D path tracer (NumPy, single process)",
+        "gpu": False,
+        **path.to_dict(),
+        "samples_rendered": counts["samples_per_pixel"],
+        "ao": None if ao is None else ao.to_dict(),
+        "environment": data.info["environment"],
+        "lights": data.info["lights"],
+        "bvh": data.info["bvh"],
+        "work_estimate": data.info["work_estimate"],
+    }
+    if settings.cull != "none":
+        diagnostics.append(
+            Diagnostic(
+                "CULL_CAMERA_RAYS",
+                INFO,
+                f"cull={settings.cull!r} hides those faces from camera rays only; light still "
+                "bounces off both sides of every double-sided surface",
+                "cull",
+            )
+        )
+    return RenderResult(
+        image=image,
+        linear=linear.astype(np.float32),
+        depth=data.depth,
+        coverage=data.coverage,
+        object_index=data.instance,
+        objects=_objects(rs, data.visible_samples),
+        camera=cam_info,
+        settings=settings.to_dict(),
+        stats=stats,
+        diagnostics=diagnostics,
+        backend=backend_info,
+        passes={k: v.astype(np.float32) for k, v in data.passes.items()},
+        color=color_info(settings.exposure, tonemap),
     )

@@ -16,6 +16,12 @@ This is a deliberately simple, **non-physically-based** lighting model (see
 Ambient light is a scene-wide setting (``scene.world``), not a light object.
 The CPU renderer draws no shadows; the GPU backend renders shadow maps for
 directional lights when asked (``render(backend="gpu", shadows=True)``).
+
+Light sizes are used by the path tracer only (``render(backend="path")``),
+which traces shadow rays toward points on the light: ``radius`` makes a point
+light a glowing sphere and ``angle`` gives a directional light the angular
+diameter of a sun disk, so shadows get soft edges (penumbrae). Both default
+to 0 (a point; parallel rays), and the raster backends ignore them.
 """
 
 from __future__ import annotations
@@ -31,8 +37,10 @@ from .color import Color, parse_color
 LIGHT_TYPES = ("directional", "point")
 FALLOFFS = ("inverse_square", "none")
 MAX_INTENSITY = 1e9
+MAX_ANGLE = 180.0
+"""Largest angular diameter of a directional light, in degrees."""
 
-_FIELDS = ("type", "color", "intensity", "range", "falloff")
+_FIELDS = ("type", "color", "intensity", "range", "falloff", "radius", "angle")
 
 
 class Light:
@@ -43,6 +51,11 @@ class Light:
     * ``intensity`` -- unitless multiplier, ``>= 0``.
     * ``range`` -- point lights: distance at which the light fades out, or ``None``.
     * ``falloff`` -- point lights: ``"inverse_square"`` (default) or ``"none"``.
+    * ``radius`` -- point lights: radius of the emitting sphere (``>= 0``,
+      default 0); soft shadows in the path tracer.
+    * ``angle`` -- directional lights: angular diameter in degrees
+      (``0..180``, default 0; the sun is about 0.53); soft shadows in the
+      path tracer.
     """
 
     __slots__ = tuple(f"_{name}" for name in _FIELDS)
@@ -54,6 +67,8 @@ class Light:
         intensity: float = 1.0,
         range: float | None = None,
         falloff: str = "inverse_square",
+        radius: float = 0.0,
+        angle: float = 0.0,
     ) -> None:
         values = _validate(
             {
@@ -62,6 +77,8 @@ class Light:
                 "intensity": intensity,
                 "range": range,
                 "falloff": falloff,
+                "radius": radius,
+                "angle": angle,
             },
             "light",
         )
@@ -88,6 +105,8 @@ class Light:
     intensity = property(lambda self: self._intensity, lambda self, v: self.configure(intensity=v))
     range = property(lambda self: self._range, lambda self, v: self.configure(range=v))
     falloff = property(lambda self: self._falloff, lambda self, v: self.configure(falloff=v))
+    radius = property(lambda self: self._radius, lambda self, v: self.configure(radius=v))
+    angle = property(lambda self: self._angle, lambda self, v: self.configure(angle=v))
 
     def copy(self) -> Light:
         return Light(**self.to_dict())
@@ -125,6 +144,10 @@ class Light:
             extra = f", falloff={self._falloff}" + (
                 f", range={self._range:g}" if self._range is not None else ""
             )
+            if self._radius:
+                extra += f", radius={self._radius:g}"
+        elif self._angle:
+            extra = f", angle={self._angle:g}"
         return f"Light({self._type}, color={self._color}, intensity={self._intensity:g}{extra})"
 
 
@@ -171,10 +194,26 @@ def _validate(values: dict[str, Any], location: str) -> dict[str, Any]:
             f"falloff must be one of {', '.join(FALLOFFS)}, got {values['falloff']!r}",
             f"{location}.falloff",
         )
+    sizes = {}
+    for name, hi in (("radius", 1e9), ("angle", MAX_ANGLE)):
+        value = values[name]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float, np.integer, np.floating))
+            or not math.isfinite(float(value))
+            or not 0.0 <= float(value) <= hi
+        ):
+            raise RenderError(
+                "INVALID_LIGHT",
+                f"{name} must be a finite number in [0, {hi:g}], got {value!r}",
+                f"{location}.{name}",
+            )
+        sizes[name] = float(value)
     return {
         "type": values["type"],
         "color": color,
         "intensity": float(intensity),
         "range": rng,
         "falloff": values["falloff"],
+        **sizes,
     }

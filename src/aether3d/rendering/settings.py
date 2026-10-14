@@ -160,25 +160,111 @@ class Appearance(_Validated):
         return self == Appearance()
 
 
+ENVIRONMENT_TYPES = ("ambient", "uniform", "sky")
+DEFAULT_ZENITH: Color = (0.22, 0.42, 0.78)
+DEFAULT_HORIZON: Color = (0.78, 0.85, 0.93)
+DEFAULT_GROUND: Color = (0.32, 0.30, 0.27)
+
+
+class Environment(_Validated):
+    """Light arriving from infinitely far away (``scene.world.environment``).
+
+    Used by the path tracer (``render(backend="path")``); the raster backends
+    keep using the world's background and ambient light unchanged.
+
+    * ``type`` -- ``"ambient"`` (default): a uniform environment whose
+      radiance is the world's ambient light (``ambient_color x
+      ambient_intensity``, linear), the physical reading of the raster
+      ambient term; camera rays that miss show ``world.background``.
+      ``"uniform"``: radiance ``color x intensity`` from every direction.
+      ``"sky"``: a procedural gradient from ``ground_color`` (below the
+      horizon) through ``horizon_color`` to ``zenith_color`` (straight up,
+      +Z), times ``intensity``. With ``"uniform"`` and ``"sky"`` every ray
+      that misses the scene -- camera rays included -- sees the environment.
+    * ``color`` -- display color of the uniform environment.
+    * ``intensity`` -- radiance multiplier (``>= 0``) of ``"uniform"`` and ``"sky"``.
+    * ``zenith_color``, ``horizon_color``, ``ground_color`` -- display colors of the sky.
+
+    See ``docs/RENDER_QUALITY.md`` for the sky formula.
+    """
+
+    _FIELDS = ("type", "color", "intensity", "zenith_color", "horizon_color", "ground_color")
+    _CODE = "INVALID_WORLD"
+    __slots__ = tuple(f"_{name}" for name in _FIELDS)
+
+    def __init__(
+        self,
+        type: str = "ambient",
+        color: Any = (1.0, 1.0, 1.0),
+        intensity: float = 1.0,
+        zenith_color: Any = DEFAULT_ZENITH,
+        horizon_color: Any = DEFAULT_HORIZON,
+        ground_color: Any = DEFAULT_GROUND,
+    ) -> None:
+        self._assign(
+            self._check(
+                {
+                    "type": type,
+                    "color": color,
+                    "intensity": intensity,
+                    "zenith_color": zenith_color,
+                    "horizon_color": horizon_color,
+                    "ground_color": ground_color,
+                },
+                "world.environment",
+            )
+        )
+
+    def _location(self) -> str:
+        return "world.environment"
+
+    def _check(self, values: dict[str, Any], location: str) -> dict[str, Any]:
+        kind = values["type"]
+        if kind not in ENVIRONMENT_TYPES:
+            raise RenderError(
+                self._CODE,
+                f"type must be one of {', '.join(ENVIRONMENT_TYPES)}, got {kind!r}",
+                f"{location}.type",
+            )
+        out: dict[str, Any] = {"type": kind}
+        for name in ("color", "zenith_color", "horizon_color", "ground_color"):
+            out[name] = _color(values[name], self._CODE, f"{location}.{name}")
+        out["intensity"] = _number(
+            values["intensity"], self._CODE, "intensity", f"{location}.intensity", 0.0, 1e6
+        )
+        return {name: out[name] for name in self._FIELDS}
+
+    type = _prop("type")
+    color = _prop("color")
+    intensity = _prop("intensity")
+    zenith_color = _prop("zenith_color")
+    horizon_color = _prop("horizon_color")
+    ground_color = _prop("ground_color")
+
+
 class World(_Validated):
-    """Scene-wide background and ambient light (``scene.world``).
+    """Scene-wide background, ambient light and environment (``scene.world``).
 
     * ``background`` -- display (sRGB) color behind all geometry.
     * ``ambient_color`` -- display color of the uniform ambient light.
     * ``ambient_intensity`` -- unitless ambient strength (``>= 0``): every
       surface receives ``base color x ambient color x ambient_intensity``
       (linear light), regardless of orientation.
+    * ``environment`` -- an :class:`Environment`: what the path tracer sees
+      and is lit by where rays leave the scene. Assign an ``Environment`` or
+      a dict of its fields (missing fields keep their current values).
     """
 
-    _FIELDS = ("background", "ambient_color", "ambient_intensity")
+    _FIELDS = ("background", "ambient_color", "ambient_intensity", "environment")
     _CODE = "INVALID_WORLD"
-    __slots__ = ("_background", "_ambient_color", "_ambient_intensity")
+    __slots__ = ("_background", "_ambient_color", "_ambient_intensity", "_environment")
 
     def __init__(
         self,
         background: Any = DEFAULT_BACKGROUND,
         ambient_color: Any = (1.0, 1.0, 1.0),
         ambient_intensity: float = 0.1,
+        environment: Any = None,
     ) -> None:
         self._assign(
             self._check(
@@ -186,12 +272,35 @@ class World(_Validated):
                     "background": background,
                     "ambient_color": ambient_color,
                     "ambient_intensity": ambient_intensity,
+                    "environment": Environment() if environment is None else environment,
                 },
                 "world",
             )
         )
 
+    def configure(self, **changes: Any):
+        env = changes.get("environment")
+        if isinstance(env, dict):  # partial updates keep the other environment fields
+            changes = {**changes, "environment": {**self._environment.to_dict(), **env}}
+        return super().configure(**changes)
+
+    def to_dict(self) -> dict[str, Any]:
+        data = super().to_dict()
+        data["environment"] = self._environment.to_dict()
+        return data
+
     def _check(self, values: dict[str, Any], location: str) -> dict[str, Any]:
+        env = values["environment"]
+        if isinstance(env, Environment):
+            env = env.copy()
+        elif isinstance(env, dict):
+            env = Environment.from_dict(env, f"{location}.environment")
+        else:
+            raise RenderError(
+                self._CODE,
+                f"environment must be an Environment or a dict, got {env!r}",
+                f"{location}.environment",
+            )
         return {
             "background": _color(values["background"], self._CODE, f"{location}.background"),
             "ambient_color": _color(
@@ -205,11 +314,13 @@ class World(_Validated):
                 0.0,
                 1e6,
             ),
+            "environment": env,
         }
 
     background = _prop("background")
     ambient_color = _prop("ambient_color")
     ambient_intensity = _prop("ambient_intensity")
+    environment = _prop("environment")
 
 
 class RenderSettings(_Validated):
@@ -440,6 +551,201 @@ class ShadowSettings(_Validated):
         )
 
 
+INTEGRATORS = ("path", "ao")
+MAX_PATH_SAMPLES = 1_000_000
+MAX_BOUNCES = 64
+
+
+class PathSettings(_Validated):
+    """Path tracer settings for one render (``backend="path"``; not saved in projects).
+
+    Pass a :class:`PathSettings` or a dict of its fields as ``path=`` to
+    :func:`~aether3d.rendering.render`.
+
+    * ``samples`` -- paths traced per pixel (default 16). Noise falls as
+      ``1 / sqrt(samples)``.
+    * ``bounces`` -- indirect bounces (default 4): ``0`` is direct lighting
+      only (camera hit, lights and emitters seen from it); each bounce adds
+      light that reflected once more.
+    * ``seed`` -- random seed (default 0). The same scene, settings and seed
+      give the same image.
+    * ``light_samples`` -- shadow rays per light (and per emissive-surface
+      sample) at every path vertex (default 1).
+    * ``russian_roulette`` -- the bounce from which dim paths may stop early,
+      with their survivors weighted up (unbiased; default 3).
+    * ``clamp`` -- largest radiance one sample may carry in indirect light
+      (``0``: off, the default). Clamping removes fireflies but loses energy
+      (biased).
+    * ``integrator`` -- ``"path"`` (default) or ``"ao"``: a fast preview that
+      traces camera rays and ambient occlusion only (the image is the AO
+      pass; see ``ao``).
+    """
+
+    _FIELDS = (
+        "samples",
+        "bounces",
+        "seed",
+        "light_samples",
+        "russian_roulette",
+        "clamp",
+        "integrator",
+    )
+    _CODE = "INVALID_PATH_SETTINGS"
+    __slots__ = tuple(f"_{name}" for name in _FIELDS)
+
+    def __init__(
+        self,
+        samples: int = 16,
+        bounces: int = 4,
+        seed: int = 0,
+        light_samples: int = 1,
+        russian_roulette: int = 3,
+        clamp: float = 0.0,
+        integrator: str = "path",
+    ) -> None:
+        self._assign(
+            self._check(
+                {
+                    "samples": samples,
+                    "bounces": bounces,
+                    "seed": seed,
+                    "light_samples": light_samples,
+                    "russian_roulette": russian_roulette,
+                    "clamp": clamp,
+                    "integrator": integrator,
+                },
+                "path",
+            )
+        )
+
+    def _location(self) -> str:
+        return "path"
+
+    def _check(self, values: dict[str, Any], location: str) -> dict[str, Any]:
+        integrator = values["integrator"]
+        if integrator not in INTEGRATORS:
+            raise RenderError(
+                self._CODE,
+                f"integrator must be one of {', '.join(INTEGRATORS)}, got {integrator!r}",
+                f"{location}.integrator",
+            )
+        c = self._CODE
+        return {
+            "samples": _integer(
+                values["samples"], c, "samples", f"{location}.samples", 1, MAX_PATH_SAMPLES
+            ),
+            "bounces": _integer(
+                values["bounces"], c, "bounces", f"{location}.bounces", 0, MAX_BOUNCES
+            ),
+            "seed": _integer(values["seed"], c, "seed", f"{location}.seed", 0, 2**63 - 1),
+            "light_samples": _integer(
+                values["light_samples"], c, "light_samples", f"{location}.light_samples", 1, 64
+            ),
+            "russian_roulette": _integer(
+                values["russian_roulette"],
+                c,
+                "russian_roulette",
+                f"{location}.russian_roulette",
+                0,
+                MAX_BOUNCES,
+            ),
+            "clamp": _number(values["clamp"], c, "clamp", f"{location}.clamp", 0.0, 1e12),
+            "integrator": integrator,
+        }
+
+    samples = _prop("samples")
+    bounces = _prop("bounces")
+    seed = _prop("seed")
+    light_samples = _prop("light_samples")
+    russian_roulette = _prop("russian_roulette")
+    clamp = _prop("clamp")
+    integrator = _prop("integrator")
+
+    @classmethod
+    def coerce(cls, value: Any) -> PathSettings:
+        """``None`` -> defaults; a dict or instance as given."""
+        return _coerce(cls, value, "path")
+
+
+class AOSettings(_Validated):
+    """Ambient occlusion for one render (``backend="path"``; not saved in projects).
+
+    AO is the cosine-weighted fraction of the hemisphere above the surface
+    seen by each camera ray that is blocked by geometry within ``distance``.
+    It is an artistic approximation, not light transport: it is computed as
+    a separate ``"ao"`` pass and never multiplied into the path-traced image.
+    Pass ``ao=True``, an :class:`AOSettings` or a dict of its fields.
+
+    * ``samples`` -- AO rays per camera sample (default 4).
+    * ``distance`` -- reach in scene units (default 1): geometry farther than
+      this does not occlude.
+    * ``strength`` -- ``0..1`` (default 1): the pass stores ``1 - strength x
+      occlusion``.
+
+    Rays use the path settings' ``seed``, so AO is reproducible too.
+    """
+
+    _FIELDS = ("samples", "distance", "strength")
+    _CODE = "INVALID_AO_SETTINGS"
+    __slots__ = ("_samples", "_distance", "_strength")
+
+    def __init__(self, samples: int = 4, distance: float = 1.0, strength: float = 1.0) -> None:
+        self._assign(
+            self._check({"samples": samples, "distance": distance, "strength": strength}, "ao")
+        )
+
+    def _location(self) -> str:
+        return "ao"
+
+    def _check(self, values: dict[str, Any], location: str) -> dict[str, Any]:
+        c = self._CODE
+        distance = _number(values["distance"], c, "distance", f"{location}.distance", 0.0, 1e12)
+        if distance <= 0.0:
+            raise RenderError(c, "distance must be > 0", f"{location}.distance")
+        return {
+            "samples": _integer(values["samples"], c, "samples", f"{location}.samples", 1, 1024),
+            "distance": distance,
+            "strength": _number(
+                values["strength"], c, "strength", f"{location}.strength", 0.0, 1.0
+            ),
+        }
+
+    samples = _prop("samples")
+    distance = _prop("distance")
+    strength = _prop("strength")
+
+    @classmethod
+    def coerce(cls, value: Any) -> AOSettings | None:
+        """``None``/``False`` -> no AO; ``True`` -> defaults; a dict or instance as given."""
+        if value is None or value is False:
+            return None
+        if value is True:
+            return cls()
+        return _coerce(cls, value, "ao")
+
+
+def _coerce(cls, value: Any, location: str):
+    if value is None:
+        return cls()
+    if isinstance(value, cls):
+        return value.copy()
+    if isinstance(value, dict):
+        unknown = sorted(set(value) - set(cls._FIELDS))
+        if unknown:
+            raise RenderError(
+                cls._CODE,
+                f"unknown {location} setting(s): {', '.join(unknown)}",
+                location,
+                hint=f"settings: {', '.join(cls._FIELDS)}",
+            )
+        return cls(**value)
+    raise RenderError(
+        cls._CODE,
+        f"{location} must be a dict or a {cls.__name__}, got {value!r}",
+        location,
+    )
+
+
 @dataclass(frozen=True)
 class RenderLimits:
     """Safety limits checked before any memory is allocated (raise ``RESOURCE_LIMIT``).
@@ -451,9 +757,16 @@ class RenderLimits:
     * ``max_gpu_memory`` -- largest estimated GPU memory, in bytes, for one
       GPU render's images, shadow maps and output buffers (meshes are cached
       separately within their own budget).
+    * ``max_path_rays`` -- largest number of rays one path-traced render may
+      trace (an upper estimate from resolution, samples, bounces and lights).
+    * ``max_path_memory`` -- largest estimated host memory, in bytes, of one
+      path-traced render (accumulation buffers, shading data, the BVH and one
+      batch of paths).
     """
 
     max_dimension: int = 16384
     max_samples: int = 40_000_000
     max_triangles: int = 20_000_000
     max_gpu_memory: int = 4 * 2**30
+    max_path_rays: int = 100_000_000_000
+    max_path_memory: int = 8 * 2**30
