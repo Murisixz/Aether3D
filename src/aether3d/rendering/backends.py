@@ -10,6 +10,10 @@
 * ``"auto"`` -- the GPU backend when it is available and supports the
   request, otherwise the CPU backend, with a ``BACKEND_FALLBACK``
   diagnostic explaining why.
+* ``"path"`` -- the path tracer (``rendering/pathtrace/``): physically based
+  light transport with global illumination, ray-traced reflections and
+  shadows, computed on the CPU with NumPy (it does not use the GPU). Much
+  slower than the rasterizers; see ``docs/RENDER_QUALITY.md``.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ from typing import Any
 from ..errors import RenderError
 from .settings import MAX_SAMPLES_PER_AXIS
 
-BACKENDS = ("cpu", "gpu", "auto")
+BACKENDS = ("cpu", "gpu", "auto", "path")
 MSAA_COUNTS = (1, 2, 4, 8, 16)
 """MSAA sample counts that can be requested (devices support a subset; 1 and 4 always)."""
 MAX_SUPERSAMPLE = 4

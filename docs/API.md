@@ -18,6 +18,7 @@ from aether3d import ProceduralError, run_procedural_script
 from aether3d import Camera, Light, Appearance, World, RenderSettings, RenderLimits
 from aether3d import RenderResult, RenderError, render, run_scene_script
 from aether3d import ShadowSettings, list_adapters, gpu_status, release_gpu
+from aether3d import PathSettings, AOSettings, Environment
 from aether3d import Material, MaterialLibrary, ImageTexture, ProceduralTexture
 from aether3d import TextureBinding, TextureGraph, MaterialError
 from aether3d import AetherError  # and the specific error classes below
@@ -60,7 +61,7 @@ Scene(name: str = "Untitled Scene")
 | `create_material(name=None, *, model="standard", preset=None, **params)` | Create a material from parameters, or from a preset and its options. Returns the `Material`. |
 | `assign_material(objects, material, *, group=None)` | Give one or more mesh objects (objects, ids or names) a material (object, id, name, or `None` to unassign), or only their face group `group`. |
 | `add_image_texture(name=None, path=None, **options)`, `add_procedural_texture(name, graph)` | Add a PNG/JPEG texture (`data=`, `embed=`, `wrap`, `filter`, `mipmaps`, `color_space`) or a procedural texture. |
-| `render(**options)` | Render with the CPU renderer; returns a `RenderResult` (see [Rendering](#rendering)). |
+| `render(**options)` | Render (the CPU rasterizer by default; `backend="gpu"`, `"auto"` or `"path"`); returns a `RenderResult` (see [Rendering](#rendering)). |
 | `add_geometry(name, primitive=None, *, mesh=None, source=None, overrides=None, after=None, parameters=None, **params)` | Create a procedural geometry node: from a primitive (with `**params`), a stored `mesh`, or another node (`source`, with `overrides` and an optional `after` modifier). `parameters` declares node-local parameters as `{name: value}` or `{name: {"value": ..., "min": ...}}`. |
 | `add_procedural(name=None, primitive="box", *, parent=None, position=None, rotation=None, scale=None, parameters=None, **params)` | Create a primitive node and an object that uses it, in one step. |
 | `add_cube(name=None, *, size=1.0, parent=None, position=None, rotation=None, scale=None)` | Add a cube with edge length `size`. |
@@ -336,22 +337,26 @@ procedural script atomically, and raises `ScriptError` on failure.
 ## Rendering
 
 Full guides: [RENDERING.md](RENDERING.md) (the CPU renderer, cameras, lights,
-shading) and [GPU.md](GPU.md) (the GPU backend).
+shading), [GPU.md](GPU.md) (the GPU backend) and
+[RENDER_QUALITY.md](RENDER_QUALITY.md) (the path tracer).
 
 | Name | Description |
 | --- | --- |
-| `render(scene, *, camera=None, width=None, height=None, samples=None, exposure=None, cull=None, default_lights=None, frame=False, margin=0.05, limits=None, backend="cpu", adapter=None, msaa=None, supersample=None, shadows=None)` | Render the scene. Arguments override `scene.render_settings` for this render only. Same as `scene.render(...)`. `backend`: `"cpu"` (the NumPy rasterizer, the default), `"gpu"` (wgpu; `GPU_*` error if unavailable) or `"auto"` (GPU if it works, else CPU with a `BACKEND_FALLBACK` diagnostic). `adapter`: GPU adapter selection (index, `"discrete"`, `"vulkan"`, part of a name, ...). `msaa`, `supersample`: GPU antialiasing (default: `samples²` samples per pixel). `shadows`: GPU shadow maps (`True`, a dict or a `ShadowSettings`). |
-| `RenderResult` | `image` (`(h, w, 3) uint8` sRGB); `linear`, `depth`, `coverage` and `object_index` maps; `objects`, `camera`, `settings`, `stats` (counts and timings; GPU: also `gpu_timings`, `draw_calls`), `diagnostics`, `backend` (`{"name": "cpu"}`, or the GPU adapter, API, antialiasing, shadow maps and resources), `output`, `status`, `width`, `height`, `pixel(x, y)`, `png_bytes()`, `save(path)` (atomic, `.png` only), `to_dict()`. |
+| `render(scene, *, camera=None, width=None, height=None, samples=None, exposure=None, cull=None, default_lights=None, frame=False, margin=0.05, limits=None, backend="cpu", adapter=None, msaa=None, supersample=None, shadows=None, path=None, ao=None, tonemap="none", progress=None)` | Render the scene. Arguments override `scene.render_settings` for this render only. Same as `scene.render(...)`. `backend`: `"cpu"` (the NumPy rasterizer, the default), `"gpu"` (wgpu; `GPU_*` error if unavailable), `"auto"` (GPU if it works, else CPU with a `BACKEND_FALLBACK` diagnostic) or `"path"` (the CPU path tracer). `adapter`: GPU adapter selection (index, `"discrete"`, `"vulkan"`, part of a name, ...). `msaa`, `supersample`: GPU antialiasing (default: `samples²` samples per pixel). `shadows`: GPU shadow maps (`True`, a dict or a `ShadowSettings`). `path`: path tracer settings (`PathSettings` or a dict). `ao`: the path tracer's ambient occlusion pass (`True`, a dict or `AOSettings`). `tonemap`: `"none"` or `"neutral"` (any backend). `progress`: path tracer callback `progress(done, total, seconds)`; return `False` to stop. |
+| `RenderResult` | `image` (`(h, w, 3) uint8` sRGB); `linear`, `depth`, `coverage` and `object_index` maps; `objects`, `camera`, `settings`, `stats` (counts and timings; GPU: also `gpu_timings`, `draw_calls`; path tracer: rays, rays per second, noise), `diagnostics`, `backend` (`{"name": "cpu"}`, the GPU adapter, API, antialiasing, shadow maps and resources, or the path tracer's device (`"cpu"`), processes, settings, BVH and lights), `passes` (path tracer: `beauty`, `direct`, `indirect`, `albedo`, `normal`, `depth`, `ao`, `sample_count`, `variance`), `color` (exposure and tone mapper), `output`, `status`, `width`, `height`, `pixel(x, y)`, `png_bytes()`, `save(path)` (atomic: `.png`, or `.hdr`/`.pfm` linear), `to_dict()`. |
 | `ShadowSettings(lights=None, map_size=2048, bias=0.5, normal_offset=0.5, pcf_radius=1)` | GPU shadow-map settings for one render (not saved in projects). |
+| `PathSettings(samples=16, bounces=4, seed=0, light_samples=1, russian_roulette=3, clamp=0, integrator="path", workers=0)` | Path tracer settings for one render (not saved in projects); see [RENDER_QUALITY.md](RENDER_QUALITY.md#python-and-cli-reference). |
+| `AOSettings(samples=4, distance=1, strength=1)` | Ambient occlusion of one path-traced render (a separate pass and the `integrator="ao"` preview). |
 | `list_adapters(*, check=False)` | Graphics adapters wgpu can use, best first: `index`, `name`, `vendor`, `type`, `backend`, `driver`, `software`, `features`, `limits`, `recommended` (with `check=True`: `usable`, `msaa`). Raises `RenderError("GPU_UNAVAILABLE")` without wgpu. |
 | `gpu_status(*, adapter=None, check=False)` | Never raises: `available`, `reason`, `hint`, `versions`, `adapters`, `selected` (adapter, features, limits, MSAA counts) and, with `check=True`, a verified test render (`check`). |
 | `release_gpu(adapter=None)` | Free cached GPU devices and memory; returns how many. |
 | `Camera(projection="perspective", fov=40, fov_axis="vertical", ortho_scale=10, near=0.1, far=1000, aspect_ratio=None)` | Validated camera parameters, with `configure(**changes)`, `half_extents(aspect)` and `projection_matrix(aspect)`. |
-| `Light(type="directional", color=(1, 1, 1), intensity=1, range=None, falloff="inverse_square")` | Validated light parameters, with `configure(**changes)`. |
+| `Light(type="directional", color=(1, 1, 1), intensity=1, range=None, falloff="inverse_square", radius=0, angle=0)` | Validated light parameters, with `configure(**changes)`. `radius` (point) and `angle` (directional, degrees) are the light's size in the path tracer. |
 | `Appearance(color=(0.8, 0.8, 0.8), specular=0, shininess=32)` | Object color and highlight. |
-| `World(background=(0.2, 0.2, 0.2), ambient_color=(1, 1, 1), ambient_intensity=0.1)` | Background and ambient light. |
+| `World(background=(0.2, 0.2, 0.2), ambient_color=(1, 1, 1), ambient_intensity=0.1, environment=None)` | Background, ambient light and the path tracer's environment. `configure(environment={...})` updates some environment fields and keeps the others. |
+| `Environment(type="ambient", color=(1, 1, 1), intensity=1, zenith_color, horizon_color, ground_color)` | What rays leaving the scene see in the path tracer: the ambient light, a uniform color or a procedural sky (`scene.world.environment`, saved). |
 | `RenderSettings(width=1280, height=720, samples=2, exposure=0, cull="none", default_lights=True)` | Saved output settings. |
-| `RenderLimits(max_dimension=16384, max_samples=40_000_000, max_triangles=20_000_000, max_gpu_memory=4 GiB)` | Resource limits, checked before allocating. |
+| `RenderLimits(max_dimension=16384, max_samples=40_000_000, max_triangles=20_000_000, max_gpu_memory=4 GiB, max_path_rays=10**11, max_path_memory=8 GiB)` | Resource limits, checked before allocating. |
 | `run_scene_script(scene, script)` | Apply a declarative `aether3d.scene-script` (cameras, lights, appearance, world, settings) atomically. |
 | `aether3d.rendering.extract_render_scene(scene, camera)` | The backend-independent `RenderScene`. |
 | `aether3d.rendering.encode_png(image)`, `write_png(path, image)` | Aether3D's PNG encoder. |
@@ -359,8 +364,9 @@ shading) and [GPU.md](GPU.md) (the GPU backend).
 | `aether3d.math3d.look_rotation_matrix(direction, up)` | The world rotation used by `look_at`. |
 
 Colors are display (sRGB) values: `"#rrggbb"`, `"#rgb"`, or three numbers in
-[0, 1]. Every `Camera`, `Light`, `Appearance`, `World` and `RenderSettings`
-value has `to_dict()`, `from_dict()` and `copy()`. Setting an invalid value
+[0, 1]. Every `Camera`, `Light`, `Appearance`, `World`, `Environment`,
+`RenderSettings`, `PathSettings` and `AOSettings` value has `to_dict()`,
+`from_dict()` and `copy()`. Setting an invalid value
 raises `RenderError`, and nothing changes.
 
 ## Materials and textures
@@ -431,9 +437,11 @@ aether3d procedural validate PROJECT.aether [--geometry REF] [--json]
 aether3d procedural run PROJECT.aether SCRIPT.json|- [--output PATH] [--dry-run] [--json]
 aether3d procedural set PROJECT.aether NAME=VALUE... [--geometry REF] [--output PATH] [--dry-run] [--json]
 aether3d procedural bake PROJECT.aether (--object REF... | --all) [--output PATH] [--dry-run] [--json]
-aether3d render PATH [-o OUT.png] [--width W] [--height H] [--camera REF] [--samples N] [--exposure EV] [--cull none|back|front] [--background COLOR] [--no-default-lights] [--frame] [--margin M] [--force] [--json]
-    [--backend cpu|gpu|auto] [--adapter SPEC] [--msaa N] [--supersample N]
+aether3d render PATH [-o OUT.png|OUT.hdr|OUT.pfm] [--width W] [--height H] [--camera REF] [--samples N] [--exposure EV] [--tonemap none|neutral] [--cull none|back|front] [--background COLOR] [--no-default-lights] [--frame] [--margin M] [--force] [--json]
+    [--backend cpu|gpu|auto|path] [--adapter SPEC] [--msaa N] [--supersample N]
     [--shadows [--shadow-lights LIGHT...] [--shadow-map-size N] [--shadow-bias B] [--shadow-normal-offset X] [--shadow-pcf-radius R]]
+    path tracer: [--spp N] [--bounces N] [--seed N] [--light-samples N] [--russian-roulette N] [--clamp X] [--workers N]
+                 [--ao] [--ao-only] [--ao-samples N] [--ao-distance D] [--ao-strength S] [--passes DIR]
 aether3d gpu info [--adapter SPEC] [--check] [--json]
 aether3d camera add|set|frame|activate|list PROJECT ... [--output PATH] [--dry-run] [--json]
 aether3d light add|set|list PROJECT ... [--output PATH] [--dry-run] [--json]

@@ -4,6 +4,144 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.8.0: Render quality foundation (path tracing)
+
+### Added
+
+- **A path tracer: `render(backend="path")`**
+  ([docs/RENDER_QUALITY.md](docs/RENDER_QUALITY.md)). It is physically based
+  light transport computed on the CPU with NumPy, and it never uses the GPU
+  (reports say `"device": "cpu"`).
+  - **Global illumination:** unidirectional path tracing with next-event
+    estimation and Russian roulette. `bounces` sets the limit (default 4;
+    0 = direct light only).
+  - **Shadows** by visibility from every light. They soften with the new
+    light sizes: point-light `radius` and directional `angle`, both
+    uniform-radiance models that keep each light's irradiance. Sized lights
+    are found by BSDF-sampled rays too (MIS with light sampling), so mirrors
+    reflect a sun or a lamp cleanly.
+  - **Emissive surfaces are area lights,** sampled by power and combined
+    with BSDF sampling by multiple importance sampling (power heuristic).
+  - **Reflections** of the scene and the environment: Stage 7's
+    metallic-roughness BRDF (divided by pi), sampled with a cosine lobe and
+    GGX visible normals (Heitz 2018) as one mixture density.
+  - **Materials** are evaluated by the rasterizer's own code: textures, mip
+    levels (ray differentials on camera rays, ray cones on bounces),
+    procedural graphs, normal and bump maps, triplanar mapping, face groups,
+    alpha cut-outs (for shadow rays too), single-sided materials and
+    textured emission.
+  - **Environment:** `scene.world.environment` is `"ambient"` (the ambient
+    light as a uniform environment; the default), `"uniform"` or a
+    procedural `"sky"` gradient.
+  - **Ambient occlusion** (`ao=`): a separate pass, never multiplied into
+    the image. `path={"integrator": "ao"}` is a fast AO-only preview.
+  - **Passes:** `result.passes` holds `beauty`, `direct`, `indirect`,
+    `albedo`, `normal`, `depth`, `ao`, `sample_count` and `variance`.
+  - **Statistics:** rays by kind, rays per second, a noise estimate, BVH
+    statistics, per-stage timings and the work estimate.
+  - **Reproducible:** counter-based random numbers and per-pixel summation
+    in sample order make renders bit-identical for the same seed, whatever
+    the batch size or number of worker processes. Across platforms, rounding
+    differences in math libraries do not change which directions are
+    sampled; a fixed image is compared on Linux, macOS and Windows in CI.
+    `progress` reports every sample pass and can stop the render.
+  - **Parallel on Linux:** forked worker processes trace tiles of pixels
+    into shared memory (`workers`). With 8 processes, renders on an
+    i9-12900H are 2.6–4.2 times faster than with one; more processes did not
+    help. Other platforms use one process.
+- **A ray tracing core** (`aether3d.rendering.raytrace`):
+  - binned-SAH BVHs built vectorized and in bounded memory (1M triangles:
+    3.3 s, 189 MiB peak);
+  - a two-level structure for instancing (rotations, non-uniform and
+    negative scales) with bottom-level BVHs cached by mesh identity (weak
+    references, LRU budget `AETHER3D_RAYTRACE_CACHE_MB`);
+  - closest-hit and any-hit traversal;
+  - watertight ray/triangle tests (Woop et al. 2013).
+- **Output:**
+  - `tonemap="neutral"` (Khronos PBR Neutral) for any backend;
+  - `RenderResult.color` reports the output transform;
+  - `result.save()` writes linear HDR `.hdr` (Radiance RGBE) and `.pfm`.
+- **API:** `PathSettings`, `AOSettings` and `Environment` are exported from
+  `aether3d`. `Light(radius=, angle=)` and `scene.add_light(radius=, angle=)`
+  set light sizes. `RenderLimits` gains `max_path_rays` and
+  `max_path_memory`.
+- **CLI:**
+  - `aether3d render --backend path` with `--spp`, `--bounces`, `--seed`,
+    `--light-samples`, `--russian-roulette`, `--clamp`, `--workers`, `--ao`,
+    `--ao-only`, `--ao-samples`, `--ao-distance`, `--ao-strength` and
+    `--passes DIR`;
+  - `--tonemap` and `.hdr`/`.pfm` outputs for every backend;
+  - `light add/set --radius --angle`;
+  - `scene set --environment ... --sky-*`;
+  - scene scripts accept `radius`, `angle` and `environment`.
+- **Examples** rendered by the path tracer, each with its own checks and a
+  JSON record of settings, times and ray counts:
+  - `examples/cornell_box.py`: color bleeding from bounce light;
+  - `examples/metal_spheres.py`: chrome, gold, copper and plastic
+    reflecting the scene;
+  - `examples/ao_contact.py`: the AO preview beside an overcast path trace;
+  - `examples/castle_path_render.py`: the textured castle at golden hour;
+  - `examples/window_room.py`: a room lit by sunlight through its window,
+    reaching most of the room only by bouncing;
+  - `examples/hero_path_render.py`: the blocky hero with its materials under
+    a sun and a sky.
+
+  The Cornell box, the metals and the castle compare the rasterizer, direct
+  light only and bounced light from one camera; the window room compares
+  direct and bounced light, the hero the rasterizer and the path tracer.
+- **Benchmarks:** `benchmarks/bench_raytrace.py` (BVH build, memory,
+  traversal at 1k/100k/1M triangles) and `benchmarks/bench_pathtrace.py`
+  (render costs by stage, processes, memory, building blocks, and the
+  rasterizers on the same scenes).
+- **Tests:** 7 new test modules. They cover:
+  - BVH traversal against a brute-force reference, watertightness and edge
+    cases;
+  - closed-form radiometry: furnace, interreflection series, inverse-square
+    law, form factor, sky irradiance, AO beside a wall;
+  - shadows against a brute-force shadow-ray reference (a concave shape
+    shadowing itself too), and no shadow acne;
+  - sized lights reached by light and BSDF sampling alike: unbiased on a
+    plane, and reflected by a mirror without fireflies;
+  - rounding residues in normals (either sign, as math libraries leave
+    them) do not change which directions are sampled;
+  - a mirror against a mirrored camera, Cornell-box color bleeding, and a
+    room lit through its window only by bounces;
+  - the BSDF against quadrature;
+  - material parity with the rasterizer;
+  - convergence and bitwise reproducibility, in one process and in several;
+  - API, CLI, HDR files and persistence;
+  - a deterministic path-traced image compared in CI.
+
+### Changed
+
+- **`.aether` format version 5:** `scene.world.environment`, and `radius`
+  and `angle` on lights. Version 4 files are migrated on load (the
+  `"ambient"` environment, zero sizes). `tests/data/v0.7.0/studio.aether`,
+  written by Aether3D 0.7.0, tests the migration.
+- **`RenderResult`** gains `passes` (empty for the rasterizers) and `color`.
+  `save()` also accepts `.hdr` and `.pfm`. Reports list `color` and
+  `passes`.
+- **`backends.BACKENDS`** includes `"path"`.
+
+### Compatibility
+
+- **Unchanged images:** the CPU and GPU rasterizers render bit-identically to
+  0.7.0. The new scene data is ignored by them, and `tonemap` defaults to
+  `"none"`. The render goldens (`tests/data/renders`) are unchanged.
+- **Old projects load:** projects from 0.1.0–0.7.0 (format versions 1–4)
+  load, and saving writes version 5. Aether3D 0.7.0 cannot read version 5
+  files.
+- **No new dependencies:** the path tracer needs only NumPy.
+- **Changed tests:** every earlier test passes. Assertions that encoded the
+  old format version or option lists changed:
+  - `test_material_persistence::test_projects_round_trip_materials_textures_and_groups`
+    pinned `format_version == 4`; it is 5.
+  - `test_render_persistence::test_document_layout` compares the exact saved
+    `world` and light dictionaries, which gained `environment` and
+    `radius`/`angle`.
+  - `test_gpu_selection::test_backend_names` pinned the backend list, which
+    gained `"path"`.
+
 ## 0.7.0: Materials, textures and procedural shaders
 
 ### Added

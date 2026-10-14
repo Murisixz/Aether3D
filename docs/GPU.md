@@ -817,13 +817,20 @@ Verified on the development machine:
   passes and readback were unchanged, apart from the standard model's
   BRDF; alpha-masked materials get a masked shadow pipeline. See
   [MATERIALS.md](MATERIALS.md#on-the-gpu).
-- **Stage 8 (quality).**
-  - Cascaded and point-light shadow maps extend `rendering/shadows.py` (fitting
-    is backend-neutral) and the shadow-map array.
+- **Stage 8 (render quality) added a CPU path tracer, not GPU work.**
+  `backend="path"` ([RENDER_QUALITY.md](RENDER_QUALITY.md)) runs on the CPU
+  with NumPy. It does not use the GPU or hardware ray tracing, and its reports
+  say `"device": "cpu"`. The GPU rasterizer is unchanged. The only new option
+  it takes is `tonemap`: with `tonemap="neutral"` the 8-bit image is
+  re-encoded on the host from the GPU's linear readback.
+- **Later.**
+  - Cascaded and point-light shadow maps extend `rendering/shadows.py`
+    (fitting is backend-neutral) and the shadow-map array.
   - Better filtering replaces the PCF loop in `shadow_visibility()`.
   - Post-processing slots in between the scene and finalize passes, where
     linear HDR color is available.
-- **Stage 26 (cinematic rendering).** wgpu exposes compute shaders, ray
-  queries (where hardware supports them) and timestamp queries. A GPU path
-  tracer can reuse the device, caches and `RenderScene`, and the test
-  reference ray caster gives it a ground truth.
+- **GPU path tracing (future).** wgpu exposes compute shaders, ray queries
+  (where hardware supports them) and timestamp queries. A GPU path tracer can
+  reuse the device, caches and `RenderScene`, the flat BVH layout of
+  `rendering/raytrace/` and the counter-based sampling of the CPU path tracer,
+  which gives it a verified reference.

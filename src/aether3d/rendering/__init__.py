@@ -1,4 +1,7 @@
-"""Cameras, lights and Aether3D's own renderers (``docs/RENDERING.md``, ``docs/GPU.md``).
+"""Cameras, lights and Aether3D's own renderers.
+
+See ``docs/RENDERING.md`` (CPU rasterizer), ``docs/GPU.md`` (GPU rasterizer)
+and ``docs/RENDER_QUALITY.md`` (path tracer).
 
 Quick start::
 
@@ -11,6 +14,7 @@ Quick start::
     result = scene.render(width=640, height=360)  # CPU renderer
     result.save("crate.png")
     gpu = scene.render(width=1920, height=1080, backend="gpu", shadows=True)  # needs wgpu
+    path = scene.render(width=640, height=360, backend="path", path={"samples": 64})  # CPU
 """
 
 from .camera import Camera, CameraFrame
@@ -21,14 +25,26 @@ from .light import Light
 from .png import encode_png, write_png
 from .renderer import RenderResult, render
 from .scene_data import RenderScene, extract_render_scene
-from .settings import Appearance, RenderLimits, RenderSettings, ShadowSettings, World
+from .settings import (
+    AOSettings,
+    Appearance,
+    Environment,
+    PathSettings,
+    RenderLimits,
+    RenderSettings,
+    ShadowSettings,
+    World,
+)
 
 __all__ = [
+    "AOSettings",
     "Appearance",
     "Camera",
     "CameraFrame",
+    "Environment",
     "Framing",
     "Light",
+    "PathSettings",
     "RenderLimits",
     "RenderResult",
     "RenderScene",

@@ -86,7 +86,8 @@ The first command installs only the `aether3d` package, its `aether3d`
 command, and NumPy. Everything else needs nothing more:
 - glTF import and export;
 - mesh editing;
-- rendering, including PNG output;
+- rendering, including PNG and HDR (`.hdr`, `.pfm`) output and the path
+  tracer;
 - materials, procedural textures and PNG textures (Aether3D decodes PNG
   itself);
 - every procedural feature except the `boolean` modifier.
@@ -120,3 +121,17 @@ software Vulkan adapter); on Windows the vendor driver; on macOS nothing
 (Metal). [GPU.md](GPU.md#installing-gpu-support) has the per-platform
 details, hybrid-laptop notes and troubleshooting. Without wgpu or a driver,
 `backend="gpu"` reports `GPU_UNAVAILABLE` and everything else works.
+
+## Path tracing
+
+The path tracer (`render(backend="path")`, see
+[RENDER_QUALITY.md](RENDER_QUALITY.md)) needs nothing beyond the base
+install: it is written in NumPy and runs on every platform Aether3D
+supports. It does not use the GPU, so the `gpu` extra does not affect it.
+
+On Linux it can trace with several CPU cores: it forks worker processes
+(`path={"workers": 0}`, the default, picks one per CPU, up to 8, for renders
+big enough to gain from it). On macOS and Windows renders use one process, and
+`result.backend["parallel"]` says why. Worker processes need a little memory
+each (about 100 MB per batch of 65,536 paths) and share the scene, its BVH
+and its textures with the main process.

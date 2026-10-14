@@ -34,7 +34,7 @@ from ..mesh import Mesh
 from .camera import Camera, CameraFrame, frame_from_matrix
 from .color import to_linear
 from .materials import RenderMaterial, resolve_materials
-from .settings import Appearance
+from .settings import Appearance, Environment
 
 if TYPE_CHECKING:
     from ..scene import Scene, SceneObject
@@ -84,6 +84,8 @@ class RenderLight:
     direction: np.ndarray | None  # directional lights: unit direction the light travels
     range: float | None
     falloff: str
+    radius: float = 0.0  # point lights: emitting sphere (path tracer)
+    angle: float = 0.0  # directional lights: angular diameter in degrees (path tracer)
 
 
 @dataclass(frozen=True)
@@ -121,6 +123,7 @@ class RenderScene:
     diagnostics: tuple[Diagnostic, ...] = ()
     timings: dict[str, float] = field(default_factory=dict)
     materials: tuple[RenderMaterial, ...] = ()
+    environment: Environment | None = None  # scene.world.environment (path tracer)
 
     @property
     def triangle_count(self) -> int:
@@ -346,6 +349,7 @@ def extract_render_scene(
                         None,
                         light.range,
                         light.falloff,
+                        radius=light.radius,
                     )
                 )
             else:
@@ -375,6 +379,7 @@ def extract_render_scene(
                         direction / length,
                         None,
                         "none",
+                        angle=light.angle,
                     )
                 )
             continue
@@ -508,6 +513,7 @@ def extract_render_scene(
             "extract": total - evaluate_time - material_table.texture_seconds,
         },
         materials=tuple(material_table.materials),
+        environment=world_settings.environment.copy(),
     )
 
 

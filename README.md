@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.7.0 (materials, textures and procedural shaders).** Aether3D provides:
+> **Status: v0.8.0 (render quality: path tracing).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -33,11 +33,15 @@ graphical interface required.
 >   (with Aether3D's own safe PNG decoder), procedural node graphs (noise,
 >   fbm, voronoi, bricks, wood, ...), normal maps, alpha masks, emission,
 >   presets, several materials per mesh (face groups), and glTF material
->   import and export.
+>   import and export;
+> - a **path tracer** (`backend="path"`, CPU): global illumination,
+>   ray-traced shadows and reflections, emissive area lights, sky
+>   environments, ambient occlusion, render passes and linear HDR output,
+>   on a BVH ray tracing core, with reproducible seeds.
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
-> Animation, physics, global illumination and other systems are
-> intentionally **not** part of this stage. See the [changelog](CHANGELOG.md).
+> Animation, physics and other systems are intentionally **not** part of
+> this stage. See the [changelog](CHANGELOG.md).
 
 ## Quick start
 
@@ -204,7 +208,7 @@ result.save("crate.png")  # a real PNG, written by Aether3D
   glTF, edited meshes, and procedural objects, which render their current
   evaluation without being baked.
 - **Persistent setup.** Cameras, lights, colors, materials, the background
-  and render settings are saved in the project (`.aether` format version 4).
+  and render settings are saved in the project (`.aether` format).
 - **Verified.** Correctness is checked against analytic results and an
   independent ray caster. Blender, as an external check, agreed with the
   Stage 5 castle's silhouette on all but 2 of 2,073,600 pixels.
@@ -249,7 +253,7 @@ scene.assign_material(tower, roof, group=1)  # one face group of a mesh
   never baked unless you ask. Presets give stone, brick, wood, metal, grass
   and fabric.
 - **Everywhere.** Materials are:
-  - saved in projects (`.aether` format version 4), with texture paths
+  - saved in projects (`.aether` format, since version 4), with texture paths
     relative to the project;
   - imported from and exported to glTF;
   - scriptable with `aether3d material ...`, `aether3d texture ...` and JSON
@@ -300,6 +304,63 @@ print(result.backend["adapter"]["name"])  # e.g. NVIDIA GeForce RTX 4060 Laptop 
 See [docs/GPU.md](docs/GPU.md) for installation (`pip install "aether3d[gpu]"`,
 Python 3.11+), adapters, shadows, verification and benchmarks.
 
+### Path tracing
+
+![The castle at golden hour, path traced](examples/output/castle_path.png)
+
+*The textured procedural castle lit by a low sun, a sky and its torches,
+path traced by Aether3D on the CPU
+([`examples/castle_path_render.py`](examples/castle_path_render.py)).*
+
+![Cornell box: rasterizer | direct light | 8 bounces](examples/output/cornell_comparison.png)
+
+```python
+scene.world.environment = {"type": "sky", "intensity": 0.9}
+scene.get_by_name("Sun").light.angle = 0.53  # the sun's size: soft shadows
+result = scene.render(
+    backend="path",
+    width=960,
+    height=540,
+    path={"samples": 64, "bounces": 4, "seed": 1},
+    ao=True,
+    tonemap="neutral",
+)
+result.save("castle.png")
+result.save("castle.hdr")
+print(result.backend["device"], result.stats["noise"], sorted(result.passes))
+```
+
+- **Real light transport.**
+  - Rays traced through a BVH over the scene's own geometry.
+  - Light bounces between surfaces: the Cornell box's walls tint each other.
+  - Metals reflect the scene; emissive surfaces light their surroundings.
+  - Shadows soften with the size of the light.
+  - Next-event estimation with multiple importance sampling and Russian
+    roulette.
+- **The same materials.** Textures, normal maps, procedural graphs and face
+  groups are evaluated by the rasterizer's own code. Lights keep their
+  meaning: a standard material under an unshadowed light renders as on the
+  rasterizers (a test checks it to 1e-6).
+- **Inspectable and reproducible.**
+  - Passes: direct, indirect, albedo, normal, depth, AO, sample count and
+    variance.
+  - Statistics: rays, BVH, noise and timings.
+  - The same seed gives the same image bit for bit, in one process or in
+    several.
+- **Verified against references, not appearances.** The tests check:
+  - analytic radiometry (furnaces, the interreflection series, the
+    inverse-square law, form factors);
+  - a brute-force BVH reference;
+  - a mirror against a mirrored camera;
+  - a Cornell box, AO against its closed form, and material parity with the
+    rasterizer.
+- **Honest about speed.** It runs in NumPy on the CPU (forked processes on
+  Linux) and never uses the GPU. It is much slower than the rasterizers: at
+  640x360 with 16 samples and 4 bounces the textured castle takes 15.5 s on
+  8 processes, against 1.4 s on the CPU rasterizer and 0.03 s on the GPU.
+  Previews take seconds and final images minutes (see
+  [docs/RENDER_QUALITY.md](docs/RENDER_QUALITY.md#performance)).
+
 ## Command-line interface
 
 ```console
@@ -337,6 +398,8 @@ $ aether3d render castle.aether -o castle.png --width 1920 --height 1080
 $ aether3d render model.glb -o preview.png --frame          # any project or glTF, no setup
 $ aether3d gpu info --check                                 # GPU adapters + a verified test render
 $ aether3d render castle.aether -o castle.png --backend gpu --shadows --width 1920 --height 1080
+$ aether3d render castle.aether -o castle_path.png --backend path --spp 64 --bounces 4 --tonemap neutral
+$ aether3d render castle.aether -o castle_ao.png --backend path --ao-only --ao-distance 0.5   # fast AO preview
 $ aether3d inspect model.glb                   # validate/inspect also read .glb/.gltf
 $ aether3d geometry examples/first_scene.aether
 Geometry of "First Scene": OK
@@ -431,6 +494,7 @@ Apache-2.0) and a Vulkan, Metal or Direct3D 12 driver; see
 | [docs/RENDERING.md](docs/RENDERING.md) | Cameras, lights, the CPU renderer: pipeline, conventions, shading model, API, CLI, verification, performance, limitations |
 | [docs/GPU.md](docs/GPU.md) | The GPU backend: installation, adapters, pipeline, antialiasing, shadows, memory, CPU/GPU differences, benchmarks, debugging, the backend decision |
 | [docs/MATERIALS.md](docs/MATERIALS.md) | Materials, textures and procedural shaders: models and formulas, slots, images, coordinates, node graphs, presets, face groups, persistence, glTF, CLI, GPU, security, performance, limitations |
+| [docs/RENDER_QUALITY.md](docs/RENDER_QUALITY.md) | The path tracer: architecture, BVH and ray/triangle methods, BSDF sampling and PDFs, lights and MIS, environment, AO, sampling and reproducibility, color management and HDR, passes, API, CLI, performance, verification, limitations |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |

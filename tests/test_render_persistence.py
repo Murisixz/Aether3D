@@ -84,6 +84,14 @@ def test_document_layout():
         "background": [0x8E / 255, 0xC5 / 255, 0xF2 / 255],
         "ambient_color": [0xD5 / 255, 0xE6 / 255, 1.0],
         "ambient_intensity": 0.3,
+        "environment": {
+            "type": "ambient",
+            "color": [1.0, 1.0, 1.0],
+            "intensity": 1.0,
+            "zenith_color": [0.22, 0.42, 0.78],
+            "horizon_color": [0.78, 0.85, 0.93],
+            "ground_color": [0.32, 0.3, 0.27],
+        },
     }
     assert s["render"] == {
         "width": 320,
@@ -102,6 +110,8 @@ def test_document_layout():
         "intensity": 7.0,
         "range": 12.0,
         "falloff": "none",
+        "radius": 0.0,
+        "angle": 0.0,
     }
     assert objects["Crate"]["appearance"]["specular"] == 0.4
     assert objects["Rig"]["appearance"] is None  # defaults are not written

@@ -1,0 +1,63 @@
+{
+  "title": "Metal spheres",
+  "aether3d": "0.8.0",
+  "python": "3.14.7",
+  "numpy": "2.5.4",
+  "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+  "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+  "cpus": 20,
+  "renders": [
+    {
+      "image": "metals_raster",
+      "file": "metals_raster.png",
+      "width": 960,
+      "height": 540,
+      "backend": "gpu",
+      "seconds": 0.83,
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "api": "vulkan",
+      "tonemap": "none",
+      "exposure": 0.0
+    },
+    {
+      "image": "metals_direct",
+      "file": "metals_direct.png",
+      "width": 960,
+      "height": 540,
+      "backend": "path",
+      "seconds": 163.72,
+      "device": "cpu",
+      "processes": 8,
+      "samples": 128,
+      "bounces": 0,
+      "seed": 0,
+      "clamp": 0.0,
+      "integrator": "path",
+      "rays": 164385792,
+      "mrays_per_second": 1.01,
+      "relative_noise": 0.020430633548487037,
+      "tonemap": "none",
+      "exposure": 0.0
+    },
+    {
+      "image": "metals_path",
+      "file": "metals_path.png",
+      "width": 960,
+      "height": 540,
+      "backend": "path",
+      "seconds": 198.6,
+      "device": "cpu",
+      "processes": 8,
+      "samples": 128,
+      "bounces": 4,
+      "seed": 0,
+      "clamp": 3.0,
+      "integrator": "path",
+      "rays": 191128923,
+      "mrays_per_second": 0.967,
+      "relative_noise": 0.01983592722370034,
+      "tonemap": "none",
+      "exposure": 0.0
+    }
+  ]
+}

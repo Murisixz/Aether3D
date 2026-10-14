@@ -824,6 +824,8 @@ class Scene:
         intensity: float = 1.0,
         range: float | None = None,
         falloff: str = "inverse_square",
+        radius: float = 0.0,
+        angle: float = 0.0,
         parent: ObjectRef | None = None,
         position: Iterable[float] | None = None,
         rotation: Iterable[float] | None = None,
@@ -835,9 +837,11 @@ class Scene:
 
         Directional lights shine along their front (local -Y): give a world
         ``direction`` (the way the light travels) or a ``look_at`` target.
-        Point lights shine from their ``position``.
+        Point lights shine from their ``position``. ``radius`` (point) and
+        ``angle`` (directional, degrees) give lights a size for the path
+        tracer's soft shadows.
         """
-        light = Light(type, color, intensity, range, falloff)
+        light = Light(type, color, intensity, range, falloff, radius, angle)
         if direction is not None and look_at is not None:
             raise ValidationError("give either direction= or look_at=, not both")
         if direction is not None:

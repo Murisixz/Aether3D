@@ -72,9 +72,12 @@ from .procedural import (
 )
 from .procedural.script import run_procedural_script
 from .rendering import (
+    AOSettings,
     Appearance,
     Camera,
+    Environment,
     Light,
+    PathSettings,
     RenderLimits,
     RenderResult,
     RenderSettings,
@@ -92,6 +95,7 @@ from .transform import Transform
 
 __all__ = [
     "FORMAT_VERSION",
+    "AOSettings",
     "AetherError",
     "Appearance",
     "AssetFormatError",
@@ -102,6 +106,7 @@ __all__ = [
     "EditError",
     "EditSession",
     "EditableMesh",
+    "Environment",
     "ExportResult",
     "Expr",
     "HierarchyError",
@@ -118,6 +123,7 @@ __all__ = [
     "NameConflictError",
     "ObjectNotFoundError",
     "OperationResult",
+    "PathSettings",
     "PolyMesh",
     "ProceduralError",
     "ProceduralGeometry",

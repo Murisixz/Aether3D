@@ -5,7 +5,9 @@ parameters, the shading model they feed, and texture slots. Its textures come
 from PNG/JPEG images or from procedural node graphs. Both renderers use the
 same materials: the CPU reference renderer and the GPU backend agree to within
 rounding. Materials are saved in projects, imported from and exported to glTF,
-and scriptable from Python, JSON scene scripts and the CLI.
+and scriptable from Python, JSON scene scripts and the CLI. Since 0.8 the
+path tracer renders the same materials too, with physically based light
+transport ([In the path tracer](#in-the-path-tracer)).
 
 ![The castle in Aether3D 0.6's flat colors (left) and with its 0.7 materials (right)](../examples/output/castle_flat_vs_materials.png)
 
@@ -34,6 +36,7 @@ material.*
 - [glTF](#gltf)
 - [Scene scripts and the command line](#scene-scripts-and-the-command-line)
 - [On the GPU](#on-the-gpu)
+- [In the path tracer](#in-the-path-tracer)
 - [Errors and diagnostics](#errors-and-diagnostics)
 - [Untrusted textures and graphs](#untrusted-textures-and-graphs)
 - [Performance](#performance)
@@ -197,9 +200,10 @@ color = base · (A · ao + Σ E max(n·l, 0)) + Σ E · specular · max(n·h, 0)
 ```
 
 **Common to both models:**
-- **Emission** is added after lighting. It makes a surface glow but does not
-  illuminate other objects; add a point light for that, as the castle's
-  torches do.
+- **Emission** is added after lighting. On the rasterizers it makes a surface
+  glow but does not illuminate other objects; add a point light for that, as
+  the castle's torches do. In the path tracer emissive surfaces are area
+  lights that do light the scene.
 - **Alpha masks.** With `alpha_mode="mask"`, a sample is kept where
   `opacity × opacity texture × base color image alpha ≥ alpha_cutoff`.
   Otherwise nothing is drawn there: other objects show through, and shadow maps
@@ -489,7 +493,7 @@ none. Groups come from:
 
 ## Projects, paths and embedding
 
-Projects are format version 4 (see [FILE_FORMAT.md](FILE_FORMAT.md)): the
+Materials are saved in projects since format version 4 (see [FILE_FORMAT.md](FILE_FORMAT.md)): the
 scene's `materials` and `textures`, each object's `material` and
 `group_materials`, and each mesh's `groups`. Version 1–3 projects load
 unchanged, with no materials.
@@ -600,6 +604,42 @@ The GPU backend renders the same materials ([GPU.md](GPU.md)):
   the CPU shades every sample, so fine texture detail differs; the average
   colors agree.
 
+## In the path tracer
+
+`render(backend="path")` ([RENDER_QUALITY.md](RENDER_QUALITY.md)) evaluates
+materials with the CPU renderer's own code, so every parameter, texture,
+projection, normal and bump map, alpha mask and face group means the same
+thing. What changes is the light that reaches the surface:
+
+- **The BRDF.** `"standard"` materials use exactly the formulas above, divided
+  by pi (the light intensities carry that pi). Lights see the same surface
+  response; the path tracer also gets reflections of the scene, its
+  environment and bounce light. `"simple"` materials with `specular` 0 are
+  Lambertian. With a highlight they get a GGX lobe whose roughness matches
+  `shininess` (as glTF export converts them).
+- **Emission lights the scene.** Emissive triangles are area lights,
+  importance-sampled by power and combined with BSDF sampling by multiple
+  importance sampling. Textured and masked emission is evaluated at the
+  sampled point.
+- **Occlusion maps are ignored.** The path tracer computes occlusion from the
+  geometry, and applying a baked map too would darken twice.
+- **Alpha masks and single-sided materials** let rays through, shadow and
+  AO rays included, so cut-outs cast cut-out shadows.
+- **Texture filtering.** Mip levels and procedural filtering come from ray
+  differentials on camera rays (one pixel / `sqrt(samples)`) and ray cones on
+  bounces (coarser after rough bounces). At the same footprint as the CPU
+  rasterizer (16 samples vs 4×4 supersampling) the images agree to within 1%
+  on average.
+
+![Metal spheres: rasterizer | path tracer, direct light | path tracer, 4 bounces](../examples/output/metals_comparison.png)
+
+*[`examples/metal_spheres.py`](../examples/metal_spheres.py): chrome, satin
+gold, rough copper and glossy plastic. The rasterizer shows highlights and
+a constant ambient reflection. With direct light only, the path tracer
+reflects the sun and the sky. With bounces the metals reflect the floor, the
+blocks and each other (that render clamps indirect light at 3 per sample
+against the speckles of the chrome sphere's sun caustic).*
+
 ## Errors and diagnostics
 
 Invalid requests raise `MaterialError` (a subclass of `AetherError`) with a
@@ -693,10 +733,15 @@ In practice:
 
 - **No blended transparency.** Opacity is a cutout (`alpha_mode="mask"`).
   glTF `BLEND` materials import as opaque, with a warning.
-- **Emission does not light the scene.** Emissive surfaces glow but do not
-  illuminate other objects, and there is no bloom.
-- **Image-based lighting.** Ambient light is a uniform environment: no
-  reflections of the sky or of other objects, and no environment maps.
+- **Emission does not light the scene on the rasterizers.** Emissive surfaces
+  glow but do not illuminate other objects there (the path tracer does), and
+  there is no bloom.
+- **Image-based lighting.** On the rasterizers ambient light is a uniform
+  environment: no reflections of the sky or of other objects. The path tracer
+  reflects the scene and its uniform or procedural sky. No renderer reads
+  environment images.
+- **No transmission.** No glass, refraction or subsurface scattering, on any
+  renderer.
 - **Normal-map tangents** are derived per triangle (UV gradients), not
   MikkTSpace. Maps baked against MikkTSpace tangents may shade slightly
   differently on curved low-polygon meshes. glTF `TANGENT` attributes are

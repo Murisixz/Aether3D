@@ -1,0 +1,51 @@
+{
+  "title": "Ambient occlusion contact test",
+  "aether3d": "0.8.0",
+  "python": "3.14.7",
+  "numpy": "2.5.4",
+  "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+  "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+  "cpus": 20,
+  "renders": [
+    {
+      "image": "ao_preview",
+      "file": "ao_preview.png",
+      "width": 960,
+      "height": 540,
+      "backend": "path",
+      "seconds": 93.73,
+      "device": "cpu",
+      "processes": 8,
+      "samples": 64,
+      "bounces": null,
+      "seed": 0,
+      "clamp": 0.0,
+      "integrator": "ao",
+      "rays": 166406400,
+      "mrays_per_second": 1.797,
+      "relative_noise": 0.0063462859081426905,
+      "tonemap": "none",
+      "exposure": 0.0
+    },
+    {
+      "image": "ao_overcast",
+      "file": "ao_overcast.png",
+      "width": 960,
+      "height": 540,
+      "backend": "path",
+      "seconds": 96.11,
+      "device": "cpu",
+      "processes": 8,
+      "samples": 64,
+      "bounces": 4,
+      "seed": 0,
+      "clamp": 0.0,
+      "integrator": "path",
+      "rays": 98680991,
+      "mrays_per_second": 1.037,
+      "relative_noise": 0.05018434959887642,
+      "tonemap": "none",
+      "exposure": 0.0
+    }
+  ]
+}
