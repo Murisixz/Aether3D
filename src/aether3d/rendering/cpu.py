@@ -11,8 +11,14 @@ Stages (timed separately, see :class:`CPUFrame`):
    triangle (see :mod:`aether3d.rendering.raster`).
 3. **shade** -- deferred shading of every covered sample exactly once:
    perspective-correct barycentrics from the original triangle in homogeneous
-   2D coordinates (valid even for triangles clipped at the near plane), world
-   position and normal interpolation, two-sided lighting.
+   2D coordinates (valid even for triangles clipped at the near plane) and
+   their exact screen-space derivatives, world position and normal
+   interpolation, material evaluation (textures, normal maps; see
+   :mod:`aether3d.rendering.surface`), two-sided lighting.
+
+Materials also act before shading: back faces of single-sided materials are
+culled with the triangles, and alpha-masked materials test every fragment's
+opacity before the depth test, so surfaces behind cut-out holes show.
 4. **resolve** -- per-pixel average of its ``s x s`` samples in linear light.
 
 All per-vertex and per-sample arithmetic is written out explicitly
@@ -29,7 +35,7 @@ import numpy as np
 
 from ..diagnostics import WARNING, Diagnostic
 from ..errors import RenderError
-from . import raster
+from . import raster, surface
 from .raster import EMPTY, RasterStats
 from .scene_data import RenderScene, _mat4_mul
 from .settings import RenderLimits
@@ -151,6 +157,7 @@ def render_scene(
     # ---- geometry --------------------------------------------------------------------
     t0 = time.perf_counter()
     positions, normals, has_normals, tri_vertices, tri_instance = [], [], [], [], []
+    tri_material = []
     vertex_base = 0
     for k, inst in enumerate(rs.instances):
         mesh = rs.meshes[inst.mesh]
@@ -163,13 +170,18 @@ def render_scene(
         has_normals.append(mesh.normals is not None)
         tri_vertices.append(mesh.triangles.astype(np.int64) + vertex_base)
         tri_instance.append(np.full(mesh.triangles.shape[0], k, dtype=np.int32))
+        tri_material.append(inst.material_of_groups(mesh.groups, mesh.triangles.shape[0]))
         vertex_base += pw.shape[0]
     P = np.concatenate(positions) if positions else np.zeros((0, 3))
     N = np.concatenate(normals) if normals else np.zeros((0, 3))
     TRI = np.concatenate(tri_vertices) if tri_vertices else np.zeros((0, 3), dtype=np.int64)
     INST = np.concatenate(tri_instance) if tri_instance else np.zeros(0, dtype=np.int32)
+    MAT = np.concatenate(tri_material) if tri_material else np.zeros(0, dtype=np.int32)
     has_normals_arr = np.array(has_normals, dtype=bool)
     mirrored = np.array([i.mirrored for i in rs.instances], dtype=bool)
+    single_sided = np.array([not m.double_sided for m in rs.materials], dtype=bool)
+    masked = np.array([m.masked for m in rs.materials], dtype=bool)
+    ctx = _shade_context(rs, P, TRI, INST, MAT, eye, forward, perspective, sw, sh)
     n_tris = TRI.shape[0]
     id_bits = max(1, int(n_tris).bit_length())
     counts = {
@@ -181,6 +193,7 @@ def render_scene(
         "culled_frustum": 0,
         "clipped": 0,
         "nonfinite": 0,
+        "alpha_discarded": 0,
     }
     clip = _clip_coords(P, vp) if P.shape[0] else np.zeros((0, 4))
     # Per-vertex work, shared by every triangle using the vertex: finiteness,
@@ -194,6 +207,25 @@ def render_scene(
     keys = np.full(sw * sh, EMPTY, dtype=np.int64)
     rstats = RasterStats()
     t_raster = 0.0
+    keep_fragment = None
+    if masked.any():
+        masked_tris = np.flatnonzero(masked[MAT])
+        if masked_tris.size:
+            alpha_table = _triangle_table(
+                masked_tris,
+                P,
+                N,
+                TRI,
+                INST,
+                MAT,
+                has_normals_arr,
+                mirrored,
+                vp,
+                eye,
+                forward,
+                perspective,
+            )
+            keep_fragment = _alpha_test(ctx, alpha_table, masked, sw, sh, counts)
     for start in range(0, n_tris, TRIANGLE_BATCH):
         ta = time.perf_counter()
         ids = np.arange(start, min(start + TRIANGLE_BATCH, n_tris), dtype=np.int64)
@@ -207,6 +239,15 @@ def render_scene(
             keep = ~front if cull == "front" else front
             counts["culled_backface"] += int(np.count_nonzero(~keep))
             ids, tv = ids[keep], tv[keep]
+        if single_sided.any() and ids.size:
+            single = single_sided[MAT[ids]]
+            if single.any():  # single-sided materials: their back faces are not drawn
+                keep = np.ones(ids.shape[0], dtype=bool)
+                keep[single] = _front_facing(
+                    P, tv[single], mirrored[INST[ids[single]]], eye, forward, perspective
+                )
+                counts["culled_backface"] += int(np.count_nonzero(~keep))
+                ids, tv = ids[keep], tv[keep]
         oc = codes[tv]
         outside = (oc[:, 0] & oc[:, 1] & oc[:, 2]) != 0
         counts["culled_frustum"] += int(np.count_nonzero(outside))
@@ -224,7 +265,7 @@ def render_scene(
         A2 = raster.signed_area(X, Y)
         tb = time.perf_counter()
         t_geometry += tb - ta
-        raster.rasterize(X, Y, z, A2, ids_in, sw, sh, keys, id_bits, rstats)
+        raster.rasterize(X, Y, z, A2, ids_in, sw, sh, keys, id_bits, rstats, keep_fragment)
         t_raster += time.perf_counter() - tb
     timings["geometry"] = t_geometry
     timings["raster"] = t_raster
@@ -259,6 +300,7 @@ def render_scene(
         N,
         TRI,
         INST,
+        MAT,
         has_normals_arr,
         mirrored,
         vp,
@@ -289,6 +331,7 @@ def render_scene(
                 hx,
                 hy,
                 perspective,
+                ctx,
             )
             pixel = (row // samples) * width + (col // samples)
             for c in range(3):
@@ -352,6 +395,9 @@ class _TriangleTable:
     normals: np.ndarray  # (T, 9): vertex normals, turned toward the camera (zeros if none)
     has_normals: np.ndarray  # (T,) bool
     instance: np.ndarray  # (T,) int32
+    sign: np.ndarray  # (T,) +1 / -1: what turned the normals toward the camera
+    triangle: np.ndarray  # (T,) global triangle id
+    material: np.ndarray  # (T,) material index
 
 
 def _triangle_table(
@@ -360,6 +406,7 @@ def _triangle_table(
     N: np.ndarray,
     TRI: np.ndarray,
     INST: np.ndarray,
+    MAT: np.ndarray,
     has_normals: np.ndarray,
     mirrored: np.ndarray,
     vp: np.ndarray,
@@ -400,7 +447,17 @@ def _triangle_table(
     geo_unit *= sign[:, None]
     normals = np.concatenate([N[tv[:, k]] for k in range(3)], axis=1) * sign[:, None]
     return _TriangleTable(
-        compact, adj, det, vdepth, geo_unit, normals, has_normals[inst], inst.astype(np.int32)
+        compact,
+        adj,
+        det,
+        vdepth,
+        geo_unit,
+        normals,
+        has_normals[inst],
+        inst.astype(np.int32),
+        sign,
+        present,
+        MAT[present] if MAT.size else np.zeros(0, dtype=np.int32),
     )
 
 
@@ -414,6 +471,7 @@ def _shade(
     hx: float,
     hy: float,
     perspective: bool,
+    ctx: surface.ShadeContext,
 ) -> tuple[list[np.ndarray], np.ndarray, np.ndarray]:
     """Radiance (list of 3 component arrays), view depth and instance of each sample."""
     a = table.adj[ct]
@@ -459,47 +517,186 @@ def _shade(
     nz = np.where(use, nz * inv, g[:, 2])
 
     inst = table.instance[ct]
-    base = np.array([i.base_color for i in rs.instances]).reshape(-1, 3)[inst]
-    spec = np.array([i.specular for i in rs.instances], dtype=np.float64)[inst]
-    shin = np.array([i.shininess for i in rs.instances], dtype=np.float64)[inst]
-    any_spec = bool(np.any(spec > 0.0))
-    if any_spec:
-        if perspective:
-            vx, vy, vz = ex - px, ey - py, ez - pz
-            v_len = np.maximum(np.sqrt(vx * vx + vy * vy + vz * vz), 1e-300)
-            vx, vy, vz = vx / v_len, vy / v_len, vz / v_len
-        else:
-            vx, vy, vz = -fx, -fy, -fz
-
-    diffuse = [np.full(ct.shape[0], rs.ambient[c]) for c in range(3)]
-    highlight = [np.zeros(ct.shape[0]) for _ in range(3)] if any_spec else None
-    for light in rs.lights:
-        if light.type == "directional":
-            lx, ly, lz = (-light.direction).tolist()
-            atten = None
-        else:
-            lx, ly, lz = light.position[0] - px, light.position[1] - py, light.position[2] - pz
-            dist = np.sqrt(lx * lx + ly * ly + lz * lz)
-            lx, ly, lz = (c / np.maximum(dist, 1e-300) for c in (lx, ly, lz))
-            dist = np.maximum(dist, MIN_LIGHT_DISTANCE)
-            atten = 1.0 / (dist * dist) if light.falloff == "inverse_square" else np.ones_like(dist)
-            if light.range is not None:
-                ratio = dist / light.range
-                atten = atten * np.clip(1.0 - ratio * ratio * ratio * ratio, 0.0, 1.0) ** 2
-        ndl = np.maximum(nx * lx + ny * ly + nz * lz, 0.0)
-        weight = ndl if atten is None else ndl * atten
+    mat = table.material[ct]
+    materials = rs.materials
+    plain = np.array([m.model == "simple" and m.plain for m in materials], dtype=bool)
+    radiance = [np.empty(ct.shape[0]) for _ in range(3)]
+    simple_rows = plain[mat] if len(materials) else np.ones(ct.shape[0], dtype=bool)
+    if simple_rows.any():
+        # Untextured simple materials (every object color): Stage 5 shading, unchanged.
+        rows = None if simple_rows.all() else simple_rows
+        pick = (lambda a: a) if rows is None else (lambda a: a[rows])
+        base_tab = np.array([m.base_color for m in materials]).reshape(-1, 3)
+        spec_tab = np.array([m.specular for m in materials], dtype=np.float64)
+        shin_tab = np.array([m.shininess for m in materials], dtype=np.float64)
+        m_rows = pick(mat)
+        spec = spec_tab[m_rows]
+        view = None
+        if bool(np.any(spec > 0.0)):
+            view = surface.view_vectors(ctx, pick(px), pick(py), pick(pz))
+        part = surface.shade_simple(
+            rs,
+            base_tab[m_rows],
+            spec,
+            shin_tab[m_rows],
+            None,
+            (pick(nx), pick(ny), pick(nz)),
+            (pick(px), pick(py), pick(pz)),
+            view,
+        )
         for c in range(3):
-            diffuse[c] += light.radiance[c] * weight
-        if any_spec:
-            hx_, hy_, hz_ = lx + vx, ly + vy, lz + vz
-            h_len = np.maximum(np.sqrt(hx_ * hx_ + hy_ * hy_ + hz_ * hz_), 1e-300)
-            ndh = np.maximum((nx * hx_ + ny * hy_ + nz * hz_) / h_len, 0.0)
-            term = spec * np.where(ndl > 0.0, np.power(ndh, shin), 0.0)
-            if atten is not None:
-                term = term * atten
-            for c in range(3):
-                highlight[c] += light.radiance[c] * term
-    radiance = [base[:, c] * diffuse[c] for c in range(3)]
-    if any_spec:
-        radiance = [radiance[c] + highlight[c] for c in range(3)]
+            if rows is None:
+                radiance[c] = part[c]
+            else:
+                radiance[c][rows] = part[c]
+    if not simple_rows.all():
+        _shade_materials(
+            rs, ctx, table, ct, xn, yn, ~simple_rows, mat, (nx, ny, nz), (px, py, pz), radiance
+        )
     return radiance, view_depth, inst
+
+
+def _shade_context(
+    rs: RenderScene,
+    P: np.ndarray,
+    TRI: np.ndarray,
+    INST: np.ndarray,
+    MAT: np.ndarray,
+    eye: np.ndarray,
+    forward: np.ndarray,
+    perspective: bool,
+    sw: int,
+    sh: int,
+) -> surface.ShadeContext:
+    """The per-render arrays material evaluation reads (object positions and UVs only if
+    some material has textures)."""
+    textured = any(m.textures for m in rs.materials)
+    PO = UV = np.zeros((0, 3))
+    if textured and rs.instances:
+        meshes = [rs.meshes[i.mesh] for i in rs.instances]
+        PO = np.concatenate([m.positions.astype(np.float64) for m in meshes])
+        UV = np.concatenate(
+            [
+                m.uvs.astype(np.float64)
+                if m.uvs is not None
+                else np.zeros((m.positions.shape[0], 2))
+                for m in meshes
+            ]
+        )
+    has_uvs = np.array([rs.meshes[i.mesh].uvs is not None for i in rs.instances], dtype=bool)
+    linear = np.array([i.world[:3, :3] for i in rs.instances], dtype=np.float64).reshape(-1, 3, 3)
+    return surface.ShadeContext(
+        rs,
+        P,
+        PO,
+        UV,
+        TRI,
+        INST,
+        MAT,
+        has_uvs,
+        linear,
+        eye,
+        forward,
+        perspective,
+        2.0 / sw,
+        -2.0 / sh,
+    )
+
+
+def _surface_samples(
+    ctx: surface.ShadeContext, table: _TriangleTable, ct: np.ndarray, xn: np.ndarray, yn: np.ndarray
+) -> surface.Samples:
+    """Barycentrics with derivatives and outward shading normals of samples (for materials)."""
+    a = table.adj[ct]
+    b, dbx, dby = surface.barycentric_derivatives(a, xn, yn, ctx.step_x, ctx.step_y)
+    b = np.maximum(b, 0.0)
+    b = b / np.maximum(b.sum(axis=1, keepdims=True), 1e-300)
+    nv = table.normals[ct].reshape(-1, 3, 3)
+    n = np.einsum("nk,nkc->nc", b, nv)
+    length = np.linalg.norm(n, axis=1, keepdims=True)
+    use = table.has_normals[ct] & (length[:, 0] > 1e-6)
+    toward = table.sign[ct]
+    n = np.where(use[:, None], n / np.maximum(length, 1e-300), table.geo[ct])
+    outward = n * toward[:, None]
+    return surface.Samples(table.triangle[ct], table.instance[ct], b, dbx, dby, outward, toward)
+
+
+def _shade_materials(
+    rs: RenderScene,
+    ctx: surface.ShadeContext,
+    table: _TriangleTable,
+    ct: np.ndarray,
+    xn: np.ndarray,
+    yn: np.ndarray,
+    rows: np.ndarray,
+    mat: np.ndarray,
+    normal: tuple[np.ndarray, np.ndarray, np.ndarray],
+    position: tuple[np.ndarray, np.ndarray, np.ndarray],
+    radiance: list[np.ndarray],
+) -> None:
+    """Shade the samples in ``rows`` whose material has textures, emission or is standard."""
+    index = np.flatnonzero(rows)
+    samples = _surface_samples(ctx, table, ct[index], xn[index], yn[index])
+    p_all = np.stack([c[index] for c in position], axis=1)
+    n_all = np.stack([c[index] for c in normal], axis=1)
+    for m_index in np.unique(mat[index]):
+        sel = mat[index] == m_index
+        material = rs.materials[int(m_index)]
+        s = samples.subset(sel)
+        sv = surface.evaluate_material(ctx, s, material)
+        p = p_all[sel]
+        # A normal map gives an outward normal; otherwise keep the interpolated normal exactly.
+        n = sv.normal * s.toward[:, None] if "normal" in material.textures else n_all[sel]
+        view = np.stack(surface.view_vectors(ctx, p[:, 0], p[:, 1], p[:, 2]), axis=1)
+        if material.model == "simple":
+            spec = np.full(p.shape[0], material.specular)
+            part = surface.shade_simple(
+                rs,
+                sv.base,
+                spec,
+                np.full(p.shape[0], material.shininess),
+                sv.occlusion if "occlusion" in material.textures else None,
+                (n[:, 0], n[:, 1], n[:, 2]),
+                (p[:, 0], p[:, 1], p[:, 2]),
+                (view[:, 0], view[:, 1], view[:, 2]),
+            )
+            out = np.stack(part, axis=1)
+        else:
+            out = surface.shade_standard(rs, sv, material.specular, n, p, view)
+        out = out + sv.emissive
+        target = index[sel]
+        for c in range(3):
+            radiance[c][target] = out[:, c]
+
+
+def _alpha_test(
+    ctx: surface.ShadeContext,
+    table: _TriangleTable,
+    masked: np.ndarray,
+    sw: int,
+    sh: int,
+    counts: dict[str, int],
+):
+    """``keep_fragment`` for the rasterizer: alpha-masked fragments below the cutoff are dropped."""
+    rs = ctx.rs
+
+    def keep_fragment(ids: np.ndarray, rows: np.ndarray, cols: np.ndarray) -> np.ndarray | None:
+        test = masked[ctx.MAT[ids]]
+        if not test.any():
+            return None
+        keep = np.ones(ids.shape[0], dtype=bool)
+        index = np.flatnonzero(test)
+        ct = table.compact[ids[index]]
+        xn = (cols[index] + 0.5) * (2.0 / sw) - 1.0
+        yn = 1.0 - (rows[index] + 0.5) * (2.0 / sh)
+        samples = _surface_samples(ctx, table, ct, xn, yn)
+        mats = ctx.MAT[ids[index]]
+        for m_index in np.unique(mats):
+            sel = mats == m_index
+            material = rs.materials[int(m_index)]
+            sv = surface.evaluate_material(ctx, samples.subset(sel), material, alpha_only=True)
+            keep[index[sel]] = sv.alpha >= material.alpha_cutoff
+        counts["alpha_discarded"] += int(np.count_nonzero(~keep))
+        return keep
+
+    return keep_fragment

@@ -7,7 +7,10 @@ an immutable :class:`RenderScene`:
   by every instance that uses them (procedural objects contribute their
   *current evaluated* mesh);
 * instances (``RenderInstance``) -- one per visible mesh object, with its
-  world matrix, normal matrix and linear-light appearance;
+  world matrix, normal matrix, linear-light appearance and the materials of
+  its face groups;
+* materials (``RenderMaterial``, :mod:`aether3d.rendering.materials`) --
+  linear factors and resolved textures (images already decoded);
 * lights in world space (``RenderLight``), the camera (``RenderCamera``) and
   the linear background and ambient colors.
 
@@ -30,6 +33,7 @@ from ..errors import AetherError, RenderError
 from ..mesh import Mesh
 from .camera import Camera, CameraFrame, frame_from_matrix
 from .color import to_linear
+from .materials import RenderMaterial, resolve_materials
 from .settings import Appearance
 
 if TYPE_CHECKING:
@@ -41,6 +45,8 @@ class RenderMesh:
     positions: np.ndarray  # (N, 3) float32, read-only (shared with the scene's Mesh)
     triangles: np.ndarray  # (M, 3) uint32
     normals: np.ndarray | None  # (N, 3) float32 or None (flat shading from geometry)
+    uvs: np.ndarray | None = None  # (N, 2) float32 or None
+    groups: np.ndarray | None = None  # (M,) uint16 face groups or None (all group 0)
 
 
 @dataclass(frozen=True)
@@ -51,9 +57,21 @@ class RenderInstance:
     world: np.ndarray  # (4, 4) float64
     normal_matrix: np.ndarray  # (3, 3) float64: inverse transpose of the linear part
     mirrored: bool  # world determinant < 0 (winding appears reversed)
-    base_color: np.ndarray  # (3,) linear light
+    base_color: np.ndarray  # (3,) linear light (the object's own color)
     specular: float
     shininess: float
+    material: int = 0  # index into RenderScene.materials for faces without a group material
+    group_materials: tuple[tuple[int, int], ...] = ()  # (face group, material index), sorted
+
+    def material_of_groups(self, groups: np.ndarray | None, count: int) -> np.ndarray:
+        """Material index of each of ``count`` triangles with face groups ``groups``."""
+        if not self.group_materials or groups is None:
+            return np.full(count, self.material, dtype=np.int32)
+        table = np.full(int(groups.max(initial=0)) + 1, self.material, dtype=np.int32)
+        for group, index in self.group_materials:
+            if group < table.shape[0]:
+                table[group] = index
+        return table[groups]
 
 
 @dataclass(frozen=True)
@@ -102,6 +120,7 @@ class RenderScene:
     ambient: np.ndarray  # (3,) linear ambient color x intensity
     diagnostics: tuple[Diagnostic, ...] = ()
     timings: dict[str, float] = field(default_factory=dict)
+    materials: tuple[RenderMaterial, ...] = ()
 
     @property
     def triangle_count(self) -> int:
@@ -394,6 +413,16 @@ def extract_render_scene(
     # Normal matrices, determinants and colors of all mesh objects at once.
     linear = np.array([c[2][:3, :3] for c in candidates], dtype=np.float64).reshape(-1, 3, 3)
     normal, valid, det = normal_matrices(linear)
+    material_table, object_materials = resolve_materials(
+        scene,
+        [
+            (obj, mesh, position)
+            for k, (obj, mesh, _, position) in enumerate(candidates)
+            if valid[k]
+        ],
+    )
+    ordered += material_table.diagnostics
+    material_iter = iter(object_materials)
     colors: dict[tuple, np.ndarray] = {}
     instances: list[RenderInstance] = []
     for k, (obj, mesh, world, position) in enumerate(candidates):
@@ -419,6 +448,7 @@ def extract_render_scene(
         base = colors.get(appearance.color)
         if base is None:
             base = colors[appearance.color] = to_linear(appearance.color)
+        default_material, group_materials = next(material_iter)
         instances.append(
             RenderInstance(
                 obj.id,
@@ -430,6 +460,8 @@ def extract_render_scene(
                 base.copy(),
                 appearance.specular,
                 appearance.shininess,
+                default_material,
+                tuple(sorted(group_materials.items())),
             )
         )
     diagnostics += [d for _, d in sorted(ordered, key=lambda item: item[0])]
@@ -470,7 +502,12 @@ def extract_render_scene(
         background=to_linear(world_settings.background),
         ambient=to_linear(world_settings.ambient_color) * world_settings.ambient_intensity,
         diagnostics=tuple(diagnostics),
-        timings={"evaluate": evaluate_time, "extract": total - evaluate_time},
+        timings={
+            "evaluate": evaluate_time,
+            "textures": material_table.texture_seconds,
+            "extract": total - evaluate_time - material_table.texture_seconds,
+        },
+        materials=tuple(material_table.materials),
     )
 
 
@@ -488,4 +525,4 @@ def default_light(frame: CameraFrame) -> RenderLight:
 
 
 def _render_mesh(mesh: Mesh) -> RenderMesh:
-    return RenderMesh(mesh.positions, mesh.triangles, mesh.normals)
+    return RenderMesh(mesh.positions, mesh.triangles, mesh.normals, mesh.uvs, mesh.groups)
