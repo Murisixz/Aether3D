@@ -83,6 +83,27 @@ def half_size(result) -> np.ndarray:
     return quantize(linear_to_srgb(small))
 
 
+def render_differences(first, others) -> list[str]:
+    """How later renders of the same scene differ from the first (and from each other)."""
+    out = []
+    names = {o["index"]: o["name"] for o in first.objects}
+    for k, other in enumerate(others, start=2):
+        diff = np.abs(other.image.astype(int) - first.image.astype(int)).max(axis=-1)
+        if not diff.any():
+            continue
+        ys, xs = np.nonzero(diff)
+        objects = sorted({names.get(int(i), "background") for i in first.object_index[ys, xs]})
+        near_edges = edges(first.object_index)[ys, xs].mean()
+        out.append(
+            f"render {k} vs 1: {ys.size} pixels (max {diff.max()} codes, {near_edges:.0%} on "
+            f"object edges) on {', '.join(objects[:8])}"
+        )
+    for k in range(1, len(others)):
+        if not np.array_equal(others[k].image, others[k - 1].image):
+            out.append(f"renders {k + 1} and {k + 2} differ too")
+    return out
+
+
 def report_gpu(adapter) -> dict | None:
     status = gpu_status(adapter=adapter)
     if status["versions"]:
@@ -146,10 +167,10 @@ def run(args: argparse.Namespace, out: Path, work: Path) -> int:
     t0 = time.perf_counter()
     gpu = scene.render(**gpu_options)
     t_cold = time.perf_counter() - t0
-    t_warm = float("inf")
+    t_warm, warm = float("inf"), []
     for _ in range(3):  # the best of three: a single render is at the mercy of GPU clocks
         t0 = time.perf_counter()
-        again = scene.render(**gpu_options)
+        warm.append(scene.render(**gpu_options))
         t_warm = min(t_warm, time.perf_counter() - t0)
     shadowed = scene.render(**gpu_options, shadows=SHADOWS)
     for name, result in (("cpu", cpu), ("gpu", gpu), ("gpu_shadows", shadowed)):
@@ -221,8 +242,9 @@ def run(args: argparse.Namespace, out: Path, work: Path) -> int:
     if not 0.03 < fraction < 0.7:
         failures.append(f"implausible shadowed ground fraction {fraction:.2f}")
     print(f"   sun shadows cover {fraction:.0%} of the visible ground")
-    if not np.array_equal(again.image, gpu.image):
-        failures.append("two GPU renders differ")
+    differences = render_differences(gpu, warm)
+    if differences:
+        failures.append("GPU renders of the same scene differ: " + "; ".join(differences))
     project = work / "gpu_castle.aether"
     scene.save(project)  # its textures are in work/textures: saved as relative paths
     with tempfile.TemporaryDirectory() as tmp:
