@@ -186,6 +186,23 @@ def test_warps_have_their_documented_densities():
     np.testing.assert_allclose(np.cross(t, bt), d, atol=1e-12)
 
 
+def test_frames_do_not_turn_for_normals_horizontal_up_to_rounding():
+    """A wall rotated by 90 degrees has n.z = 1 - 2 sin^2(45 deg): +2e-16 with some math
+    libraries, -2e-16 with others. Its frame -- which direction each random number samples --
+    must not depend on that sign. Frames stay orthonormal and right-handed for every n.z."""
+    residue = 2.220446049250313e-16
+    up = frame(np.array([[1.0, 0.0, residue]]))
+    down = frame(np.array([[1.0, 0.0, -residue]]))
+    for a, b in zip(up, down, strict=True):
+        np.testing.assert_allclose(a, b, atol=1e-15)
+    z = np.array([-1e-12, -1.1e-12, -0.5, -0.9999999, -1.0, 0.0, -0.0, 1e-300, 0.3, 1.0])
+    n = np.stack([np.sqrt(1.0 - z * z), np.zeros_like(z), z], axis=1)
+    t, bt = frame(n)
+    for a, bb in ((t, bt), (t, n), (bt, n)):
+        np.testing.assert_allclose((a * bb).sum(axis=1), 0.0, atol=1e-12)
+    np.testing.assert_allclose(np.cross(t, bt), n, atol=1e-12)
+
+
 def test_power_heuristic_weights_sum_to_one():
     a = np.array([0.0, 1.0, 2.0, 1e6])
     b = np.array([1.0, 1.0, 0.0, 3.0])

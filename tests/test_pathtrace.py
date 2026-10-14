@@ -519,6 +519,27 @@ def test_renders_repeat_bit_for_bit_and_do_not_depend_on_batching(monkeypatch):
         assert np.array_equal(a.passes[name], small.passes[name])
 
 
+def test_rounding_residues_in_wall_orientations_do_not_change_the_image():
+    """Walls rotated by 90 degrees carry rounding residues in their normals, whose sign
+    depends on the platform's math library (Windows and Linux differ). Tilting the walls by
+    1e-13 degrees, to give the residues either sign, must not change which directions the
+    random numbers sample: the images agree to rounding (before the fix, 99% of the pixels
+    changed, as on Windows)."""
+
+    def tilted(delta):
+        scene = cornell_box()
+        scene.get_by_name("Back").rotation_euler = (90 + delta, 0, 0)
+        scene.get_by_name("Left").rotation_euler = (0, 90 + delta, 0)
+        scene.get_by_name("Right").rotation_euler = (0, -90 - delta, 0)
+        return render(scene, 16, 16, samples=4, bounces=3, seed=5)
+
+    reference = render(cornell_box(), 16, 16, samples=4, bounces=3, seed=5)
+    for delta in (1e-13, -1e-13):
+        result = tilted(delta)
+        assert result.stats["bounce_rays"] == reference.stats["bounce_rays"]
+        np.testing.assert_allclose(result.linear, reference.linear, rtol=1e-6, atol=1e-9)
+
+
 def window_room(width: float = 0.9) -> a3.Scene:
     """A closed room with a square window in one wall; the sun shines in through it."""
     scene = dark(a3.Scene())

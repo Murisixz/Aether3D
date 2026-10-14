@@ -41,8 +41,10 @@ features; breaking changes are called out explicitly).
     statistics, per-stage timings and the work estimate.
   - **Reproducible:** counter-based random numbers and per-pixel summation
     in sample order make renders bit-identical for the same seed, whatever
-    the batch size or number of worker processes. `progress` reports every
-    sample pass and can stop the render.
+    the batch size or number of worker processes. Across platforms, rounding
+    differences in math libraries do not change which directions are
+    sampled; a fixed image is compared on Linux, macOS and Windows in CI.
+    `progress` reports every sample pass and can stop the render.
   - **Parallel on Linux:** forked worker processes trace tiles of pixels
     into shared memory (`workers`). With 8 processes, renders on an
     i9-12900H are 2.6–4.2 times faster than with one; more processes did not
@@ -100,6 +102,8 @@ features; breaking changes are called out explicitly).
     shadowing itself too), and no shadow acne;
   - sized lights reached by light and BSDF sampling alike: unbiased on a
     plane, and reflected by a mirror without fireflies;
+  - rounding residues in normals (either sign, as math libraries leave
+    them) do not change which directions are sampled;
   - a mirror against a mirrored camera, Cornell-box color bleeding, and a
     room lit through its window only by bounces;
   - the BSDF against quadrature;

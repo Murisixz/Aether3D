@@ -443,8 +443,20 @@ transport.*
 - **Reproducible renders.** Per pixel, samples are summed in sample order.
   The same scene, settings and seed give the same image bit for bit on a
   given platform — whatever `workers` is. Tests check this across batch
-  sizes and worker counts. Different platforms (CPU, math library) may differ
-  in the last bits.
+  sizes and worker counts.
+- **Across platforms**, math libraries round some functions differently in
+  the last bit, and the path tracer keeps those differences from changing
+  which directions the random numbers sample. For example, a wall rotated by
+  90 degrees has a normal whose vertical component is a rounding residue:
+  +2e-16 on Linux and macOS, -2e-16 on Windows. The sampling frame does not
+  depend on its sign (a test checks this), so images agree to rounding.
+  - CI renders the same small image on Linux, macOS and Windows and
+    compares it with a stored reference.
+  - One case remains: a ray that meets exactly the seam between two
+    separate meshes may hit one of them on one platform and slip between
+    them on another. Sampled rays practically never do, but a symmetric
+    camera can aim pixel centers there. This affects only the pixel-center
+    `depth` and `object_index` maps.
 - **Noise** falls as `1 / sqrt(samples)` (a test checks the convergence
   rate). The `variance` pass is the unbiased variance of each pixel's mean,
   per channel. `stats["noise"]` summarizes it: `mean_standard_error` and
@@ -700,8 +712,8 @@ of a pixel, estimated from the variance of its samples.
 | (castle_raster_half) | 960x540 | GPU rasterizer (NVIDIA GeForce RTX 4060 Laptop GPU) |  |  |  |  | 0.9 s |
 | (castle_direct_half) | 960x540 | path tracer (CPU, 8 processes), 0 bounces | 32 | 61 M | 0.62 | 9.6% | 1.7 min |
 | (castle_path_half) | 960x540 | path tracer (CPU, 8 processes), 4 bounces | 32 | 73 M | 0.64 | 8.6% | 1.9 min |
-| hero_path.png | 1280x720 | path tracer (CPU, 8 processes), 4 bounces, clamp 3 | 64 | 159 M | 1.18 | 1.6% | 2.3 min |
-| (hero_raster_half) | 640x360 | GPU rasterizer (NVIDIA GeForce RTX 4060 Laptop GPU) |  |  |  |  | 0.9 s |
+| hero_path.png | 1280x720 | path tracer (CPU, 8 processes), 4 bounces, clamp 3 | 64 | 159 M | 1.13 | 1.6% | 2.4 min |
+| (hero_raster_half) | 640x360 | GPU rasterizer (NVIDIA GeForce RTX 4060 Laptop GPU) |  |  |  |  | 0.8 s |
 
 Rows in parentheses are the half-size renders of the comparison strips. The
 GPU rasterizer times include starting the GPU in a fresh process (device,
@@ -800,6 +812,8 @@ own output:
     bouncing;
   - the direct pass of a bounced render is the `bounces=0` image, bit for
     bit;
+  - rounding residues in normals (either sign) do not change which
+    directions are sampled;
   - editing a procedural parameter rebuilds the ray tracing data;
   - AO against the analytic wall formula and its reach;
   - convergence at about `1 / sqrt(samples)`;
@@ -834,8 +848,10 @@ more than 97% of its values must agree to 1e-5 relative, and the mean
 absolute difference must stay below 0.5% of the mean value. This
 allows last-bit floating-point differences between platforms' math
 libraries, which a path can amplify by taking another branch, but no change
-in what is computed. CI also runs every showcase in quick mode with its
-checks.
+in what is computed. When the comparison fails, the test reports where the
+render starts to differ from the reference platform: random numbers, camera
+and geometry, path decisions or the light carried. CI also runs every
+showcase in quick mode with its checks.
 
 ## Sources and licenses
 

@@ -84,10 +84,24 @@ SLOT_LIGHTS = 4096  # 3 per light sample: the analytic lights first, then the em
 # --------------------------------------------------------------------------- #
 
 
+FRAME_BRANCH_TOLERANCE = 1e-12
+"""Normals with ``z >= -FRAME_BRANCH_TOLERANCE`` use the ``+z`` branch of :func:`frame`."""
+
+
 def frame(n: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Unit tangents ``t``, ``b`` with ``(t, b, n)`` right-handed and orthonormal."""
+    """Unit tangents ``t``, ``b`` with ``(t, b, n)`` right-handed and orthonormal.
+
+    The construction has two branches, chosen by the sign of ``n.z``. A normal
+    that is horizontal up to rounding must not switch branches: a wall rotated
+    by 90 degrees has ``n.z = 1 - 2 sin^2(45 deg)``, about +2e-16 or -2e-16
+    depending on how the platform's math library rounds ``sin(pi/4)``, and the
+    other branch turns the frame -- so the same random numbers would sample
+    other directions on other platforms. Values down to
+    :data:`FRAME_BRANCH_TOLERANCE` below zero take the ``+z`` branch, which
+    stays accurate there (it is singular only at ``n.z = -1``).
+    """
     nx, ny, nz = n[:, 0], n[:, 1], n[:, 2]
-    sign = np.where(nz >= 0.0, 1.0, -1.0)
+    sign = np.where(nz >= -FRAME_BRANCH_TOLERANCE, 1.0, -1.0)
     a = -1.0 / (sign + nz)
     b = nx * ny * a
     t = np.stack([1.0 + sign * nx * nx * a, sign * b, -sign * nx], axis=1)
