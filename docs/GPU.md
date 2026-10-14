@@ -635,6 +635,14 @@ How to read these numbers:
 - **Software adapters.** lavapipe runs the same pipeline on the CPU. It is
   correct, and faster than the NumPy renderer for large images, but not
   hardware speed.
+- **Materials** (measured with `benchmarks/bench_materials.py`; details in
+  [MATERIALS.md](MATERIALS.md#performance)), at 1080p on the RTX 4060:
+  - image textures and single procedural nodes add 0–15% to a frame;
+  - the stone preset (three procedural textures and a bump map) makes it
+    about 2.8× slower;
+  - the textured castle renders in 37 ms (11.7 s on the CPU renderer);
+  - the first render after a large texture changes pays for decoding and
+    uploading it once: 5.1 s for a new 4096² PNG.
 
 ## Errors, diagnostics and debugging
 
