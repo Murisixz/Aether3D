@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from ..diagnostics import ERROR, INFO, WARNING, Diagnostic
-from ..errors import MaterialError
+from ..errors import AetherError, MaterialError
 from .graph import TextureGraph, compile_graph
 from .material import (
     MODELS,
@@ -472,7 +472,10 @@ class MaterialLibrary:
         """Problems with materials, textures and assignments (nothing is changed).
 
         Errors: unreadable, missing or invalid images, unsafe paths.
-        Warnings: objects whose mesh lacks the UVs a material needs.
+        Warnings: objects whose mesh lacks the UVs a material needs, or the face groups
+        its group materials need; objects whose procedural geometry cannot be evaluated
+        when those checks need it (``GEOMETRY_EVALUATION_FAILED``; nothing is evaluated
+        otherwise).
         Infos: textures and materials that nothing uses.
         """
         out: list[Diagnostic] = []
@@ -501,11 +504,12 @@ class MaterialLibrary:
         for obj in self._scene:
             ids = ([obj._material] if obj._material else []) + list(obj._group_materials.values())
             used_materials.update(ids)
-            mesh = obj.mesh if (obj._mesh is not None or obj._geometry is not None) else None
+            # In id order: a missing material's error, or a material mapping textures by UV.
+            checks: list[Diagnostic | tuple[Material, list[str]]] = []
             for mid in ids:
                 material = self._materials.get(mid)
                 if material is None:
-                    out.append(
+                    checks.append(
                         Diagnostic(
                             "MATERIAL_NOT_FOUND",
                             ERROR,
@@ -515,7 +519,32 @@ class MaterialLibrary:
                     )
                     continue
                 needs = [s for s, b in material._textures.items() if b.coordinates == "uv"]
-                if needs and mesh is not None and mesh.uvs is None:
+                if needs:
+                    checks.append((material, needs))
+            # The mesh is needed only for UV and face-group checks; procedural geometry is
+            # evaluated only then, and a geometry that cannot be evaluated is reported.
+            mesh = None
+            wanted = obj._group_materials or any(isinstance(c, tuple) for c in checks)
+            if wanted and (obj._mesh is not None or obj._geometry is not None):
+                try:
+                    mesh = obj.mesh
+                except AetherError as exc:
+                    out.append(
+                        Diagnostic(
+                            "GEOMETRY_EVALUATION_FAILED",
+                            WARNING,
+                            f"object {obj.name!r}: its geometry could not be evaluated "
+                            f"({getattr(exc, 'code', type(exc).__name__)}), so its UVs and face "
+                            "groups were not checked",
+                            f"objects[{obj.name}]",
+                        )
+                    )
+            for check in checks:
+                if isinstance(check, Diagnostic):
+                    out.append(check)
+                    continue
+                material, needs = check
+                if mesh is not None and mesh.uvs is None:
                     out.append(
                         Diagnostic(
                             "MISSING_UVS",

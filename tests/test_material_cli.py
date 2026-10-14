@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from test_cli import run, run_json
+from test_materials import unevaluable_project
 
 from aether3d import Scene
 from aether3d.cli import EXIT_FAILURE, EXIT_GEOMETRY_ERRORS, EXIT_OK
@@ -338,6 +339,19 @@ def test_export_bakes_procedural_textures_only_on_request(project, capsys):
     code, data = run_json(capsys, "export", str(project), str(bad), "--bake-textures", "3")
     assert code == EXIT_FAILURE and "bake_textures" in data["error"]["message"]
     assert not bad.exists()
+
+
+def test_listing_and_validating_never_need_failing_geometry(tmp_path, capsys):
+    path = tmp_path / "unevaluable.aether"
+    path.write_text(json.dumps(unevaluable_project()), encoding="utf-8")
+    code, data = run_json(capsys, "material", "list", str(path))
+    assert code == EXIT_OK and data["colored_objects"] == ["Thing"]
+    code, _ = run_json(capsys, "material", "create", str(path), "Stone", "--preset", "stone")
+    assert code == EXIT_OK
+    assert run_json(capsys, "material", "assign", str(path), "Stone", "Thing")[0] == EXIT_OK
+    code, data = run_json(capsys, "material", "validate", str(path))
+    assert code == EXIT_OK and data["ok"]
+    assert run_json(capsys, "material", "inspect", str(path), "Stone")[0] == EXIT_OK
 
 
 def test_inspect_shows_object_materials(project, capsys):

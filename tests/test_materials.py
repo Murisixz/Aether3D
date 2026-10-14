@@ -419,6 +419,42 @@ def test_preset_and_schema_listings():
     assert info.value.code == "UNKNOWN_PRESET"
 
 
+def unevaluable_project() -> dict:
+    """A project whose object "Thing" cannot be evaluated: a boolean with an open operand
+    (without manifold3d: a missing backend). Loading is fine; evaluation is lazy."""
+    scene = Scene()
+    scene.add_geometry("Cutter", "grid", x_size=1, y_size=1)  # open: not a valid operand
+    scene.add_object("Thing", geometry=scene.add_geometry("Body", "box"))
+    doc = scene.to_dict()
+    cutter = next(g["id"] for g in doc["scene"]["geometry"] if g["name"] == "Cutter")
+    body = next(g for g in doc["scene"]["geometry"] if g["name"] == "Body")
+    body["modifiers"].append(
+        {
+            "id": "cut",
+            "name": "Cut",
+            "type": "boolean",
+            "enabled": True,
+            "params": {"operation": "difference", "operand": {"geometry": cutter}},
+        }
+    )
+    return doc
+
+
+def test_validate_evaluates_geometry_only_when_needed_and_reports_failures():
+    """Geometry is evaluated only for UV and face-group checks, and a procedural geometry that
+    cannot be evaluated is reported, not raised."""
+    loaded = Scene.from_dict(unevaluable_project())
+    thing = loaded.get_by_name("Thing")
+    thing.material = loaded.create_material("Stone", preset="stone")  # object coordinates
+    assert [d.code for d in loaded.materials.validate() if d.severity != "info"] == []
+    painted = loaded.create_material("Painted")
+    painted.set_procedural_texture("base_color", "checker")  # mapped by UV: needs the mesh
+    thing.material = painted
+    problems = [d for d in loaded.materials.validate() if d.severity != "info"]
+    assert [(d.code, d.severity) for d in problems] == [("GEOMETRY_EVALUATION_FAILED", "warning")]
+    assert problems[0].location == "objects[Thing]"
+
+
 def test_inspect_and_validate(tmp_path):
     scene = Scene()
     flat = scene.add_object(

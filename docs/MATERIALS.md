@@ -631,6 +631,9 @@ render goes on with a documented fallback:
 `scene.materials.validate()` (and `aether3d material validate`) reports the
 same problems before rendering. It also reports:
 - `NO_FACE_GROUPS` (warning): group materials on a mesh without groups;
+- `GEOMETRY_EVALUATION_FAILED` (warning): procedural geometry that cannot be
+  evaluated, so its UVs and face groups could not be checked. An example is a
+  boolean without manifold3d. Geometry is evaluated only for those checks.
 - `UNUSED_MATERIAL` and `UNUSED_TEXTURE` (information).
 
 ## Untrusted textures and graphs

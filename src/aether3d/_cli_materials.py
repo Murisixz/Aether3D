@@ -147,7 +147,8 @@ def cmd_material_list(args: argparse.Namespace) -> CommandOutput:
         {"id": t.id, "name": t.name, "type": t.kind, "source": getattr(t, "source", "procedural")}
         for t in library.textures
     ]
-    colored = [o.name for o in scene if o.mesh is not None and o._material is None]
+    # (by kind: listing must not evaluate procedural geometry)
+    colored = [o.name for o in scene if o.kind in ("mesh", "procedural") and o._material is None]
     lines = [f'Materials in "{scene.name}" ({len(materials)}):']
     for m in materials:
         slots = ", ".join(f"{slot}={name}" for slot, name in m["textures"].items()) or "no textures"
