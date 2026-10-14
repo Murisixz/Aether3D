@@ -61,6 +61,18 @@ def test_texels_land_exactly_where_uvs_put_them(tmp_path):
     assert np.array_equal(result.image, expected)
 
 
+def test_texture_preparation_time_is_reported(tmp_path):
+    scene = Scene()
+    plane = scene.add_plane("P", size=2)
+    m = scene.create_material("M")
+    m.set_texture("base_color", save_png(tmp_path / "t.png", np.full((4, 4, 3), 200, np.uint8)))
+    plane.material = m
+    top_camera(scene)
+    timings = scene.render(width=16, height=16, samples=1).stats["timings"]
+    assert list(timings)[:3] == ["evaluate", "textures", "extract"]
+    assert 0 <= timings["textures"] <= timings["total"]
+
+
 def test_bilinear_filtering_and_wrapping_between_texel_centers(tmp_path):
     texels = np.array([[[0, 0, 0], [255, 255, 255]]], dtype=np.uint8)  # 2 x 1: black | white
     scene = Scene()

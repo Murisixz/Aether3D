@@ -299,6 +299,8 @@ def test_textures_upload_once_and_reupload_when_the_file_changes(gpu, tmp_path):
     second = gpu.render(scene, width=8, height=8, default_lights=False)
     assert second.backend["resources"]["texel_uploads"] == 0
     assert first.pixel(4, 4) == second.pixel(4, 4) == (255, 0, 0)
+    for result in (first, second):  # the time spent preparing textures is reported
+        assert 0 <= result.stats["timings"]["textures"] <= result.stats["timings"]["total"]
     png(path, np.full((5, 4, 3), (0, 0, 255), np.uint8))  # edited: new content, new size
     third = gpu.render(scene, width=8, height=8, default_lights=False)
     assert third.backend["resources"]["texel_uploads"] == 1 and third.pixel(4, 4) == (0, 0, 255)
