@@ -316,6 +316,30 @@ def test_convert_colors_preview_presets_and_schema(project, capsys):
     assert data["material"]["models"] == ["standard", "simple"] and len(data["node_types"]) == 16
 
 
+def test_export_bakes_procedural_textures_only_on_request(project, capsys):
+    assert run_json(capsys, "material", "create", str(project), "Checks")[0] == EXIT_OK
+    checker = '{"type": "checker", "scale": 4}'  # mapped by UV: glTF can carry a baked image
+    code, _ = run_json(
+        capsys, "material", "texture", str(project), "Checks", "base_color", "--procedural", checker
+    )
+    assert code == EXIT_OK
+    assert run_json(capsys, "material", "assign", str(project), "Checks", "Box")[0] == EXIT_OK
+    plain, baked = project.with_name("plain.glb"), project.with_name("baked.glb")
+    code, data = run_json(capsys, "export", str(project), str(plain))
+    codes = [d["code"] for d in data["diagnostics"]]
+    assert code == EXIT_OK and "PROCEDURAL_TEXTURE_NOT_EXPORTED" in codes
+    assert "TEXTURE_BAKED" not in codes
+    code, data = run_json(capsys, "export", str(project), str(baked), "--bake-textures", "32")
+    codes = [d["code"] for d in data["diagnostics"]]
+    assert code == EXIT_OK and "TEXTURE_BAKED" in codes
+    assert "PROCEDURAL_TEXTURE_NOT_EXPORTED" not in codes
+    assert baked.stat().st_size > plain.stat().st_size
+    bad = project.with_name("bad.glb")
+    code, data = run_json(capsys, "export", str(project), str(bad), "--bake-textures", "3")
+    assert code == EXIT_FAILURE and "bake_textures" in data["error"]["message"]
+    assert not bad.exists()
+
+
 def test_inspect_shows_object_materials(project, capsys):
     run_json(capsys, "material", "create", str(project), "M")
     run_json(capsys, "material", "assign", str(project), "M", "Box")

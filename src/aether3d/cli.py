@@ -399,7 +399,9 @@ def cmd_export(args: argparse.Namespace) -> CommandOutput:
     _check_destination(destination, args.force)
     scene, info = _load_scene(source, args.allow_lossy)
     try:
-        result = export_gltf(scene, destination, allow_lossy=args.allow_lossy)
+        result = export_gltf(
+            scene, destination, allow_lossy=args.allow_lossy, bake_textures=args.bake_textures
+        )
     except (AetherError, OSError) as exc:
         raise _command_error(exc, destination) from None
     data = {"source": str(source), **info, **result.to_dict()}
@@ -1228,6 +1230,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_export.add_argument("source", help="a .aether project (or a .glb/.gltf file)")
     p_export.add_argument("destination", help="the .glb or .gltf file to write")
     p_export.add_argument("--force", action="store_true", help="overwrite an existing file")
+    p_export.add_argument(
+        "--bake-textures",
+        type=int,
+        metavar="SIZE",
+        help="bake procedural textures into SIZE x SIZE PNG images (16-8192); without it they "
+        "are left out, with a warning",
+    )
     p_export.set_defaults(handler=cmd_export)
 
     p_topology = sub.add_parser(
