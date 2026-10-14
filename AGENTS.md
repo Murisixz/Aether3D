@@ -16,7 +16,7 @@ apply to agents too.
 - Procedural geometry: [docs/PROCEDURAL.md](docs/PROCEDURAL.md) (parameters, expressions, modifiers,
   caching, transactions, scripts).
 - Cameras, lights and rendering: [docs/RENDERING.md](docs/RENDERING.md) (conventions, pipeline,
-  shading model, API, CLI, verification).
+  shading model, API, CLI, verification); the GPU backend: [docs/GPU.md](docs/GPU.md).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 
 ## Conventions to preserve
@@ -51,6 +51,16 @@ apply to agents too.
   Validate new shading or projection code against `tests/render_reference.py` (an independent ray
   caster) and analytic values; regenerate `tests/data/renders` only for intended changes
   (`python tests/render_goldens.py --update`).
+- GPU backend (`rendering/gpu/`): only this package imports wgpu, and only lazily -- `import
+  aether3d` and the CPU renderer must keep working without it. Shaders come from the bundled
+  `wgsl/` files only (never compile text from scenes, projects or the CLI). Keep the host-side
+  byte layouts in `gpu/resources.py` in sync with the WGSL structs (`tests/test_gpu_data.py`
+  checks them). Lighting changes must stay identical in `cpu.py` and `wgsl/scene.wgsl`; check
+  them with the parity tests in `tests/test_gpu_render.py` (`supersample=s, msaa=1`) and shadow
+  changes with the ray-traced references in `tests/test_gpu_shadows.py`. Never report a GPU as
+  used or available without a created device, and label software adapters as such.
+- Run GPU tests locally with `AETHER3D_REQUIRE_GPU=1 pytest tests/test_gpu_*.py` (optionally
+  `AETHER3D_TEST_GPU_ADAPTER=llvmpipe` or `=nvidia`); `AETHER3D_GPU_DEBUG=1` enables validation.
 
 ## Using Aether3D from an agent
 
@@ -83,3 +93,9 @@ apply to agents too.
   with `aether3d camera add --frame`, `light add`, `object set --color`, `scene set`, or one
   atomic `aether3d scene run PROJECT script.json`. In Python: `scene.add_camera(...).frame()`,
   `scene.add_directional_light(...)`, `scene.render(...)`, `result.save("x.png")`.
+- GPU: `aether3d gpu info --check --json` says whether GPU rendering works here and which adapter
+  is used (exit code 3 if it does not). Render with `--backend gpu` (fails with a `GPU_*` code if
+  unavailable -- never a silent CPU render) or `--backend auto` (read `backend.name` and the
+  `BACKEND_FALLBACK` diagnostic). Add `--shadows` for sun shadows; `backend.adapter.software: true`
+  means a CPU-emulated GPU (correct, not hardware speed). Python: `scene.render(backend="gpu",
+  shadows=True)`, `aether3d.gpu_status()`, `aether3d.list_adapters()`.

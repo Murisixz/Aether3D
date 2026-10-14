@@ -17,6 +17,7 @@ from aether3d import ProceduralSystem, ProceduralGeometry, Modifier, PolyMesh, E
 from aether3d import ProceduralError, run_procedural_script
 from aether3d import Camera, Light, Appearance, World, RenderSettings, RenderLimits
 from aether3d import RenderResult, RenderError, render, run_scene_script
+from aether3d import ShadowSettings, list_adapters, gpu_status, release_gpu
 from aether3d import AetherError  # and the specific error classes below
 ```
 
@@ -320,18 +321,23 @@ procedural script atomically, and raises `ScriptError` on failure.
 
 ## Rendering
 
-Full guide: [RENDERING.md](RENDERING.md).
+Full guides: [RENDERING.md](RENDERING.md) (the CPU renderer, cameras, lights,
+shading) and [GPU.md](GPU.md) (the GPU backend).
 
 | Name | Description |
 | --- | --- |
-| `render(scene, *, camera=None, width=None, height=None, samples=None, exposure=None, cull=None, default_lights=None, frame=False, margin=0.05, limits=None)` | Render with the CPU rasterizer. Arguments override `scene.render_settings` for this render only. Same as `scene.render(...)`. |
-| `RenderResult` | `image` (`(h, w, 3) uint8` sRGB); `linear`, `depth`, `coverage` and `object_index` maps; `objects`, `camera`, `settings`, `stats` (counts and timings), `diagnostics`, `output`, `status`, `width`, `height`, `pixel(x, y)`, `png_bytes()`, `save(path)` (atomic, `.png` only), `to_dict()`. |
+| `render(scene, *, camera=None, width=None, height=None, samples=None, exposure=None, cull=None, default_lights=None, frame=False, margin=0.05, limits=None, backend="cpu", adapter=None, msaa=None, supersample=None, shadows=None)` | Render the scene. Arguments override `scene.render_settings` for this render only. Same as `scene.render(...)`. `backend`: `"cpu"` (the NumPy rasterizer, the default), `"gpu"` (wgpu; `GPU_*` error if unavailable) or `"auto"` (GPU if it works, else CPU with a `BACKEND_FALLBACK` diagnostic). `adapter`: GPU adapter selection (index, `"discrete"`, `"vulkan"`, part of a name, ...). `msaa`, `supersample`: GPU antialiasing (default: `samples²` samples per pixel). `shadows`: GPU shadow maps (`True`, a dict or a `ShadowSettings`). |
+| `RenderResult` | `image` (`(h, w, 3) uint8` sRGB); `linear`, `depth`, `coverage` and `object_index` maps; `objects`, `camera`, `settings`, `stats` (counts and timings; GPU: also `gpu_timings`, `draw_calls`), `diagnostics`, `backend` (`{"name": "cpu"}`, or the GPU adapter, API, antialiasing, shadow maps and resources), `output`, `status`, `width`, `height`, `pixel(x, y)`, `png_bytes()`, `save(path)` (atomic, `.png` only), `to_dict()`. |
+| `ShadowSettings(lights=None, map_size=2048, bias=0.5, normal_offset=0.5, pcf_radius=1)` | GPU shadow-map settings for one render (not saved in projects). |
+| `list_adapters(*, check=False)` | Graphics adapters wgpu can use, best first: `index`, `name`, `vendor`, `type`, `backend`, `driver`, `software`, `features`, `limits`, `recommended` (with `check=True`: `usable`, `msaa`). Raises `RenderError("GPU_UNAVAILABLE")` without wgpu. |
+| `gpu_status(*, adapter=None, check=False)` | Never raises: `available`, `reason`, `hint`, `versions`, `adapters`, `selected` (adapter, features, limits, MSAA counts) and, with `check=True`, a verified test render (`check`). |
+| `release_gpu(adapter=None)` | Free cached GPU devices and memory; returns how many. |
 | `Camera(projection="perspective", fov=40, fov_axis="vertical", ortho_scale=10, near=0.1, far=1000, aspect_ratio=None)` | Validated camera parameters, with `configure(**changes)`, `half_extents(aspect)` and `projection_matrix(aspect)`. |
 | `Light(type="directional", color=(1, 1, 1), intensity=1, range=None, falloff="inverse_square")` | Validated light parameters, with `configure(**changes)`. |
 | `Appearance(color=(0.8, 0.8, 0.8), specular=0, shininess=32)` | Object color and highlight. |
 | `World(background=(0.2, 0.2, 0.2), ambient_color=(1, 1, 1), ambient_intensity=0.1)` | Background and ambient light. |
 | `RenderSettings(width=1280, height=720, samples=2, exposure=0, cull="none", default_lights=True)` | Saved output settings. |
-| `RenderLimits(max_dimension=16384, max_samples=40_000_000, max_triangles=20_000_000)` | Resource limits, checked before allocating. |
+| `RenderLimits(max_dimension=16384, max_samples=40_000_000, max_triangles=20_000_000, max_gpu_memory=4 GiB)` | Resource limits, checked before allocating. |
 | `run_scene_script(scene, script)` | Apply a declarative `aether3d.scene-script` (cameras, lights, appearance, world, settings) atomically. |
 | `aether3d.rendering.extract_render_scene(scene, camera)` | The backend-independent `RenderScene`. |
 | `aether3d.rendering.encode_png(image)`, `write_png(path, image)` | Aether3D's PNG encoder. |
@@ -367,7 +373,7 @@ All deliberate errors derive from `AetherError`.
 | `ResourceLimitError` | `ValueError` | Input exceeds an `ImportLimits` limit |
 | `EditError` | `ValueError` | An editing operation cannot be applied; nothing changed. `.code` (stable), `.elements` (offending ids by kind), `.hint` |
 | `ScriptError` | `ValueError` | An edit or procedural script is malformed, or a step failed. `.code`, `.location` (e.g. `edits[0].operations[3]`), `.details` |
-| `RenderError` | `ValueError` | A camera, light, appearance, world or render setting is invalid, or rendering failed; nothing changed and no file was written. `.code` (stable), `.location`, `.hint`, `.details` |
+| `RenderError` | `ValueError` | A camera, light, appearance, world or render setting is invalid, or rendering failed (including GPU problems: `GPU_UNAVAILABLE`, `GPU_ADAPTER_NOT_FOUND`, `GPU_DEVICE_LOST`, ...; see [GPU.md](GPU.md#errors-diagnostics-and-debugging)); nothing changed and no file was written. `.code` (stable), `.location`, `.hint`, `.details` |
 | `ProceduralError` | `ValueError` | A procedural definition, parameter or evaluation is invalid; nothing changed. `.code` (stable), `.location` (e.g. `geometry[Tower].modifiers[Row].params.count`), `.hint`, `.details` |
 
 Missing files raise the standard `FileNotFoundError`.
@@ -390,6 +396,9 @@ aether3d procedural run PROJECT.aether SCRIPT.json|- [--output PATH] [--dry-run]
 aether3d procedural set PROJECT.aether NAME=VALUE... [--geometry REF] [--output PATH] [--dry-run] [--json]
 aether3d procedural bake PROJECT.aether (--object REF... | --all) [--output PATH] [--dry-run] [--json]
 aether3d render PATH [-o OUT.png] [--width W] [--height H] [--camera REF] [--samples N] [--exposure EV] [--cull none|back|front] [--background COLOR] [--no-default-lights] [--frame] [--margin M] [--force] [--json]
+    [--backend cpu|gpu|auto] [--adapter SPEC] [--msaa N] [--supersample N]
+    [--shadows [--shadow-lights LIGHT...] [--shadow-map-size N] [--shadow-bias B] [--shadow-normal-offset X] [--shadow-pcf-radius R]]
+aether3d gpu info [--adapter SPEC] [--check] [--json]
 aether3d camera add|set|frame|activate|list PROJECT ... [--output PATH] [--dry-run] [--json]
 aether3d light add|set|list PROJECT ... [--output PATH] [--dry-run] [--json]
 aether3d object set|remove PROJECT OBJECT ... [--output PATH] [--dry-run] [--json]
@@ -420,7 +429,7 @@ Exit codes:
 | `0` | Success |
 | `1` | Failure |
 | `2` | Usage error |
-| `3` | `geometry`, `topology` or `procedural validate` completed but found error-severity problems |
+| `3` | `geometry`, `topology` or `procedural validate` completed but found error-severity problems, or `gpu info --check` found that GPU rendering does not work |
 
 The `import`, `export` and `geometry` commands report:
 

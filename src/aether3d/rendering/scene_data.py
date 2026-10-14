@@ -120,14 +120,72 @@ def _mat4_mul(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return out
 
 
+def _mat4_mul_many(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """:func:`_mat4_mul` for stacks of matrices: the same products, summed in the same order."""
+    out = np.empty(a.shape, dtype=np.float64)
+    for i in range(4):
+        for j in range(4):
+            out[:, i, j] = (
+                a[:, i, 0] * b[:, 0, j]
+                + a[:, i, 1] * b[:, 1, j]
+                + a[:, i, 2] * b[:, 2, j]
+                + a[:, i, 3] * b[:, 3, j]
+            )
+    return out
+
+
+def _local_matrices(objects: list[SceneObject]) -> np.ndarray:
+    """``(n, 4, 4)`` local matrices, bitwise equal to ``obj.local_matrix`` for each object.
+
+    A transform stores its rotation already normalized by ``math3d.quat`` (every
+    assignment goes through it, and normalizing again changes nothing), so this
+    is :func:`~aether3d.math3d.compose_matrix` with the same arithmetic,
+    evaluated for all objects at once.
+    """
+    n = len(objects)
+    transforms = [obj._transform for obj in objects]
+    position = np.array([t._position for t in transforms], dtype=np.float64).reshape(n, 3)
+    rotation = np.array([t._rotation for t in transforms], dtype=np.float64).reshape(n, 4)
+    scale = np.array([t._scale for t in transforms], dtype=np.float64).reshape(n, 3)
+    x, y, z, w = rotation.T
+    r = np.empty((n, 3, 3), dtype=np.float64)
+    r[:, 0, 0] = 1 - 2 * (y * y + z * z)
+    r[:, 0, 1] = 2 * (x * y - z * w)
+    r[:, 0, 2] = 2 * (x * z + y * w)
+    r[:, 1, 0] = 2 * (x * y + z * w)
+    r[:, 1, 1] = 1 - 2 * (x * x + z * z)
+    r[:, 1, 2] = 2 * (y * z - x * w)
+    r[:, 2, 0] = 2 * (x * z - y * w)
+    r[:, 2, 1] = 2 * (y * z + x * w)
+    r[:, 2, 2] = 1 - 2 * (x * x + y * y)
+    m = np.zeros((n, 4, 4), dtype=np.float64)
+    m[:, 3, 3] = 1.0
+    m[:, :3, :3] = r * scale[:, None, :]
+    m[:, :3, 3] = position
+    return m
+
+
 def world_matrices(scene: Scene) -> dict[str, np.ndarray]:
-    """World matrix of every object, computed once per object in hierarchy order."""
-    result: dict[str, np.ndarray] = {}
-    for obj in scene:  # depth-first: parents first
-        local = obj.local_matrix
-        parent = obj.parent
-        result[obj.id] = local if parent is None else _mat4_mul(result[parent.id], local)
-    return result
+    """World matrix of every object (``parent world @ local``, in hierarchy order).
+
+    Computed for all objects at once, one hierarchy level at a time, with the
+    same arithmetic as ``obj.local_matrix`` and :func:`_mat4_mul`.
+    """
+    objects = list(scene)  # depth-first: parents first
+    if not objects:
+        return {}
+    world = _local_matrices(objects)
+    index = {obj.id: k for k, obj in enumerate(objects)}
+    parent = np.full(len(objects), -1, dtype=np.int64)
+    depth = np.zeros(len(objects), dtype=np.int64)
+    for k, obj in enumerate(objects):
+        if obj.parent is not None:
+            parent[k] = index[obj.parent.id]
+            depth[k] = depth[parent[k]] + 1
+    for level in range(1, int(depth.max()) + 1):
+        rows = np.flatnonzero(depth == level)
+        world[rows] = _mat4_mul_many(world[parent[rows]], world[rows])
+    return {obj.id: world[k] for k, obj in enumerate(objects)}
 
 
 def normal_matrix(linear: np.ndarray) -> np.ndarray | None:
@@ -145,6 +203,32 @@ def normal_matrix(linear: np.ndarray) -> np.ndarray | None:
         return None
     result = inv.T
     return result if np.all(np.isfinite(result)) else None
+
+
+def normal_matrices(linear: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """:func:`normal_matrix` for a stack of 3x3 matrices, plus their determinants.
+
+    Returns ``(normal, valid, det)``: ``normal[k]`` is meaningful where
+    ``valid[k]``. Each matrix goes through the same LAPACK routines as with
+    :func:`normal_matrix`, so the results are identical.
+    """
+    n = linear.shape[0]
+    det = np.linalg.det(linear) if n else np.zeros(0)
+    valid = np.isfinite(det) & (np.abs(det) >= 1e-300)
+    normal = np.zeros((n, 3, 3), dtype=np.float64)
+    if valid.any():
+        try:
+            inverse = np.linalg.inv(linear[valid])
+        except np.linalg.LinAlgError:  # pragma: no cover - singular despite its determinant
+            inverse = np.stack(
+                [
+                    m if (m := normal_matrix(lin)) is not None else np.full((3, 3), np.nan)
+                    for lin in linear[valid]
+                ]
+            ).transpose(0, 2, 1)
+        normal[valid] = inverse.transpose(0, 2, 1)
+    valid &= np.all(np.isfinite(normal), axis=(1, 2))
+    return normal, valid, det
 
 
 def resolve_camera(scene: Scene, camera: Any) -> SceneObject:
@@ -218,10 +302,11 @@ def extract_render_scene(
 
     meshes: list[RenderMesh] = []
     mesh_index: dict[int, int] = {}
-    instances: list[RenderInstance] = []
     lights: list[RenderLight] = []
+    candidates: list[tuple[SceneObject, Mesh, np.ndarray, int]] = []  # mesh objects, in order
+    ordered: list[tuple[int, Diagnostic]] = []  # loop diagnostics, by object position
     evaluate_time = 0.0
-    for obj in scene:
+    for position, obj in enumerate(scene):
         loc = f"objects[{obj.name}]"
         world = worlds[obj.id]
         if obj.light is not None:
@@ -248,13 +333,16 @@ def extract_render_scene(
                 direction = -world[:3, 1]
                 length = float(np.linalg.norm(direction))
                 if not length > 1e-12:
-                    diagnostics.append(
-                        Diagnostic(
-                            "LIGHT_DIRECTION_UNDEFINED",
-                            WARNING,
-                            f"light {obj.name!r} has zero scale along its forward axis; "
-                            "it is ignored",
-                            loc,
+                    ordered.append(
+                        (
+                            position,
+                            Diagnostic(
+                                "LIGHT_DIRECTION_UNDEFINED",
+                                WARNING,
+                                f"light {obj.name!r} has zero scale along its forward axis; "
+                                "it is ignored",
+                                loc,
+                            ),
                         )
                     )
                     continue
@@ -301,16 +389,25 @@ def extract_render_scene(
                 loc,
                 hint="check for extreme scales in the object's hierarchy",
             )
-        linear = world[:3, :3]
-        nmat = normal_matrix(linear)
-        if nmat is None:
-            diagnostics.append(
-                Diagnostic(
-                    "ZERO_WORLD_SCALE",
-                    WARNING,
-                    f"object {obj.name!r} has a singular world transform (zero scale); "
-                    "it collapses and is not rendered",
-                    loc,
+        candidates.append((obj, mesh, world, position))
+
+    # Normal matrices, determinants and colors of all mesh objects at once.
+    linear = np.array([c[2][:3, :3] for c in candidates], dtype=np.float64).reshape(-1, 3, 3)
+    normal, valid, det = normal_matrices(linear)
+    colors: dict[tuple, np.ndarray] = {}
+    instances: list[RenderInstance] = []
+    for k, (obj, mesh, world, position) in enumerate(candidates):
+        if not valid[k]:
+            ordered.append(
+                (
+                    position,
+                    Diagnostic(
+                        "ZERO_WORLD_SCALE",
+                        WARNING,
+                        f"object {obj.name!r} has a singular world transform (zero scale); "
+                        "it collapses and is not rendered",
+                        f"objects[{obj.name}]",
+                    ),
                 )
             )
             continue
@@ -319,19 +416,23 @@ def extract_render_scene(
             mesh_index[key] = len(meshes)
             meshes.append(_render_mesh(mesh))
         appearance: Appearance = obj.appearance
+        base = colors.get(appearance.color)
+        if base is None:
+            base = colors[appearance.color] = to_linear(appearance.color)
         instances.append(
             RenderInstance(
                 obj.id,
                 obj.name,
                 mesh_index[key],
                 world,
-                nmat,
-                bool(np.linalg.det(linear) < 0.0),
-                to_linear(appearance.color),
+                normal[k],
+                bool(det[k] < 0.0),
+                base.copy(),
                 appearance.specular,
                 appearance.shininess,
             )
         )
+    diagnostics += [d for _, d in sorted(ordered, key=lambda item: item[0])]
 
     if not lights and default_lights:
         lights.append(default_light(render_camera.frame))

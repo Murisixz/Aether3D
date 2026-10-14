@@ -130,3 +130,16 @@ def test_readme_render_example(tmp_path, monkeypatch):
         "Ground": True,
         "Crate": True,
     }
+
+
+def test_gpu_quick_start(tmp_path, monkeypatch, gpu):
+    monkeypatch.chdir(tmp_path)
+    if gpu.adapter:
+        monkeypatch.setenv("AETHER3D_GPU_ADAPTER", gpu.adapter)
+    source = python_block(ROOT / "docs/GPU.md", "from aether3d import Scene, gpu_status\n")
+    namespace: dict = {}
+    exec(compile(source, "GPU.md", "exec"), namespace)
+    result = namespace["result"]
+    assert (tmp_path / "studio.png").is_file() and result.width == 1920
+    assert result.backend["name"] == "gpu" and result.backend["adapter"]["name"] == gpu.name
+    assert [m["light"] for m in result.backend["shadows"]["maps"]] == ["Sun"]

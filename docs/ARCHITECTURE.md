@@ -58,10 +58,12 @@ Aether3D/
 │   │   ├── graph.py       ProceduralSystem: nodes, dependencies, evaluation, cache, undo
 │   │   ├── session.py     Editing a node's stored base mesh with the editing engine
 │   │   └── script.py      Declarative JSON procedural scripts
-│   ├── rendering/         Cameras, lights and the CPU renderer (see docs/RENDERING.md)
+│   ├── rendering/         Cameras, lights, the CPU and GPU renderers (docs/RENDERING.md, GPU.md)
 │   │   ├── camera.py      Camera parameters, projection matrices, camera frames
 │   │   ├── light.py       Light parameters
-│   │   ├── settings.py    Appearance, World, RenderSettings, RenderLimits
+│   │   ├── settings.py    Appearance, World, RenderSettings, ShadowSettings, RenderLimits
+│   │   ├── backends.py    Backend names (cpu/gpu/auto), option checks, antialiasing plan
+│   │   ├── shadows.py     Backend-neutral shadow planning (lights, map fitting, bias)
 │   │   ├── color.py       sRGB <-> linear transfer functions, color parsing
 │   │   ├── scene_data.py  RenderScene extraction (backend-independent)
 │   │   ├── raster.py      Clipping, fixed-point rasterization, visibility buffer
@@ -69,7 +71,14 @@ Aether3D/
 │   │   ├── renderer.py    render() and RenderResult
 │   │   ├── framing.py     Exact camera framing
 │   │   ├── png.py         PNG encoder (zlib from the standard library)
-│   │   └── script.py      Declarative scene-setup scripts
+│   │   ├── script.py      Declarative scene-setup scripts
+│   │   └── gpu/           The GPU backend (optional wgpu; see docs/GPU.md)
+│   │       ├── device.py      Adapters, selection, devices, GPUContext, wgpu error mapping
+│   │       ├── shaders.py     WGSL modules, bind group layouts, pipeline cache
+│   │       ├── resources.py   Mesh cache, render targets, exact shader data layouts
+│   │       ├── renderer.py    Shadow, scene and finalize passes; synchronized readback
+│   │       ├── check.py       The self-test behind `aether3d gpu info --check`
+│   │       └── wgsl/          common, scene, shadow and finalize shaders
 │   ├── gltf/              glTF 2.0 interchange (no third-party dependencies)
 │   │   ├── axes.py        Exact Z-up <-> Y-up conversion
 │   │   ├── writer.py      Export: scene -> glTF document + buffer -> .glb/.gltf
@@ -105,6 +114,7 @@ Aether3D/
 | `serialization` (v2) | additionally `procedural.params` (value encoding), and `procedural` lazily when reading |
 | `rendering.camera`, `.light`, `.settings`, `.color` | `errors`, `diagnostics` (value types; imported by `scene` and `serialization`) |
 | `rendering.*` (others) | the above, `mesh`, `math3d`, `_fileio`; `scene` only for type hints and lazily for lookups |
+| `rendering.gpu.*` | `rendering` (scene data, settings, shadows, color, backends), `errors`, `diagnostics`; `wgpu` (optional, imported lazily on the first GPU call; never by `import aether3d`) |
 | `cli` | `editing`, `procedural`, `rendering`, `gltf`, `serialization`, `scene`, `errors` |
 
 Lower layers never import higher ones. `scene` provides convenience methods
@@ -346,3 +356,36 @@ All rendering logic lives in `rendering/`. The design is explained in
   brute-force ray caster that shares no projection, clipping, rasterization
   or shading code with the renderer. Analytic tests and a cross-check of
   silhouettes with Blender, an external tool, complement it.
+
+## GPU rendering (v0.6.0)
+
+The GPU backend (`rendering/gpu/`) is a second consumer of the same
+`RenderScene`; [GPU.md](GPU.md) explains it in full. Key decisions:
+
+- **One API on every platform.** wgpu (WebGPU) runs on Vulkan, Metal and
+  Direct3D 12, rather than three native implementations. It is optional and
+  imported lazily, so the core, the CPU renderer and every other feature
+  work without it. `backend="cpu"` remains the default.
+- **The scene format does not change.** Shadows, MSAA and adapters are
+  render options, not scene content, so the `.aether` format stays at
+  version 3.
+- **Layering.**
+  - `backends.py` (choices and validation) and `shadows.py` (shadow-map
+    fitting) are backend-neutral and tested without a GPU.
+  - Inside `gpu/`: device management, shaders and pipelines, resources and
+    data layouts, and the passes are separate modules.
+  - Only `gpu/` touches wgpu.
+- **Everything the GPU draws comes from `RenderScene`.** Vertex pulling from
+  cached per-mesh storage buffers, camera-relative instance matrices
+  (float64 to float32), and reversed float32 depth keep the GPU's results
+  within documented tolerances of the CPU renderer. The parity mode samples
+  the CPU's exact positions.
+- **Caches have explicit identities and lifetimes.**
+  - **Meshes** are keyed by read-only array identity, released through weak
+    references, and evicted beyond an LRU budget.
+  - **Pipelines** are compiled once per device.
+  - **Targets** are reused while the configuration repeats.
+  - **Lost devices** are replaced on the next render.
+- **Shading is split for materials.** `surface()`, `shade()` and
+  `shadow_visibility()` are separate WGSL functions, so Stage 7 can replace
+  `surface()` with materials without touching lighting, shadows or passes.

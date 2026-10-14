@@ -22,8 +22,11 @@ jobs:
       - run: ruff format --check .
 
   test:
+    # Portable tests: everything except GPU rendering, which the gpu jobs below cover.
     name: test (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    env:
+      AETHER3D_GPU_TESTS: skip
     strategy:
       fail-fast: false
       matrix:
@@ -74,17 +77,20 @@ jobs:
           if-no-files-found: error
 
   optional-dependencies:
-    # The core must work without the optional boolean backend, and with the oldest
-    # supported manifold3d (the version Arch Linux packages).
+    # The core must work without the optional boolean and GPU backends, and with the
+    # oldest supported manifold3d (the version Arch Linux packages).
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: without manifold3d (Python 3.10)
+          - name: without manifold3d and wgpu (Python 3.10)
             python-version: "3.10"
             install: pip install -e . pytest trimesh pillow
+          - name: without wgpu (Python 3.13)
+            python-version: "3.13"
+            install: pip install -e ".[boolean]" pytest trimesh pillow
           - name: oldest manifold3d (Python 3.10)
             python-version: "3.10"
             install: pip install -e ".[dev]" "manifold3d==3.4.1"
@@ -95,8 +101,105 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
       - run: ${{ matrix.install }}
-      - run: python -c "import importlib.util as u; print('manifold3d available:', bool(u.find_spec('manifold3d')))"
+      - run: python -c "import importlib.util as u; print('manifold3d available:', bool(u.find_spec('manifold3d')), '/ wgpu available:', bool(u.find_spec('wgpu')))"
       - run: pytest -rs
+      - name: The CPU renderer works without wgpu; the GPU explains why it is unavailable
+        run: |
+          aether3d gpu info
+          aether3d gpu info --json
+          python examples/first_render.py ci_cpu --width 160 --height 90 --samples 1
+
+  gpu-linux:
+    # Required: real GPU draw calls, framebuffer readback and pixel checks on Mesa's
+    # lavapipe, a conformant software Vulkan implementation (GitHub's Linux runners have
+    # no graphics hardware). It validates the graphics API path, not hardware speed.
+    name: GPU (ubuntu-latest, Vulkan lavapipe, Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.14"]
+    env:
+      AETHER3D_REQUIRE_GPU: "1"
+      AETHER3D_TEST_GPU_ADAPTER: llvmpipe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - name: Install Mesa's software Vulkan driver (lavapipe) and the Vulkan validation layers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools
+          sudo apt-get install -y vulkan-validationlayers || echo "validation layers unavailable: wgpu validates on its own"
+          vulkaninfo --summary || true
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - name: GPU adapters and a self-test render
+        run: |
+          aether3d gpu info --check --adapter llvmpipe
+          aether3d gpu info --check --adapter llvmpipe --json > gpu-info.json
+      - name: GPU tests (must run, not skip)
+        run: pytest tests/test_gpu_selection.py tests/test_gpu_data.py tests/test_shadow_planning.py tests/test_gpu_render.py tests/test_gpu_shadows.py tests/test_gpu_faults.py tests/test_gpu_cli.py tests/test_gpu_performance.py -v -rs
+      - name: Whole suite with the GPU available
+        run: pytest -rs
+      - name: GPU examples, CLI and a benchmark smoke run (software adapter, not hardware speed)
+        run: |
+          python examples/gpu_render.py ci_gpu --width 640 --height 360 --adapter llvmpipe --require-gpu
+          aether3d render examples/output/minecraft_castle_render.aether -o ci_gpu/cli_castle_gpu.png --backend gpu --adapter llvmpipe --width 480 --height 270 --shadows --json > ci_gpu/cli_render.json
+          python benchmarks/bench_gpu.py --quick --no-4k --adapter llvmpipe --json ci_gpu/bench_lavapipe.json
+          python -c "from PIL import Image; import sys; [print(p, Image.open(p).size, Image.open(p).info.get('Source')) for p in sys.argv[1:]]" ci_gpu/*.png
+      - name: Upload the GPU renders
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-renders-lavapipe-py${{ matrix.python-version }}
+          path: |
+            ci_gpu/*.png
+            ci_gpu/*.json
+            gpu-info.json
+          if-no-files-found: error
+
+  gpu-native:
+    # Optional: whatever graphics adapter the hosted runner offers (Direct3D 12 or Vulkan on
+    # Windows, Metal on macOS). GPU tests run when an adapter works and are skipped with the
+    # reason otherwise; the report says which adapter (if any) was used.
+    name: GPU (${{ matrix.os }}, native adapter if any)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - name: GPU adapters
+        run: aether3d gpu info
+      - name: GPU self-test (reports, does not fail, if no adapter works)
+        shell: bash
+        run: aether3d gpu info --check --json > gpu-info.json || echo "GPU rendering does not work on this runner (see gpu-info.json)"
+      - name: GPU tests (skipped with the reason when no adapter works)
+        run: pytest tests/test_gpu_selection.py tests/test_gpu_data.py tests/test_shadow_planning.py tests/test_gpu_render.py tests/test_gpu_shadows.py tests/test_gpu_faults.py tests/test_gpu_cli.py tests/test_gpu_performance.py -rs
+      - name: GPU example (only if an adapter works)
+        shell: bash
+        run: |
+          if aether3d gpu info --check > /dev/null; then
+            python examples/gpu_render.py ci_gpu --width 640 --height 360 --require-gpu
+          else
+            echo "no working GPU adapter on this runner: GPU example skipped"; mkdir -p ci_gpu
+          fi
+      - name: Upload the GPU report and renders
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-${{ matrix.os }}
+          path: |
+            gpu-info.json
+            ci_gpu/*.png
+          if-no-files-found: warn
 
   khronos-validator:
     name: Khronos glTF Validator (${{ matrix.os }})
