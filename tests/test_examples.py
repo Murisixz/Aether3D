@@ -1,3 +1,5 @@
+import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -180,3 +182,53 @@ def test_committed_renders_are_real_aether3d_pngs():
             assert png.size == size and png.info["Software"].startswith("Aether3D ")
     project = Scene.load(EXAMPLES / "output" / "minecraft_castle_render.aether")
     assert project.active_camera.name == "Camera" and project.render_settings.width == 1920
+
+
+def test_gpu_render_example_runs(tmp_path, gpu):
+    command = [sys.executable, str(EXAMPLES / "gpu_render.py"), str(tmp_path)]
+    command += ["--width", "320", "--height", "180", "--require-gpu"]
+    if gpu.adapter:
+        command += ["--adapter", gpu.adapter]
+    if importlib.util.find_spec("manifold3d") is None:
+        pytest.skip("the castle uses booleans (manifold3d)")
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "All checks passed." in result.stdout
+    assert "`aether3d render` reproduces them exactly" in result.stdout
+    for name in ("castle_cpu", "castle_gpu", "castle_gpu_shadows", "hero_gpu", "primitives_gpu"):
+        assert _decode(tmp_path / f"{name}.png").shape == (180, 320, 3)
+    assert _decode(tmp_path / "castle_comparison.png").shape == (90, 3 * 160 + 16, 3)
+
+
+def test_gpu_render_example_without_a_gpu_says_so(tmp_path):
+    if importlib.util.find_spec("manifold3d") is None:
+        pytest.skip("the castle uses booleans (manifold3d)")
+    env = {**os.environ, "AETHER3D_GPU_ADAPTER": "no adapter has this name"}
+    command = [sys.executable, str(EXAMPLES / "gpu_render.py"), str(tmp_path)]
+    command += ["--width", "160", "--height", "90"]
+    result = subprocess.run(command, capture_output=True, text=True, check=False, env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "GPU rendering is NOT available" in result.stdout
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["castle_cpu_only.png"]
+    required = subprocess.run(
+        [*command, "--require-gpu"], capture_output=True, text=True, check=False, env=env
+    )
+    assert required.returncode == 1
+
+
+def test_committed_gpu_renders_record_their_adapter():
+    """The GPU images in examples/output were drawn by Aether3D's GPU backend (Source chunk)."""
+    image = pytest.importorskip("PIL.Image")
+    for name, size in (
+        ("castle_gpu.png", (1920, 1080)),
+        ("castle_gpu_shadows.png", (1920, 1080)),
+        ("hero_gpu.png", (1920, 1080)),
+        ("primitives_gpu.png", (1920, 1080)),
+    ):
+        with image.open(EXAMPLES / "output" / name) as png:
+            assert png.size == size and png.info["Software"].startswith("Aether3D ")
+            assert png.info["Source"].startswith("Aether3D GPU renderer (wgpu, ")
+    with image.open(EXAMPLES / "output" / "castle_cpu.png") as png:
+        assert "Source" not in png.info  # the CPU reference says so by omission
+    with image.open(EXAMPLES / "output" / "castle_comparison.png") as png:
+        assert png.size == (3 * 960 + 16, 540)
