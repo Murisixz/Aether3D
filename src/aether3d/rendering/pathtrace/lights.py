@@ -30,8 +30,13 @@ shadow rays each:
 So sizing a light keeps how strongly it lights surfaces facing it and only
 softens shadows (and spreads light around a bit near the source).
 
-These lights cannot be hit by rays (they are not geometry), so their
-direct-light estimates need no MIS weight.
+Lights without size can be reached only this way. Sized lights are found
+by BSDF-sampled rays too: a ray leaving the scene inside a sun's cone, or
+entering a light's sphere before any surface, sees the light's radiance.
+Both strategies are then weighted with the power heuristic, so mirror-like
+surfaces reflect a sun or a lamp cleanly (BSDF sampling wins there), while
+light sampling keeps diffuse lighting smooth. Camera rays do not see lights
+(only their reflections do).
 
 **Emissive surfaces** (materials with ``emissive`` color x strength) are
 area lights: radiance ``Le`` leaves each point of the front face (both
@@ -146,30 +151,49 @@ class LightSet:
 
     # ------------------------------------------------------------- sampling --
 
+    @property
+    def sized(self) -> bool:
+        """Whether some light has a size (and can be found by BSDF-sampled rays)."""
+        return bool(np.any((self.kind == 0) & (self.cos_max < 1.0)) or np.any(self.radius > 0.0))
+
+    def _point_scale(self, index: int, dist: np.ndarray) -> np.ndarray:
+        """Unoccluded irradiance factor of point light ``index`` at center distance ``dist``."""
+        d = np.maximum(dist, MIN_LIGHT_DISTANCE)
+        atten = 1.0 / (d * d) if self.inverse_square[index] else np.ones(dist.shape[0])
+        rng = self.range[index]
+        if np.isfinite(rng):
+            ratio = d / rng
+            atten = atten * np.clip(1.0 - ratio**4, 0.0, 1.0) ** 2
+        return (math.pi * self.radiance[index])[None, :] * atten[:, None]
+
     def sample_analytic(self, index: int, p: np.ndarray, keys, vertex: int, sample: int):
-        """Sample light ``index`` from points ``p``: ``(wi, target, scale)``.
+        """Sample light ``index`` from points ``p``: ``(wi, target, scale, pdf)``.
 
         ``sample`` numbers the light samples of a vertex (it picks the random
         dimensions). ``target`` is the shadow-ray end point (``None``:
-        infinitely far) and ``scale`` the unoccluded irradiance per unit
-        ``cos`` (``(m, 3)``).
+        infinitely far), ``scale`` the unoccluded irradiance per unit ``cos``
+        (``(m, 3)``) and ``pdf`` the solid-angle density of each direction
+        (``inf`` for a light without size: no other strategy can find it).
         """
         m = p.shape[0]
         slot = SLOT_LIGHTS + 3 * sample
         if self.kind[index] == 0:
             axis = np.broadcast_to(self.to_light[index], (m, 3))
-            if self.cos_max[index] < 1.0:
+            cos_max = self.cos_max[index]
+            if cos_max < 1.0:
                 u1 = uniform(keys, dimension(vertex, slot))
                 u2 = uniform(keys, dimension(vertex, slot + 1))
-                local = uniform_cone(u1, u2, np.full(m, self.cos_max[index]))
+                local = uniform_cone(u1, u2, np.full(m, cos_max))
                 t, b = frame(np.ascontiguousarray(axis))
                 wi = to_world(local, t, b, axis)
+                pdf = np.full(m, 1.0 / (2.0 * math.pi * (1.0 - cos_max)))
             else:
                 wi = axis.copy()
+                pdf = np.full(m, np.inf)
             # Uniform radiance over the disk: pi c I at normal incidence (see the docstring).
-            disk = 2.0 / (1.0 + self.cos_max[index])
+            disk = 2.0 / (1.0 + cos_max)
             scale = np.broadcast_to(math.pi * self.radiance[index] * disk, (m, 3)).copy()
-            return wi, None, scale
+            return wi, None, scale, pdf
         center = self.position[index]
         v = center - p
         dist = np.linalg.norm(v, axis=1)
@@ -178,6 +202,7 @@ class LightSet:
         target = np.broadcast_to(center, (m, 3)).copy()
         wi = axis
         sphere = np.ones(m)
+        pdf = np.full(m, np.inf)
         if r > 0.0:
             outside = dist > r
             if outside.any():
@@ -197,14 +222,59 @@ class LightSet:
                 wi[rows] = w
                 target[rows] = p[rows] + w * hit[:, None]
                 sphere[rows] = 2.0 * (1.0 - cmax) / sin2
-        d = np.maximum(dist, MIN_LIGHT_DISTANCE)
-        atten = 1.0 / (d * d) if self.inverse_square[index] else np.ones(m)
-        rng = self.range[index]
-        if np.isfinite(rng):
-            ratio = d / rng
-            atten = atten * np.clip(1.0 - ratio**4, 0.0, 1.0) ** 2
-        scale = (math.pi * self.radiance[index])[None, :] * (atten * sphere)[:, None]
-        return wi, target, scale
+                pdf[rows] = 1.0 / (2.0 * math.pi * np.maximum(1.0 - cmax, 1e-300))
+        scale = self._point_scale(index, dist) * sphere[:, None]
+        return wi, target, scale, pdf
+
+    def hit_sized(
+        self, o: np.ndarray, d: np.ndarray, t_geometry: np.ndarray, pdf_bsdf: np.ndarray
+    ) -> np.ndarray:
+        """Radiance of sized lights that BSDF-sampled rays reach, MIS-weighted (``(n, 3)``).
+
+        ``o``, ``d`` (unit): the rays; ``t_geometry``: distance to the nearest
+        surface (``inf``: none); ``pdf_bsdf``: the density the BSDF sampled
+        each direction with. A sun disk is reached by rays that leave the
+        scene inside its cone, a sphere light by rays that enter it before
+        any surface. Weighted by the power heuristic against light sampling
+        (see :meth:`sample_analytic`), so each light is counted once.
+        """
+        out = np.zeros((o.shape[0], 3))
+        escaped = ~np.isfinite(t_geometry)
+        for index in range(self.count):
+            if self.kind[index] == 0:
+                cos_max = self.cos_max[index]
+                if cos_max >= 1.0 or not escaped.any():
+                    continue
+                inside = escaped & ((d @ self.to_light[index]) >= cos_max)
+                if not inside.any():
+                    continue
+                pdf = 1.0 / (2.0 * math.pi * (1.0 - cos_max))
+                radiance = self.radiance[index] / (1.0 - cos_max * cos_max)  # c I / sin^2 a
+                w = power_heuristic(pdf_bsdf[inside], np.full(int(inside.sum()), pdf))
+                out[inside] += radiance[None, :] * w[:, None]
+                continue
+            r = self.radius[index]
+            if r <= 0.0:
+                continue
+            v = self.position[index] - o
+            dist2 = (v * v).sum(axis=1)
+            outside = dist2 > r * r
+            proj = (d * v).sum(axis=1)
+            disc = proj * proj - (dist2 - r * r)
+            enters = outside & (disc >= 0.0)
+            t_sphere = proj - np.sqrt(np.maximum(disc, 0.0))
+            seen = enters & (t_sphere > 0.0) & (t_sphere < t_geometry)
+            if not seen.any():
+                continue
+            dist = np.sqrt(dist2[seen])
+            sin2 = r * r / dist2[seen]
+            cos_max = np.sqrt(np.maximum(0.0, 1.0 - sin2))
+            pdf = 1.0 / (2.0 * math.pi * np.maximum(1.0 - cos_max, 1e-300))
+            # Uniform radiance L with pi L sin^2 a equal to the point light's irradiance.
+            radiance = self._point_scale(index, dist) / (math.pi * sin2)[:, None]
+            w = power_heuristic(pdf_bsdf[seen], pdf)
+            out[seen] += radiance * w[:, None]
+        return out
 
     def sample_emitter(self, ps, p: np.ndarray, keys, vertex: int, sample: int):
         """Sample points on emissive triangles: ``(wi, target, le_over_pdf, pdf, gtri, inst)``.

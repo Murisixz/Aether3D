@@ -517,3 +517,206 @@ def test_renders_repeat_bit_for_bit_and_do_not_depend_on_batching(monkeypatch):
     assert np.array_equal(a.linear, small.linear)
     for name in a.passes:
         assert np.array_equal(a.passes[name], small.passes[name])
+
+
+def window_room(width: float = 0.9) -> a3.Scene:
+    """A closed room with a square window in one wall; the sun shines in through it."""
+    scene = dark(a3.Scene())
+    white = lambert(scene, "Plaster", (0.7, 0.7, 0.7))
+    walls = {
+        "Floor": ((0, 0, 0), (0, 0, 0)),
+        "Ceiling": ((0, 0, 2), (180, 0, 0)),
+        "Back": ((0, 1, 1), (90, 0, 0)),
+        "Left": ((-1, 0, 1), (0, 90, 0)),
+        "Right": ((1, 0, 1), (0, -90, 0)),
+    }
+    for name, (position, rotation) in walls.items():
+        wall = scene.add_plane(name, size=2, position=position)
+        wall.rotation_euler = rotation
+        wall.material = white
+    # The front wall (y = -1) with a window: four panels around a hole.
+    h = width / 2
+    panels = {
+        "Front Low": ((0, -1, (1 - h) / 2), (2, 1 - h)),
+        "Front High": ((0, -1, 1 + h + (1 - h) / 2), (2, 1 - h)),
+        "Front Left": ((-(1 + h) / 2, -1, 1), (1 - h, 2 * h)),
+        "Front Right": (((1 + h) / 2, -1, 1), (1 - h, 2 * h)),
+    }
+    for name, (position, (sx, sz)) in panels.items():
+        panel = scene.add_plane(name, size=1, position=position, scale=(sx, sz, 1))
+        panel.rotation_euler = (-90, 0, 0)
+        panel.material = white
+    scene.add_directional_light("Sun", direction=(0.2, 0.9, -0.55), intensity=3.0)
+    scene.add_camera("Inside", position=(0.0, -0.8, 1.0), look_at=(0, 1, 0.9), fov=80)
+    return scene
+
+
+def test_light_entering_through_a_window_reaches_the_room_only_by_bouncing():
+    scene = window_room()
+    direct = render(scene, 32, 24, samples=16, bounces=0)
+    full = render(scene, 32, 24, samples=16, bounces=4)
+    names = [o["name"] for o in full.objects]
+    ceiling = interior(full.object_index == names.index("Ceiling"))
+    back = interior(full.object_index == names.index("Back"))
+    floor = full.object_index == names.index("Floor")
+    assert ceiling.sum() > 10 and back.sum() > 10
+    # The sun only reaches a patch of the floor; the ceiling and the back wall face away
+    # from it or are out of its reach, so direct light leaves them black...
+    assert float(direct.linear[ceiling].max()) == 0.0
+    assert float(direct.linear[floor].max()) > 0.5
+    # ...and bounced light lights them.
+    assert float(full.linear[ceiling].mean()) > 0.02
+    assert float(full.linear[back].mean()) > 0.02
+    assert np.all(full.linear[ceiling] >= direct.linear[ceiling])
+
+
+def test_concave_geometry_shadows_itself_like_the_shadow_ray_reference():
+    """A U-shaped channel: its walls shadow its floor, compared with brute-force rays."""
+    scene = dark(a3.Scene())
+    plaster = lambert(scene, "Plaster", (0.7, 0.7, 0.7))
+    parts = [
+        ((0, 0, 0.05), (3.0, 1.6, 0.1)),  # the channel's floor
+        ((0, -0.75, 0.35), (3.0, 0.1, 0.5)),  # its walls
+        ((0, 0.75, 0.35), (3.0, 0.1, 0.5)),
+    ]
+    pieces = [
+        scene.add_cube(f"Part {k}", size=1, position=p, scale=s) for k, (p, s) in enumerate(parts)
+    ]
+    for piece in pieces:
+        piece.material = plaster
+    scene.add_directional_light("Sun", direction=(0.25, 0.8, -0.55), intensity=1.0)
+    scene.add_camera(
+        "Top", projection="orthographic", ortho_scale=3.4, position=(0, 0, 6), look_at=(0, 0, 0)
+    )
+    n = 40
+    r = render(scene, n, n, samples=16, bounces=0)
+    reference = shadow_mask(scene, scene.active_camera, n, n, scene.get_by_name("Sun"))
+    base = interior(r.object_index == 0)
+    pad = np.pad(reference, 1, mode="edge")
+    around = [
+        pad[1 + dy : n + 1 + dy, 1 + dx : n + 1 + dx] for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+    ]
+    shadowed = base & np.logical_and.reduce(around)
+    lit = base & ~np.logical_or.reduce(around)
+    assert shadowed.sum() > 30 and lit.sum() > 30
+    assert np.all(r.linear[shadowed] == 0.0)
+    assert np.all(r.linear[lit] > 0.0)
+
+
+def test_lit_curved_surfaces_have_no_shadow_acne():
+    """A smooth sphere under the sun: where the light is clearly above every nearby facet,
+    each pixel is exactly the unshadowed Lambert value (no speckles of false shadow)."""
+    scene = dark(a3.Scene())
+    ball = scene.add_sphere("Ball", radius=1.0, segments=48, rings=24)
+    ball.material = lambert(scene, "White", (0.8, 0.8, 0.8))
+    to_light = np.array([0.3, -0.5, 0.8])
+    to_light /= np.linalg.norm(to_light)
+    scene.add_directional_light("Sun", direction=tuple(-to_light), intensity=1.0)
+    scene.add_camera(
+        "Front",
+        projection="orthographic",
+        ortho_scale=2.4,
+        position=(0, -5, 0),
+        look_at=(0, 0, 0),
+        up=(0, 0, 1),
+    )
+    n = 48
+    r = render(scene, n, n, samples=8, bounces=0)
+    raster = scene.render(width=n, height=n, samples=1, default_lights=False)
+    on_ball = interior(r.object_index == 0)
+    clearly_lit = on_ball & (raster.linear[..., 0] > 0.3 * 0.8)  # n.l > 0.3
+    assert clearly_lit.sum() > 300
+    # Same value as the (shadowless) rasterizer up to the pixel-footprint average.
+    np.testing.assert_allclose(r.linear[clearly_lit], raster.linear[clearly_lit], rtol=0.05)
+    assert np.all(r.linear[clearly_lit][:, 0] > 0.2)
+
+
+def test_procedural_edits_rebuild_the_ray_tracing_data():
+    from aether3d import Expr
+    from aether3d.rendering.raytrace import BLAS_CACHE
+
+    scene = dark(a3.Scene())
+    scene.world.configure(ambient_intensity=1.0)
+    proc = scene.procedural
+    proc.add_parameter("height", 1.0, min=0.1, max=5.0)
+    column = scene.add_geometry("Column", "box", width=0.6, depth=0.6, height=Expr("height"))
+    column.add_modifier("transform", translation=Expr("(0, 0, height / 2)"))
+    scene.add_object("Column", geometry=column)
+    scene.add_plane("Floor", size=6)
+    scene.add_camera("Cam", position=(0, -5, 2), look_at=(0, 0, 1))
+    first = render(scene, 24, 24, samples=2, bounces=1)
+    built = BLAS_CACHE.builds
+    again = render(scene, 24, 24, samples=2, bounces=1)
+    assert BLAS_CACHE.builds == built  # unchanged geometry: the BVHs are reused
+    assert np.array_equal(first.linear, again.linear)
+    proc.set_parameter("height", 2.5)
+    taller = render(scene, 24, 24, samples=2, bounces=1)
+    assert BLAS_CACHE.builds > built  # the re-evaluated mesh gets a new BVH
+    assert taller.objects[0]["visible_samples"] > first.objects[0]["visible_samples"]
+
+
+def test_the_direct_pass_is_the_image_without_bounces():
+    """Same seed: the first vertex and its BSDF ray draw the same random numbers whatever
+    the bounce limit, so `direct` of a multi-bounce render is the bounces=0 image."""
+    scene = cornell_box()
+    full = render(scene, 16, 16, samples=4, bounces=5, seed=3)
+    direct_only = render(scene, 16, 16, samples=4, bounces=0, seed=3)
+    np.testing.assert_array_equal(full.passes["direct"], direct_only.passes["beauty"])
+
+
+def test_sized_lights_combine_light_and_bsdf_sampling_without_bias():
+    """A wide sun disk straight above a Lambertian plane: E = pi L sin^2 a = pi c I, so the
+    plane's radiance is rho c I, whichever strategy finds the light (MIS weights sum to 1)."""
+    scene = dark(a3.Scene())
+    plane = scene.add_plane("Plane", size=6)
+    plane.material = lambert(scene, "Paint", (0.6, 0.6, 0.6))
+    scene.add_directional_light("Sun", direction=(0, 0, -1), intensity=1.5, angle=60.0)
+    scene.add_camera(
+        "Top", projection="orthographic", ortho_scale=2, position=(0, 0, 3), look_at=(0, 0, 0)
+    )
+    r = render(scene, 16, 16, samples=64, bounces=0)
+    mean = float(r.linear[..., 0].mean())
+    error = math.sqrt(float(r.passes["variance"][..., 0].mean()) / 256)
+    assert abs(mean - 0.6 * 1.5) < 5 * error + 1e-9
+    assert error < 0.005
+
+
+def test_mirrors_reflect_sized_lights_cleanly():
+    """A mirror reflects a sun disk at the disk's radiance c I / sin^2 a, without fireflies.
+
+    Light sampling alone almost never lands in a mirror's tiny GGX lobe (and then with a
+    huge weight); BSDF sampling finds the disk every time. With both weighted by the power
+    heuristic the estimate is unbiased, and what noise remains comes from the lobe's tails,
+    where the two densities are comparable: every pixel stays close to the disk's radiance.
+    """
+    scene = dark(a3.Scene())
+    mirror = scene.add_plane("Mirror", size=40)
+    mirror.material = scene.create_material(
+        "Chrome", base_color="#ffffff", metallic=1.0, roughness=0.0
+    )
+    angle = 10.0
+    scene.add_directional_light("Sun", direction=(0, 0.5, -1), intensity=1.0, angle=angle)
+    # Look down at the mirror along the reflected sun direction.
+    reflected = np.array([0.0, 0.5, 1.0]) / np.linalg.norm([0.0, 0.5, 1.0])
+    scene.add_camera(
+        "Cam",
+        projection="orthographic",
+        ortho_scale=0.2,
+        position=tuple(reflected * 5),
+        look_at=(0, 0, 0),
+    )
+
+    def check(result, expected):
+        values = result.linear[..., 0].astype(np.float64)
+        error = math.sqrt(float(result.passes["variance"][..., 0].mean()) / values.size)
+        assert abs(values.mean() - expected) < 5 * error
+        assert error < 0.02 * expected
+        assert np.all(np.abs(values - expected) < 0.25 * expected)  # no fireflies, no holes
+
+    check(render(scene, 8, 8, samples=16, bounces=1), 1.0 / math.sin(math.radians(angle / 2)) ** 2)
+    # A point light with a radius, seen in the mirror, shows its sphere's radiance c I / r^2.
+    # The camera's rays leave the mirror toward the sun, (0, -0.5, 1): put the bulb there.
+    scene.remove(scene.get_by_name("Sun"))
+    toward_sun = np.array([0.0, -reflected[1], reflected[2]])
+    scene.add_point_light("Bulb", position=tuple(toward_sun * 2), intensity=2.0, radius=0.3)
+    check(render(scene, 8, 8, samples=16, bounces=1), 2.0 / 0.3**2)

@@ -8,12 +8,15 @@ Every renderer produces scene-referred linear light. The output stage then:
    * ``"none"`` (default) -- nothing: values are clipped to ``[0, 1]`` by the
      encoding, exactly as Aether3D always did (legacy renders are unchanged);
    * ``"neutral"`` -- the Khronos PBR Neutral tone mapper (Khronos Group,
-     2024; the formula of the published specification): colors whose
-     channels stay below about 0.76 are kept (apart from a tiny toe that
-     lifts nothing and darkens near-black by at most 0.04), brighter ones
-     are compressed smoothly toward 1 and slightly desaturated, so
-     highlights, light sources and bright skies keep their shape instead of
-     clipping;
+     2024; the formula of the published specification). It first subtracts
+     an offset from all three channels: 0.04 wherever the smallest channel
+     is at least 0.08 (the 4% Fresnel reflection a PBR surface adds under
+     white light, so base colors display as authored), less below that
+     (``x - 6.25 x^2`` for the smallest channel ``x``, keeping black black).
+     Colors whose largest channel then stays below 0.76 are otherwise kept;
+     brighter ones are compressed smoothly toward 1 and slightly
+     desaturated, so highlights, light sources and bright skies keep their
+     shape instead of clipping;
 
 3. encodes with the sRGB transfer function and quantizes to 8 bits.
 

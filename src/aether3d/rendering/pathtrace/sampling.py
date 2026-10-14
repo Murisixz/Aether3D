@@ -119,10 +119,6 @@ def uniform_cone(u1: np.ndarray, u2: np.ndarray, cos_max: np.ndarray) -> np.ndar
     return np.stack([r * np.cos(phi), r * np.sin(phi), z], axis=1)
 
 
-def cone_pdf(cos_max: np.ndarray) -> np.ndarray:
-    return 1.0 / (2.0 * math.pi * np.maximum(1.0 - cos_max, 1e-300))
-
-
 def uniform_triangle(u1: np.ndarray, u2: np.ndarray) -> np.ndarray:
     """Barycentrics uniformly distributed over a triangle (by area)."""
     s = np.sqrt(u1)

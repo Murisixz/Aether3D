@@ -41,7 +41,7 @@ CHANNELS = {
 """Running sums kept per pixel (``squares``: of the beauty, for the variance)."""
 AUTO_MIN_RAYS = 3_000_000
 """Renders estimated to trace fewer rays run in one process when ``workers = 0`` (auto)."""
-MAX_AUTO_WORKERS = 12
+MAX_AUTO_WORKERS = 8
 """Most processes ``workers = 0`` starts (memory bandwidth limits scaling beyond)."""
 TILES_PER_WORKER = 4
 """Tiles per worker process (smaller tiles balance uneven work better)."""
@@ -118,9 +118,13 @@ def run_task(task: tuple[int, int, int, int]) -> dict[str, Any]:
     n_tile = stop - start
     total = n_tile * (s1 - s0)
     visible = np.zeros(len(tracer.ps.rs.instances), dtype=np.int64)
+    # Equal batches of at most `batch` paths (no small remainder batch: NumPy work per
+    # path grows quickly in small batches).
+    count = max(1, -(-total // batch))
+    size = -(-total // count)
     t0 = time.perf_counter()
-    for b in range(0, total, batch):
-        idx = np.arange(b, min(total, b + batch), dtype=np.int64)
+    for b in range(0, total, size):
+        idx = np.arange(b, min(total, b + size), dtype=np.int64)
         offset, local = np.divmod(idx, n_tile)
         sample = s0 + offset
         pixel = start + local
@@ -147,6 +151,14 @@ def run_task(task: tuple[int, int, int, int]) -> dict[str, Any]:
         "seconds": time.perf_counter() - t0,
         "pid": os.getpid(),
     }
+
+
+def tile_count(n_pix: int, samples: int, workers: int, batch: int) -> int:
+    """Tiles for a round of ``samples`` passes: one batch of paths each (at least
+    :data:`TILES_PER_WORKER` per worker, so uneven tiles balance out)."""
+    if workers <= 1:
+        return 1
+    return max(workers * TILES_PER_WORKER, -(-n_pix * samples // batch))
 
 
 def tiles(n_pix: int, count: int) -> list[tuple[int, int]]:

@@ -571,8 +571,9 @@ class PathSettings(_Validated):
       give the same image.
     * ``light_samples`` -- shadow rays per light (and per emissive-surface
       sample) at every path vertex (default 1).
-    * ``russian_roulette`` -- the bounce from which dim paths may stop early,
-      with their survivors weighted up (unbiased; default 3).
+    * ``russian_roulette`` -- the path vertex (0: the surface the camera
+      sees) from which dim paths may stop early, with their survivors
+      weighted up (unbiased; default 3).
     * ``clamp`` -- largest radiance one sample may carry in indirect light
       (``0``: off, the default). Clamping removes fireflies but loses energy
       (biased).
@@ -580,7 +581,7 @@ class PathSettings(_Validated):
       traces camera rays and ambient occlusion only (the image is the AO
       pass; see ``ao``).
     * ``workers`` -- CPU processes to trace with: ``0`` (default) picks one
-      per CPU (at most 12) for renders big enough to gain from it, ``1``
+      per CPU (at most 8) for renders big enough to gain from it, ``1``
       traces in the calling process, ``N`` uses ``N``. Parallel tracing forks
       processes and is available on Linux; elsewhere renders use one
       process. The image does not depend on it.

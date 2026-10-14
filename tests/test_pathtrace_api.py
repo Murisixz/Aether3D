@@ -185,11 +185,14 @@ def test_settings_objects_and_dicts_are_equivalent():
 # --------------------------------------------------------------------------- #
 
 
-def test_the_neutral_tone_mapper_keeps_normal_colors_and_compresses_highlights():
+def test_the_neutral_tone_mapper_offsets_colors_and_compresses_highlights():
+    """Khronos PBR Neutral: a 0.04 offset (less near black), then highlight compression."""
     rng = np.random.default_rng(0)
     normal = rng.uniform(0.08, 0.7, (1000, 3))
-    out = neutral(normal)
-    np.testing.assert_allclose(out, normal - 0.04, atol=1e-12)  # only the constant toe
+    np.testing.assert_allclose(neutral(normal), normal - 0.04, atol=1e-12)
+    dark = np.array([[0.02, 0.05, 0.3]])  # smallest channel below 0.08
+    offset = 0.02 - 6.25 * 0.02**2
+    np.testing.assert_allclose(neutral(dark), dark - offset, atol=1e-12)
     bright = np.linspace(0.0, 100.0, 2001)[:, None].repeat(3, axis=1)
     mapped = neutral(bright)[:, 0]
     assert np.all(np.diff(mapped) >= 0) and mapped.max() < 1.0
@@ -389,7 +392,9 @@ def test_worker_plans():
     assert parallel.plan_workers(1, 10**12)[0] == 1
     if parallel.fork_available():
         assert parallel.plan_workers(0, 10)[0] == 1  # too small to be worth processes
-        assert parallel.plan_workers(0, 10**9)[0] == min(parallel.cpu_count(), 12)
+        assert parallel.plan_workers(0, 10**9)[0] == min(
+            parallel.cpu_count(), parallel.MAX_AUTO_WORKERS
+        )
         assert parallel.plan_workers(5, 10)[0] == 5
     assert parallel.tiles(10, 4) == [(0, 2), (2, 5), (5, 8), (8, 10)]
     assert parallel.tiles(3, 8) == [(0, 1), (1, 2), (2, 3)]

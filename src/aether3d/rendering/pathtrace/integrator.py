@@ -235,7 +235,6 @@ def render_scene(
     workers, why = parallel.plan_workers(path.workers, work["rays"])
     acc = parallel.Accumulators(n_pix, shared=workers > 1)
     visible = np.zeros(len(rs.instances), dtype=np.int64)
-    tiles = parallel.tiles(n_pix, workers * parallel.TILES_PER_WORKER if workers > 1 else 1)
     # One round of all samples; with a progress callback, one pass per round.
     rounds = [(0, path.samples)] if progress is None else [(s, s + 1) for s in range(path.samples)]
     passes_done = 0
@@ -251,6 +250,8 @@ def render_scene(
     try:
         with parallel.Runner(tracer, acc, workers, BATCH) as runner:
             for s0, s1 in rounds:
+                count = parallel.tile_count(n_pix, s1 - s0, workers, BATCH)
+                tiles = parallel.tiles(n_pix, count)
                 for result in runner.run([(a, b, s0, s1) for a, b in tiles]):
                     for k, v in result["counts"].items():
                         ray_counts[k] = ray_counts.get(k, 0) + v
@@ -510,6 +511,10 @@ class _Tracer:
             if miss.any():
                 m = r[miss]
                 target[m] += throughput[m] * ps.environment.radiance(direction[miss])
+            if self.lights.sized:  # suns and light spheres the BSDF sample reaches
+                target[r] += throughput[r] * self.lights.hit_sized(
+                    origin, direction, hits.t, pdf[keep]
+                )
             if nxt is None:
                 break
             nxt.rows = r[nxt.rows]
@@ -533,11 +538,15 @@ class _Tracer:
         index = 0
         for light in range(lights.count):
             for _ in range(ns):
-                wi, target, scale = lights.sample_analytic(light, it.p, keys, vertex, index)
+                wi, target, scale, pdf = lights.sample_analytic(light, it.p, keys, vertex, index)
                 index += 1
-                f, _, cos = bsdf.eval(wi)
+                f, pdf_bsdf, cos = bsdf.eval(wi)
                 ok = (cos > 0.0) & ((wi * ng_side).sum(axis=1) > 0.0)
-                contrib = f * scale * (cos / ns)[:, None]
+                # Sized lights are also found by BSDF sampling: weight both strategies.
+                finite = np.isfinite(pdf)
+                w = np.ones(pdf.shape[0])
+                w[finite] = power_heuristic(pdf[finite], pdf_bsdf[finite])
+                contrib = f * scale * (cos * w / ns)[:, None]
                 ok &= contrib.any(axis=1)
                 if not ok.any():
                     continue
