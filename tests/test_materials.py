@@ -22,6 +22,23 @@ def png(path: Path, color=(200, 100, 50), size=(4, 4)) -> Path:
     return path
 
 
+def test_the_materials_api_is_exported_from_the_package():
+    import aether3d
+    from aether3d import materials
+
+    for name in (
+        "Material",
+        "MaterialLibrary",
+        "ImageTexture",
+        "ProceduralTexture",
+        "TextureBinding",
+        "TextureGraph",
+    ):
+        assert name in aether3d.__all__ and getattr(aether3d, name) is getattr(materials, name)
+    assert "MaterialError" in aether3d.__all__ and aether3d.MaterialError is MaterialError
+    assert isinstance(Scene().create_material("M"), aether3d.Material)
+
+
 def test_materials_have_stable_ids_unique_names_and_typed_defaults():
     scene = Scene()
     a = scene.create_material()

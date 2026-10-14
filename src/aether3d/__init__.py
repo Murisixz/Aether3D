@@ -18,6 +18,9 @@ Quick start::
     tower = scene.add_procedural("Tower", "cylinder", radius=1, depth=4, segments=8)
     tower.geometry.add_modifier("bevel", width=0.05, limit="angle", angle=40)
 
+    # Materials and textures (docs/MATERIALS.md)
+    tower.material = scene.create_material("Stone", preset="stone")
+
 Everything listed in ``__all__`` is the supported public API.
 """
 
@@ -38,6 +41,7 @@ from .errors import (
     DetachedObjectError,
     EditError,
     HierarchyError,
+    MaterialError,
     NameConflictError,
     ObjectNotFoundError,
     ProjectFormatError,
@@ -48,6 +52,14 @@ from .errors import (
 )
 from .gltf import ExportResult, ImportLimits, ImportResult, export_gltf, import_gltf
 from .inspection import MeshGeometryReport, SceneGeometryReport, inspect_mesh, inspect_scene
+from .materials import (
+    ImageTexture,
+    Material,
+    MaterialLibrary,
+    ProceduralTexture,
+    TextureBinding,
+    TextureGraph,
+)
 from .mesh import Mesh
 from .primitives import create_cube, create_plane, create_sphere
 from .procedural import (
@@ -93,9 +105,13 @@ __all__ = [
     "ExportResult",
     "Expr",
     "HierarchyError",
+    "ImageTexture",
     "ImportLimits",
     "ImportResult",
     "Light",
+    "Material",
+    "MaterialError",
+    "MaterialLibrary",
     "Mesh",
     "MeshGeometryReport",
     "Modifier",
@@ -106,6 +122,7 @@ __all__ = [
     "ProceduralError",
     "ProceduralGeometry",
     "ProceduralSystem",
+    "ProceduralTexture",
     "ProjectFormatError",
     "RenderError",
     "RenderLimits",
@@ -118,6 +135,8 @@ __all__ = [
     "ScriptError",
     "ShadowSettings",
     "Selection",
+    "TextureBinding",
+    "TextureGraph",
     "TopologyReport",
     "Transform",
     "UnsupportedFeatureError",
