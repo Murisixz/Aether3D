@@ -186,10 +186,10 @@ The server treats every argument, plan, path and imported file as untrusted.
   queries, fix them, undo and redo, preview, save, export, reopen.
 
 On the machine of [the benchmark](SCENE_PLANS.md#performance) (i9-12900H, Python 3.14), a
-trivial tool call takes about 1.2 ms over stdio, and a plan of 10,000 objects about 6.7 ms
+trivial tool call takes about 1.2 ms over stdio, and a plan of 10,000 objects about 9 ms
 more as a tool call than in the server itself (JSON-RPC and the reply, which stays under
 1 KB: ids are listed only for small symbols). Creating 10,000 objects with one tool call
-each takes 21 s; with one plan, 0.13 s.
+each takes 22 s; with one plan, 0.10 s.
 
 ## Protocol
 

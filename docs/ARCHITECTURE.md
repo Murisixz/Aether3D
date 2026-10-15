@@ -672,6 +672,10 @@ exposes every query as a method. See [SPATIAL.md](SPATIAL.md). Key decisions:
   quadratic before 0.11). Layouts (positions, rotations, scales, variations) are computed
   per definition with NumPy and reused for every parent instance. Identical mesh
   definitions share one mesh, which the GPU rasterizer draws instanced.
+- **The garbage collector waits.** A plan pauses Python's cyclic garbage collector while
+  it runs (and restores the caller's setting): its allocations would otherwise trigger
+  full collections that walk every object of the process, which in a long-running
+  process holding a large scene cost more than the plan itself.
 - **Small edits stay small.** Selections by reference are found through the scene's
   indexes and ordered by their paths in the hierarchy, and the plan's new meshes are
   told from borrowed ones without scanning the scene, so a one-object edit costs the same
@@ -694,5 +698,6 @@ exposes every query as a method. See [SPATIAL.md](SPATIAL.md). Key decisions:
 - **Measured.** `benchmarks/bench_plans.py` compares one plan with repeated operations
   (Python, CLI and MCP) at 100, 1,000 and 10,000 objects; the profiles behind it found
   the quadratic name allocation, two whole-scene passes per edit plan, a whole-scene scan
-  per step of procedural scripts and a material record built per object in every render,
-  all fixed in 0.11.
+  per step of procedural scripts, a material record built per object in every render and
+  full garbage collections inside plans, all fixed in 0.11. Scaling tests time with the
+  collector paused (`tests/timing.py`), as `timeit` does.

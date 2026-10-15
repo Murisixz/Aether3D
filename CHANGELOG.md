@@ -67,9 +67,9 @@ features; breaking changes are called out explicitly).
   RSS, undo steps and bytes, plan stages, queries, GPU and CPU rendering, tool-call
   overhead), and runs against older versions for a baseline. Results are in
   [docs/SCENE_PLANS.md](docs/SCENE_PLANS.md#performance): on an i9-12900H, 10,000 blocks
-  take 110 ms with one plan, 1,948 ms with `add_cube` per block and 375 ms with
-  `add_object` calls in one transaction; one CLI plan 0.79 s against a projected 3.2
-  hours for one CLI call per block; one MCP call 131 ms against 21 s for one call per
+  take 105 ms with one plan, 1,925 ms with `add_cube` per block and 379 ms with
+  `add_object` calls in one transaction; one CLI plan 0.77 s against a projected 3.2
+  hours for one CLI call per block; one MCP call 102 ms against 22 s for one call per
   block.
 - **Tests:** 170 new tests (no existing test changed): the format (the checker fuzzed
   against the JSON Schema, the executor fuzzed for crashes and atomicity), patterns and
@@ -85,7 +85,11 @@ features; breaking changes are called out explicitly).
 - **Faster bulk creation (`Scene._create_many`)** and **automatic names in O(1)**:
   finding a free automatic name scanned every taken name, so N creations were quadratic.
 - **Procedural scripts create N objects in O(N):** every step scanned every object
-  (10,000 objects: 5,977 ms before, 803 ms now).
+  (10,000 objects: 5,977 ms before, 820 ms now).
+- **Plans pause Python's cyclic garbage collector while they run** (restored after, and
+  left off if the caller turned it off). In a process holding many objects, a full
+  collection triggered by a plan walked all of them: an 8,000-object plan in a process
+  holding a million objects took 256-278 ms, now 117-121 ms.
 - **Edit plans no longer walk the whole scene:** a one-object edit costs about 0.12 ms
   in a scene of any size.
 - **Renders reuse one material record for objects of the same color** (a warm GPU frame

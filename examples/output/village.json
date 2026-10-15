@@ -1,16 +1,16 @@
 {
   "build": {
     "objects": 11270,
-    "seconds": 0.381,
+    "seconds": 0.359,
     "stages_ms": {
       "parse": 1.27,
-      "bind": 77.48,
-      "resources": 2.01,
-      "objects": 83.75,
-      "operations": 18.57,
-      "apply": 118.48,
-      "queries": 177.83,
-      "total": 375.25
+      "bind": 75.05,
+      "resources": 2.1,
+      "objects": 76.74,
+      "operations": 18.81,
+      "apply": 111.32,
+      "queries": 165.78,
+      "total": 353.63
     }
   },
   "tags": {
@@ -21,7 +21,7 @@
     "car": 273
   },
   "edit": {
-    "ms": 0.36,
+    "ms": 0.35,
     "changed": [
       "Block 3-0/houses 4/door"
     ],
@@ -33,9 +33,9 @@
     }
   },
   "history_ms": {
-    "undo_edit": 0.05,
-    "undo_all": 6.75,
-    "redo_all": 7.02
+    "undo_edit": 0.04,
+    "undo_all": 7.38,
+    "redo_all": 7.72
   },
   "render": {
     "backend": "gpu",
@@ -43,7 +43,7 @@
       1280,
       720
     ],
-    "seconds": 2.732,
+    "seconds": 2.748,
     "draw_calls": 20
   },
   "problems": []

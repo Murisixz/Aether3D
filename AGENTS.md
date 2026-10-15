@@ -167,7 +167,9 @@ apply to agents too.
     (`test_create_many_gives_the_document_of_the_per_object_api`).
   - **Measure, do not assume.** `benchmarks/bench_plans.py` measures; regression tests
     (`tests/test_plans_performance.py`) compare times on the same machine with generous
-    margins, never against fixed budgets.
+    margins, never against fixed budgets. Time them with `tests/timing.py` (the garbage
+    collector paused): a full collection walks the whole test session, whose size
+    depends on the tests that ran before.
 - MCP server (`mcp/`):
   - **Optional and isolated.** Only `aether3d.mcp` imports the MCP SDK; `import aether3d`
     must never load it (`test_importing_aether3d_does_not_load_the_mcp_sdk`).

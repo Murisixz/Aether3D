@@ -520,35 +520,37 @@ NumPy (about 48 MiB).
 
 | Method | 100 | 1,000 | 10,000 | 10,000 in 0.10.0 | Undo steps kept (10,000) | Peak RSS (10,000) |
 | --- | --- | --- | --- | --- | --- | --- |
-| `add_cube` per block | 11.1 ms | 118 ms | 1,948 ms | 2,134 ms | 256 of 10,000 | 126 MiB |
-| `add_object` per block (shared mesh) | 2.2 ms | 24.5 ms | 910 ms | 1,010 ms | 256 of 10,000 | 101 MiB |
-| the same in one `transaction` | 1.8 ms | 17.2 ms | 375 ms | 452 ms | 1 | 66 MiB |
-| one procedural script | 5.0 ms | 51.4 ms | 803 ms | 5,977 ms | 2 | 84 MiB |
-| **one plan** | **1.3 ms** | **10.3 ms** | **110 ms** | -- | **1** | **70 MiB** |
+| `add_cube` per block | 10.4 ms | 118 ms | 1,925 ms | 2,134 ms | 256 of 10,000 | 129 MiB |
+| `add_object` per block (shared mesh) | 2.0 ms | 25.1 ms | 920 ms | 1,010 ms | 256 of 10,000 | 104 MiB |
+| the same in one `transaction` | 1.8 ms | 17.4 ms | 379 ms | 452 ms | 1 | 66 MiB |
+| one procedural script | 5.0 ms | 52.9 ms | 820 ms | 5,977 ms | 2 | 84 MiB |
+| **one plan** | **1.4 ms** | **9.7 ms** | **105 ms** | -- | **1** | **70 MiB** |
 
-At 10,000 blocks the plan builds about 91,000 blocks per second: 18x faster than
-`add_cube`, 8.3x faster than `add_object`, 3.4x faster than the same calls in a
-transaction. At 100,000 blocks (the default `max_objects`) it took 1.49 s in one measured
-run (67,000 per second; peak RSS 268 MiB; an undo step of 29.6 MB). Per-object calls also make one undo step each, so past the history's limit
-(256 steps) the first creations can no longer be undone, and their 256 steps take 40.6
-MB; the plan is one step of 3.0 MB.
+At 10,000 blocks the plan builds about 96,000 blocks per second: 18x faster than
+`add_cube`, 8.8x faster than `add_object`, 3.6x faster than the same calls in a
+transaction. At 100,000 blocks (the default `max_objects`) it took 1.11 and 1.13 s in two
+runs (about 89,000 per second; peak RSS 268 MiB; an undo step of 29.6 MB). Per-object
+calls also make one undo step each, so past the history's limit (256 steps) the first
+creations can no longer be undone, and their 256 steps take 40.6 MB; the plan is one
+step of 3.0 MB.
 
 ### From the command line and over MCP
 
 | Method | 100 | 1,000 | 10,000 |
 | --- | --- | --- | --- |
-| `aether3d procedural run` per block | 18.5 s (measured) | 276 s (projected) | 11,576 s = 3.2 h (projected) |
-| one `aether3d procedural run` script | 0.19 s | 0.28 s | 2.68 s (0.10.0: 7.86 s) |
-| one `aether3d execute-plan` | 0.19 s | 0.24 s | 0.79 s |
-| one MCP `execute_scene_plan` call per block | 0.20 s | 1.97 s | 21.0 s |
-| one MCP `execute_scene_plan` call | 3.1 ms | 13.4 ms | 131 ms (109-153) |
+| `aether3d procedural run` per block | 18.4 s (measured) | 274 s (projected) | 11,398 s = 3.2 h (projected) |
+| one `aether3d procedural run` script | 0.19 s | 0.28 s | 2.64 s (0.10.0: 7.86 s) |
+| one `aether3d execute-plan` | 0.18 s | 0.24 s | 0.77 s |
+| one MCP `execute_scene_plan` call per block | 0.36 s | 2.15 s | 21.9 s |
+| one MCP `execute_scene_plan` call | 4.1 ms (3.1-6.1) | 11.9 ms | 102 ms |
 
 A CLI call starts Python, imports Aether3D, loads the project, changes it and saves it:
-about 0.18 s for a small project here, growing with the project: 0.28 s per call on a project of
-1,000 blocks and 1.16 s on one of 10,000 (the projections multiply those measured times by
-N, so they are lower bounds). An MCP tool call costs about 1.2 ms over stdio (a trivial
-call), and a plan of 10,000 objects 6.7 ms more as a tool call than in the server; one
-call per object costs about 1.9 ms each.
+about 0.18 s for a small project here, growing with the project: 0.27 s per call on a
+project of 1,000 blocks and 1.14 s on one of 10,000 (the projections multiply those
+measured times by N, so they are lower bounds). An MCP tool call costs about 1.2 ms over
+stdio (a trivial call), and a plan of 10,000 objects about 9 ms more as a tool call than
+in the server; one call per object costs 1.7-1.9 ms each (3.7 ms at 100 objects, right
+after the server started).
 
 ### Where the time goes (10,000 blocks, one plan)
 
@@ -556,30 +558,35 @@ call per object costs about 1.9 ms each.
 | --- | --- |
 | checking the plan without a scene (`validate_plan`) | 0.08 ms |
 | parse and check | 0.18 ms |
-| bind: the grid's layout, names, references | 28.9 ms |
-| objects: creating them in bulk, with their undo record | 72.0 ms |
-| apply (resources, objects, operations) | 79.0 ms |
-| total | 120 ms |
-| geometry generation, for comparison: 10,000 `create_cube` calls (what `add_cube` pays) | 843 ms |
-| undo / redo of the whole plan | 2.4 ms / 2.9 ms |
-| first `overlaps` query (builds the spatial index) / again | 203 ms / 37.9 ms |
-| `raycast` / `nearest` (5 objects) | 7.8 ms / 5.5 ms |
-| GPU rasterizer, 1280x720, first render after the device exists / warm | 125 ms / 121 ms, **1 draw call** |
-| CPU rasterizer, 640x360 | 0.75 s |
+| bind: the grid's layout, names, references | 25.0 ms |
+| objects: creating them in bulk, with their undo record | 62.2 ms |
+| apply (resources, objects, operations) | 68.7 ms |
+| total | 94 ms |
+| geometry generation, for comparison: 10,000 `create_cube` calls (what `add_cube` pays) | 835 ms |
+| undo / redo of the whole plan | 2.5 ms / 2.8 ms |
+| first `overlaps` query (builds the spatial index) / again | 175 ms / 34.9 ms |
+| `raycast` / `nearest` (5 objects) | 7.4 ms / 5.5 ms |
+| GPU rasterizer, 1280x720, first render after the device exists / warm | 139 ms / 120 ms, **1 draw call** |
+| CPU rasterizer, 640x360 | 0.73 s |
 
-- **Creation** costs about 7 us per object (the undo record, ids, the appearance) and
-  binding a grid about 3 us. An expression evaluated per instance costs about 3 us each:
+- **Creation** costs about 6 us per object (the undo record, ids, the appearance) and
+  binding a grid about 2.5 us. An expression evaluated per instance costs about 3 us each:
   placing the same blocks with `"repeat"` and two expressions
-  (`[{"expr": "i % 100"}, {"expr": "floor(i / 100)"}, 0.45]`) binds in 89 ms instead of
-  29 ms. Let patterns do the placement when they can.
+  (`[{"expr": "i % 100"}, {"expr": "floor(i / 100)"}, 0.45]`) binds in 82 ms instead of
+  25 ms. Let patterns do the placement when they can.
 - **Geometry generation is not scene construction.** `add_cube` generates a new mesh per
   block (84 us each); plans share one mesh per definition, which also keeps memory low
-  (70 MiB for 10,000 blocks against 126 MiB).
+  (70 MiB for 10,000 blocks against 129 MiB).
+- **The garbage collector waits.** A plan pauses Python's cyclic garbage collector while
+  it runs. In a process holding many objects (a long-running MCP server with a large
+  scene, a test session), a full collection triggered by the plan's allocations walked
+  all of them: an 8,000-object plan in a process holding a million objects took 256-278 ms,
+  and takes 117-121 ms with the pause.
 - **Rendering is a separate stage.** The GPU draws the 10,000 blocks in one instanced
-  draw call; a warm frame takes 121 ms, of which the GPU's work is about 4 ms and the rest
+  draw call; a warm frame takes 120 ms, of which the GPU's work is about 4 ms and the rest
   the per-frame scene extraction and upload on the CPU. Path tracing does not depend on
   how a scene was built and is not measured here (see `bench_pathtrace.py` and
-  `bench_gpu_pathtrace.py`). The process that renders on the GPU peaks at 589 MiB, most of
+  `bench_gpu_pathtrace.py`). The process that renders on the GPU peaks at 608 MiB, most of
   it the GPU driver.
 - **Edits stay small.** Changing one object of a large scene with a plan costs about
   0.12 ms at any size (it was 3.8 ms at 20,000 objects before 0.11;
@@ -587,13 +594,14 @@ call per object costs about 1.9 ms each.
 
 | Example plan | Objects | Build (median of 2) | Of which queries | Undo step | GPU 1280x720 (warm) |
 | --- | --- | --- | --- | --- | --- |
-| castle | 2,190 | 110 ms | 71 ms | 1.3 MB | 59 ms, 10 draw calls |
-| village | 11,270 | 408 ms | 166 ms | 6.9 MB | 127 ms, 20 draw calls |
+| castle | 2,190 | 105 ms | 70 ms | 1.3 MB | 57 ms, 10 draw calls |
+| village | 11,270 | 351 ms | 166 ms | 6.9 MB | 131 ms, 20 draw calls |
 
 What 0.11 fixed on the way, found by profiling: automatic names were found by scanning
 the taken names (N creations were quadratic); edit plans walked the whole scene twice;
 procedural scripts scanned every object at every step (5,977 ms for 10,000 blocks, now
-803 ms); and renders built a material record per object.
+820 ms); renders built a material record per object; and plans let full garbage
+collections run over the whole process.
 
 To reproduce: `python benchmarks/bench_plans.py --json results.json` (about five
 minutes; `--quick` for 100 and 1,000 blocks), and for a baseline,

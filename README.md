@@ -393,7 +393,7 @@ scene.history.undo()  # the whole plan, one step
 ![A village of 11,270 objects built by one plan, drawn by the GPU in 20 instanced draw calls](examples/output/village.png)
 
 *[`examples/village.py`](examples/village.py) builds a village of 11,270 objects from
-reusable houses, trees, lamps and cars with one plan in about 0.4 s, then paints one
+reusable houses, trees, lamps and cars with one plan in about 0.35 s, then paints one
 door (0.4 ms, one object changed) and renders it on the GPU in 20 instanced draw calls.
 [`examples/plan_basics.py`](examples/plan_basics.py) shows checks, errors, edits,
 retries and undo. The format: [docs/SCENE_PLANS.md](docs/SCENE_PLANS.md), with

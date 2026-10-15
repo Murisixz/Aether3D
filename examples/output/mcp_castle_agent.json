@@ -3,7 +3,7 @@
     {
       "tool": "capabilities",
       "arguments": null,
-      "ms": 6.3,
+      "ms": 6.4,
       "ok": true
     },
     {
@@ -11,23 +11,23 @@
       "arguments": {
         "name": "Castle"
       },
-      "ms": 2.1,
+      "ms": 1.7,
       "ok": true
     },
     {
       "tool": "execute_scene_plan",
       "arguments": "the castle (first draft)",
-      "ms": 181.5,
+      "ms": 184.5,
       "ok": true,
       "found": {
         "objects": 2190,
-        "server_ms": 176.4
+        "server_ms": 178.0
       }
     },
     {
       "tool": "spatial_query",
       "arguments": "trees in the keep, the towers' lowest points, the gate",
-      "ms": 85.9,
+      "ms": 90.7,
       "ok": true,
       "found": {
         "trees_in_the_keep": [
@@ -42,7 +42,7 @@
     {
       "tool": "execute_scene_plan",
       "arguments": "Fix: move Tree 1 out of the keep, lower Tower NE",
-      "ms": 30.5,
+      "ms": 31.8,
       "ok": true,
       "found": {
         "trees_in_the_keep": [],
@@ -92,7 +92,7 @@
           }
         ]
       },
-      "ms": 117.9,
+      "ms": 120.9,
       "ok": true
     },
     {
@@ -100,7 +100,7 @@
       "arguments": {
         "action": "redo"
       },
-      "ms": 2.5,
+      "ms": 3.4,
       "ok": true
     },
     {
@@ -138,7 +138,7 @@
           }
         ]
       },
-      "ms": 37.0,
+      "ms": 30.6,
       "ok": true
     },
     {
@@ -150,7 +150,7 @@
         "save_to": "castle_preview.png",
         "overwrite": true
       },
-      "ms": 1028.4,
+      "ms": 994.0,
       "ok": true,
       "found": {
         "device": "gpu",
@@ -165,7 +165,7 @@
         "overwrite": true,
         "history": true
       },
-      "ms": 162.9,
+      "ms": 201.1,
       "ok": true
     },
     {
@@ -174,7 +174,7 @@
         "path": "castle.glb",
         "overwrite": true
       },
-      "ms": 16.3,
+      "ms": 13.7,
       "ok": true
     },
     {
@@ -183,7 +183,7 @@
         "path": "castle.aether",
         "history": true
       },
-      "ms": 417.4,
+      "ms": 389.0,
       "ok": true
     },
     {
@@ -191,11 +191,11 @@
       "arguments": {
         "action": "list"
       },
-      "ms": 3.2,
+      "ms": 2.6,
       "ok": true
     }
   ],
   "tool_calls": 14,
-  "total_ms": 2094.5,
+  "total_ms": 2073.0,
   "problems": []
 }
