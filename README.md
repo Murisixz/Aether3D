@@ -358,7 +358,8 @@ print(result.backend["device"], result.stats["noise"], sorted(result.passes))
     rasterizer.
 - **On the CPU or the GPU.** `backend="path"` runs in NumPy on the CPU
   (forked processes on Linux). `backend="gpu_path"` runs the same path
-  tracer in a wgpu compute kernel. It traces the same paths as the CPU (same
+  tracer in a wgpu compute kernel (on Vulkan and Metal; on Direct3D 12 it
+  needs the DXC compiler). It traces the same paths as the CPU (same
   random numbers; images agree to float32 rounding), 51 to 65 times faster
   on an RTX 4060 than on eight CPU processes. Traversal is software; no
   hardware ray tracing is used. Reports say which ran (`backend["device"]`).

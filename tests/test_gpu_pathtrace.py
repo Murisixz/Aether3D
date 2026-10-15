@@ -52,6 +52,23 @@ from test_pathtrace import cornell_box, dark, lambert  # noqa: E402
 HAS_MANIFOLD = importlib.util.find_spec("manifold3d") is not None
 
 
+@pytest.fixture
+def gpu(gpu):
+    """The GPU of the tests (conftest.py), if it can run the GPU path tracer.
+
+    Microsoft WARP, and Direct3D 12 without DXC, refuse the GPU path tracer (see
+    ``device.pathtrace_support``): these tests are skipped there, with the reason, and
+    ``test_adapters_that_cannot_run_the_path_tracer_refuse_it`` checks the refusal.
+    """
+    from aether3d.rendering.gpu import device
+
+    raster, _ = device.get_context(gpu.adapter)
+    why = device.pathtrace_support(raster.info)
+    if why is not None:
+        pytest.skip(f"{raster.info.label} cannot run the GPU path tracer: {why}")
+    return gpu
+
+
 def gpu_path(gpu, scene, width, height, *, ao=None, **path):
     path.setdefault("samples", 4)
     return scene.render(
@@ -100,7 +117,7 @@ def test_the_gpu_draws_the_cpu_path_tracers_random_numbers(gpu):
     from aether3d.rendering.gpu import device
     from aether3d.rendering.gpu.pathtrace import random_numbers
 
-    context, _ = device.get_context(gpu.adapter)
+    context, _ = device.get_context(gpu.adapter, path_tracer=True)
     width, height, sample = 37, 23, 5
     pixels = np.arange(width * height)
     dims = [
@@ -448,19 +465,87 @@ def test_without_wgpu_gpu_path_fails_and_never_falls_back(monkeypatch):
     assert cornell_box().render(width=8, height=8, backend="path", default_lights=False)
 
 
-def test_a_slow_kernel_compile_is_reported_with_its_remedy(monkeypatch):
+def test_a_slow_kernel_compile_is_reported():
     from aether3d.rendering.gpu.pathtrace import compile_diagnostic
 
-    monkeypatch.delenv("AETHER3D_GPU_DXC", raising=False)
-    assert compile_diagnostic(12.0, "d3d12") is None  # e.g. DXC; Vulkan, Metal: ~1 s
-    fxc = compile_diagnostic(770.0, "d3d12")
-    assert fxc.code == "SLOW_SHADER_COMPILE" and fxc.severity == "info"
-    assert "770 s" in fxc.message and "FXC" in fxc.message
-    assert "AETHER3D_GPU_DXC" in fxc.message
-    other = compile_diagnostic(70.0, "vulkan")
-    assert other is not None and "FXC" not in other.message
-    monkeypatch.setenv("AETHER3D_GPU_DXC", "C:/sdk/dxcompiler.dll")  # DXC was asked for
-    assert "FXC" not in compile_diagnostic(770.0, "d3d12").message
+    assert compile_diagnostic(12.0) is None  # DXC on Windows; Vulkan and Metal: ~1 s
+    slow = compile_diagnostic(70.0)
+    assert slow.code == "SLOW_SHADER_COMPILE" and slow.severity == "info"
+    assert "70 s" in slow.message
+
+
+def _adapter(index, backend, *, software=False, kind="discrete"):
+    from aether3d.rendering.gpu.device import AdapterInfo
+
+    return AdapterInfo(
+        index, f"GPU {index}", "", 0, 0, "cpu" if software else kind, backend, "", software, (), ()
+    )
+
+
+def test_direct3d_12_needs_dxc_and_warp_is_refused(monkeypatch):
+    from aether3d.rendering.gpu import device
+
+    monkeypatch.setattr(device, "_dxc_path", None)
+    assert device.pathtrace_support(_adapter(0, "vulkan")) is None
+    assert device.pathtrace_support(_adapter(0, "metal")) is None
+    assert device.pathtrace_support(_adapter(0, "vulkan", software=True)) is None  # lavapipe
+    assert "DXC" in device.pathtrace_support(_adapter(0, "d3d12"))
+    warp = device.pathtrace_support(_adapter(0, "d3d12", software=True))
+    assert "WARP" in warp and "36 minutes" in warp
+    monkeypatch.setattr(device, "_dxc_path", "C:/sdk/dxcompiler.dll")
+    assert device.pathtrace_support(_adapter(0, "d3d12")) is None
+    assert device.pathtrace_support(_adapter(0, "d3d12", software=True)) is not None
+
+
+def test_the_path_tracer_picks_an_adapter_that_can_run_it(monkeypatch):
+    """A Windows GPU seen through Direct3D 12 and Vulkan: rasterizer renders use Direct3D
+    12 (the native API), path tracing the Vulkan adapter; with only WARP it is refused."""
+    from aether3d.rendering.gpu import device
+
+    def create(wgpu, info, raw):
+        return type("Context", (), {"usable": lambda self: True, "info": info})()
+
+    d3d12, vulkan = _adapter(0, "d3d12"), _adapter(1, "vulkan")
+    both = [(d3d12, None), (vulkan, None)]
+    monkeypatch.setattr(device, "_dxc_path", None)
+    monkeypatch.setattr(device, "load_wgpu", lambda: None)
+    monkeypatch.setattr(device, "_create_context", create)
+    monkeypatch.setattr(device, "_contexts", {})
+    monkeypatch.setattr(device, "_NATIVE_API", {sys.platform: "d3d12"})
+    monkeypatch.setattr(device, "enumerate_adapters", lambda refresh=False: both)
+    assert device.get_context()[0].info is d3d12
+    assert device.get_context(path_tracer=True)[0].info is vulkan
+    with pytest.raises(RenderError) as exc:
+        device.get_context("d3d12", path_tracer=True)  # explicitly Direct3D 12, no DXC
+    assert exc.value.code == "GPU_FEATURE_UNSUPPORTED" and "AETHER3D_GPU_DXC" in exc.value.hint
+    warp = _adapter(0, "d3d12", software=True)
+    monkeypatch.setattr(device, "enumerate_adapters", lambda refresh=False: [(warp, None)])
+    with pytest.raises(RenderError) as exc:
+        device.get_context(path_tracer=True)
+    assert exc.value.code == "GPU_FEATURE_UNSUPPORTED" and "WARP" in exc.value.message
+    assert exc.value.details["adapters"][0]["reason"]
+
+
+def test_adapters_that_cannot_run_the_path_tracer_refuse_it():
+    """On a real adapter that cannot run the path tracer (WARP in the Windows CI job), a
+    gpu_path render fails at once with the reason, and never reaches the compiler."""
+    import os
+
+    if os.environ.get("AETHER3D_GPU_TESTS") == "skip":
+        pytest.skip("GPU tests are switched off here (AETHER3D_GPU_TESTS=skip)")
+    pytest.importorskip("wgpu")
+    from aether3d.rendering.gpu import device
+
+    try:
+        adapters = device.enumerate_adapters()
+    except RenderError as exc:
+        pytest.skip(f"no GPU adapter here: {exc.message}")
+    refused = [info for info, _ in adapters if device.pathtrace_support(info)]
+    if not refused:
+        pytest.skip("every adapter here can run the GPU path tracer")
+    with pytest.raises(RenderError) as exc:
+        cornell_box().render(width=8, height=8, backend="gpu_path", adapter=str(refused[0].index))
+    assert exc.value.code == "GPU_FEATURE_UNSUPPORTED"
 
 
 def test_a_dxc_path_that_does_not_exist_is_an_error(tmp_path):

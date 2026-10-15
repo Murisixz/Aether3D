@@ -37,26 +37,37 @@ features; breaking changes are called out explicitly).
     ray tracing (RT cores) is used.
 - **CLI:** `aether3d render --backend gpu_path` with the path tracer's options
   and `--adapter`.
+- **Graphics APIs:** tested on Vulkan (the RTX 4060 and lavapipe) and Metal
+  (GitHub's macOS runners).
 - **`AETHER3D_GPU_DXC`:** the path of `dxcompiler.dll` makes Direct3D 12
-  compile shaders with DXC instead of FXC. FXC compiles the path tracing
-  kernel in about 13 minutes on GitHub's Windows runner (once per process),
-  DXC in 12 s. A compile over a minute is reported as `SLOW_SHADER_COMPILE`.
+  compile shaders with DXC instead of FXC, and the GPU path tracer needs it
+  there. Measured on GitHub's Windows runners (Microsoft WARP):
+  - FXC needed about 13 minutes for the kernel, and its code crashed WARP;
+  - DXC compiled it in 12 s, but WARP did not finish a 24x24 test render in
+    36 minutes.
+
+  So WARP is refused (`GPU_FEATURE_UNSUPPORTED`, with the reason). With
+  `adapter="auto"` the path tracer uses only adapters that can run it: a
+  Windows GPU through Vulkan. Direct3D 12 on hardware is untested. A compile
+  over a minute is reported as `SLOW_SHADER_COMPILE`.
 - **Examples:** `examples/gpu_path_showcase.py` renders the Stage 8 showcases on
   the GPU with many more samples, and compares the CPU and GPU tracing the
   same paths.
 - **Benchmark:** `benchmarks/bench_gpu_pathtrace.py` renders the showcase scenes
   at their CPU settings on the GPU and compares with the recorded CPU times.
-- **Tests:** `tests/test_gpu_pathtrace.py` (26 tests):
+- **Tests:** `tests/test_gpu_pathtrace.py` (29 tests):
   - the GPU's random numbers equal the CPU's;
   - per-pixel agreement with the CPU path tracer on every feature;
   - an exact white furnace and the inverse-square law on the GPU;
   - determinism across tilings, `progress` and stopping;
   - honest reports, limits and errors, the CLI;
-  - the slow-compile report and the DXC setting.
+  - the slow-compile report, the DXC setting, and the adapters that refuse the
+    path tracer.
 
-  The GPU CI jobs run them (lavapipe on Linux, the native adapters on
-  Windows and macOS), with a quick GPU showcase run. On Windows they run
-  twice: with FXC (the default) and with the Windows SDK's DXC.
+  The GPU CI jobs run them: lavapipe on Linux, with a quick GPU showcase run,
+  and Metal on macOS. On Windows, WARP refuses the path tracer, and the job
+  checks that refusal. The rasterizer tests run there twice, with FXC (the
+  default) and with the Windows SDK's DXC.
 
 ### Changed
 

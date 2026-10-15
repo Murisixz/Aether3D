@@ -691,10 +691,12 @@ Other environment variables:
 - `AETHER3D_GPU_ADAPTER` sets the default adapter;
 - `AETHER3D_GPU_CACHE_MB` sets the mesh cache budget;
 - `AETHER3D_GPU_DXC=C:\path\to\dxcompiler.dll` makes Direct3D 12 compile
-  shaders with DXC instead of FXC. The DLL comes with the Windows SDK
+  shaders with DXC instead of FXC. The GPU path tracer needs it on Direct3D 12.
+  The DLL comes with the Windows SDK
   (`C:\Program Files (x86)\Windows Kits\10\bin\<version>\x64`) and with
   DirectX Shader Compiler releases. A path that does not exist is a
   `GPU_UNAVAILABLE` error, and `aether3d gpu info` notes the compiler in use.
+  CI runs the GPU rasterizer tests with it on Windows.
 
 ## Testing and CI
 
@@ -792,7 +794,8 @@ Verified on the development machine:
   pipelines are cached for the device. Vulkan and Metal compile them in a
   fraction of a second. FXC is much slower on the GPU path tracer's kernel:
   about 13 minutes on that runner, against 12 s with DXC
-  (`AETHER3D_GPU_DXC`, below; see RENDER_QUALITY.md).
+  (`AETHER3D_GPU_DXC`, below). The path tracer therefore needs DXC on
+  Direct3D 12, and refuses WARP (see RENDER_QUALITY.md).
 - **Readback cost.** Every GPU render reads back all auxiliary maps (depth,
   object index, coverage, linear color). That keeps results identical in
   shape to the CPU's, but costs readback time at very large sizes.

@@ -682,13 +682,28 @@ Feature parity with `backend="path"`:
   needs more fail with `GPU_LIMIT_EXCEEDED` (use `backend="path"`).
 - **Work per dispatch:** samples are dispatched in tiles of at most 512x512
   pixels and about a million pixel-samples, which keeps every dispatch short.
-- **Compiling the kernel:** once per process and device. Vulkan and Metal
-  compile it in about a second. Direct3D 12 compiles shaders with FXC by
-  default, which is slow on this kernel: on GitHub's Windows runner, FXC took
-  about 13 minutes (725-772 s), where DXC took 12 s. Set `AETHER3D_GPU_DXC`
-  to the path of `dxcompiler.dll` (Windows SDK, or a DirectX Shader Compiler
-  release) to compile with DXC, or select a Vulkan adapter. A compile over a
-  minute is reported as `SLOW_SHADER_COMPILE`.
+- **Graphics APIs:** tested on Vulkan (the RTX 4060 and lavapipe, locally and
+  in CI) and Metal (the paravirtual device of GitHub's macOS runners).
+- **Direct3D 12 needs DXC, and WARP is refused.** This is what was measured on
+  GitHub's Windows runners, with Microsoft WARP (Direct3D 12 in software):
+  - FXC, Direct3D 12's default shader compiler, took about 13 minutes
+    (725-772 s) to compile the kernel. FXC took 51 s without BVH traversal and
+    102 s without material evaluation, so the time comes from the two together.
+  - FXC's code crashed WARP (heap corruption) at the first dispatch.
+  - With DXC the kernel compiled in 12 s and ran: the random-number test
+    passed. But WARP did not finish the next test, a 24x24 Cornell box, in 36
+    minutes.
+
+  So the path tracer needs DXC on Direct3D 12 (`AETHER3D_GPU_DXC`: the path of
+  `dxcompiler.dll`, from the Windows SDK or a DirectX Shader Compiler release),
+  and refuses WARP. A refused adapter fails at once with
+  `GPU_FEATURE_UNSUPPORTED` and the reason. With `adapter="auto"`, only
+  adapters that can run the path tracer are considered: a Windows GPU is then
+  used through Vulkan, while the rasterizers keep Direct3D 12. Direct3D 12 on
+  hardware, with DXC, has not been tested.
+- **Compiling the kernel:** once per process and device. Vulkan and Metal take
+  about a second, DXC 12 s. A compile over a minute is reported as
+  `SLOW_SHADER_COMPILE`.
 
 **Performance.** These measurements are one run each, on the RTX 4060
 Laptop GPU, with the device already created:

@@ -695,7 +695,7 @@ def _finish_path(
         from .gpu import pathtrace as gpu_pathtrace
 
         t0 = time.perf_counter()
-        context, failures = gpu_device.get_context(adapter)
+        context, failures = gpu_device.get_context(adapter, path_tracer=True)
         t_init = time.perf_counter() - t0
         fresh = context.renders == 0
         data = gpu_pathtrace.render_scene(
