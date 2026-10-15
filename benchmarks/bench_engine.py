@@ -515,6 +515,9 @@ def machine() -> dict[str, Any]:
         "numpy": np.__version__,
         "aether3d": aether3d.__version__,
     }
+    from aether3d import _features
+
+    info["switches"] = _features.report()
     with contextlib.suppress(OSError, subprocess.CalledProcessError):
         info["git"] = subprocess.run(
             ["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],

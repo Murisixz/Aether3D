@@ -29,6 +29,9 @@ apply to agents too.
   errors, idempotency, chunks, limits, performance); the MCP server for AI agents:
   [docs/MCP.md](docs/MCP.md) (tools, resources, Claude Code, security).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
+- Performance: [docs/PERFORMANCE.md](docs/PERFORMANCE.md) (how to measure with
+  `benchmarks/bench_engine.py`, the correctness guards, implementation switches, the record
+  of every phase of the performance modernization).
 
 ## Conventions to preserve
 
@@ -181,6 +184,20 @@ apply to agents too.
     the machine; a render reports the backend that drew it, never a GPU for a CPU image.
   - Test tools through a real server process (`tests/test_mcp.py` uses the SDK client and
     raw JSON-RPC).
+
+- Performance work:
+  - **Measure first and after** with `benchmarks/bench_engine.py` (`--compare` against a
+    saved run on the same machine); never report an improvement that was not measured end
+    to end.
+  - **Caches derived from a scene live in `Scene._derived()`**, keyed by `scene.revision`
+    or the history's own bookkeeping. Never key a module-level dictionary by a scene: a
+    cache entry that refers to its scene keeps it alive (`tests/test_scene_lifecycle.py`).
+  - **Identical results.** A cached or faster path must give exactly what the path it
+    replaces gives (`tests/parity.py`); `tests/test_invariants.py` checks identity, undo,
+    redo and cache coherence against a fresh copy of the scene along random edit chains.
+  - **Switchable replacements.** A new implementation of something that works keeps the
+    old one behind a switch (`aether3d/_features.py`, documented in docs/PERFORMANCE.md)
+    with a test comparing the two, until it has proven itself.
 
 ## Using Aether3D from an agent
 
