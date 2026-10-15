@@ -63,6 +63,9 @@ class RenderResult:
     * ``color`` -- the output transform: working space, exposure, tone
       mapper and encoding.
 
+    ``linear``, ``depth``, ``coverage`` and ``object_index`` are ``None`` when a
+    GPU render was asked for fewer ``outputs``.
+
     ``depth`` and ``object_index`` describe one representative sample per pixel
     (the center sample for odd ``samples``; on the GPU with MSAA, the first
     MSAA sample of the center of the supersampled block; for the path tracer
@@ -70,10 +73,10 @@ class RenderResult:
     """
 
     image: np.ndarray
-    linear: np.ndarray
-    depth: np.ndarray
-    coverage: np.ndarray
-    object_index: np.ndarray
+    linear: np.ndarray | None  # None: not requested (render(outputs=...))
+    depth: np.ndarray | None
+    coverage: np.ndarray | None
+    object_index: np.ndarray | None
     objects: list[dict[str, Any]]
     camera: dict[str, Any]
     settings: dict[str, Any]
@@ -102,8 +105,9 @@ class RenderResult:
         r, g, b = (int(v) for v in self.image[y, x])
         return (r, g, b)
 
-    def png_bytes(self) -> bytes:
-        """The image encoded as PNG.
+    def png_bytes(self, compression: int = 6) -> bytes:
+        """The image encoded as PNG (zlib ``compression`` 0-9: 1 is several times faster
+        to encode than the default 6 and a few percent larger; the pixels are the same).
 
         A ``Software`` text chunk names Aether3D; GPU renders also carry a
         ``Source`` chunk naming the graphics API and adapter that drew them.
@@ -128,7 +132,7 @@ class RenderResult:
                 f"{adapter.get('name')}, {b.get('samples')} samples per pixel, "
                 f"{b.get('bounces')} bounces, seed {b.get('seed')}"
             )
-        return encode_png(self.image, text=text)
+        return encode_png(self.image, text=text, compression=compression)
 
     def save(self, path: str | os.PathLike[str]) -> Path:
         """Write the image to a file, atomically; returns the resolved path.
@@ -149,6 +153,13 @@ class RenderResult:
                 "INVALID_OUTPUT",
                 f"output must be a .png, .hdr or .pfm file, got {str(target)!r}",
                 "output",
+            )
+        if suffix != ".png" and self.linear is None:
+            raise RenderError(
+                "OUTPUT_NOT_RENDERED",
+                f"{suffix} files hold linear light, and this render did not return it",
+                "output",
+                hint="render with outputs=None (all) or outputs including 'linear'",
             )
         t0 = time.perf_counter()
         if suffix == ".png":
@@ -191,6 +202,33 @@ class RenderResult:
         }
 
 
+OUTPUTS = frozenset({"image", "linear", "depth", "object_index", "coverage"})
+
+
+def check_outputs(outputs: Any) -> frozenset[str]:
+    """``render(outputs=...)``: ``None`` (all) or names from :data:`OUTPUTS`."""
+    if outputs is None:
+        return OUTPUTS
+    names = [outputs] if isinstance(outputs, str) else outputs
+    try:
+        chosen = frozenset(names)
+    except TypeError:
+        raise RenderError(
+            "INVALID_SETTINGS",
+            f"outputs must be None or a list of output names, got {outputs!r}",
+            "outputs",
+        ) from None
+    unknown = sorted(str(n) for n in chosen - OUTPUTS)
+    if unknown:
+        raise RenderError(
+            "INVALID_SETTINGS",
+            f"unknown render outputs: {', '.join(unknown)}",
+            "outputs",
+            hint=f"outputs: {', '.join(sorted(OUTPUTS))}",
+        )
+    return chosen | {"image"}
+
+
 def _resolve_size(
     settings: RenderSettings, width: Any, height: Any, camera: Camera
 ) -> tuple[Any, Any]:
@@ -226,6 +264,7 @@ def render(
     ao: bool | dict[str, Any] | AOSettings | None = None,
     tonemap: str = "none",
     progress: Any = None,
+    outputs: Any = None,
 ) -> RenderResult:
     """Render ``scene`` and return a :class:`RenderResult`.
 
@@ -267,6 +306,14 @@ def render(
       pass as ``progress(samples_done, samples_total, seconds)``; returning
       ``False`` stops the render there (the image averages the samples done
       and a ``RENDER_STOPPED`` diagnostic says so).
+    * ``outputs`` -- which per-pixel outputs to return: ``None`` (default:
+      all) or some of ``"image"``, ``"linear"``, ``"depth"``,
+      ``"object_index"``, ``"coverage"`` (the image always comes). The GPU
+      backend then reads back only those -- most of a warm GPU frame is reading
+      outputs back, 28 bytes per pixel for all of them, 4 for the image alone --
+      and the others are ``None`` in the result; ``objects``, statistics and
+      diagnostics are complete either way. The CPU renderer and the path tracers
+      compute every output anyway and return them all.
 
     The scene is never modified. Procedural objects render their current
     evaluated geometry. Errors raise :class:`~aether3d.errors.RenderError`
@@ -280,6 +327,9 @@ def render(
         raise RenderError("INVALID_SETTINGS", f"frame must be True or False, got {frame!r}")
     requested = check_backend(backend)
     tonemap = check_tonemap(tonemap)
+    wanted = check_outputs(outputs)
+    if tonemap != "none":
+        wanted = wanted | {"linear"}  # the display image is tone mapped from linear light
     shadow_settings = ShadowSettings.coerce(shadows)
     if requested not in PATH_BACKENDS:
         for name, value in (("path", path), ("ao", ao), ("progress", progress)):
@@ -452,6 +502,7 @@ def render(
                 aspect,
                 t_start,
                 tonemap,
+                wanted,
             )
         except RenderError as exc:
             if requested == "gpu" or not exc.code.startswith("GPU_"):
@@ -571,6 +622,7 @@ def _finish_gpu(
     aspect: float,
     t_start: float,
     tonemap: str = "none",
+    outputs: frozenset[str] = OUTPUTS,
 ) -> RenderResult:
     from .gpu import device as gpu_device
     from .gpu import renderer as gpu_renderer
@@ -589,6 +641,7 @@ def _finish_gpu(
         exposure=settings.exposure,
         shadows=plan,
         limits=limits,
+        outputs=outputs,
     )
     notes: list[Diagnostic] = []
     info = context.info
@@ -624,7 +677,7 @@ def _finish_gpu(
     if plan is not None:
         notes += list(plan.diagnostics)
     diagnostics += notes + gpu_frame.diagnostics
-    if not math.isfinite(float(np.max(gpu_frame.linear, initial=0.0))):
+    if gpu_frame.nonfinite_pixels:  # counted on the GPU: a NaN or +inf in linear light
         raise RenderError("RENDER_FAILED", "the rendered image contains non-finite values")
     timings = {
         "evaluate": rs.timings.get("evaluate", 0.0),
@@ -639,7 +692,7 @@ def _finish_gpu(
     timings["total"] = time.perf_counter() - t_start
     stats = {
         **gpu_frame.counts,
-        "pixels_covered": int(np.count_nonzero(gpu_frame.coverage > 0)),
+        "pixels_covered": gpu_frame.covered_pixels,
         "timings": timings,
         "gpu_timings": gpu_frame.gpu_timings,
     }

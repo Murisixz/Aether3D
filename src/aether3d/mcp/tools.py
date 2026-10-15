@@ -721,8 +721,12 @@ def render_preview(session: Session, args: dict, ctx: ToolContext) -> ToolOutput
         options["shadows"] = True
     if backend != "cpu" and session.config.gpu_adapter is not None:
         options["adapter"] = session.config.gpu_adapter
-    result = scene.render(width=width, height=height, backend=backend, **options)
-    png = result.png_bytes()
+    # A preview needs the image only (on the GPU, the other outputs are not read back)
+    # and favors encoding speed: zlib level 1, a few percent larger than the default.
+    result = scene.render(
+        width=width, height=height, backend=backend, outputs=("image",), **options
+    )
+    png = result.png_bytes(compression=1)
     session.last_preview = png
     report = _render_report(session, result, framed)
     if args.get("save_to") is not None:
@@ -774,7 +778,9 @@ def render_image(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
             options["shadows"] = True
     if backend not in ("cpu", "path") and config.gpu_adapter is not None:
         options["adapter"] = config.gpu_adapter
-    result = scene.render(width=width, height=height, backend=backend, **options)
+    hdr = target.suffix.lower() in (".hdr", ".pfm")  # linear light; a PNG needs the image
+    outputs = ("image", "linear") if hdr else ("image",)
+    result = scene.render(width=width, height=height, backend=backend, outputs=outputs, **options)
     if ctx.cancel.is_set():
         raise ToolError("CANCELLED", "the render was cancelled; nothing was written")
     result.save(target)
@@ -783,7 +789,7 @@ def render_image(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
     report["revision"] = scene.revision
     image = None
     if args.get("include_image") and target.suffix.lower() == ".png":
-        image = result.png_bytes()
+        image = result.png_bytes(compression=1)
     return ToolOutput(report, image=image)
 
 

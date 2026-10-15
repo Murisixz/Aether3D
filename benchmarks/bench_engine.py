@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import gc
+import inspect
 import json
 import os
 import platform
@@ -331,7 +332,43 @@ def group_frame(quick: bool, adapter: str | None) -> dict[str, Any]:
         out[f"{name}_wall_ms"] = ms(statistics.median(walls))
         out[f"{name}_stages_ms"] = {k: ms(statistics.median(v)) for k, v in stages.items()}
         out[f"{name}_gpu_passes_ms"] = {k: ms(statistics.median(v)) for k, v in passes.items()}
+    # The same frames reading back only the image (render(outputs=...), since 0.12).
+    if "outputs" in inspect.signature(scene.render.__func__).parameters or _accepts_outputs():
+        for name in ("unchanged", "one_moved"):
+            edit = edits[name]
+            walls, stages = [], {}
+            for _ in range(repeat):
+                edit()
+                gc.disable()
+                t0 = time.perf_counter()
+                result = scene.render(outputs=("image",), **options)
+                walls.append(time.perf_counter() - t0)
+                gc.enable()
+                for key, value in result.stats["timings"].items():
+                    stages.setdefault(key, []).append(value)
+            out[f"{name}_image_only_wall_ms"] = ms(statistics.median(walls))
+            out[f"{name}_image_only_stages_ms"] = {
+                k: ms(statistics.median(v)) for k, v in stages.items()
+            }
+        # An MCP preview: 640x360, image only, PNG at zlib level 1.
+        walls = []
+        for _ in range(repeat):
+            gc.disable()
+            t0 = time.perf_counter()
+            result = scene.render(
+                width=640, height=360, backend="gpu", adapter=adapter, outputs=("image",)
+            )
+            result.png_bytes(compression=1)
+            walls.append(time.perf_counter() - t0)
+            gc.enable()
+        out["preview_640x360_png_ms"] = ms(statistics.median(walls))
     return out
+
+
+def _accepts_outputs() -> bool:
+    from aether3d.rendering.renderer import render
+
+    return "outputs" in inspect.signature(render).parameters
 
 
 def group_raytrace(quick: bool) -> dict[str, Any]:

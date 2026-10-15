@@ -332,3 +332,49 @@ def test_float32_range_checks_decide_as_the_exact_test(seed):
     assert_bitwise(keep, reference, "keep")
     assert 0 < int(reference.sum()) < len(rs.instances)
     assert diagnostics and diagnostics[0].code == "NONFINITE_GEOMETRY"
+
+
+# ---------------------------------------------------------------------------------------
+# PNG encoding: the filter choice (0.11's int32 version kept as the reference)
+
+
+def _reference_filter_rows(rows, bpp):
+    from aether3d.rendering.png import _ROW_BLOCK, _paeth
+
+    height, stride = rows.shape
+    out = np.empty((height, stride + 1), dtype=np.uint8)
+    previous = np.zeros(stride, dtype=np.int32)
+    for r0 in range(0, height, _ROW_BLOCK):
+        x = rows[r0 : r0 + _ROW_BLOCK].astype(np.int32)
+        up = np.vstack([previous[None, :], x[:-1]])
+        left = np.zeros_like(x)
+        left[:, bpp:] = x[:, :-bpp]
+        upleft = np.zeros_like(x)
+        upleft[:, bpp:] = up[:, :-bpp]
+        candidates = (
+            np.stack([x, x - left, x - up, x - ((left + up) >> 1), x - _paeth(left, up, upleft)])
+            & 0xFF
+        )
+        signed = np.where(candidates < 128, candidates, 256 - candidates)
+        best = np.argmin(signed.sum(axis=2), axis=0)
+        block = candidates[best, np.arange(x.shape[0])]
+        out[r0 : r0 + x.shape[0], 0] = best
+        out[r0 : r0 + x.shape[0], 1:] = block
+        previous = x[-1]
+    return out
+
+
+@pytest.mark.parametrize("channels", [1, 3, 4])
+def test_png_filters_are_chosen_and_written_as_before(channels):
+    from aether3d.rendering.png import _filter_rows
+
+    rng = np.random.default_rng(channels)
+    smooth = np.cumsum(rng.integers(-3, 4, (300, 257, channels)), axis=1) % 256
+    for image in (
+        rng.integers(0, 256, (300, 131, channels)),  # more than one block of rows
+        smooth,
+        np.zeros((7, 5, channels)),
+        np.full((3, 600, channels), 255),
+    ):
+        rows = np.ascontiguousarray(image.astype(np.uint8)).reshape(image.shape[0], -1)
+        assert_bitwise(_filter_rows(rows, channels), _reference_filter_rows(rows, channels))

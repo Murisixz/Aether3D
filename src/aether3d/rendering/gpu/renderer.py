@@ -63,11 +63,13 @@ class GPUFrame:
     """Output of :func:`render_scene` at the final resolution."""
 
     image: np.ndarray  # (H, W, 3) uint8 sRGB, exposure applied
-    linear: np.ndarray  # (H, W, 3) float32 linear light, exposure applied
-    coverage: np.ndarray  # (H, W) float32
-    depth: np.ndarray  # (H, W) float32 view depth at the representative sample (inf: none)
-    instance: np.ndarray  # (H, W) int32 (-1: none)
+    linear: np.ndarray | None  # (H, W, 3) float32 linear light, exposure applied
+    coverage: np.ndarray | None  # (H, W) float32
+    depth: np.ndarray | None  # (H, W) float32 view depth at the representative sample
+    instance: np.ndarray | None  # (H, W) int32 (-1: none)
     visible_samples: np.ndarray  # (instances,) int64
+    nonfinite_pixels: int = 0  # pixels whose linear value has a NaN or +infinity
+    covered_pixels: int = 0  # pixels with coverage > 0
     counts: dict[str, int] = field(default_factory=dict)
     timings: dict[str, float] = field(default_factory=dict)
     gpu_timings: dict[str, float] = field(default_factory=dict)
@@ -193,10 +195,14 @@ def render_scene(
     exposure: float,
     shadows: ShadowPlan | None,
     limits: RenderLimits,
+    outputs: frozenset[str] = resources.OUTPUTS,
 ) -> GPUFrame:
-    """Render ``rs`` on ``context``'s device (see the module docstring)."""
+    """Render ``rs`` on ``context``'s device (see the module docstring). Only ``outputs``
+    are read back (the image always); the others are ``None``."""
     with context.lock, translate_errors(context, "GPU rendering"):
-        return _render(context, rs, width, height, antialiasing, cull, exposure, shadows, limits)
+        return _render(
+            context, rs, width, height, antialiasing, cull, exposure, shadows, limits, outputs
+        )
 
 
 def _render(
@@ -209,6 +215,7 @@ def _render(
     exposure: float,
     plan: ShadowPlan | None,
     limits: RenderLimits,
+    outputs: frozenset[str] = resources.OUTPUTS,
 ) -> GPUFrame:
     wgpu = context.wgpu
     device = context.device
@@ -455,7 +462,14 @@ def _render(
         encoder.copy_buffer_to_buffer(
             targets.query_buffer, 0, targets.output, layout.queries, 8 * count
         )
-    encoder.copy_buffer_to_buffer(targets.output, 0, targets.staging, 0, layout.total)
+    if outputs >= resources.OUTPUTS:
+        encoder.copy_buffer_to_buffer(targets.output, 0, targets.staging, 0, layout.total)
+    else:  # only what is read back crosses to the readable buffer
+        for region in layout.regions(outputs):
+            offset = getattr(layout, region)
+            encoder.copy_buffer_to_buffer(
+                targets.output, offset, targets.staging, offset, sizes[region]
+            )
     commands = encoder.finish()
     # Pipelines compiled on first use are reported as "compile", not as preparation.
     t_prepare = time.perf_counter() - t0 - (context.shaders.compile_seconds - compile_before)
@@ -468,7 +482,7 @@ def _render(
     t0 = time.perf_counter()
     try:
         raw = np.frombuffer(targets.staging.read_mapped(copy=False), dtype=np.uint8)
-        outputs = layout.decode(raw)
+        decoded = layout.decode(raw, outputs)
         del raw
     finally:
         targets.staging.unmap()
@@ -486,7 +500,7 @@ def _render(
         "compile": context.shaders.compile_seconds - compile_before,
     }
     gpu_timings: dict[str, float] = {}
-    stamps = outputs["timestamps"][: 6 - first_query]  # only the resolved queries
+    stamps = decoded["timestamps"][: 6 - first_query]  # only the resolved queries
     if query_set is not None and stamps.size == 6 - first_query:
         named = dict(zip(range(first_query, 6), stamps.tolist(), strict=True))
 
@@ -518,7 +532,7 @@ def _render(
         "lights": len(rs.lights),
         "triangles": int(rs.triangle_count),
         "samples": width * height * aa.samples_per_pixel,
-        "samples_covered": int(outputs["counts"].sum()),
+        "samples_covered": int(decoded["counts"].sum()),
         "draw_calls": draw_calls,
         "shadow_maps": layers,
     }
@@ -547,12 +561,14 @@ def _render(
     }
     timings["total_gpu_backend"] = time.perf_counter() - t_start
     return GPUFrame(
-        image=outputs["image"],
-        linear=outputs["linear"],
-        coverage=outputs["coverage"],
-        depth=outputs["depth"],
-        instance=outputs["object_index"],
-        visible_samples=outputs["counts"],
+        image=decoded["image"],
+        linear=decoded["linear"],
+        coverage=decoded["coverage"],
+        depth=decoded["depth"],
+        instance=decoded["object_index"],
+        visible_samples=decoded["counts"],
+        nonfinite_pixels=decoded["nonfinite_pixels"],
+        covered_pixels=decoded["covered_pixels"],
         counts=counts,
         timings=timings,
         gpu_timings=gpu_timings,

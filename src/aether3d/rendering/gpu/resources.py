@@ -52,6 +52,9 @@ MAX_GPU_INSTANCES = 2**24 - 1
 """Object indices travel through a float32 target, exact up to 2**24."""
 
 ALIGN = 256  # buffer offsets (storage binding and query resolve alignment)
+COUNTERS = 2  # after the per-instance counts: non-finite pixels, covered pixels
+OUTPUTS = frozenset({"image", "linear", "depth", "object_index", "coverage"})
+"""Every per-pixel output of a GPU render (``render(outputs=...)`` selects some)."""
 
 
 def _align(value: int, alignment: int = ALIGN) -> int:
@@ -363,7 +366,7 @@ class OutputLayout:
         linear = _align(image + 4 * n)
         aux = _align(linear + 12 * n)
         counts = _align(aux + 12 * n)
-        queries = _align(counts + 4 * max(1, instances))
+        queries = _align(counts + 4 * (max(1, instances) + COUNTERS))
         total = _align(queries + 8 * max(1, timestamps))
         return cls(width, height, instances, timestamps, image, linear, aux, counts, queries, total)
 
@@ -373,12 +376,22 @@ class OutputLayout:
             "image": 4 * n,
             "linear": 12 * n,
             "aux": 12 * n,
-            "counts": 4 * max(1, self.instances),
+            "counts": 4 * (max(1, self.instances) + COUNTERS),
             "queries": 8 * max(1, self.timestamps),
         }
 
-    def decode(self, raw: np.ndarray) -> dict[str, np.ndarray]:
-        """Copy the outputs out of the mapped bytes ``raw`` (uint8) into NumPy arrays."""
+    def regions(self, outputs: frozenset[str]) -> list[str]:
+        """The regions holding ``outputs`` (and always the counts and timestamps)."""
+        names = ["image"]
+        if "linear" in outputs:
+            names.append("linear")
+        if outputs & {"depth", "object_index", "coverage"}:
+            names.append("aux")
+        return [*names, "counts", "queries"]
+
+    def decode(self, raw: np.ndarray, outputs: frozenset[str] = OUTPUTS) -> dict[str, Any]:
+        """Copy ``outputs`` out of the mapped bytes ``raw`` (uint8) into NumPy arrays; the
+        others are ``None``. The counts and counters are always decoded."""
         h, w = self.height, self.width
         sizes = self.sizes()
 
@@ -386,18 +399,30 @@ class OutputLayout:
             start = getattr(self, name)
             return raw[start : start + sizes[name]]
 
-        image = part("image").reshape(h, w, 4)[..., :3].copy()
-        linear = part("linear").view(np.float32).reshape(h, w, 3).copy()
-        aux = part("aux").view(np.float32).reshape(h, w, 3)
-        return {
-            "image": image,
-            "linear": linear,
-            "depth": aux[..., 0].copy(),
-            "object_index": aux[..., 1].copy().view(np.int32),
-            "coverage": aux[..., 2].copy(),
-            "counts": part("counts").view(np.uint32)[: self.instances].astype(np.int64),
+        counts = part("counts").view(np.uint32)
+        slots = max(1, self.instances)
+        found: dict[str, Any] = {
+            "image": part("image").reshape(h, w, 4)[..., :3].copy(),
+            "linear": None,
+            "depth": None,
+            "object_index": None,
+            "coverage": None,
+            "counts": counts[: self.instances].astype(np.int64),
+            "nonfinite_pixels": int(counts[slots]),
+            "covered_pixels": int(counts[slots + 1]),
             "timestamps": part("queries").view(np.uint64)[: self.timestamps].copy(),
         }
+        if "linear" in outputs:
+            found["linear"] = part("linear").view(np.float32).reshape(h, w, 3).copy()
+        if outputs & {"depth", "object_index", "coverage"}:
+            aux = part("aux").view(np.float32).reshape(h, w, 3)
+            if "depth" in outputs:
+                found["depth"] = aux[..., 0].copy()
+            if "object_index" in outputs:
+                found["object_index"] = aux[..., 1].copy().view(np.int32)
+            if "coverage" in outputs:
+                found["coverage"] = aux[..., 2].copy()
+        return found
 
 
 @dataclass

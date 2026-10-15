@@ -5,6 +5,9 @@
 // MSAA/supersampling resolve -- applies exposure, encodes sRGB to 8 bits, and
 // writes the auxiliary outputs: view depth and object index at a
 // representative sample, coverage, and per-object visible-sample counts.
+// The last two counters count the pixels with a NaN or +infinity in their
+// linear value and the covered pixels, so renders that read back only the
+// image can still check both.
 //
 // {{...}} placeholders select the multisampled or single-sample texture types;
 // they are filled in by aether3d/rendering/gpu/shaders.py, never from user input.
@@ -44,6 +47,14 @@ fn encode_srgb(v: f32) -> u32 {
 
 fn object_id(value: f32) -> u32 {
   return u32(value + 0.5);
+}
+
+// NaN or +infinity, decided on the bits: shader compilers may assume floats are
+// finite and fold float comparisons that would detect them.
+fn nan_or_positive_infinity(v: f32) -> bool {
+  let bits = bitcast<u32>(v);
+  return (bits & 0x7f800000u) == 0x7f800000u
+    && ((bits & 0x007fffffu) != 0u || (bits >> 31u) == 0u);
 }
 
 @compute @workgroup_size(8, 8)
@@ -110,4 +121,12 @@ fn finalize(@builtin(global_invocation_id) gid: vec3<u32>) {
   out_aux[3u * p] = view_depth;
   out_aux[3u * p + 1u] = bitcast<f32>(i32(rep_id) - 1);
   out_aux[3u * p + 2u] = f32(covered) / total;
+  let counters = arrayLength(&out_counts);
+  if (nan_or_positive_infinity(value.r) || nan_or_positive_infinity(value.g)
+      || nan_or_positive_infinity(value.b)) {
+    atomicAdd(&out_counts[counters - 2u], 1u);
+  }
+  if (covered > 0u) {
+    atomicAdd(&out_counts[counters - 1u], 1u);
+  }
 }
