@@ -528,7 +528,8 @@ NumPy (about 48 MiB).
 
 At 10,000 blocks the plan builds about 91,000 blocks per second: 18x faster than
 `add_cube`, 8.3x faster than `add_object`, 3.4x faster than the same calls in a
-transaction. Per-object calls also make one undo step each, so past the history's limit
+transaction. At 100,000 blocks (the default `max_objects`) it took 1.49 s in one measured
+run (67,000 per second; peak RSS 268 MiB; an undo step of 29.6 MB). Per-object calls also make one undo step each, so past the history's limit
 (256 steps) the first creations can no longer be undone, and their 256 steps take 40.6
 MB; the plan is one step of 3.0 MB.
 
