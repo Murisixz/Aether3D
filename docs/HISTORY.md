@@ -218,6 +218,12 @@ nothing older can be undone either.
   procedural evaluations cached. `materials.version`, `procedural.revision` and
   `scene.revision` increase with undo and redo like any change, for tools that
   cache by version.
+- **Caches derived from the whole scene follow its change journal.** Once such a cache
+  asks (the retained render world does at the first render), the history keeps, for the
+  last 256 revisions, which parts each one changed -- commits, undo and redo alike, never
+  the states themselves. The cache then updates only what changed since the revision it
+  was computed at, and recomputes everything when the journal does not reach back that far.
+  Changes inside an open operation are journaled when it ends, like `scene.revision`.
 - **Renders after undo are identical.** The tests render with the CPU rasterizer,
   the CPU path tracer, the GPU rasterizer and the GPU path tracer: after undo the
   images equal the originals pixel for pixel, and after redo the edited ones.

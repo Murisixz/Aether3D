@@ -32,6 +32,11 @@ How it works (see ``docs/HISTORY.md``):
   images, procedural evaluations) are keyed by immutable content, so they stay
   valid; undo and redo bump ``scene.revision``, ``scene.materials.version`` and
   ``scene.procedural.revision`` like any other change.
+* **Change journal.** Caches derived from the whole scene (the retained render
+  world) ask what changed since the revision they were computed at
+  (:meth:`History._changes_since`): the parts each revision changed -- commits,
+  undo and redo alike -- are kept for the last :data:`JOURNAL_ENTRIES` revisions,
+  once a cache has asked. Older than that, the cache recomputes everything.
 
 Undo and redo never record themselves; a new change after undoing discards the
 undone steps (the redo branch).
@@ -41,6 +46,7 @@ from __future__ import annotations
 
 import contextlib
 import sys
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -60,6 +66,13 @@ DEFAULT_MAX_BYTES = 256 * 2**20
 STRICT = False
 """Testing aid: check the scene's invariants after every reversal, and fail on
 changes recorded outside an operation (an internal error)."""
+
+JOURNAL_ENTRIES = 256
+"""Revisions the change journal keeps (:meth:`History._changes_since`)."""
+
+JOURNAL_CHANGES = 1 << 16
+"""Changed parts the change journal keeps at most, over all its revisions (a plan that
+creates more objects than this is followed by a full recomputation anyway)."""
 
 # Fix-ups after restoring states.
 _NAMES = "names"  # rebuild the scene's name index
@@ -652,6 +665,10 @@ class History:
         self._payload_bytes = 0
         self._small_bytes = 0
         self._revision = 0
+        # The change journal: (revision, ((aspect, target), ...)) for the latest revisions,
+        # kept once a derived cache asks for it (_changes_since).
+        self._journal: deque[tuple[int, tuple[tuple[Aspect, Any], ...]]] | None = None
+        self._journal_changes = 0
         self.dropped = 0
         """Steps discarded so far to respect :attr:`max_entries` and :attr:`max_bytes`."""
 
@@ -725,6 +742,7 @@ class History:
         if not changes:
             return None
         self._revision += 1
+        self._note(changes)
         self._discard_redo()
         if not self._enabled:
             return None
@@ -736,6 +754,43 @@ class History:
         self._current = step.serial
         self._trim()
         return step
+
+    def _note(self, changes: list[_Change]) -> None:
+        """Journal the parts ``changes`` changed, under the revision just reached (only
+        what changed: never the states, which may be large and are the steps' to keep)."""
+        journal = self._journal
+        if journal is None:
+            return
+        parts = tuple([(c.aspect, c.target) for c in changes])
+        journal.append((self._revision, parts))
+        self._journal_changes += len(parts)
+        while len(journal) > JOURNAL_ENTRIES or self._journal_changes > JOURNAL_CHANGES:
+            self._journal_changes -= len(journal.popleft()[1])
+
+    def _changes_since(self, revision: int) -> list[tuple[Aspect, Any]] | None:
+        """The parts changed after ``revision`` -- ``(aspect, target)`` pairs, oldest
+        first, a part once per revision that changed it -- or ``None`` when the journal
+        does not reach back to ``revision`` (the caller recomputes everything).
+
+        The first call starts the journal. Changes made inside an operation are not in
+        it until the operation ends (like :attr:`revision`): callers must not keep what
+        they compute from a scene while ``in_progress``.
+        """
+        journal = self._journal
+        if journal is None:
+            self._journal = deque()
+            return [] if revision == self._revision else None
+        if revision == self._revision:
+            return []
+        if revision > self._revision or not journal or journal[0][0] > revision + 1:
+            return None
+        start = len(journal)
+        while start > 0 and journal[start - 1][0] > revision:
+            start -= 1
+        out: list[tuple[Aspect, Any]] = []
+        for k in range(start, len(journal)):
+            out.extend(journal[k][1])
+        return out
 
     def _restore_frame(self, frame: _Frame) -> None:
         """Roll back a failed operation: no net change, so no revision changes either."""
@@ -1053,6 +1108,7 @@ class History:
                 target.append(step)
                 self._current = step.serial if forward else step.parent
                 self._revision += 1
+                self._note(step.changes)
                 moved.append(step)
         except BaseException:
             # All or nothing: put back the steps already moved.
@@ -1062,6 +1118,7 @@ class History:
                 source.append(step)
                 self._current = step.parent if forward else step.serial
                 self._revision += 1
+                self._note(step.changes)
             raise
         return [self._entry(s) for s in moved]
 
