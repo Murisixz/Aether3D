@@ -272,3 +272,57 @@ class QueryError(AetherError, ValueError):
             "hint": self.hint,
             "details": self.details,
         }
+
+
+class PlanError(AetherError, ValueError):
+    """A scene plan is invalid, or executing it failed; the scene is unchanged.
+
+    ``code`` is a stable identifier (e.g. ``"INVALID_VALUE"``, ``"UNKNOWN_REFERENCE"``,
+    ``"LIMIT_EXCEEDED"``, ``"NAME_CONFLICT"``, ``"REVISION_MISMATCH"``, ``"CANCELLED"``,
+    ``"OPERATION_FAILED"``; see ``docs/SCENE_PLANS.md``). ``pointer`` is the JSON pointer
+    of the offending part of the plan (``/objects/towers/grid/count``), ``operation`` the
+    index of the failing entry of ``operations`` (or ``None``), ``hint`` an actionable
+    suggestion and ``details`` structured context. ``issues`` lists every problem found
+    when a plan is checked as a whole (this error is the first of them).
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        pointer: str | None = None,
+        *,
+        operation: int | None = None,
+        hint: str | None = None,
+        details: dict | None = None,
+        issues: list[dict] | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.pointer = pointer
+        self.operation = operation
+        self.hint = hint
+        self.details = dict(details or {})
+        self.issues = list(issues or [])
+        text = f"[{code}] " + (f"{pointer}: " if pointer else "") + message
+        if hint:
+            text += f". Hint: {hint}"
+        if len(self.issues) > 1:
+            text += f" (and {len(self.issues) - 1} more problem(s))"
+        super().__init__(text)
+
+    @property
+    def location(self) -> str | None:
+        """The JSON pointer (the name other Aether3D errors use for where they happened)."""
+        return self.pointer
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "pointer": self.pointer,
+            "operation": self.operation,
+            "hint": self.hint,
+            "details": self.details,
+            "issues": self.issues,
+        }

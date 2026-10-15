@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from .gltf import ExportResult, ImportLimits
     from .inspection import SceneGeometryReport
     from .materials import Material, MaterialLibrary
+    from .plans import PlanResult
     from .procedural import ProceduralGeometry, ProceduralSystem
     from .rendering import RenderResult
     from .rendering.framing import Framing
@@ -178,7 +179,8 @@ class NewObject:
     ``parent`` is a scene object, the index of an earlier record of the same batch, or
     ``None``. ``position`` and ``scale`` are 3-tuples of finite floats and ``rotation`` a
     unit quaternion (``math3d.quat``): values the caller has validated. Everything else
-    is checked by ``_create_many`` before the scene changes.
+    is checked by ``_create_many`` before the scene changes. An object has at most one of
+    ``mesh``, ``camera`` and ``light`` (value objects, copied for each object).
     """
 
     __slots__ = (
@@ -195,6 +197,8 @@ class NewObject:
         "group_materials",
         "tags",
         "metadata",
+        "camera",
+        "light",
     )
 
     def __init__(
@@ -203,6 +207,8 @@ class NewObject:
         *,
         parent: SceneObject | int | None = None,
         mesh: Mesh | None = None,
+        camera: Camera | None = None,
+        light: Light | None = None,
         position: Vec3 = (0.0, 0.0, 0.0),
         rotation: Quat = (0.0, 0.0, 0.0, 1.0),
         scale: Vec3 = (1.0, 1.0, 1.0),
@@ -227,6 +233,8 @@ class NewObject:
         self.group_materials = group_materials
         self.tags = tags
         self.metadata = metadata
+        self.camera = camera
+        self.light = light
 
 
 def _finite3(value: Any, what: str) -> None:
@@ -1100,6 +1108,16 @@ class Scene:
                 parent = self._resolve(parent)
             if rec.mesh is not None and not isinstance(rec.mesh, Mesh):
                 raise ValidationError(f"{where}: mesh must be a Mesh or None")
+            if rec.camera is not None and not isinstance(rec.camera, Camera):
+                raise ValidationError(f"{where}: camera must be a Camera or None")
+            if rec.light is not None and not isinstance(rec.light, Light):
+                raise ValidationError(f"{where}: light must be a Light or None")
+            if sum(v is not None for v in (rec.mesh, rec.camera, rec.light)) > 1:
+                raise ValidationError(f"{where}: an object has at most one of mesh, camera, light")
+            if (rec.camera is not None or rec.light is not None) and (
+                rec.material is not None or rec.group_materials or rec.appearance is not None
+            ):
+                raise ValidationError(f"{where}: cameras and lights have no material or color")
             _finite3(rec.position, f"{where}: position")
             _finite3(rec.scale, f"{where}: scale")
             q = rec.rotation
@@ -1152,6 +1170,10 @@ class Scene:
                 if rec.appearance is not None:
                     obj._appearance = _owned(rec.appearance._clone(), obj, APPEARANCE)
                 obj._visible = rec.visible
+                if rec.camera is not None:
+                    obj._camera = _owned(rec.camera.copy(), obj, CAMERA)
+                if rec.light is not None:
+                    obj._light = _owned(rec.light.copy(), obj, LIGHT)
                 obj._material = rec.material
                 if rec.group_materials:
                     obj._group_materials = dict(rec.group_materials)
@@ -2150,6 +2172,21 @@ class Scene:
             width=width,
             height=height,
         )
+
+    # -- scene plans (aether3d.plans) ---------------------------------------------
+
+    def execute_plan(self, plan: Any, **options: Any) -> PlanResult:
+        """Build or change the scene with a declarative scene plan, in one checked step.
+
+        ``plan`` is a dict (or JSON text) in the ``aether3d.scene-plan`` format; the whole
+        plan is checked before anything changes, then applied as one undo step (all or
+        nothing). ``options``: ``mode`` (``"execute"``, ``"dry_run"``, ``"validate"``),
+        ``expected_revision``, ``limits``, ``base_dir``, ``progress``, ``cancel``,
+        ``timeout`` (see :func:`aether3d.plans.execute_plan` and docs/SCENE_PLANS.md).
+        """
+        from .plans import execute_plan
+
+        return execute_plan(self, plan, **options)
 
     def describe(self, *, include_hidden: bool = True) -> dict[str, Any]:
         """A compact JSON summary of the scene's objects and their placement (see
