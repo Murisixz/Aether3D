@@ -30,6 +30,7 @@ Linux, see [INSTALL.md](INSTALL.md) (a virtual environment).
 | `--timeout S` | seconds a tool may run before it rolls back or stops (default 300) |
 | `--no-path-tracing` | refuse path-traced renders |
 | `--gpu-adapter SPEC` | the GPU for GPU renders: an index, part of a name, `discrete`, `vulkan`, ... |
+| `--max-reply-kib N` | the largest reply of a read-only tool (default 256 KiB) |
 | `--log-level LEVEL` | what to log on stderr: `debug`, `info`, `warning` (default), `error` |
 
 Without the SDK installed, `aether3d mcp serve` exits with status 1 and says how to
@@ -98,9 +99,9 @@ problem; a plan with problems gives every problem, as in [SCENE_PLANS.md](SCENE_
 | `scene_save` | save the project atomically (`path`, `overwrite`, `history`) |
 | `scene_info` | a compact summary: counts by kind, tags, roots, cameras, lights, materials, bounds, history, revision (`detail: "full"` adds the world, settings, procedural parameters, the GPU) |
 | `objects_list` | objects (all, or a [selector](SCENE_PLANS.md#selectors)) with chosen `fields`, paginated (`limit`, `cursor`) |
-| `execute_scene_plan` | build or change the scene with one [plan](SCENE_PLANS.md): one undo step, all or nothing (`mode`, `expected_revision`, `timeout`) |
+| `execute_scene_plan` | build or change the scene with one [plan](SCENE_PLANS.md): one undo step, all or nothing (`mode`, `expected_revision`, `timeout`, `max_results`) |
 | `check_scene_plan` | check a plan without changing anything (`dry_run: true` applies and rolls back, reporting exactly what it would make) |
-| `spatial_query` | one `request` or a batch of `requests` ([SPATIAL.md](SPATIAL.md)); object lists may be selectors |
+| `spatial_query` | one `request` or a batch of `requests` ([SPATIAL.md](SPATIAL.md)); object lists may be selectors; answers keep at most `max_results` entries (default 100) |
 | `render_preview` | a quick image, returned as image content: the GPU rasterizer when it works, the CPU rasterizer otherwise (`backend`: `auto`, `gpu`, `cpu`; `width`, `height`, `camera`, `frame`, `shadows`, `save_to`) |
 | `render_image` | an image file in the workspace (`.png`, linear `.hdr`/`.pfm`); `backend: "path"` or `"gpu_path"` path traces, within the server's sample budget |
 | `history` | `list`, `undo`, `redo` (`steps`), `checkpoint`, `goto`, `remove_checkpoint` (`name`) |
@@ -122,6 +123,11 @@ Notes for agents (the server also says this in its instructions):
 - **Previews are cheap, path tracing is not.** `render_preview` never path traces; the
   reply says which renderer drew the image (`backend`, `device`, `adapter`, and
   `fallback` when the GPU could not be used): a CPU image is never reported as a GPU one.
+- **Replies stay small.** A long query answer (thousands of overlapping pairs, a
+  `describe` of a large scene) keeps its first `max_results` entries (default 100) and
+  says so: `"truncated": true` and the full length as `total`. A read-only tool whose
+  reply would exceed `--max-reply-kib` (default 256 KiB) returns `RESULT_TOO_LARGE` with
+  a hint to ask for less; replies to changes are never refused.
 
 ### Long calls: progress and cancellation
 
@@ -162,9 +168,10 @@ The server treats every argument, plan, path and imported file as untrusted.
   procedural engine's whitelisted evaluator; nothing is passed to `eval`, `exec`, a shell
   or a compiler; shaders are Aether3D's own, never compiled from arguments.
 - **Bounded work.** Plans have [limits](SCENE_PLANS.md#limits) (`--max-objects`); images
-  are bounded in pixels (previews 1920x1080, images 3840x2160) and path tracing in samples
-  (`width x height x spp` at most 400 million; `--no-path-tracing` refuses it); every tool
-  has a timeout.
+  are bounded in pixels (previews at most 1920 x 1080 pixels' worth, images 3840 x 2160)
+  and path tracing in samples (`width x height x spp` at most 400 million;
+  `--no-path-tracing` refuses it); replies are bounded too (above); every tool has a
+  timeout.
 - **Private.** stdio only: no port is opened and no network request is made. Messages show
   workspace-relative paths, never the machine's absolute paths; errors say what was wrong
   without internal details.

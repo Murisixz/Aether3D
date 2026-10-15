@@ -490,7 +490,7 @@ then applied as one undo step, all or nothing ([SCENE_PLANS.md](SCENE_PLANS.md))
 serves Aether3D to AI agents over the Model Context Protocol ([MCP.md](MCP.md)):
 `serve(config)` runs a stdio server with a `ServerConfig` (`workspace`, `read_only`,
 `project`, `plan_limits`, `tool_timeout`, `max_preview_pixels`, `max_render_pixels`,
-`max_path_samples`, `allow_path_tracing`, `gpu_adapter`); `TOOLS` describes its tools,
+`max_path_samples`, `allow_path_tracing`, `gpu_adapter`, `max_reply_bytes`); `TOOLS` describes its tools,
 `Workspace` its path policy. Most uses go through `aether3d mcp serve`.
 
 ## `aether3d.math3d`

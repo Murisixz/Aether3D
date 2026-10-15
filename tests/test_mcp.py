@@ -643,3 +643,70 @@ def test_errors_never_show_paths_of_this_machine(tmp_path):
     # plan errors keep their JSON pointers
     plan = error_payload(PlanError("INVALID_VALUE", "bad", "/objects/towers/grid/count"), session)
     assert plan["error"]["pointer"] == "/objects/towers/grid/count"
+
+
+def test_long_answers_are_cut_short_and_large_replies_refused(tmp_path):
+    crowd = {
+        "format": "aether3d.scene-plan",
+        "version": 1,
+        "objects": {
+            "crates": {
+                "mesh": {"primitive": "cube"},
+                "repeat": 150,
+                "position": [{"expr": "i * 0.5"}, 0, 0.5],
+            }
+        },
+        "queries": [{"query": "overlaps", "objects": "@crates"}],
+    }
+
+    async def body(client):
+        out = {}
+        await call(client, "scene_new")
+        out["built"] = await call(client, "execute_scene_plan", {"plan": crowd, "max_results": 10})
+        # a change is reported in full, whatever its size
+        out["dry"] = await call(
+            client,
+            "execute_scene_plan",
+            {
+                "plan": {**crowd, "options": {"on_name_conflict": "rename"}},
+                "mode": "dry_run",
+                "max_results": 10000,
+            },
+        )
+        out["answers"] = await call(
+            client,
+            "spatial_query",
+            {"requests": [{"query": "overlaps"}, {"query": "describe"}], "max_results": 5},
+        )
+        out["too_large"] = await call(
+            client,
+            "spatial_query",
+            {"request": {"query": "overlaps"}, "max_results": 10000},
+            error=True,
+        )
+        out["list"] = await call(
+            client,
+            "objects_list",
+            {
+                "limit": 500,
+                "fields": ["id", "name", "position", "rotation_euler", "world_position", "bounds"],
+            },
+            error=True,
+        )
+        return out
+
+    out = session(tmp_path, body, "--max-reply-kib", "8")
+    built = out["built"]["queries"][0]
+    pairs = built["total"]
+    assert built["truncated"] and len(built["result"]) == 10 and pairs > 100
+    dry = out["dry"]["queries"][0]
+    assert "truncated" not in dry and len(dry["result"]) >= pairs
+    assert len(json.dumps(out["dry"])) > 8 * 1024
+    overlaps, described = out["answers"]["results"]
+    assert len(overlaps["result"]) == 5 and overlaps["total"] == pairs
+    assert len(described["result"]["objects"]) == 5 and described["total"] == 150
+    for refused in (out["too_large"], out["list"]):
+        assert refused["error"]["code"] == "RESULT_TOO_LARGE"
+        assert refused["error"]["details"]["limit"] == 8 * 1024
+    assert "max_results" in out["too_large"]["error"]["hint"]
+    assert "limit" in out["list"]["error"]["hint"]

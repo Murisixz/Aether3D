@@ -53,8 +53,10 @@ features; breaking changes are called out explicitly).
   and prompts. stdio only; every file inside the `--workspace` (checked after resolving
   symbolic links), no overwrites without `overwrite`, `--read-only`, no code execution,
   bounded renders, timeouts, cancellation with rollback, progress. Previews use the GPU
-  rasterizer when it works, the CPU rasterizer otherwise, and say which. Verified with
-  Claude Code 2.1.300 (`claude mcp add`, `claude mcp get`: connected).
+  rasterizer when it works, the CPU rasterizer otherwise, and say which. Replies stay
+  small: long query answers keep their first `max_results` entries (with `total` and
+  `truncated`), and read-only replies above `--max-reply-kib` are refused with a hint.
+  Verified with Claude Code 2.1.300 (`claude mcp add`, `claude mcp get`: connected).
 - **Examples:** `plan_basics.py` (the Python API), `village.py` (11,270 objects, a
   one-door edit, a GPU preview), `mcp_client.py` (an SDK client) and
   `mcp_castle_agent.py` (an agent's whole loop over MCP: build with mistakes, find them

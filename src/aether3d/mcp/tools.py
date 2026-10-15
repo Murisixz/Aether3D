@@ -579,7 +579,7 @@ def execute_scene_plan(session: Session, args: dict, ctx: ToolContext) -> ToolOu
         cancel=ctx.cancel,
         timeout=timeout,
     )
-    data = result.to_dict()
+    data = _bounded_plan_result(result.to_dict(), args.get("max_results", 100))
     data["scene"] = scene_status(session)
     return ToolOutput(data)
 
@@ -606,7 +606,7 @@ def check_scene_plan(session: Session, args: dict, ctx: ToolContext) -> ToolOutp
             limits=session.config.plan_limits,
             base_dir=session.base_dir(),
         )
-    return ToolOutput(result.to_dict())
+    return ToolOutput(_bounded_plan_result(result.to_dict(), args.get("max_results", 100)))
 
 
 # --------------------------------------------------------------------------- #
@@ -628,7 +628,8 @@ def spatial_query(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
             raise ToolError("CANCELLED", "cancelled")
         try:
             where = "/request" if "request" in args else f"/requests/{k}"
-            results.append(run_query(scene, with_selections(scene, request, where)))
+            answer = run_query(scene, with_selections(scene, request, where))
+            results.append(bounded_answer(answer, args.get("max_results", 100)))
         except AetherError as exc:
             results.append(
                 {"query": request.get("query"), "index": k, "error": _engine_error(exc, session)}
@@ -968,6 +969,37 @@ def capabilities(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
     return ToolOutput({"topic": topic, **data})
 
 
+MAX_RESULTS = {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 10000,
+    "default": 100,
+    "description": "the longest list one query answer returns; an answer cut short says "
+    "so (truncated: true) and gives its full length (total)",
+}
+
+
+def bounded_answer(answer: dict[str, Any], limit: int) -> dict[str, Any]:
+    """A query answer whose long list (the result, or ``describe``'s objects) keeps its
+    first ``limit`` entries, with ``total`` and ``truncated``: a reply never floods an
+    agent's context with thousands of entries it did not ask for."""
+    result = answer.get("result")
+    if isinstance(result, list) and len(result) > limit:
+        return {**answer, "result": result[:limit], "total": len(result), "truncated": True}
+    if isinstance(result, dict) and isinstance(result.get("objects"), list):
+        objects = result["objects"]
+        if len(objects) > limit:
+            result = {**result, "objects": objects[:limit]}
+            return {**answer, "result": result, "total": len(objects), "truncated": True}
+    return answer
+
+
+def _bounded_plan_result(data: dict[str, Any], limit: int) -> dict[str, Any]:
+    if data.get("queries"):
+        data["queries"] = [bounded_answer(q, limit) for q in data["queries"]]
+    return data
+
+
 # --------------------------------------------------------------------------- #
 # The tool table
 # --------------------------------------------------------------------------- #
@@ -1075,6 +1107,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                 "mode": {"enum": ["execute", "dry_run"], "default": "execute"},
                 "expected_revision": {"type": "integer", "minimum": 0},
                 "timeout": {"type": "number", "exclusiveMinimum": 0, "maximum": 86400},
+                "max_results": MAX_RESULTS,
             },
             ("plan",),
         ),
@@ -1087,7 +1120,14 @@ TOOLS: tuple[ToolSpec, ...] = (
         "code and hint, and estimates (objects, meshes, triangles, memory). dry_run: true "
         "also applies it and rolls back, reporting exactly what it would create and the "
         "answers of its queries.",
-        _schema({"plan": PLAN, "dry_run": {"type": "boolean", "default": False}}, ("plan",)),
+        _schema(
+            {
+                "plan": PLAN,
+                "dry_run": {"type": "boolean", "default": False},
+                "max_results": MAX_RESULTS,
+            },
+            ("plan",),
+        ),
         check_scene_plan,
         read_only=True,
     ),
@@ -1118,6 +1158,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                     "minItems": 1,
                     "maxItems": 50,
                 },
+                "max_results": MAX_RESULTS,
             }
         ),
         spatial_query,

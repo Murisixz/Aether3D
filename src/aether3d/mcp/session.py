@@ -62,6 +62,9 @@ class ServerConfig:
     allow_path_tracing: bool = True
     gpu_adapter: str | None = None
     """GPU adapter selection for GPU renders (as ``render(adapter=...)``; default: the best)."""
+    max_reply_bytes: int = 256 * 1024
+    """Largest JSON reply of a read-only tool; a larger one is refused (RESULT_TOO_LARGE)
+    with a hint to ask for less, rather than flooding the client's context."""
 
 
 @dataclass

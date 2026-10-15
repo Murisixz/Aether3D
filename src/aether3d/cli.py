@@ -1838,6 +1838,7 @@ def cmd_mcp_serve(args: argparse.Namespace) -> CommandOutput:
         tool_timeout=args.timeout,
         allow_path_tracing=not args.no_path_tracing,
         gpu_adapter=args.gpu_adapter,
+        max_reply_bytes=args.max_reply_kib * 1024,
     )
     logging.getLogger("aether3d.mcp").info(
         "aether3d %s MCP server, workspace %s%s",
@@ -1877,6 +1878,13 @@ def _add_mcp_parsers(sub) -> None:
         "--gpu-adapter",
         metavar="SPEC",
         help="GPU adapter for GPU renders: an index, part of a name, discrete, vulkan, ...",
+    )
+    p.add_argument(
+        "--max-reply-kib",
+        type=int,
+        default=256,
+        metavar="N",
+        help="largest reply of a read-only tool, in KiB (default 256)",
     )
     p.add_argument(
         "--log-level",

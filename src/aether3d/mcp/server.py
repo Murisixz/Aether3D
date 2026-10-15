@@ -152,7 +152,7 @@ class Aether3DServer:
                 log.exception("%s failed", spec.name)
                 return _error_result(error_payload(exc, self.session))
             log.info("%s done in %.3f s", spec.name, time.perf_counter() - started)
-        return _ok_result(output, self.session)
+        return _ok_result(output, self.session, spec)
 
     async def _run(self, spec: Any, arguments: dict[str, Any], ctx: Any) -> ToolOutput:
         cancel = threading.Event()
@@ -262,9 +262,32 @@ class Aether3DServer:
             )
 
 
-def _ok_result(output: ToolOutput, session: Session) -> types.CallToolResult:
+_SMALLER = {
+    "spatial_query": "lower max_results, narrow objects/against/exclude with selectors, or "
+    "send fewer requests at once",
+    "objects_list": "lower limit, ask for fewer fields, or narrow the selection",
+    "scene_info": 'use detail: "summary"',
+    "check_scene_plan": "lower max_results",
+}
+
+
+def _ok_result(output: ToolOutput, session: Session, spec: Any) -> types.CallToolResult:
     data = output.data
     text = json.dumps(data, separators=(",", ":"), ensure_ascii=False, default=str)
+    limit = session.config.max_reply_bytes
+    if spec.read_only and len(text) > limit:  # changes are always reported in full
+        return _error_result(
+            {
+                "error": {
+                    "type": "ResultTooLarge",
+                    "code": "RESULT_TOO_LARGE",
+                    "message": f"the reply would be {len(text) // 1024} KiB; this server "
+                    f"sends at most {limit // 1024} KiB",
+                    "hint": _SMALLER.get(spec.name, "ask for less"),
+                    "details": {"bytes": len(text), "limit": limit},
+                }
+            }
+        )
     blocks: list[Any] = []
     if output.image is not None:
         blocks.append(types.ImageContent(data=encode_image(output.image), mime_type="image/png"))
