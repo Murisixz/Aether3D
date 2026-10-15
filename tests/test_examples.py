@@ -250,6 +250,9 @@ def test_committed_renders_are_real_aether3d_pngs():
         ("blocky_hero_render.png", (1280, 720)),
         ("castle_flat_vs_materials.png", (2 * 960 + 8, 540)),
         ("hero_flat_vs_materials.png", (2 * 640 + 8, 360)),
+        ("plan_basics.png", (960, 540)),
+        ("village.png", (1280, 720)),
+        ("mcp_castle_agent.png", (960, 540)),
     ):
         with image.open(EXAMPLES / "output" / name) as png:
             assert png.size == size and png.info["Software"].startswith("Aether3D ")
@@ -307,3 +310,69 @@ def test_committed_gpu_renders_record_their_adapter():
         assert "Source" not in png.info  # the CPU reference says so by omission
     with image.open(EXAMPLES / "output" / "castle_comparison.png") as png:
         assert png.size == (3 * 960 + 16, 540)
+
+
+# --------------------------------------------------------------------------- #
+# Stage 11: scene plans and the MCP server
+# --------------------------------------------------------------------------- #
+
+
+def _run_example(name: str, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
+    command = [sys.executable, str(EXAMPLES / name), *args]
+    result = subprocess.run(command, capture_output=True, text=True, check=False, env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "FAILED" not in result.stdout and result.stdout.rstrip().endswith("done")
+    return result
+
+
+def test_plan_basics_example_runs(tmp_path):
+    _run_example("plan_basics.py", str(tmp_path), "--quick")
+    report = json.loads((tmp_path / "plan_basics.json").read_text())
+    assert report["problems"] == [] and report["built"]["objects"] == 161
+    assert [e["code"] for e in report["errors"]] == [
+        "INVALID_VALUE", "OUT_OF_RANGE", "INVALID_VALUE", "UNKNOWN_REFERENCE"
+    ]  # fmt: skip
+    assert report["history"] == [
+        "Market square", "Close two stalls, paint the lamps, fell two trees", "Benches"
+    ]  # fmt: skip
+    assert _decode(tmp_path / "plan_basics.png").shape == (180, 320, 3)
+
+
+def test_village_example_runs(tmp_path):
+    _run_example("village.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "village.json").read_text())
+    assert report["problems"] == [] and report["build"]["objects"] == 11270
+    assert report["edit"]["changed"] == ["Block 3-0/houses 4/door"]
+    assert report["render"]["backend"] == "cpu" and report["render"]["draw_calls"] is None
+    assert _decode(tmp_path / "village.png").shape == (180, 320, 3)
+
+
+def test_village_example_on_the_gpu(tmp_path, gpu):
+    env = {**os.environ, **({"AETHER3D_GPU_ADAPTER": gpu.adapter} if gpu.adapter else {})}
+    _run_example("village.py", str(tmp_path), "--quick", "--backend", "gpu", env=env)
+    report = json.loads((tmp_path / "village.json").read_text())
+    assert report["render"]["backend"] == "gpu"
+    assert report["render"]["draw_calls"] <= 20  # one instanced draw call per mesh, at most
+
+
+def test_mcp_client_example_runs(tmp_path):
+    pytest.importorskip("mcp")
+    result = _run_example("mcp_client.py", str(tmp_path), "--backend", "cpu")
+    assert "15 tools" in result.stdout and "on the CPU: preview.png" in result.stdout
+    assert (tmp_path / "preview.png").read_bytes().startswith(b"\x89PNG")
+    assert len(Scene.load(tmp_path / "courtyard.aether")) == 44
+
+
+def test_mcp_castle_agent_example_runs(tmp_path):
+    pytest.importorskip("mcp")
+    _run_example("mcp_castle_agent.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "mcp_castle_agent.json").read_text())
+    assert report["problems"] == [] and report["tool_calls"] == 14
+    found = {c["tool"]: c.get("found") for c in report["calls"] if c.get("found")}
+    assert found["spatial_query"]["trees_in_the_keep"] == ["Tree 1"]
+    assert found["execute_scene_plan"] == {"trees_in_the_keep": [], "floating_towers": {}}
+    assert found["render_preview"]["device"] == "cpu"
+    workspace = tmp_path / "mcp_castle_workspace"
+    assert (workspace / "castle.glb").read_bytes()[:4] == b"glTF"
+    assert len(Scene.load(workspace / "castle.aether")) == 2190
+    assert _decode(tmp_path / "mcp_castle_agent.png").shape == (180, 320, 3)

@@ -107,6 +107,15 @@ class _Validated:
     def copy(self):
         return type(self).from_dict(self.to_dict(), self._location())
 
+    def _clone(self):
+        """A copy that belongs to nobody, without validating again: the fields of a valid
+        value object are immutable values (tuples, numbers, strings), so they are shared."""
+        other = type(self).__new__(type(self))
+        for name in self._FIELDS:
+            object.__setattr__(other, f"_{name}", getattr(self, f"_{name}"))
+        other._owner = None
+        return other
+
     def __eq__(self, other: object) -> bool:
         if type(other) is not type(self):
             return NotImplemented
@@ -284,6 +293,11 @@ class World(_Validated):
                 "world",
             )
         )
+
+    def _clone(self):
+        other = super()._clone()
+        other._environment = self._environment._clone()  # a value object, not a value
+        return other
 
     def configure(self, **changes: Any):
         env = changes.get("environment")

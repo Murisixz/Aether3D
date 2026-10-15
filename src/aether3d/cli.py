@@ -1,6 +1,7 @@
 """Command-line interface.
 
 Commands: ``new``, ``validate``, ``inspect``, ``geometry``, ``import``,
+``execute-plan``, ``plan`` (``validate``, ``schema``),
 ``export``, ``topology``, ``edit``, ``procedural`` (``types``, ``inspect``,
 ``validate``, ``run``, ``set``, ``bake``), ``render``, ``camera`` (``add``,
 ``set``, ``list``, ``frame``, ``activate``), ``light`` (``add``, ``set``,
@@ -1668,6 +1669,232 @@ def _query_text(name: str, result: Any) -> str:
 # --------------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------------- #
+# scene plans
+# --------------------------------------------------------------------------- #
+
+
+def _plan_error(exc: Any) -> CommandError:
+    details: dict[str, Any] = {"code": exc.code}
+    if exc.hint:
+        details["hint"] = exc.hint
+    if exc.operation is not None:
+        details["operation"] = exc.operation
+    if exc.details:
+        details["details"] = exc.details
+    if len(exc.issues) > 1:
+        details["issues"] = exc.issues
+    return CommandError("PlanError", exc.message, exc.pointer, details)
+
+
+def _plan_limits(args: argparse.Namespace) -> Any:
+    from .plans import PlanLimits
+
+    if args.max_objects is None:
+        return None
+    return PlanLimits(max_objects=args.max_objects)
+
+
+def _plan_summary(result: dict[str, Any]) -> list[str]:
+    counts = result["counts"]
+    what = {
+        "applied": "Applied",
+        "dry_run": "Dry run of",
+        "validated": "Checked",
+        "already_applied": "Already applied:",
+    }[result["status"]]
+    lines = [
+        f"{what} plan {result['label']!r}: {counts.get('objects', 0)} objects"
+        f" ({counts.get('meshes', 0)} meshes shared by "
+        f"{counts.get('mesh_objects_sharing_a_mesh', 0)} objects), "
+        f"{counts.get('materials', 0)} materials, {counts.get('geometries', 0)} geometries, "
+        f"{counts.get('operations', 0)} operations"
+    ]
+    if result.get("step"):
+        lines.append(f"history step {result['step']['label']!r}")
+    if result.get("chunks"):
+        chunks = result["chunks"]
+        lines.append(
+            f"{chunks['completed']} of {chunks['total']} chunks applied "
+            f"({chunks['skipped']} done before); checkpoint {chunks['checkpoint']!r}"
+        )
+    for w in result.get("warnings", []):
+        where = f" at {w['pointer']}" if w.get("pointer") else ""
+        lines.append(f"  warning {w['code']}{where}: {w['message']}")
+    if "total" in result.get("timings", {}):
+        lines.append(f"{result['timings']['total'] * 1000:.1f} ms")
+    return lines
+
+
+def cmd_execute_plan(args: argparse.Namespace) -> CommandOutput:
+    from .errors import PlanError
+    from .plans import execute_plan
+
+    path = Path(args.path)
+    _project_only(path, "execute-plan")
+    scene, _ = _load_scene(path, history=True)
+    plan = _read_script(args.plan)
+    mode = "validate" if args.validate else "dry_run" if args.dry_run else "execute"
+
+    def progress(done: int, total: int, message: str) -> None:
+        print(f"  {done}/{total} {message}", file=sys.stderr, flush=True)
+
+    try:
+        result = execute_plan(
+            scene,
+            plan,
+            mode=mode,
+            base_dir=path.absolute().parent,
+            limits=_plan_limits(args),
+            timeout=args.timeout,
+            progress=progress if args.progress else None,
+        )
+    except PlanError as exc:
+        raise _plan_error(exc) from None
+    report = result.to_dict()
+    written = None
+    if mode == "execute" and result.status == "applied":
+        written = _write_or_dry_run(scene, path, args)
+    data = {"path": str(path), "output": written, **report}
+    lines = _plan_summary(report)
+    if mode != "execute":
+        lines.append("nothing written")
+    elif written is not None:
+        lines.append(f"saved {written}")
+    else:
+        lines.append("nothing to write")
+    return data, "\n".join(lines), EXIT_OK
+
+
+def cmd_plan_validate(args: argparse.Namespace) -> CommandOutput:
+    from .plans import validate_plan
+
+    plan = _read_script(args.plan)
+    scene = None
+    if args.project:
+        project = Path(args.project)
+        _project_only(project, "plan validate")
+        scene, _ = _load_scene(project)
+    result = validate_plan(
+        plan,
+        scene,
+        limits=_plan_limits(args),
+        base_dir=Path(args.project).absolute().parent if args.project else None,
+    )
+    report = result.to_dict()
+    data = {"valid": result.ok, "project": args.project, **report}
+    if result.ok:
+        estimate = report.get("estimate", {})
+        bound = "at most " if estimate.get("objects_at_most") else ""
+        lines = [
+            f"OK: plan {result.label!r} is valid ({bound}{estimate.get('objects', 0)} objects)"
+        ]
+        lines += [f"  warning {w['code']}: {w['message']}" for w in report["warnings"]]
+        return data, "\n".join(lines), EXIT_OK
+    lines = [f"plan {result.label!r} has {len(result.issues)} problem(s):"]
+    for issue in result.issues:
+        where = issue["pointer"] or "(the plan)"
+        hint = f" ({issue['hint']})" if issue.get("hint") else ""
+        lines.append(f"  {issue['code']} at {where}: {issue['message']}{hint}")
+    return data, "\n".join(lines), EXIT_GEOMETRY_ERRORS
+
+
+def cmd_plan_schema(args: argparse.Namespace) -> CommandOutput:
+    from .plans import plan_schema
+
+    schema = plan_schema()
+    return {"schema": schema}, json.dumps(schema, indent=2), EXIT_OK
+
+
+# --------------------------------------------------------------------------- #
+# MCP server
+# --------------------------------------------------------------------------- #
+
+
+def cmd_mcp_serve(args: argparse.Namespace) -> CommandOutput:
+    """Serve MCP over stdio until the client disconnects (writes nothing to stdout)."""
+    import logging
+
+    from .plans import PlanLimits
+
+    try:
+        from .mcp import ServerConfig, serve
+    except ImportError as exc:
+        raise CommandError("ImportError", str(exc)) from None
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=getattr(logging, args.log_level.upper()),
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
+    workspace = Path(args.workspace or ".").expanduser()
+    if not workspace.is_dir():
+        raise CommandError("FileNotFoundError", f"workspace {workspace} is not a directory")
+    limits = {} if args.max_objects is None else {"max_objects": args.max_objects}
+    config = ServerConfig(
+        workspace=workspace,
+        read_only=args.read_only,
+        project=args.project,
+        plan_limits=PlanLimits(**limits),
+        tool_timeout=args.timeout,
+        allow_path_tracing=not args.no_path_tracing,
+        gpu_adapter=args.gpu_adapter,
+        max_reply_bytes=args.max_reply_kib * 1024,
+    )
+    logging.getLogger("aether3d.mcp").info(
+        "aether3d %s MCP server, workspace %s%s",
+        __version__,
+        workspace.resolve(),
+        " (read-only)" if args.read_only else "",
+    )
+    serve(config)
+    return {}, "", EXIT_OK
+
+
+def _add_mcp_parsers(sub) -> None:
+    p_mcp = sub.add_parser("mcp", help="Model Context Protocol server for AI agents")
+    mcp = p_mcp.add_subparsers(dest="subcommand", required=True, metavar="SUBCOMMAND")
+    p = mcp.add_parser(
+        "serve",
+        help="serve MCP over stdio (for Claude Code and other MCP clients)",
+        description="Serve Aether3D's MCP tools, resources and prompts over stdin/stdout "
+        "(docs/MCP.md). Every file the tools read or write stays inside the workspace. "
+        "Logs go to stderr; stdout carries protocol messages only.",
+    )
+    p.add_argument("--workspace", metavar="DIR", help="the only folder tools may use (default .)")
+    p.add_argument("--project", metavar="PATH", help="open this project (in the workspace) first")
+    p.add_argument("--read-only", action="store_true", help="never write files")
+    p.add_argument(
+        "--max-objects", type=int, metavar="N", help="objects one plan may create (default 100000)"
+    )
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=300.0,
+        metavar="S",
+        help="seconds a tool may run before it rolls back or stops (default 300)",
+    )
+    p.add_argument("--no-path-tracing", action="store_true", help="refuse path-traced renders")
+    p.add_argument(
+        "--gpu-adapter",
+        metavar="SPEC",
+        help="GPU adapter for GPU renders: an index, part of a name, discrete, vulkan, ...",
+    )
+    p.add_argument(
+        "--max-reply-kib",
+        type=int,
+        default=256,
+        metavar="N",
+        help="largest reply of a read-only tool, in KiB (default 256)",
+    )
+    p.add_argument(
+        "--log-level",
+        default="warning",
+        choices=["debug", "info", "warning", "error"],
+        help="what to log on stderr (default warning)",
+    )
+    p.set_defaults(handler=cmd_mcp_serve, json=False)
+
+
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--json", action="store_true", help="emit machine-readable JSON")
@@ -1806,7 +2033,46 @@ def build_parser() -> argparse.ArgumentParser:
     from ._cli_materials import add_material_parsers
 
     add_material_parsers(sub, common, lossy, writing)
+    _add_plan_parsers(sub, common, writing)
+    _add_mcp_parsers(sub)
     return parser
+
+
+def _add_plan_parsers(sub, common, writing) -> None:
+    limits = argparse.ArgumentParser(add_help=False)
+    limits.add_argument(
+        "--max-objects", type=int, metavar="N", help="refuse plans creating more than N objects"
+    )
+    p = sub.add_parser(
+        "execute-plan",
+        parents=[common, writing, limits],
+        help="build or change a project with a scene plan (one atomic, undoable step)",
+        description="Execute an aether3d.scene-plan document (docs/SCENE_PLANS.md): the whole "
+        "plan is checked first, then applied as one step of the project's history (all or "
+        "nothing), and the project is saved. --dry-run applies and rolls back (reporting "
+        "exactly what would happen); --validate only checks and estimates.",
+    )
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("plan", help="scene plan (.json), or - to read it from stdin")
+    p.add_argument(
+        "--validate", action="store_true", help="check and estimate only (build nothing)"
+    )
+    p.add_argument("--timeout", type=float, metavar="S", help="roll back after S seconds")
+    p.add_argument("--progress", action="store_true", help="report progress on stderr")
+    p.set_defaults(handler=cmd_execute_plan)
+
+    p_plan = sub.add_parser("plan", help="scene plans: check a plan, print the format's schema")
+    plans = p_plan.add_subparsers(dest="subcommand", required=True, metavar="SUBCOMMAND")
+    p = plans.add_parser(
+        "validate",
+        parents=[common, limits],
+        help="check a plan (against a project with --project); exit code 3 if it has problems",
+    )
+    p.add_argument("plan", help="scene plan (.json), or - to read it from stdin")
+    p.add_argument("--project", help="check references, names and limits against this project")
+    p.set_defaults(handler=cmd_plan_validate)
+    p = plans.add_parser("schema", parents=[common], help="the JSON Schema of scene plans")
+    p.set_defaults(handler=cmd_plan_schema)
 
 
 def _add_render_parsers(sub, common, lossy, writing) -> None:
@@ -2200,6 +2466,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             for line in _diagnostic_lines(exc.details.get("diagnostics", [])):
                 print(line, file=sys.stderr)
         return EXIT_FAILURE
+    if command == "mcp serve":
+        return code  # the protocol owned stdout
     if _history_report and "history" not in result:
         result = {**result, "history": dict(_history_report)}
         note = _history_report["note"]

@@ -11,7 +11,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "The Aether3D Authors" }]
-keywords = ["3d", "engine", "scene-graph", "geometry", "gltf", "procedural", "rendering", "gpu", "webgpu", "ai-agents"]
+keywords = ["3d", "engine", "scene-graph", "geometry", "gltf", "procedural", "rendering", "gpu", "webgpu", "ai-agents", "mcp"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
@@ -29,6 +29,8 @@ images = ["pillow>=10"]
 # GPU rendering uses wgpu-py (BSD-2-Clause) with wgpu-native (MIT OR Apache-2.0), which
 # needs Python 3.11+. Pinned to the tested minor series: wgpu-py's API is not yet stable.
 gpu = ["wgpu>=0.32,<0.33; python_version >= '3.11'"]
+# The MCP server (aether3d mcp serve) uses the official MCP Python SDK (MIT).
+mcp = ["mcp>=2.3,<3"]
 # Test-only: Pillow decodes PNGs independently of Aether3D's own encoder and decoder.
 dev = [
     "pytest>=7",
@@ -37,6 +39,7 @@ dev = [
     "manifold3d>=3.4",
     "pillow>=10",
     "wgpu>=0.32,<0.33; python_version >= '3.11'",
+    "mcp>=2.3,<3",
 ]
 
 [project.scripts]

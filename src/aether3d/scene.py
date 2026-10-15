@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from .gltf import ExportResult, ImportLimits
     from .inspection import SceneGeometryReport
     from .materials import Material, MaterialLibrary
+    from .plans import PlanResult
     from .procedural import ProceduralGeometry, ProceduralSystem
     from .rendering import RenderResult
     from .rendering.framing import Framing
@@ -168,6 +169,83 @@ def _base_name(name: str) -> str:
     return stem if dot and stem and len(digits) == 3 and digits.isdigit() else name
 
 
+_DEFAULT_APPEARANCE = Appearance()
+"""Every object starts with a copy of this appearance (cloned: it is valid already)."""
+
+
+class NewObject:
+    """One object for :meth:`Scene._create_many`, the bulk creation path (scene plans).
+
+    ``parent`` is a scene object, the index of an earlier record of the same batch, or
+    ``None``. ``position`` and ``scale`` are 3-tuples of finite floats and ``rotation`` a
+    unit quaternion (``math3d.quat``): values the caller has validated. Everything else
+    is checked by ``_create_many`` before the scene changes. An object has at most one of
+    ``mesh``, ``camera`` and ``light`` (value objects, copied for each object).
+    """
+
+    __slots__ = (
+        "name",
+        "parent",
+        "mesh",
+        "position",
+        "rotation",
+        "scale",
+        "object_id",
+        "visible",
+        "appearance",
+        "material",
+        "group_materials",
+        "tags",
+        "metadata",
+        "camera",
+        "light",
+    )
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        parent: SceneObject | int | None = None,
+        mesh: Mesh | None = None,
+        camera: Camera | None = None,
+        light: Light | None = None,
+        position: Vec3 = (0.0, 0.0, 0.0),
+        rotation: Quat = (0.0, 0.0, 0.0, 1.0),
+        scale: Vec3 = (1.0, 1.0, 1.0),
+        object_id: str | None = None,
+        visible: bool = True,
+        appearance: Appearance | None = None,
+        material: str | None = None,
+        group_materials: dict[int, str] | None = None,
+        tags: Iterable[str] = (),
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self.name = name
+        self.parent = parent
+        self.mesh = mesh
+        self.position = position
+        self.rotation = rotation
+        self.scale = scale
+        self.object_id = object_id
+        self.visible = visible
+        self.appearance = appearance
+        self.material = material
+        self.group_materials = group_materials
+        self.tags = tags
+        self.metadata = metadata
+        self.camera = camera
+        self.light = light
+
+
+def _finite3(value: Any, what: str) -> None:
+    if (
+        not isinstance(value, tuple)
+        or len(value) != 3
+        or not all(type(v) is float and math.isfinite(v) for v in value)
+    ):
+        raise ValidationError(f"{what} must be a tuple of 3 finite floats, got {value!r}")
+
+
 class SceneObject:
     """A node in a scene's hierarchy.
 
@@ -217,7 +295,7 @@ class SceneObject:
         self._geometry: str | None = None  # id of a procedural geometry node, if any
         self._camera: Camera | None = None
         self._light: Light | None = None
-        self._appearance = Appearance()
+        self._appearance = _DEFAULT_APPEARANCE._clone()
         self._appearance._owner = (self, APPEARANCE)
         self._visible = True
         self._material: str | None = None  # id of a material in scene.materials
@@ -814,6 +892,7 @@ class Scene:
         self._name = _check_name(name, "scene name")
         self._objects: dict[str, SceneObject] = {}
         self._by_name: dict[str, SceneObject] = {}
+        self._name_hints: dict[str, int] = {}  # see _unique_name
         self._roots: list[SceneObject] = []
         self._active_camera: str | None = None
         self._world = _owned(World(), self, WORLD)
@@ -983,6 +1062,134 @@ class Scene:
             self._attach(obj, parent_obj)
         return obj
 
+    def _create_many(self, records: list[NewObject], label: str | None = None) -> list[SceneObject]:
+        """Create many objects in one operation (the bulk path of scene plans).
+
+        Equivalent to one ``_create`` per record, followed by the component assignments
+        that ``duplicate`` and ``merge`` make on new objects, but checked as a whole first
+        and recorded once: each parent's child list is captured once, not once per object,
+        so creating ``n`` objects costs O(n). Everything is validated before the scene
+        changes; nothing is created if anything is wrong.
+        """
+        count = len(records)
+        objects, by_name, materials = self._objects, self._by_name, self._materials._materials
+        names: set[str] = set()
+        ids: set[str] = set()
+        tag_cache: dict[tuple, tuple[str, ...]] = {}
+        meta_cache: dict[int, tuple[Any, str]] = {}
+        resolved: list[tuple[str, str, SceneObject | int | None, tuple, str]] = []
+        for k, rec in enumerate(records):
+            where = f"objects[{k}]"
+            name = rec.name
+            if not isinstance(name, str) or not name.strip():
+                raise ValidationError(f"{where}: name must be a non-empty string, got {name!r}")
+            if name in by_name:
+                raise NameConflictError(
+                    f"{where}: an object named {name!r} already exists in this scene"
+                )
+            if name in names:
+                raise NameConflictError(f"{where}: two new objects would be named {name!r}")
+            names.add(name)
+            object_id = rec.object_id
+            if object_id is None:
+                object_id = new_object_id()
+            elif not isinstance(object_id, str) or not object_id:
+                raise ValidationError(f"{where}: object_id must be a non-empty string")
+            if object_id in objects or object_id in ids:
+                raise ValidationError(f"{where}: an object with id {object_id!r} already exists")
+            ids.add(object_id)
+            parent = rec.parent
+            if isinstance(parent, int) and not isinstance(parent, bool):
+                if not 0 <= parent < k:
+                    raise ValidationError(
+                        f"{where}: parent index {parent} is not an earlier record"
+                    )
+            elif parent is not None:
+                parent = self._resolve(parent)
+            if rec.mesh is not None and not isinstance(rec.mesh, Mesh):
+                raise ValidationError(f"{where}: mesh must be a Mesh or None")
+            if rec.camera is not None and not isinstance(rec.camera, Camera):
+                raise ValidationError(f"{where}: camera must be a Camera or None")
+            if rec.light is not None and not isinstance(rec.light, Light):
+                raise ValidationError(f"{where}: light must be a Light or None")
+            if sum(v is not None for v in (rec.mesh, rec.camera, rec.light)) > 1:
+                raise ValidationError(f"{where}: an object has at most one of mesh, camera, light")
+            if (rec.camera is not None or rec.light is not None) and (
+                rec.material is not None or rec.group_materials or rec.appearance is not None
+            ):
+                raise ValidationError(f"{where}: cameras and lights have no material or color")
+            _finite3(rec.position, f"{where}: position")
+            _finite3(rec.scale, f"{where}: scale")
+            q = rec.rotation
+            if (
+                not isinstance(q, tuple)
+                or len(q) != 4
+                or not all(type(v) is float and math.isfinite(v) for v in q)
+                or abs(sum(v * v for v in q) - 1.0) > 1e-9
+            ):
+                raise ValidationError(f"{where}: rotation must be a unit quaternion tuple")
+            if rec.appearance is not None and not isinstance(rec.appearance, Appearance):
+                raise ValidationError(f"{where}: appearance must be an Appearance")
+            if not isinstance(rec.visible, bool):
+                raise ValidationError(f"{where}: visible must be True or False")
+            for mid in (rec.material, *(rec.group_materials or {}).values()):
+                if mid is not None and mid not in materials:
+                    raise ValidationError(f"{where}: no material with id {mid!r} in this scene")
+            for group in rec.group_materials or {}:
+                if isinstance(group, bool) or not isinstance(group, int) or not 0 <= group <= 65535:
+                    raise ValidationError(f"{where}: face group {group!r} is not in [0, 65535]")
+            raw_tags = rec.tags if isinstance(rec.tags, tuple) else tuple(rec.tags)
+            tags = tag_cache.get(raw_tags)
+            if tags is None:
+                tags = tag_cache[raw_tags] = _check_tags(raw_tags)
+            meta = rec.metadata
+            if meta is None:
+                text = "{}"
+            else:
+                cached = meta_cache.get(id(meta))
+                if cached is None or cached[0] is not meta:
+                    cached = meta_cache[id(meta)] = (meta, _check_metadata(meta))
+                text = cached[1]
+            resolved.append((name, object_id, parent, tags, text))
+
+        history = self._history
+        created: list[SceneObject] = []
+        touched: set[int] = set()
+        with history._op(label or f"Add {count} object{'s' * (count != 1)}"):
+            for rec, (name, object_id, parent, tags, text) in zip(records, resolved, strict=True):
+                parent_obj = created[parent] if isinstance(parent, int) else parent
+                transform = Transform.__new__(Transform)
+                transform._position, transform._rotation, transform._scale = (
+                    rec.position,
+                    rec.rotation,
+                    rec.scale,
+                )
+                obj = SceneObject(self, object_id, name, transform, rec.mesh)
+                # New in this operation: undo removes it whole, so its components need no
+                # recording of their own (as in duplicate and merge).
+                if rec.appearance is not None:
+                    obj._appearance = _owned(rec.appearance._clone(), obj, APPEARANCE)
+                obj._visible = rec.visible
+                if rec.camera is not None:
+                    obj._camera = _owned(rec.camera.copy(), obj, CAMERA)
+                if rec.light is not None:
+                    obj._light = _owned(rec.light.copy(), obj, LIGHT)
+                obj._material = rec.material
+                if rec.group_materials:
+                    obj._group_materials = dict(rec.group_materials)
+                obj._tags, obj._metadata = tags, text
+                key = id(parent_obj)
+                if key not in touched:
+                    touched.add(key)
+                    self._touch_siblings(parent_obj)
+                history._touch(ALIVE, obj)
+                history._touch(PARENT, obj)
+                objects[object_id] = obj
+                by_name[name] = obj
+                self._attach(obj, parent_obj)
+                created.append(obj)
+        return created
+
     # -- lookup ------------------------------------------------------------
 
     def get(self, object_id: str) -> SceneObject:
@@ -1064,6 +1271,7 @@ class Scene:
             for item in doomed:
                 del self._objects[item._id]
                 del self._by_name[item._name]
+                self._name_freed(item._name)
                 item._scene = None
                 if item._id == self._active_camera:
                     self._active_camera = None
@@ -1965,6 +2173,21 @@ class Scene:
             height=height,
         )
 
+    # -- scene plans (aether3d.plans) ---------------------------------------------
+
+    def execute_plan(self, plan: Any, **options: Any) -> PlanResult:
+        """Build or change the scene with a declarative scene plan, in one checked step.
+
+        ``plan`` is a dict (or JSON text) in the ``aether3d.scene-plan`` format; the whole
+        plan is checked before anything changes, then applied as one undo step (all or
+        nothing). ``options``: ``mode`` (``"execute"``, ``"dry_run"``, ``"validate"``),
+        ``expected_revision``, ``limits``, ``base_dir``, ``progress``, ``cancel``,
+        ``timeout`` (see :func:`aether3d.plans.execute_plan` and docs/SCENE_PLANS.md).
+        """
+        from .plans import execute_plan
+
+        return execute_plan(self, plan, **options)
+
     def describe(self, *, include_hidden: bool = True) -> dict[str, Any]:
         """A compact JSON summary of the scene's objects and their placement (see
         :func:`aether3d.spatial.describe`)."""
@@ -1990,12 +2213,27 @@ class Scene:
         return self._unique_name(_check_name(base, "base name"))
 
     def _unique_name(self, base: str) -> str:
-        if base not in self._by_name:
+        by_name = self._by_name
+        if base not in by_name:
             return base
-        counter = 1
-        while f"{base}.{counter:03d}" in self._by_name:
+        # ``_name_hints[base]`` is a counter below which every ``base.NNN`` is taken, so
+        # naming many objects after one base costs O(1) each instead of a scan from .001.
+        counter = self._name_hints.get(base, 1)
+        while f"{base}.{counter:03d}" in by_name:
             counter += 1
+        self._name_hints[base] = counter
         return f"{base}.{counter:03d}"
+
+    def _name_freed(self, name: str) -> None:
+        """Forget the naming hint that ``name`` (no longer used) may invalidate."""
+        stem, dot, digits = name.rpartition(".")
+        if dot and digits.isdigit():
+            self._name_hints.pop(stem, None)
+
+    def _set_name_index(self, by_name: dict[str, SceneObject]) -> None:
+        """Replace the name index (the history rebuilds it after undo and redo)."""
+        self._by_name = by_name
+        self._name_hints.clear()
 
     def _rename(self, obj: SceneObject, new_name: str) -> None:
         _check_name(new_name)
@@ -2005,6 +2243,7 @@ class Scene:
             raise NameConflictError(f"an object named {new_name!r} already exists in this scene")
         with self._history._op(f"Rename {obj._name!r} to {new_name!r}", NAME, obj):
             del self._by_name[obj._name]
+            self._name_freed(obj._name)
             obj._name = new_name
             self._by_name[new_name] = obj
 

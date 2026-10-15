@@ -25,6 +25,13 @@ Quick start::
     hit = scene.raycast((0, 0, 10), (0, 0, -1))  # -> hit.object.name, hit.position
     near = scene.nearest_objects((3, 0, 0), count=2)
 
+    # Scene plans (docs/SCENE_PLANS.md): a whole scene in one checked, atomic step
+    result = scene.execute_plan({
+        "format": "aether3d.scene-plan", "version": 1,
+        "meshes": {"block": {"primitive": "cube", "size": 1}},
+        "objects": {"wall": {"mesh": "@block", "grid": {"count": [20, 1, 5], "spacing": 1}}},
+    })
+
 Everything listed in ``__all__`` is the supported public API.
 """
 
@@ -49,6 +56,7 @@ from .errors import (
     MaterialError,
     NameConflictError,
     ObjectNotFoundError,
+    PlanError,
     ProjectFormatError,
     QueryError,
     RenderError,
@@ -68,6 +76,7 @@ from .materials import (
     TextureGraph,
 )
 from .mesh import Mesh
+from .plans import PlanLimits, PlanResult, execute_plan, plan_schema, validate_plan
 from .primitives import create_cube, create_plane, create_sphere
 from .procedural import (
     Expr,
@@ -135,6 +144,9 @@ __all__ = [
     "ObjectNotFoundError",
     "OperationResult",
     "PathSettings",
+    "PlanError",
+    "PlanLimits",
+    "PlanResult",
     "PolyMesh",
     "ProceduralError",
     "ProceduralGeometry",
@@ -165,6 +177,7 @@ __all__ = [
     "create_cube",
     "create_plane",
     "create_sphere",
+    "execute_plan",
     "export_gltf",
     "gpu_status",
     "import_gltf",
@@ -172,6 +185,7 @@ __all__ = [
     "inspect_scene",
     "list_adapters",
     "load_scene",
+    "plan_schema",
     "release_gpu",
     "render",
     "run_edit_script",
@@ -179,4 +193,5 @@ __all__ = [
     "run_query",
     "run_scene_script",
     "save_scene",
+    "validate_plan",
 ]

@@ -50,6 +50,7 @@ Contents:
 | Transforms | position, rotation, Euler rotation, scale, `obj.transform = ...`, `look_at`, `look_along`, `set_world_position`, `frame` |
 | Appearance | visibility, color, specular, shininess, `obj.appearance = ...` |
 | Tags and metadata | `obj.tags = ...`, `add_tags`, `remove_tags`, `obj.metadata = ...`, `set_metadata`, `remove_metadata` (0.10.0) |
+| Scene plans | `scene.execute_plan(plan)`: the whole plan is one step, however many objects it makes or changes; a plan with `chunk_size` is one step per chunk, after a checkpoint `plan:KEY:before` ([SCENE_PLANS.md](SCENE_PLANS.md)) (0.11.0) |
 | Cameras and lights | every parameter (`obj.camera.fov = 35`, `obj.light.configure(...)`), the active camera |
 | World and settings | background, ambient light, the environment and its fields, render settings, the scene's name |
 | Meshes | `obj.mesh = ...`, committed edit sessions (`obj.edit_mesh()`, with `scope="shared"` too) |

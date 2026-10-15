@@ -5,7 +5,8 @@ runtime dependencies and needs no GPU or graphical environment. Rendering on
 a GPU is optional: it needs Python 3.11+, the `gpu` extra and a Vulkan,
 Metal or Direct3D 12 driver (see [GPU rendering](#gpu-rendering-optional)).
 JPEG textures are optional too: they need the `images` extra (PNG textures
-need nothing).
+need nothing). So is the MCP server for AI agents: it needs the `mcp` extra
+(see [The MCP server](#the-mcp-server-optional)).
 
 ## Arch Linux
 
@@ -80,6 +81,7 @@ pip install .              # core: NumPy is the only dependency
 pip install ".[boolean]"   # also solid booleans for procedural geometry
 pip install ".[images]"    # also JPEG textures (Pillow)
 pip install ".[gpu]"       # also GPU rendering (Python 3.11+)
+pip install ".[mcp]"       # also the MCP server for AI agents (aether3d mcp serve)
 ```
 
 The first command installs only the `aether3d` package, its `aether3d`
@@ -103,6 +105,25 @@ decode JPEG textures. Without it, a JPEG texture fails with
 PNG textures, and everything else, keep working. The `dev` extra includes it.
 trimesh and the Khronos validator are used only by the tests, and so is
 Pillow as an independent PNG decoder.
+
+## The MCP server (optional)
+
+The `mcp` extra installs the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
+(MIT), version 2.x, and its dependencies (pydantic, anyio, jsonschema, starlette, uvicorn,
+an HTTP client, ...: MIT, BSD-3-Clause, Apache-2.0 or PSF licenses); the `dev` extra includes
+it. `aether3d mcp serve` then serves
+Aether3D to AI agents over stdio ([MCP.md](MCP.md)). Without the extra, the command says
+how to install it, and everything else works.
+
+To use it from Claude Code on Arch Linux, with Aether3D installed in `~/Aether3D/.venv`
+as above:
+
+```bash
+mkdir -p ~/scenes/castle && cd ~/scenes/castle
+claude mcp add aether3d -- ~/Aether3D/.venv/bin/aether3d mcp serve --workspace "$PWD"
+claude mcp get aether3d          # Status: ✔ Connected
+claude                           # then ask it to build something
+```
 
 ## GPU rendering (optional)
 

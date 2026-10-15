@@ -945,9 +945,10 @@ class ProceduralSystem:
     # Validation of definitions (run after every transaction)
     # ------------------------------------------------------------------ #
 
-    def _check_all(self, *, evaluate: bool = True) -> None:
+    def _check_all(self, *, evaluate: bool = True, objects: bool = True) -> None:
+        """Check every definition (and, with ``objects``, every object's geometry)."""
         self._check_cycles()
-        for obj in self.scene:
+        for obj in self.scene if objects else ():
             if obj._geometry is not None and obj._geometry not in self._geometries:
                 raise ProceduralError(
                     "UNKNOWN_GEOMETRY", f"object {obj.name!r} uses missing geometry"

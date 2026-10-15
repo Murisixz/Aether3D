@@ -119,6 +119,22 @@ Aether3D/
 │   │   ├── queries.py     The queries (bounds, rays, nearest, containment, overlaps,
 │   │   │                  regions, cameras, sight lines, relations, describe)
 │   │   └── request.py     JSON requests: the CLI's `aether3d query` and the script op
+│   ├── plans/             Scene plans (see docs/SCENE_PLANS.md)
+│   │   ├── model.py       Parsing and checking: symbols, references, patterns, selectors, issues
+│   │   ├── patterns.py    Pattern expansion: grid, array, circle, line, scatter, instances, repeat
+│   │   ├── executor.py    Binding to a scene, bulk creation, operations, queries, idempotency,
+│   │   │                  chunks, select_objects
+│   │   ├── schema.py      The format's JSON Schema (hand-written, fuzzed against model.py)
+│   │   ├── limits.py      PlanLimits
+│   │   ├── guide.md       The plan guide for agents (an MCP resource)
+│   │   └── examples/      Example plans: basics, castle (2,190 objects), village (11,270)
+│   ├── mcp/               The MCP server, optional (see docs/MCP.md)
+│   │   ├── server.py      The protocol (official SDK, low-level server): one tool at a time
+│   │   │                  in a worker thread, cancellation, progress, logging to stderr
+│   │   ├── tools.py       The tools: argument schemas, implementations, replies, errors
+│   │   ├── content.py     Resources and prompts
+│   │   ├── session.py     The session: open scene, project and its disk state, configuration
+│   │   └── workspace.py   The path policy: containment, suffixes, overwrites, redaction
 │   ├── gltf/              glTF 2.0 interchange (no third-party dependencies)
 │   │   ├── axes.py        Exact Z-up <-> Y-up conversion
 │   │   ├── materials.py   glTF materials, textures and samplers, in and out
@@ -131,8 +147,8 @@ Aether3D/
 │   └── data/              Khronos samples (pinned), v0.1.0/v0.4.0/v0.7.0 projects, reference renders
 ├── examples/              Runnable examples, a sample project, example textures, renders (output/)
 ├── tools/gltf-validator/  Pinned Khronos glTF Validator runner (Node.js, dev only)
-├── benchmarks/            Editing, procedural, rendering, materials, ray tracing and path
-│                          tracing benchmarks (bench_*.py)
+├── benchmarks/            Editing, procedural, rendering, materials, ray tracing, path
+│                          tracing and scene plan benchmarks (bench_*.py)
 ├── docs/                  API, file formats, glTF, inspection, architecture, install
 └── .github/workflows/     Continuous integration
 ```
@@ -166,7 +182,9 @@ Aether3D/
 | `gltf.materials` | `materials`, `rendering.color`, `diagnostics`, `errors` |
 | `_history_file` | `history`, `serialization`, `scene`, `materials`, `procedural` (states and entities), `_fileio` |
 | `spatial.*` | `rendering.raytrace` (two-level BVH, watertight test), `rendering.scene_data` (world matrices, render-scene extraction), `rendering.pathtrace.scene` (rendered surfaces, lazily), `rendering.camera`, `inspection` (topology), `errors`; `scene` only for type hints and lazily for lookups |
-| `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `history`, `spatial`, `errors` |
+| `plans.*` | `scene` (bulk creation, history), `primitives`, `procedural` (expressions, primitives, modifiers), `materials`, `rendering` (cameras, lights, colors, settings), `mesh`, `spatial` (query requests, lazily), `errors` |
+| `mcp.*` | `plans`, `scene`, `serialization`, `gltf`, `rendering`, `spatial`, `history`, `editing` and `procedural` (scripts), `errors`; the `mcp` SDK (optional: never imported by `import aether3d`) |
+| `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `history`, `spatial`, `plans`, `errors`; `mcp` lazily (`aether3d mcp serve`) |
 
 Lower layers never import higher ones. `scene` provides convenience methods
 (`save`/`load`, `export`/`import_file`, `inspect_geometry`, `edit_mesh`) by importing
@@ -635,3 +653,51 @@ exposes every query as a method. See [SPATIAL.md](SPATIAL.md). Key decisions:
 - **Tags and metadata** are object state like any other: an `object.annotations`
   history aspect, project format 6, history files and glTF extras.
 
+## AI tools: scene plans and the MCP server (v0.11.0)
+
+`aether3d.plans` builds or changes a scene from one declarative document;
+`aether3d.mcp` serves the engine to AI agents. See [SCENE_PLANS.md](SCENE_PLANS.md) and
+[MCP.md](MCP.md). Key decisions:
+
+- **Check everything, then change everything.** A plan is parsed and checked as a whole
+  (`model.py`: types, symbols, references between symbols, expressions, limits), every
+  problem collected with a JSON pointer. Binding (`executor.py`) expands patterns,
+  allocates names and ids, resolves references to the scene and evaluates each
+  procedural node once; only then does one history transaction apply it. Any failure,
+  timeout or cancellation rolls the transaction back, so the scene and its history are
+  as before; a dry run is the same path, rolled back on purpose.
+- **Bulk creation in O(n).** `Scene._create_many` validates every new object first, then
+  creates them inside one history operation, capturing each once. Automatic names come
+  from per-base hints instead of scanning the taken names (which made N creations
+  quadratic before 0.11). Layouts (positions, rotations, scales, variations) are computed
+  per definition with NumPy and reused for every parent instance. Identical mesh
+  definitions share one mesh, which the GPU rasterizer draws instanced.
+- **The garbage collector waits.** A plan pauses Python's cyclic garbage collector while
+  it runs (and restores the caller's setting): its allocations would otherwise trigger
+  full collections that walk every object of the process, which in a long-running
+  process holding a large scene cost more than the plan itself.
+- **Small edits stay small.** Selections by reference are found through the scene's
+  indexes and ordered by their paths in the hierarchy, and the plan's new meshes are
+  told from borrowed ones without scanning the scene, so a one-object edit costs the same
+  in any scene. (A per-call history step still captures the scene's root list: adding
+  one object grows slightly with the number of root objects.)
+- **Retries are deterministic.** With an idempotency key, the ids of the objects,
+  materials and textures a plan makes are UUID 5s of the key and their place in the plan,
+  so an applied plan is recognized from the scene alone, across processes; chunked plans
+  resume by skipping chunks whose objects all exist.
+- **Three descriptions of one format.** The checker, the hand-written JSON Schema and the
+  guide for agents describe the same format; tests fuzz the checker against the schema
+  (they must agree on every mutation) and the executor against crashes.
+- **The server is a thin, careful layer.** It uses the official SDK's low-level server
+  (both protocol generations), runs one tool at a time in a worker thread (the scene is
+  never touched from two threads), and turns a cancellation into an event the plan
+  checks at safe points, waiting for the rollback before it answers. Every path goes
+  through `Workspace.path`; every reply is structured JSON (also as text); errors carry
+  codes and hints and no paths of the machine. Nothing but protocol messages reaches
+  stdout. The SDK is an optional extra, imported only by `aether3d.mcp`.
+- **Measured.** `benchmarks/bench_plans.py` compares one plan with repeated operations
+  (Python, CLI and MCP) at 100, 1,000 and 10,000 objects; the profiles behind it found
+  the quadratic name allocation, two whole-scene passes per edit plan, a whole-scene scan
+  per step of procedural scripts, a material record built per object in every render and
+  full garbage collections inside plans, all fixed in 0.11. Scaling tests time with the
+  collector paused (`tests/timing.py`), as `timeit` does.

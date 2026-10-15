@@ -425,6 +425,14 @@ history step:
 The tests check that Python, `run_query`, the command line and scripts give the
 same JSON for every query.
 
+[Scene plans](SCENE_PLANS.md#queries) answer the same requests after they are applied
+(their `"@symbol"` references become object ids), and the MCP server's `spatial_query`
+tool takes them one at a time or in batches ([MCP.md](MCP.md)). There, object lists
+(`objects`, `against`, `exclude`) may also be selectors -- `{"tags": ["tree"]}`,
+`{"under": "Keep"}`, `{"name_glob": "Tower */*"}` -- resolved with
+`aether3d.plans.with_selections(scene, request)`; a selector that matches nothing gives an
+empty list, never "all objects".
+
 ## Errors
 
 Malformed queries and queries that cannot be answered raise `QueryError` (an

@@ -312,3 +312,40 @@ def test_cli_entry_point(project):
         check=False,
     )
     assert out.returncode == 0 and json.loads(out.stdout)["status"] == "ok"
+
+
+def test_creating_many_objects_with_a_script_scales_linearly():
+    """Each step is checked, but a created object needs no scan of every object (which
+    made N creations cost O(N^2)): 8x the objects cost about 8x the time."""
+    from timing import seconds
+
+    def run(n):
+        operations = [
+            {"op": "add_geometry", "name": "Block", "primitive": "box", "params": {"width": 0.9}},
+            *(
+                {"op": "create_object", "name": f"b{i}", "geometry": "Block", "position": [i, 0, 0]}
+                for i in range(n)
+            ),
+        ]
+        scene = Scene("Blocks")
+        elapsed = seconds(lambda: run_procedural_script(scene, script(*operations)))
+        assert len(scene) == n and len(scene.history) == 1
+        return elapsed
+
+    run(100)  # warm up
+    small, large = min(run(500) for _ in range(2)), min(run(4000) for _ in range(2))
+    assert large < 16 * small + 0.05, (small, large)
+
+
+def test_a_script_that_removes_a_used_node_still_fails_at_that_step():
+    scene = Scene("Orphans")
+    with pytest.raises(ScriptError) as info:
+        run_procedural_script(
+            scene,
+            script(
+                {"op": "add_geometry", "name": "Block", "primitive": "box", "params": {}},
+                {"op": "create_object", "name": "A", "geometry": "Block"},
+                {"op": "remove_geometry", "geometry": "Block"},
+            ),
+        )
+    assert "operations[2]" in str(info.value) and len(scene) == 0

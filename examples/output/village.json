@@ -1,0 +1,50 @@
+{
+  "build": {
+    "objects": 11270,
+    "seconds": 0.359,
+    "stages_ms": {
+      "parse": 1.27,
+      "bind": 75.05,
+      "resources": 2.1,
+      "objects": 76.74,
+      "operations": 18.81,
+      "apply": 111.32,
+      "queries": 165.78,
+      "total": 353.63
+    }
+  },
+  "tags": {
+    "house": 558,
+    "fence": 4086,
+    "tree": 368,
+    "lamp": 186,
+    "car": 273
+  },
+  "edit": {
+    "ms": 0.35,
+    "changed": [
+      "Block 3-0/houses 4/door"
+    ],
+    "step": {
+      "index": 2,
+      "label": "Paint one door green",
+      "changes": 2,
+      "bytes": 840
+    }
+  },
+  "history_ms": {
+    "undo_edit": 0.04,
+    "undo_all": 7.38,
+    "redo_all": 7.72
+  },
+  "render": {
+    "backend": "gpu",
+    "size": [
+      1280,
+      720
+    ],
+    "seconds": 2.748,
+    "draw_calls": 20
+  },
+  "problems": []
+}

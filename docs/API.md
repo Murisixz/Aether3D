@@ -463,6 +463,36 @@ result types, `surface_samples`, `get_index` (the cached `SpatialIndex`) and
 which the command line (`aether3d query`) and the scene-script operation `query`
 use. Errors are `QueryError`s.
 
+## Scene plans
+
+One JSON-compatible document builds or changes a scene in one call: checked as a whole,
+then applied as one undo step, all or nothing ([SCENE_PLANS.md](SCENE_PLANS.md)).
+
+| Function | |
+| --- | --- |
+| `scene.execute_plan(plan, *, mode="execute", expected_revision=None, limits=None, base_dir=None, trusted_paths=False, progress=None, cancel=None, timeout=None)` | apply a plan (a dict or JSON text); `mode` `"dry_run"` applies and rolls back, `"validate"` only checks; returns a `PlanResult`, raises `PlanError` |
+| `aether3d.execute_plan(scene, plan, **options)` | the same |
+| `aether3d.validate_plan(plan, scene=None, *, limits=None, base_dir=None)` | check without changing anything (never raises for a problem in the plan): `PlanResult` with `ok`, `issues`, `estimate` |
+| `aether3d.plan_schema()` | the format's JSON Schema (draft 2020-12) |
+| `aether3d.plans.select_objects(scene, selector)` | the objects a plan selector names (`{"tags": [...]}`, `{"under": ...}`, ...), in scene order |
+| `aether3d.plans.with_selections(scene, request)` | a spatial query request whose object lists may be selectors, resolved |
+
+`PlanResult` has `ok`, `mode`, `status` (`applied`, `dry_run`, `validated`,
+`already_applied`), `label`, `fingerprint`, `idempotency_key`, `revision` (`before`,
+`after`), `step` (the undo step), `counts`, `symbols`, `operations`, `queries`,
+`warnings`, `issues`, `estimate`, `chunks`, `timings` and `to_dict()`. `PlanLimits`
+(frozen dataclass) bounds a plan: `max_objects`, `max_scene_objects`,
+`max_pattern_count`, `max_operations`, `max_triangles`, ... ([limits](SCENE_PLANS.md#limits)).
+
+## The MCP server
+
+`aether3d.mcp` (needs `pip install "aether3d[mcp]"`; `import aether3d` never imports it)
+serves Aether3D to AI agents over the Model Context Protocol ([MCP.md](MCP.md)):
+`serve(config)` runs a stdio server with a `ServerConfig` (`workspace`, `read_only`,
+`project`, `plan_limits`, `tool_timeout`, `max_preview_pixels`, `max_render_pixels`,
+`max_path_samples`, `allow_path_tracing`, `gpu_adapter`, `max_reply_bytes`); `TOOLS` describes its tools,
+`Workspace` its path policy. Most uses go through `aether3d mcp serve`.
+
 ## `aether3d.math3d`
 
 Stateless helpers used by the engine, available for scripts:
@@ -491,6 +521,7 @@ All deliberate errors derive from `AetherError`.
 | `ProceduralError` | `ValueError` | A procedural definition, parameter or evaluation is invalid; nothing changed. `.code` (stable), `.location` (e.g. `geometry[Tower].modifiers[Row].params.count`), `.hint`, `.details` |
 | `MaterialError` | `ValueError` | A material, texture, graph or image is invalid or cannot be used (`INVALID_MATERIAL`, `TEXTURE_MISSING`, `IMAGE_TOO_LARGE`, `UNSAFE_PATH`, ...; see [MATERIALS.md](MATERIALS.md#errors-and-diagnostics)); nothing changed. `.code` (stable), `.location` (e.g. `materials[Stone].roughness`), `.hint`, `.details` |
 | `QueryError` | `ValueError` | A spatial query is malformed or cannot be answered (`INVALID_ARGUMENT`, `INVALID_REQUEST`, `OBJECT_NOT_FOUND`, `NO_GEOMETRY`, `NO_CAMERA`, ...; see [SPATIAL.md](SPATIAL.md#errors)); nothing changed. `.code` (stable), `.location` (the argument), `.hint`, `.details`, `to_dict()` |
+| `PlanError` | `ValueError` | A scene plan is invalid or cannot be applied; nothing changed (except completed chunks of an opt-in chunked plan). `.code` (stable: `UNKNOWN_REFERENCE`, `NAME_CONFLICT`, `REVISION_MISMATCH`, `LIMIT_EXCEEDED`, ...; see [SCENE_PLANS.md](SCENE_PLANS.md#errors)), `.pointer` (a JSON pointer into the plan), `.operation`, `.hint`, `.details`, `.issues` (every problem found), `to_dict()` |
 | `HistoryError` | `ValueError` | An undo, redo, checkpoint or history file operation cannot be performed (`NOTHING_TO_UNDO`, `TRANSACTION_OPEN`, `HISTORY_MISMATCH`, `INVALID_HISTORY`, ...; see [HISTORY.md](HISTORY.md#errors)); nothing changed. `.code` (stable), `.location`, `.hint`, `.details` |
 
 Missing files raise the standard `FileNotFoundError`.
@@ -528,6 +559,10 @@ aether3d texture list|add|procedural|set|inspect|preview|remove ...
 aether3d history start|show|undo|redo|checkpoint|goto|clear|verify PROJECT ... [--json]
 aether3d query QUERY PATH [KEY=VALUE ...] [--allow-lossy] [--json]
 aether3d query run PATH --request FILE|- [--allow-lossy] [--json]
+aether3d execute-plan PROJECT.aether PLAN.json|- [--dry-run | --validate] [--output PATH] [--history] [--timeout S] [--max-objects N] [--progress] [--json]
+aether3d plan validate PLAN.json|- [--project PROJECT.aether] [--max-objects N] [--json]
+aether3d plan schema
+aether3d mcp serve [--workspace DIR] [--project PATH] [--read-only] [--max-objects N] [--timeout S] [--no-path-tracing] [--gpu-adapter SPEC] [--log-level LEVEL]
 aether3d --version
 ```
 
@@ -559,7 +594,7 @@ Exit codes:
 | `0` | Success |
 | `1` | Failure |
 | `2` | Usage error |
-| `3` | `geometry`, `topology`, `procedural validate` or `material validate` completed but found error-severity problems, or `gpu info --check` found that GPU rendering does not work |
+| `3` | `geometry`, `topology`, `procedural validate`, `material validate` or `plan validate` completed but found error-severity problems, or `gpu info --check` found that GPU rendering does not work |
 
 The `import`, `export` and `geometry` commands report:
 

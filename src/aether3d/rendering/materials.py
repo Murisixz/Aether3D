@@ -192,7 +192,9 @@ def resolve_materials(
         else:
             look = obj.appearance
             key = "appearance:" + repr((look.color, look.specular, look.shininess))
-            default = table.add(appearance_material(look, key))
+            default = table._index.get(key)  # objects of one color share their material
+            if default is None:
+                default = table.add(appearance_material(look, key))
         groups: dict[int, int] = {}
         for group, ref in obj._group_materials.items():
             groups[group] = table.add(_resolve(library.material(ref), resolved, table, position))

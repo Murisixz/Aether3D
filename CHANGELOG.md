@@ -4,6 +4,101 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.11.0: AI tools and MCP
+
+### Added
+
+- **Scene plans: `scene.execute_plan(plan)`** ([docs/SCENE_PLANS.md](docs/SCENE_PLANS.md)).
+  One declarative JSON document (`aether3d.scene-plan`, version 1) builds or changes a
+  scene: checked as a whole first (every problem with a stable code, a JSON pointer, the
+  operation index and a hint), then applied as one undo step, all or nothing.
+  - **Resources by symbol:** shared meshes (primitives, data, `from_object`), materials
+    and textures, procedural geometry nodes, and **prefabs** (reusable structures that
+    can use other prefabs), referenced as `"@symbol"`, `"@towers[2]/roof"`.
+  - **Patterns:** `grid`, `array`, `circle`, `line`, `scatter` (reproducible),
+    `instances`, `repeat`; per-instance variation (`vary`: cycle, choose, uniform,
+    linear, values, expressions) and filters (`where`: a doorway in a wall of blocks);
+    name templates; expressions over plan parameters and instance variables through the
+    procedural engine's whitelisted evaluator.
+  - **Operations** on new and existing objects (`update`, `delete`, `set_parameters`,
+    `frame_camera`, `set_active_camera`) with **selectors** (references, ids, names,
+    tags, name globs, kind, ancestor, material, `expect` counts); the world, render
+    settings and the active camera; **queries** answered after the plan (every spatial
+    query, with plan references and selectors).
+  - **Modes:** execute, dry run (apply, report, roll back) and validate (check and
+    estimate); `validate_plan(plan)` checks without a scene.
+  - **Safe retries and concurrency:** `expected_revision` (optimistic concurrency) and
+    `idempotency_key` (ids derived from the key, so a resent plan is recognized even by
+    another process).
+  - **Large plans:** opt-in `chunk_size` applies in resumable chunks, one undo step each,
+    after a named checkpoint.
+  - **Bounds:** `PlanLimits` (objects, patterns, operations, triangles, mesh memory, ...),
+    `timeout`, `cancel` (rolls back at the next safe point), `progress`.
+  - `PlanResult` (status, revisions, the undo step, counts, ids per symbol, per-operation
+    and per-query results, warnings, estimates, timings per stage), `PlanError`,
+    `plans.plan_schema()` (the JSON Schema), `plans.select_objects`,
+    `plans.with_selections`.
+  - A guide for agents and example plans ship in the package: `basics`, a
+    Minecraft-style **castle** (2,190 objects) and a **village** of 11,270 objects from
+    reusable houses, trees, lamps and cars.
+- **Command line:** `aether3d execute-plan PROJECT PLAN` (one atomic, undoable step;
+  `--dry-run`, `--validate`, `--timeout`, `--max-objects`, `--progress`, `--history`),
+  `aether3d plan validate PLAN [--project P]` (exit status 3 on problems) and
+  `aether3d plan schema`.
+- **The MCP server: `aether3d mcp serve`** ([docs/MCP.md](docs/MCP.md)), on the official
+  MCP Python SDK, as the optional `mcp` extra. Fifteen tools (scenes and projects,
+  objects, plans, checks, spatial queries, previews and images, history, glTF export,
+  scripts, diagnostics, capabilities) with strict argument schemas and structured
+  replies; resources (the guide, the schema, example plans, the scene, the last preview)
+  and prompts. stdio only; every file inside the `--workspace` (checked after resolving
+  symbolic links), no overwrites without `overwrite`, `--read-only`, no code execution,
+  bounded renders, timeouts, cancellation with rollback, progress, errors that show no
+  paths of the machine (workspace-relative, `~`, `<path>`). Previews use the GPU
+  rasterizer when it works, the CPU rasterizer otherwise, and say which. Replies stay
+  small: long query answers keep their first `max_results` entries (with `total` and
+  `truncated`), and read-only replies above `--max-reply-kib` are refused with a hint.
+  Verified with Claude Code 2.1.300 (`claude mcp add`, `claude mcp get`: connected).
+- **Examples:** `plan_basics.py` (the Python API), `village.py` (11,270 objects, a
+  one-door edit, a GPU preview), `mcp_client.py` (an SDK client) and
+  `mcp_castle_agent.py` (an agent's whole loop over MCP: build with mistakes, find them
+  with spatial queries, fix, undo, redo, preview, save, export, reopen).
+- **Benchmark:** `benchmarks/bench_plans.py` compares one plan with repeated operations
+  from Python, the CLI and MCP at 100, 1,000 and 10,000 objects (time, throughput, peak
+  RSS, undo steps and bytes, plan stages, queries, GPU and CPU rendering, tool-call
+  overhead), and runs against older versions for a baseline. Results are in
+  [docs/SCENE_PLANS.md](docs/SCENE_PLANS.md#performance): on an i9-12900H, 10,000 blocks
+  take 105 ms with one plan, 1,925 ms with `add_cube` per block and 379 ms with
+  `add_object` calls in one transaction; one CLI plan 0.77 s against a projected 3.2
+  hours for one CLI call per block; one MCP call 102 ms against 22 s for one call per
+  block.
+- **Tests:** 170 new tests (no existing test changed): the format (the checker fuzzed
+  against the JSON Schema, the executor fuzzed for crashes and atomicity), patterns and
+  references, idempotency and chunks, cancellation and timeouts, the CLI, projects of
+  0.1.0, 0.4.0 and 0.7.0, parity with spatial queries, the examples, the docs' plans, the
+  MCP server as a real subprocess (both protocol generations, raw JSON-RPC for a clean
+  stdout, path escapes and symbolic links, overwrite and read-only rules, cancellation
+  with rollback, bounded replies, Unicode, redaction), and performance regressions that
+  compare times on the same machine.
+
+### Changed
+
+- **Faster bulk creation (`Scene._create_many`)** and **automatic names in O(1)**:
+  finding a free automatic name scanned every taken name, so N creations were quadratic.
+- **Procedural scripts create N objects in O(N):** every step scanned every object
+  (10,000 objects: 5,977 ms before, 820 ms now).
+- **Plans pause Python's cyclic garbage collector while they run** (restored after, and
+  left off if the caller turned it off). In a process holding many objects, a full
+  collection triggered by a plan walked all of them: an 8,000-object plan in a process
+  holding a million objects took 256-278 ms, now 117-121 ms.
+- **Edit plans no longer walk the whole scene:** a one-object edit costs about 0.12 ms
+  in a scene of any size.
+- **Renders reuse one material record for objects of the same color** (a warm GPU frame
+  of 10,000 cubes: 178 ms before, 118 ms now). Images are unchanged.
+- **The `dev` extra includes `mcp`**, and CI checks that the wheel ships the plan guide,
+  the example plans and the shaders, and runs the new examples and a benchmark smoke run.
+- No change to the project format (still version 6), to existing tests or to the render
+  goldens.
+
 ## 0.10.0: Scene intelligence and spatial queries
 
 ### Added

@@ -1,0 +1,28 @@
+{
+  "format": "aether3d.scene-plan",
+  "version": 1,
+  "label": "Courtyard",
+  "description": "The basics: shared meshes, materials, patterns, a light, a camera and a query.",
+  "materials": {
+    "stone": {"preset": "stone"},
+    "red": {"base_color": "#a03020", "roughness": 0.7}
+  },
+  "meshes": {"block": {"primitive": "cube", "size": 1}},
+  "objects": {
+    "ground": {"mesh": {"primitive": "plane", "size": 40}, "color": "#4f7f3a"},
+    "wall": {
+      "mesh": "@block",
+      "material": "@stone",
+      "position": [-5, 0, 0.5],
+      "grid": {"count": [11, 1, 3], "spacing": 1}
+    },
+    "pillars": {
+      "mesh": {"primitive": "cylinder", "radius": 0.3, "depth": 3, "segments": 16},
+      "circle": {"count": 8, "radius": 6, "z": 1.5},
+      "material": "@red"
+    },
+    "sun": {"light": {"type": "directional", "intensity": 2}, "direction": [-0.4, 0.5, -1]},
+    "cam": {"camera": {"fov": 45}, "position": [14, -16, 9], "look_at": [0, 0, 1]}
+  },
+  "queries": [{"query": "overlaps", "objects": "@pillars"}]
+}
