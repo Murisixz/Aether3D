@@ -28,12 +28,13 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from .. import _features
 from ..diagnostics import INFO, WARNING, Diagnostic
 from ..errors import AetherError, RenderError
 from ..mesh import Mesh
 from .camera import Camera, CameraFrame, frame_from_matrix
 from .color import to_linear
-from .materials import RenderMaterial, resolve_materials
+from .materials import MaterialCache, RenderMaterial, resolve_materials
 from .settings import Appearance, Environment
 
 if TYPE_CHECKING:
@@ -193,9 +194,15 @@ def world_matrices(scene: Scene) -> dict[str, np.ndarray]:
     Computed for all objects at once, one hierarchy level at a time, with the
     same arithmetic as ``obj.local_matrix`` and :func:`_mat4_mul`.
     """
+    objects, world = _world_stack(scene)
+    return {obj.id: world[k] for k, obj in enumerate(objects)}
+
+
+def _world_stack(scene: Scene) -> tuple[list[SceneObject], np.ndarray]:
+    """The objects in depth-first order and their world matrices, ``(n, 4, 4)``."""
     objects = list(scene)  # depth-first: parents first
     if not objects:
-        return {}
+        return objects, np.zeros((0, 4, 4))
     world = _local_matrices(objects)
     index = {obj.id: k for k, obj in enumerate(objects)}
     parent = np.full(len(objects), -1, dtype=np.int64)
@@ -207,7 +214,7 @@ def world_matrices(scene: Scene) -> dict[str, np.ndarray]:
     for level in range(1, int(depth.max()) + 1):
         rows = np.flatnonzero(depth == level)
         world[rows] = _mat4_mul_many(world[parent[rows]], world[rows])
-    return {obj.id: world[k] for k, obj in enumerate(objects)}
+    return objects, world
 
 
 def normal_matrix(linear: np.ndarray) -> np.ndarray | None:
@@ -301,11 +308,14 @@ def extract_render_scene(
     """Collect everything needed to render ``scene`` from ``camera`` (read-only)."""
     start = time.perf_counter()
     diagnostics: list[Diagnostic] = []
-    worlds = world_matrices(scene)
+    objects, stack = _world_stack(scene)
+    finite_world = np.all(np.isfinite(stack), axis=(1, 2)).tolist()
     if isinstance(camera, RenderCamera):
         render_camera = camera
     else:
-        frame, frame_diags = frame_from_matrix(worlds[camera.id], f"objects[{camera.name}]")
+        frame, frame_diags = frame_from_matrix(
+            stack[objects.index(camera)], f"objects[{camera.name}]"
+        )
         diagnostics += frame_diags
         render_camera = RenderCamera(camera.id, camera.name, camera.camera, frame)
         if camera.camera.aspect_ratio is not None and not math.isclose(
@@ -328,16 +338,17 @@ def extract_render_scene(
     candidates: list[tuple[SceneObject, Mesh, np.ndarray, int]] = []  # mesh objects, in order
     ordered: list[tuple[int, Diagnostic]] = []  # loop diagnostics, by object position
     evaluate_time = 0.0
-    for position, obj in enumerate(scene):
-        loc = f"objects[{obj.name}]"
-        world = worlds[obj.id]
+    for position, obj in enumerate(objects):
+        world = stack[position]
         if obj.light is not None:
             if not obj.visible:
                 continue
             light = obj.light
             radiance = to_linear(light.color) * light.intensity
-            if not np.all(np.isfinite(world)):
-                raise RenderError("NONFINITE_TRANSFORM", "world matrix is not finite", loc)
+            if not finite_world[position]:
+                raise RenderError(
+                    "NONFINITE_TRANSFORM", "world matrix is not finite", f"objects[{obj.name}]"
+                )
             if light.type == "point":
                 lights.append(
                     RenderLight(
@@ -364,7 +375,7 @@ def extract_render_scene(
                                 WARNING,
                                 f"light {obj.name!r} has zero scale along its forward axis; "
                                 "it is ignored",
-                                loc,
+                                f"objects[{obj.name}]",
                             ),
                         )
                     )
@@ -396,7 +407,7 @@ def extract_render_scene(
                 "GEOMETRY_EVALUATION_FAILED",
                 f"the geometry of {obj.name!r} could not be evaluated: [{code}] "
                 + getattr(exc, "message", str(exc)),
-                loc,
+                f"objects[{obj.name}]",
                 hint="fix or disable the failing procedural definition, or hide the object "
                 "(obj.visible = False)",
                 details={
@@ -406,11 +417,11 @@ def extract_render_scene(
         evaluate_time += time.perf_counter() - t0
         if mesh is None or mesh.triangle_count == 0:
             continue
-        if not np.all(np.isfinite(world)):
+        if not finite_world[position]:
             raise RenderError(
                 "NONFINITE_TRANSFORM",
                 f"the world matrix of {obj.name!r} is not finite",
-                loc,
+                f"objects[{obj.name}]",
                 hint="check for extreme scales in the object's hierarchy",
             )
         candidates.append((obj, mesh, world, position))
@@ -425,6 +436,7 @@ def extract_render_scene(
             for k, (obj, mesh, _, position) in enumerate(candidates)
             if valid[k]
         ],
+        _material_cache(scene),
     )
     ordered += material_table.diagnostics
     material_iter = iter(object_materials)
@@ -515,6 +527,17 @@ def extract_render_scene(
         materials=tuple(material_table.materials),
         environment=world_settings.environment.copy(),
     )
+
+
+def _material_cache(scene: Scene) -> MaterialCache | None:
+    """The scene's material cache (kept with its derived caches), unless switched off."""
+    if not _features.enabled("AETHER3D_MATERIAL_CACHE"):
+        return None
+    derived = scene._derived()
+    cache = derived.get("render_materials")
+    if cache is None:
+        cache = derived["render_materials"] = MaterialCache()
+    return cache
 
 
 def default_light(frame: CameraFrame) -> RenderLight:

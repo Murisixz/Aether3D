@@ -19,6 +19,7 @@ fallback:
 
 from __future__ import annotations
 
+import struct
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -171,33 +172,84 @@ class MaterialTable:
         return index
 
 
+@dataclass
+class _Resolved:
+    """A library material resolved for rendering, with what resolving it reported and read."""
+
+    material: RenderMaterial
+    reports: list[tuple[str, Diagnostic]]  # (slot, diagnostic): replayed at its first use
+    images: list[tuple[Any, str, str]]  # (texture, mode, digest or "error:CODE") it read
+
+
+class MaterialCache:
+    """Materials resolved for one scene, reused between renders (``scene._derived()``).
+
+    A library material's resolution is valid for one ``MaterialLibrary.version`` --
+    every change of a material, a texture or the library increments it, undo and redo
+    included -- and while the images it read are unchanged: every render reads them
+    again (as resolving does, so files changed on disk are picked up) and resolves the
+    material afresh if one changed. Its diagnostics are reported again, at its first
+    use in each render. An object's own color depends on nothing else. The results are
+    exactly those of resolving everything again (``tests/test_invariants.py`` compares
+    them with a fresh copy of the scene along random edits).
+    """
+
+    def __init__(self) -> None:
+        self.library: Any = None
+        self.version = -1
+        self.resolved: dict[str, _Resolved] = {}
+        self.appearances: dict[bytes, RenderMaterial] = {}
+
+
+_APPEARANCE = struct.Struct("<5d")
+
+
+def _appearance_key(look: Appearance) -> bytes:
+    """An appearance's exact values as bytes: equal keys give equal material keys
+    (``repr``), including the sign of zeros (``-0.0 == 0.0``, but their reprs differ)."""
+    return _APPEARANCE.pack(*look.color, look.specular, look.shininess)
+
+
 def resolve_materials(
-    scene: Scene, candidates: list[tuple[SceneObject, Any, int]]
+    scene: Scene,
+    candidates: list[tuple[SceneObject, Any, int]],
+    cache: MaterialCache | None = None,
 ) -> tuple[MaterialTable, list[tuple[int, dict[int, int]]]]:
     """Materials of ``candidates`` (``(object, mesh, position in the scene)``).
 
     Returns the table and, per candidate, ``(default material index,
-    {group: material index})``.
+    {group: material index})``. With a ``cache`` (see :class:`MaterialCache`), work
+    from earlier renders of the scene is reused; the results are the same.
     """
     table = MaterialTable()
     library = scene.materials
-    resolved: dict[str, RenderMaterial] = {}
+    cache = MaterialCache() if cache is None else cache
+    if cache.library is not library or cache.version != library.version:
+        cache.library, cache.version = library, library.version
+        cache.resolved.clear()
+    this_render: dict[str, RenderMaterial] = {}  # library materials resolved, by id
     per_object: list[tuple[int, dict[int, int]]] = []
     t0 = time.perf_counter()
     for obj, mesh, position in candidates:
         if obj._material is not None:
             default = table.add(
-                _resolve(library.material(obj._material), resolved, table, position)
+                _material(library.material(obj._material), cache, this_render, table, position)
             )
         else:
             look = obj.appearance
-            key = "appearance:" + repr((look.color, look.specular, look.shininess))
-            default = table._index.get(key)  # objects of one color share their material
+            akey = _appearance_key(look)
+            material = cache.appearances.get(akey)
+            if material is None:
+                key = "appearance:" + repr((look.color, look.specular, look.shininess))
+                material = cache.appearances[akey] = appearance_material(look, key)
+            default = table._index.get(material.key)  # objects of one color share it
             if default is None:
-                default = table.add(appearance_material(look, key))
+                default = table.add(material)
         groups: dict[int, int] = {}
         for group, ref in obj._group_materials.items():
-            groups[group] = table.add(_resolve(library.material(ref), resolved, table, position))
+            groups[group] = table.add(
+                _material(library.material(ref), cache, this_render, table, position)
+            )
         used = [table.materials[default], *(table.materials[i] for i in groups.values())]
         if mesh.uvs is None:
             for material in used:
@@ -221,16 +273,68 @@ def resolve_materials(
     return table, per_object
 
 
-def _resolve(
-    material: Material, resolved: dict[str, RenderMaterial], table: MaterialTable, position: int
+def _material(
+    material: Material,
+    cache: MaterialCache,
+    this_render: dict[str, RenderMaterial],
+    table: MaterialTable,
+    position: int,
 ) -> RenderMaterial:
-    cached = resolved.get(material.id)
-    if cached is not None:
-        return cached
+    """``material`` resolved for this render: first use reports its diagnostics."""
+    found = this_render.get(material.id)
+    if found is not None:
+        return found
+    entry = cache.resolved.get(material.id)
+    if entry is not None and all(_image_state(t, mode) == state for t, mode, state in entry.images):
+        for slot, diagnostic in entry.reports:
+            if (material.id, slot) not in table._reported:
+                table._reported.add((material.id, slot))
+                table.diagnostics.append((position, diagnostic))
+    else:
+        start = len(table.diagnostics)
+        images: list[tuple[Any, str, str]] = []
+        resolved = _resolve(material, table, position, images)
+        reports = [
+            (slot, diagnostic)
+            for (_, diagnostic), slot in zip(
+                table.diagnostics[start:], _report_slots(table, material, start), strict=True
+            )
+        ]
+        entry = cache.resolved[material.id] = _Resolved(resolved, reports, images)
+    this_render[material.id] = entry.material
+    return entry.material
+
+
+def _report_slots(table: MaterialTable, material: Material, start: int) -> list[str]:
+    """The slots of the diagnostics ``material`` reported from ``start`` (their locations)."""
+    prefix = f"materials[{material.name}].textures."
+    slots = []
+    for _, diagnostic in table.diagnostics[start:]:
+        location = diagnostic.location or ""
+        slots.append(location[len(prefix) :] if location.startswith(prefix) else "")
+    return slots
+
+
+def _image_state(texture: Any, mode: str) -> str:
+    """The digest of the image ``texture`` gives in ``mode`` now (reads the file as
+    resolving does), or ``"error:CODE"``."""
+    try:
+        _, loaded = texture.mip_chain(mode)
+    except MaterialError as exc:
+        return f"error:{exc.code}"
+    return loaded.digest
+
+
+def _resolve(
+    material: Material,
+    table: MaterialTable,
+    position: int,
+    images: list[tuple[Any, str, str]] | None = None,
+) -> RenderMaterial:
     values = material._values
     textures: dict[str, RenderTexture] = {}
     for slot, binding in material._textures.items():
-        texture = _resolve_texture(material, slot, binding, table, position)
+        texture = _resolve_texture(material, slot, binding, table, position, images)
         if texture is not None:
             textures[slot] = texture
     model = material.model
@@ -253,12 +357,16 @@ def _resolve(
         double_sided=bool(values["double_sided"]),
         textures=textures,
     )
-    resolved[material.id] = out
     return out
 
 
 def _resolve_texture(
-    material: Material, slot: str, binding: TextureBinding, table: MaterialTable, position: int
+    material: Material,
+    slot: str,
+    binding: TextureBinding,
+    table: MaterialTable,
+    position: int,
+    images: list[tuple[Any, str, str]] | None = None,
 ) -> RenderTexture | None:
     from ..materials.material import SLOTS
     from ..materials.textures import ImageTexture, ProceduralTexture
@@ -289,33 +397,41 @@ def _resolve_texture(
     try:
         if isinstance(texture, ImageTexture):
             mode = texture.mode_for(SLOTS[slot].mode)
-            return RenderTexture(kind="image", image=_image(texture, mode, table), **common)
+            return RenderTexture(kind="image", image=_image(texture, mode, table, images), **common)
         assert isinstance(texture, ProceduralTexture)
-        images = {}
+        node_images: dict[tuple[str, str], RenderImage] = {}
         for ref in texture.graph.image_references():
             for node in texture.graph.nodes.values():
                 if node.type == "image" and node.params["texture"] == ref:
                     space = node.params["color_space"]
                     target = library.texture(ref)
                     assert isinstance(target, ImageTexture)
-                    images[(ref, space)] = _image(
-                        target, "srgb" if space == "srgb" else "linear", table
+                    node_images[(ref, space)] = _image(
+                        target, "srgb" if space == "srgb" else "linear", table, images
                     )
-        return RenderTexture(kind="procedural", graph=texture.graph, images=images, **common)
+        return RenderTexture(kind="procedural", graph=texture.graph, images=node_images, **common)
     except MaterialError as exc:
         _report(table, position, material, slot, texture.name, exc.code, exc.message)
         return None
 
 
-def _image(texture: Any, mode: str, table: MaterialTable) -> RenderImage:
+def _image(
+    texture: Any, mode: str, table: MaterialTable, images: list | None = None
+) -> RenderImage:
     key = f"{texture.id}:{mode}"
     if key in table._failed:
+        if images is not None:
+            images.append((texture, mode, f"error:{table._failed[key].code}"))
         raise table._failed[key]
     try:
         chain, loaded = texture.mip_chain(mode)
     except MaterialError as exc:
         table._failed[key] = exc
+        if images is not None:
+            images.append((texture, mode, f"error:{exc.code}"))
         raise
+    if images is not None:
+        images.append((texture, mode, loaded.digest))
     return RenderImage(
         texture.name, loaded.digest, chain, texture.wrap, texture.filter, texture.mipmaps
     )

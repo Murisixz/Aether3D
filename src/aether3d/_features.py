@@ -59,3 +59,11 @@ def enabled(variable: str) -> bool:
 def report() -> dict[str, bool]:
     """The state of every switch (for benchmark records and bug reports)."""
     return {name: enabled(name) for name in sorted(SWITCHES)}
+
+
+MATERIAL_CACHE = register(
+    "AETHER3D_MATERIAL_CACHE",
+    True,
+    "reuse materials resolved for earlier renders of a scene (rendering/materials.py, "
+    "MaterialCache); 0 resolves every material again for every render",
+)
