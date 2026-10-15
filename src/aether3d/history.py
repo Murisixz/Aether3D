@@ -501,7 +501,9 @@ class HistoryEntry:
     reused in a session), ``label`` describes it, ``changes`` counts the parts of
     the scene it changed and ``paths`` names them (``objects[<id>].transform``,
     ``materials[<id>]``, ``world``, ``procedural``, ...). ``bytes`` estimates the
-    memory the step holds (its states, and meshes or images only it references).
+    size of the step: its states and every mesh or image they refer to (also those
+    the scene or other steps share; :attr:`History.nbytes` counts each once, and
+    only those the scene no longer uses).
     """
 
     index: int

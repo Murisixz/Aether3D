@@ -63,7 +63,7 @@ features; breaking changes are called out explicitly).
 - **Example:** `examples/history_undo.py` makes 13 changes (a transaction, a
   rolled-back transaction, a checkpoint, a glTF import), undoes them back to
   identical pixels, and saves and replays the history.
-- **Tests:** `tests/test_history.py`, 90 tests.
+- **Tests:** `tests/test_history.py`, 91 tests.
   - **61 kinds of change**, each undone and redone twice to the same project
     document and the same objects.
   - **A random chain:** 150 random changes undone and redone through every

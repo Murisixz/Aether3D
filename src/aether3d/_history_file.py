@@ -608,7 +608,9 @@ class _Reader:
 
     def state(self, key: str, data: Any, loc: str) -> Any:
         if key in ("object.name", "scene.name"):
-            return _string(data, loc)
+            if not isinstance(data, str) or not data.strip():
+                raise _bad("expected a name (a non-empty string)", loc)
+            return data
         if key in ("object.visible", "object.alive"):
             if not isinstance(data, bool):
                 raise _bad("expected true or false", loc)
@@ -624,8 +626,11 @@ class _Reader:
                 t = Transform(*data)
             except AetherError as exc:
                 raise _bad(str(exc), loc) from None
+            rotation = tuple(float(v) for v in data[1])
+            if abs(sum(v * v for v in rotation) - 1.0) > 1e-6:
+                raise _bad("the rotation is not a unit quaternion", loc)
             # The stored quaternion is the unit quaternion it was: keep it exactly.
-            return (t._position, tuple(float(v) for v in data[1]), t._scale)
+            return (t._position, rotation, t._scale)
         if key in ("object.appearance", "object.camera", "object.light", "scene.render"):
             try:
                 return _fields_from_dict(key, data, loc)

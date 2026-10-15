@@ -586,6 +586,7 @@ def test_a_tampered_history_file_is_refused_and_changes_nothing(tmp_path):
         lambda d: d.update(format_version=99),
         lambda d: d["undo"][0]["changes"][0].update(before=[[0, 0], [0, 0, 0, 1], [1, 1, 1]]),
         lambda d: d["undo"][0]["changes"][0].update(after=[[9, 9, 9], [0, 0, 0, 1], [1, 1, 1]]),
+        lambda d: d["undo"][0]["changes"][0].update(before=[[0, 0, 1], [0, 0, 0, 2], [1, 1, 1]]),
     ]
     for corrupt in corruptions:
         d = json.loads(good)
@@ -802,3 +803,20 @@ def test_a_step_that_cannot_be_applied_changes_nothing():
     assert exc.value.code == "HISTORY_CONFLICT"
     assert doc(s) == before and a.name == "B" and s.get_by_name("A") is other
     assert len(s.history) == 3  # the step is still there, not applied
+
+
+def test_edits_of_a_removed_object_are_steps_too():
+    s = catalog_scene()
+    before = doc(s)
+    lamp = by(s, "Lamp")
+    s.remove(lamp)
+    lamp.position = (5, 5, 5)  # undo of the removal must not bring this back unrecorded
+    lamp.light.intensity = 9
+    assert [e.label for e in s.history.entries][1:] == [
+        "Set position of 'Lamp'",
+        "Set light intensity of 'Lamp'",
+    ]
+    s.history.undo(3)
+    assert doc(s) == before and lamp.scene is s and lamp.light.intensity == 1.0
+    s.history.redo(3)
+    assert lamp.scene is None and lamp.position == (5.0, 5.0, 5.0)
