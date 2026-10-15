@@ -116,6 +116,9 @@ Created only through a `Scene`.
 | `material` | The object's `Material`, or `None` (it renders with its color). Settable with a material, id, name or `None`. |
 | `group_materials`, `material_for_group(group)` | Materials of individual face groups (`{group: Material}`, a copy), and the material a group renders with. |
 | `visible` | Whether the object renders (lights: whether they shine). Not inherited by children. |
+| `tags`, `add_tags(*tags)`, `remove_tags(*tags)`, `has_tag(tag)` | The object's tags: a sorted tuple of unique strings (1–64 characters, at most 64), settable with any iterable of strings. Each change is an undo step (see [SPATIAL.md](SPATIAL.md#tags-and-metadata)). |
+| `metadata`, `set_metadata(key, value)`, `remove_metadata(key)` | Free-form JSON data (at most 16 KiB): `metadata` returns a copy and is settable with a dict. |
+| `bounds(*, space="world", children=False, include_hidden=False)` | Bounding box, oriented box and sphere of the object's geometry (and its descendants'), or `None` (see [SPATIAL.md](SPATIAL.md#bounds)). |
 | `look_at(target, *, up=(0, 0, 1))`, `look_along(direction, *, up)` | Turn the object's front (local −Y) toward a point or object, or along a direction. Exact under any parent. |
 | `world_forward` | Unit world direction of the object's front (local −Y). |
 | `set_world_position(position)` | Move the object to a world position, respecting parents. |
@@ -412,6 +415,7 @@ changes the scene is one step; a transaction is one step.
 | `checkpoint(name)`, `checkpoints`, `goto(name)`, `remove_checkpoint(name)` | Name the current state, list the names, undo or redo to one, forget one. |
 | `max_entries`, `max_bytes`, `configure(max_entries=None, max_bytes=None)` | Limits (default 256 steps, 256 MiB); the oldest steps are dropped first. |
 | `nbytes`, `dropped`, `revision` | Memory held only by the history, steps dropped so far, changes so far. |
+| `in_progress` | Whether an operation or transaction is open (its changes are not counted in `revision` until it ends). |
 | `enabled`, `disabled()` | Recording on or off (disabling clears the history; operations stay atomic). |
 | `clear()` | Forget every step and checkpoint. |
 | `save(path, *, project_dir=None)`, `load(path, *, project_dir=None, verify=True)` | Write or read a history file (see `Scene.save`/`Scene.load` with `history=True`). |
@@ -421,6 +425,43 @@ changes the scene is one step; a transaction is one step.
 `HistoryEntry`: `index` (unique, increasing), `label`, `changes` (count), `paths`
 (the parts of the scene it changed, such as `objects[<id>].transform`), `bytes`
 (memory estimate), `to_dict()`.
+
+## Spatial queries
+
+Read-only questions about where things are, answered exactly from the scene's
+triangles in world space ([SPATIAL.md](SPATIAL.md)). They change nothing (no
+history step, same `revision`). Common arguments: `objects`/`exclude` (objects,
+ids or names, or lists), `include_hidden=False`, and `surfaces="geometry"` or
+`"rendered"` for ray queries.
+
+| `Scene` method | Returns |
+| --- | --- |
+| `bounds(obj=None, *, space="world", children=False, include_hidden=False)` | `ObjectBounds` (`aabb`, `obb`, `sphere`, counts) or `None` |
+| `find_objects(*, name, kind, tags, any_tags, metadata, metadata_keys, parent, ancestor, visible, material, region, region_mode)` | objects matching every filter, in scene order |
+| `raycast(origin, direction, *, max_distance, min_distance, ...)` | the first `SurfaceHit`, or `None` |
+| `raycast_all(origin, direction, *, ..., limit=None)` | every `SurfaceHit`, nearest first |
+| `closest_point(point, *, max_distance, ...)` | the nearest `SurfaceHit` (point-to-surface distance), or `None` |
+| `nearest_objects(point, *, count=None, max_distance, ...)` | one `SurfaceHit` per object, nearest first |
+| `contains_point(obj, point, *, tolerance=1e-6)` | `Containment`: `"inside"`, `"outside"`, `"surface"` or `"undefined"` (open or non-manifold meshes), with the winding number |
+| `distance(a, b)` | `ObjectDistance`: the exact surface distance, its points, `intersecting` |
+| `overlaps(objects=None, *, against=None, exact=True, tolerance=0.0, ...)` | `Overlap` pairs: intersecting surfaces or contained solids (`exact=False`: box candidates) |
+| `query_region(region, *, mode="intersects", ...)` | `RegionMatch`es in a `Box` or `Sphere`: `"inside"`, `"intersects"`, `"contains"` (or `"bounds"`) |
+| `camera_ray(x, y, *, camera=None, width=None, height=None)` | `CameraRay` through an image point (the path tracer's ray) |
+| `pick(x, y, *, camera, width, height, objects, exclude, surfaces="rendered", cull=None)` | the `SurfaceHit` a camera shows at an image point, or `None` |
+| `project(points, *, camera, width, height)` | `ScreenPoint` (or a list): image position, depth, `in_view` |
+| `objects_in_view(*, camera, width, height, ..., exact=True)` | `ViewMatch`es in the view volume: `"inside"` or `"partial"` |
+| `line_of_sight(start, end, *, ..., margin=1e-6)` | `LineOfSight`: `clear` and the first `blocker` |
+| `visible_from(target, observer, *, samples=64, ...)` | `Visibility`: visible samples, `fraction`, blockers |
+| `relation(a, b, *, near_distance=None, tolerance=1e-6, viewer=None)` | `Relation`: distance, intersecting, near, above, below, inside, contains, in front of, behind, nearer to a viewer |
+| `describe(*, include_hidden=True)` | a compact JSON summary of the scene |
+
+Every result has `to_dict()`. The functions are also in `aether3d.spatial`
+(taking the scene first), with the regions `Box` (`AABB`) and `Sphere`, the
+result types, `surface_samples`, `get_index` (the cached `SpatialIndex`) and
+`run_query(scene, request)` (also `aether3d.run_query`): a JSON request
+`{"query": name, ...arguments}` answered with `{"query": name, "result": ...}`,
+which the command line (`aether3d query`) and the scene-script operation `query`
+use. Errors are `QueryError`s.
 
 ## `aether3d.math3d`
 
@@ -449,6 +490,7 @@ All deliberate errors derive from `AetherError`.
 | `RenderError` | `ValueError` | A camera, light, appearance, world or render setting is invalid, or rendering failed (including GPU problems: `GPU_UNAVAILABLE`, `GPU_ADAPTER_NOT_FOUND`, `GPU_DEVICE_LOST`, ...; see [GPU.md](GPU.md#errors-diagnostics-and-debugging)); nothing changed and no file was written. `.code` (stable), `.location`, `.hint`, `.details` |
 | `ProceduralError` | `ValueError` | A procedural definition, parameter or evaluation is invalid; nothing changed. `.code` (stable), `.location` (e.g. `geometry[Tower].modifiers[Row].params.count`), `.hint`, `.details` |
 | `MaterialError` | `ValueError` | A material, texture, graph or image is invalid or cannot be used (`INVALID_MATERIAL`, `TEXTURE_MISSING`, `IMAGE_TOO_LARGE`, `UNSAFE_PATH`, ...; see [MATERIALS.md](MATERIALS.md#errors-and-diagnostics)); nothing changed. `.code` (stable), `.location` (e.g. `materials[Stone].roughness`), `.hint`, `.details` |
+| `QueryError` | `ValueError` | A spatial query is malformed or cannot be answered (`INVALID_ARGUMENT`, `INVALID_REQUEST`, `OBJECT_NOT_FOUND`, `NO_GEOMETRY`, `NO_CAMERA`, ...; see [SPATIAL.md](SPATIAL.md#errors)); nothing changed. `.code` (stable), `.location` (the argument), `.hint`, `.details`, `to_dict()` |
 | `HistoryError` | `ValueError` | An undo, redo, checkpoint or history file operation cannot be performed (`NOTHING_TO_UNDO`, `TRANSACTION_OPEN`, `HISTORY_MISMATCH`, `INVALID_HISTORY`, ...; see [HISTORY.md](HISTORY.md#errors)); nothing changed. `.code` (stable), `.location`, `.hint`, `.details` |
 
 Missing files raise the standard `FileNotFoundError`.
@@ -484,6 +526,8 @@ aether3d scene merge PROJECT SOURCE.aether|.glb|.gltf [--parent REF] [--allow-lo
 aether3d material list|presets|schema|create|set|assign|texture|inspect|validate|remove|convert-colors|preview ...
 aether3d texture list|add|procedural|set|inspect|preview|remove ...
 aether3d history start|show|undo|redo|checkpoint|goto|clear|verify PROJECT ... [--json]
+aether3d query QUERY PATH [KEY=VALUE ...] [--allow-lossy] [--json]
+aether3d query run PATH --request FILE|- [--allow-lossy] [--json]
 aether3d --version
 ```
 
@@ -504,8 +548,8 @@ object has:
 
 - `type` and `message`;
 - `location`, when known;
-- `code`, for `AssetFormatError`, `ScriptError`, `ProceduralError`, `RenderError` and
-  `MaterialError` (with `hint` and `details` when available);
+- `code`, for `AssetFormatError`, `ScriptError`, `ProceduralError`, `RenderError`,
+  `MaterialError` and `QueryError` (with `hint` and `details` when available);
 - `diagnostics`, for `UnsupportedFeatureError`.
 
 Exit codes:

@@ -540,13 +540,14 @@ built on them:
 | `add_camera` | Camera parameters, `name`, `parent`, `position`, `rotation_euler`, `look_at` (point or object), `up`, `active`, and `frame` with `frame_targets`, `frame_direction`, `frame_margin` |
 | `add_light` | `type`, light parameters (including `radius` and `angle`), `name`, `parent`, `position`, `rotation_euler`, `direction`, `look_at`, `up` |
 | `set_camera`, `set_light` | `camera`/`light` plus parameters |
-| `set_object` | `object`, `position`, `rotation_euler`, `scale`, `look_at` or `look_along`, `up`, `color`, `specular`, `shininess`, `visible` |
+| `set_object` | `object`, `position`, `rotation_euler`, `scale`, `look_at` or `look_along`, `up`, `color`, `specular`, `shininess`, `visible`, `tags` (replaces them), `add_tags`, `remove_tags`, `metadata` (entries to set; `null` removes one) |
 | `frame_camera` | `camera` (default: active), `targets`, `direction`, `up`, `margin`, `fit_clipping` |
 | `set_active_camera` | `camera` or `null` |
 | `set_world` | `background`, `ambient_color`, `ambient_intensity`, `environment` (an object of environment fields) |
 | `set_render_settings` | `width`, `height`, `samples`, `exposure`, `cull`, `default_lights` |
 | `remove` | `object` (and its children) |
 | `info` | Read-only summary |
+| `query` | A read-only spatial query: `query` names it, the other keys are its arguments (see [SPATIAL.md](SPATIAL.md#json-requests-the-command-line-and-scripts)) |
 
 A script is atomic. If any operation fails:
 - created objects are removed;

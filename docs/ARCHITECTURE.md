@@ -109,6 +109,16 @@ Aether3D/
 │   │       ├── environment.py Ambient, uniform and sky environments
 │   │       ├── sampling.py    Counter-based random numbers, warps, MIS
 │   │       └── parallel.py    Tiles, rounds and forked worker processes
+│   ├── spatial/           Spatial queries (see docs/SPATIAL.md)
+│   │   ├── types.py       Regions (Box/AABB, Sphere) and result types with to_dict()
+│   │   ├── geometry.py    Exact kernels: closest points, triangle intersection and distance,
+│   │   │                  separating axes, winding numbers, components, BVH box queries
+│   │   ├── index.py       SpatialIndex: world-space geometry per scene revision (weak cache)
+│   │   ├── rays.py        All-hits traversal of the Stage 8 BVH, shared-edge merging,
+│   │   │                  rendered surfaces (the path tracer's pass-through rules)
+│   │   ├── queries.py     The queries (bounds, rays, nearest, containment, overlaps,
+│   │   │                  regions, cameras, sight lines, relations, describe)
+│   │   └── request.py     JSON requests: the CLI's `aether3d query` and the script op
 │   ├── gltf/              glTF 2.0 interchange (no third-party dependencies)
 │   │   ├── axes.py        Exact Z-up <-> Y-up conversion
 │   │   ├── materials.py   glTF materials, textures and samplers, in and out
@@ -155,7 +165,8 @@ Aether3D/
 | `rendering.pathtrace.*` | `rendering.raytrace`, `rendering.surface` (material evaluation), `rendering` (scene data, settings, color), `diagnostics`, `errors`; the standard library's `multiprocessing` and `mmap` for worker processes |
 | `gltf.materials` | `materials`, `rendering.color`, `diagnostics`, `errors` |
 | `_history_file` | `history`, `serialization`, `scene`, `materials`, `procedural` (states and entities), `_fileio` |
-| `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `history`, `errors` |
+| `spatial.*` | `rendering.raytrace` (two-level BVH, watertight test), `rendering.scene_data` (world matrices, render-scene extraction), `rendering.pathtrace.scene` (rendered surfaces, lazily), `rendering.camera`, `inspection` (topology), `errors`; `scene` only for type hints and lazily for lookups |
+| `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `history`, `spatial`, `errors` |
 
 Lower layers never import higher ones. `scene` provides convenience methods
 (`save`/`load`, `export`/`import_file`, `inspect_geometry`, `edit_mesh`) by importing
@@ -582,4 +593,45 @@ undone and redone exactly. See [HISTORY.md](HISTORY.md). Key decisions:
   loading replays it on a copy of the scene before using it. The CLI loads and
   saves the history around every command that changes a project with a history
   file, so command-line sessions can undo across processes.
+
+## Scene intelligence and spatial queries (v0.10.0)
+
+`aether3d.spatial` answers read-only questions about where things are; `Scene`
+exposes every query as a method. See [SPATIAL.md](SPATIAL.md). Key decisions:
+
+- **Exact, from the triangles, in world space.** World matrices are the
+  renderers' (`world_matrices`), so queries and renders agree on placement, and
+  camera rays are the path tracer's, bit for bit. Bounding volumes only select
+  candidates; every reported fact is decided on triangles (or says it rests on
+  boxes: `exact=False`).
+- **Reuse the Stage 8 ray tracing core.** Ray queries run on the two-level
+  `SceneAccel` and its watertight triangle test, with bottom levels from the
+  renderers' shared BLAS cache. `all_hits` walks the same structure without
+  shrinking the ray, with the same arithmetic, so the first of all hits is the
+  closest hit; hits of one object at one distance (shared edges) are merged.
+  Rendered-surface queries use the path tracer's `PathScene.trace`, so alpha
+  cut-outs and single-sided backs are skipped exactly as the path tracer does.
+  The accelerator's boxes are grown by one ulp so that slab tests treat them as
+  closed sets.
+- **Per-object world BVHs** (built on demand with `build_bvh`) serve nearest-point
+  branch and bound, pair walks for distances and intersections, and region and
+  frustum candidates.
+- **Separating axes prove disjointness; constructive tests prove contact.**
+  Triangle-triangle intersection does not rely on the completeness of an axis
+  set: pairs not separated are decided by edge crossings and zero vertex-triangle
+  or edge-edge distances.
+- **Containment only where it is defined.** Inside/outside needs a closed,
+  edge-manifold, consistently oriented mesh (inspection's welded topology); the
+  winding number decides it (ray-crossing parity with retries for many points).
+  Other meshes are reported as `"undefined"`, with the fractional winding number.
+- **One index per scene revision.** The index is a weak cache keyed by the
+  scene. `scene.revision` increases with every change, undo and redo included;
+  inside an open operation (`history.in_progress`) a fresh index is built, so a
+  query never sees stale geometry and caching needs no invalidation hooks.
+  Queries never mutate the scene or record history.
+- **One request format.** `run_query` maps JSON requests to the Python
+  functions; the CLI (`aether3d query`) and the scene-script `query` operation
+  use it, so Python, CLI and scripts give the same JSON.
+- **Tags and metadata** are object state like any other: an `object.annotations`
+  history aspect, project format 6, history files and glTF extras.
 

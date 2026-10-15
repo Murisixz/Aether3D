@@ -49,6 +49,7 @@ Contents:
 | Hierarchy | `set_parent` (with `keep_world_transform`), the order of children and roots |
 | Transforms | position, rotation, Euler rotation, scale, `obj.transform = ...`, `look_at`, `look_along`, `set_world_position`, `frame` |
 | Appearance | visibility, color, specular, shininess, `obj.appearance = ...` |
+| Tags and metadata | `obj.tags = ...`, `add_tags`, `remove_tags`, `obj.metadata = ...`, `set_metadata`, `remove_metadata` (0.10.0) |
 | Cameras and lights | every parameter (`obj.camera.fov = 35`, `obj.light.configure(...)`), the active camera |
 | World and settings | background, ambient light, the environment and its fields, render settings, the scene's name |
 | Meshes | `obj.mesh = ...`, committed edit sessions (`obj.edit_mesh()`, with `scope="shared"` too) |
@@ -67,9 +68,11 @@ parameters). The history records them under stable, id-based paths:
 **Not recorded:**
 - Effects outside the scene: saved projects, exported files, an image written by
   `texture.extract(path)` (undo restores the texture, not the file system), renders.
-- Caches and counters: evaluation caches, `materials.version`,
+- Caches and counters: evaluation caches, the spatial-query index, `materials.version`,
   `procedural.revision`, `scene.revision` (they increase with undo and redo as
   with any change).
+- Spatial queries ([SPATIAL.md](SPATIAL.md)): they only read the scene; they make
+  no step and leave `scene.revision` unchanged.
 - The edits inside an open edit session. They have their own undo (see
   [Other undo systems](#other-undo-systems)); committing the session is one step.
 - Changes made while recording is disabled (see [Limits and memory](#limits-and-memory)).
@@ -107,6 +110,7 @@ parameters). The history records them under stable, id-based paths:
 | `history.redo_entries` | The undone steps, the next to redo first |
 | `history.to_dict()` | A JSON summary: steps, undone steps, checkpoints, limits, memory |
 | `scene.revision` | Increases with every change, undo and redo included (to know when to re-render) |
+| `history.in_progress` | Whether an operation or transaction is open: its changes are counted in `revision` when it ends (caches that key on `revision`, like the spatial-query index, rebuild meanwhile) |
 
 - **All or nothing.** `undo(3)` either undoes three steps or, if it cannot (fewer are
   recorded: `NOTHING_TO_UNDO`), changes nothing.

@@ -215,3 +215,27 @@ def test_history_quick_start(capsys):
     scene = namespace["scene"]
     assert scene.get_by_name("Crate").position == (2.0, 0.0, 0.5)
     assert len(scene) == 3 and not scene.history.can_redo
+
+
+def test_spatial_quick_start(capsys):
+    start = "from aether3d import Scene\nfrom aether3d.spatial"
+    source = python_block(ROOT / "docs/SPATIAL.md", start)
+    exec(compile(source, "docs/SPATIAL.md", "exec"), {})
+    printed = capsys.readouterr().out.splitlines()
+    # Every printed value is stated in a comment of the example.
+    comments = [line.split("# ")[1] for line in source.splitlines() if "print(" in line]
+    assert len(printed) == len(comments) == 7
+    for value, comment in zip(printed, comments, strict=True):
+        assert comment.startswith(value), (value, comment)
+
+
+def test_readme_spatial_example(capsys):
+    source = python_block(ROOT / "README.md", "from aether3d import Scene\nfrom aether3d.spatial")
+    namespace: dict = {}
+    exec(compile(source, "README.md", "exec"), namespace)
+    printed = capsys.readouterr().out.splitlines()
+    assert printed[0].startswith("Crate (2.0, 0.0, 1.0) (0.0, 0.0, 1.0)")
+    assert printed[1:] == ["4.0", "inside", "True"]
+    assert [(o.a.name, o.b.name) for o in namespace["touching"]] == [("Ground", "Crate")]
+    assert [m.object.name for m in namespace["in_yard"]] == ["Ground", "Crate"]  # Cam: y = -8
+    assert [o.name for o in namespace["props"]] == ["Crate"]

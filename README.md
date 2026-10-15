@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.9.0 (operations history: undo, redo and transactions).** Aether3D provides:
+> **Status: v0.10.0 (scene intelligence and spatial queries).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -41,7 +41,11 @@ graphical interface required.
 >   seeds;
 > - an **operations history**: every change -- from Python, scripts or the
 >   command line -- can be undone and redone exactly, with transactions,
->   checkpoints, memory limits, and histories saved with projects.
+>   checkpoints, memory limits, and histories saved with projects;
+> - **spatial queries**: exact, read-only answers about where things are --
+>   bounds, object discovery by tags and metadata, ray casts, nearest points,
+>   containment, overlaps, regions, camera picking and projection, lines of
+>   sight, visibility and spatial relations -- from Python, JSON and the CLI.
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
 > Animation, physics and other systems are intentionally **not** part of
@@ -298,6 +302,44 @@ On the command line, a project with a history file records every change, and
 `aether3d history undo PROJECT` undoes the last one. See
 [docs/HISTORY.md](docs/HISTORY.md).
 
+### Spatial queries
+
+Ask a scene where things are. Answers are exact (computed from the triangles in
+world space, through hierarchies, mirrored scales and instances) and read-only.
+
+```python
+from aether3d import Scene
+from aether3d.spatial import Box
+
+scene = Scene("Yard")
+scene.add_plane(name="Ground", size=20)
+crate = scene.add_cube(name="Crate", size=1, position=(2, 0, 0.5))
+crate.tags = ["prop"]
+scene.add_camera("Cam", position=(0, -8, 3), look_at=(0, 0, 0.5))
+
+hit = scene.raycast((2, 0, 10), (0, 0, -1))  # the first surface below a point
+print(hit.object.name, hit.position, hit.normal, hit.uv)  # Crate (2.0, 0.0, 1.0) ...
+print(scene.closest_point((2, 0, 5)).distance)  # point-to-surface distance: 4.0
+print(scene.contains_point("Crate", (2, 0, 0.5)).state)  # inside (open meshes: undefined)
+touching = scene.overlaps()  # exact contacts (the crate rests on the ground), not boxes
+in_yard = scene.query_region(Box((-5, -5, 0), (5, 5, 3)))  # Ground and Crate
+picked = scene.pick(640, 360)  # what the camera shows at a pixel
+print(scene.relation("Crate", "Ground").above)  # True; also near, inside, in front of, ...
+props = scene.find_objects(tags="prop", region=Box((0, -1, 0), (3, 1, 2)))  # [Crate]
+```
+
+![The castle's spatial inspection: the keep's hierarchy box, picked points and sight lines](examples/output/castle_spatial_view.png)
+
+*[`examples/castle_spatial.py`](examples/castle_spatial.py) inspects the castle: a
+height map from rays, exact contacts, relations, sight lines through the gate, and
+picks that agree with the rasterizer's object ids.
+[`examples/hero_picking.py`](examples/hero_picking.py) picks and probes the blocky
+hero.*
+
+Objects carry `tags` and `metadata` for discovery. On the command line:
+`aether3d query raycast castle.aether origin=0,0,30 direction=0,0,-1 --json`. See
+[docs/SPATIAL.md](docs/SPATIAL.md).
+
 ### GPU rendering
 
 ![The castle: CPU renderer | GPU | GPU with shadows](examples/output/castle_comparison.png)
@@ -444,6 +486,11 @@ $ aether3d render castle.aether -o castle.png --backend gpu --shadows --width 19
 $ aether3d render castle.aether -o castle_path.png --backend path --spp 64 --bounces 4 --tonemap neutral
 $ aether3d render castle.aether -o castle_gpu_path.png --backend gpu_path --spp 1024 --bounces 6   # on the GPU
 $ aether3d render castle.aether -o castle_ao.png --backend path --ao-only --ao-distance 0.5   # fast AO preview
+$ aether3d object set castle.aether Keep --add-tag landmark --metadata floors=3   # tags and metadata
+$ aether3d query raycast castle.aether origin=0,0,30 direction=0,0,-1 --json     # first surface hit
+$ aether3d query find castle.aether tags=landmark                                # objects by tag
+$ aether3d query pick castle.aether x=960 y=540 --json                           # object at a pixel
+$ aether3d query run castle.aether --request queries.json --json                 # JSON requests
 $ aether3d inspect model.glb                   # validate/inspect also read .glb/.gltf
 $ aether3d geometry examples/first_scene.aether
 Geometry of "First Scene": OK
@@ -540,6 +587,7 @@ Apache-2.0) and a Vulkan, Metal or Direct3D 12 driver; see
 | [docs/MATERIALS.md](docs/MATERIALS.md) | Materials, textures and procedural shaders: models and formulas, slots, images, coordinates, node graphs, presets, face groups, persistence, glTF, CLI, GPU, security, performance, limitations |
 | [docs/RENDER_QUALITY.md](docs/RENDER_QUALITY.md) | The path tracer: architecture, BVH and ray/triangle methods, BSDF sampling and PDFs, lights and MIS, environment, AO, sampling and reproducibility, color management and HDR, passes, API, CLI, performance, verification, limitations |
 | [docs/HISTORY.md](docs/HISTORY.md) | Undo, redo, transactions and checkpoints: what is recorded, limits and memory, identity and caches, history files, CLI, design, limitations |
+| [docs/SPATIAL.md](docs/SPATIAL.md) | Spatial queries: conventions, tags and metadata, bounds, discovery, rays, nearest points, containment, overlaps, regions, cameras and picking, sight lines, relations, caching, JSON and CLI, errors, performance, limitations |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
