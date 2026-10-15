@@ -548,8 +548,8 @@ def compare(current: dict, baseline: dict) -> None:
     base: dict[str, Any] = {}
     flatten("", baseline["groups"], base)
     width = max((len(k) for k in rows), default=10)
-    label = baseline.get("label", "baseline")
-    print(f"\n{'metric':{width}s} {label:>14s} {current.get('label', 'now'):>14s}   ratio")
+    label = baseline.get("label") or "baseline"
+    print(f"\n{'metric':{width}s} {label:>14s} {current.get('label') or 'now':>14s}   ratio")
     for key, value in rows.items():
         before = base.get(key)
         if isinstance(value, (int, float)) and isinstance(before, (int, float)) and before:

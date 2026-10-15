@@ -26,7 +26,7 @@ system's own cache, which is not scene state).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -54,6 +54,7 @@ class Entry:
     world: np.ndarray  # (4, 4)
     visible: bool
     det: float  # determinant of the world matrix's linear part
+    singular: bool = field(init=False)  # the world transform collapses the geometry
     _vertices: np.ndarray | None = field(default=None, repr=False)
     _bvh: Any = field(default=None, repr=False)
     _box: tuple[np.ndarray, np.ndarray] | None = field(default=None, repr=False)
@@ -65,9 +66,8 @@ class Entry:
     def linear(self) -> np.ndarray:
         return self.world[:3, :3]
 
-    @property
-    def singular(self) -> bool:
-        return not np.isfinite(self.det) or abs(self.det) < 1e-300
+    def __post_init__(self) -> None:
+        self.singular = not np.isfinite(self.det) or abs(self.det) < 1e-300
 
     @property
     def orientation(self) -> float:
@@ -171,7 +171,11 @@ class _Instances:
 class SpatialIndex:
     """Every object with geometry in a scene, in world space (see the module docstring)."""
 
-    def __init__(self, scene: Scene) -> None:
+    def __init__(self, scene: Scene, previous: SpatialIndex | None = None) -> None:
+        """Index ``scene`` now. Entries of ``previous`` (an index of the same scene at an
+        earlier revision) whose object, mesh, visibility and world matrix are unchanged are
+        reused with what they built (vertices, BVHs, boxes): results are those of a fresh
+        index, computed once."""
         self.scene = scene
         self.revision = scene.revision
         worlds = world_matrices(scene)
@@ -180,7 +184,7 @@ class SpatialIndex:
         self.entries: list[Entry] = []
         self.by_id: dict[str, Entry] = {}
         self._topology: dict[int, dict[str, Any]] = {}
-        self._accels: dict[tuple[int, ...], tuple[SceneAccel, list[Entry]]] = {}
+        self._accels: dict[tuple[Entry, ...], tuple[SceneAccel, list[Entry]]] = {}
         self._rendered: dict[tuple[int, ...], Any] = {}  # PathScenes (rays.rendered_scene)
         self._render_scene: Any = None
         self._users: dict[int, list[Entry]] | None = None
@@ -188,6 +192,7 @@ class SpatialIndex:
         # Objects whose procedural geometry fails to evaluate: an error for the queries
         # they take part in (as renders fail only for the objects they draw).
         self.failed: dict[str, QueryError] = {}
+        found: list[tuple[int, SceneObject, Mesh]] = []
         for k, obj in enumerate(scene):
             self.order[obj.id] = k
             if obj._mesh is None and obj._geometry is None:
@@ -207,13 +212,57 @@ class SpatialIndex:
                 continue
             if mesh is None or mesh.triangle_count == 0:
                 continue
-            world = worlds[obj.id]
-            if not np.all(np.isfinite(world)):
+            found.append((k, obj, mesh))
+        if not found:
+            return
+        stack = np.stack([worlds[obj.id] for _, obj, _ in found])
+        finite = np.all(np.isfinite(stack), axis=(1, 2))
+        # One LAPACK determinant per matrix, as np.linalg.det(world[:3, :3]) computes it.
+        dets = np.zeros(len(found))
+        if finite.any():
+            dets[finite] = np.linalg.det(stack[finite, :3, :3])
+        # Entries of the previous index that still describe their object exactly.
+        reusable: list[Entry | None] = [None] * len(found)
+        if previous is not None:
+            old = previous.by_id
+            rows, olds = [], []
+            for row, (_, obj, mesh) in enumerate(found):
+                entry = old.get(obj.id)
+                if (
+                    entry is not None
+                    and entry.obj is obj
+                    and entry.mesh is mesh
+                    and entry.visible == obj.visible
+                ):
+                    rows.append(row)
+                    olds.append(entry)
+            if rows:
+                same = np.all(stack[rows] == np.stack([e.world for e in olds]), axis=(1, 2))
+                for row, entry, equal in zip(rows, olds, same.tolist(), strict=True):
+                    if equal:
+                        reusable[row] = entry
+        for (k, obj, mesh), ok, det, entry in zip(
+            found, finite.tolist(), dets.tolist(), reusable, strict=True
+        ):
+            if not ok:
                 continue
-            det = float(np.linalg.det(world[:3, :3]))
-            entry = Entry(k, obj, mesh, world, obj.visible, det)
+            if entry is None:
+                entry = Entry(k, obj, mesh, worlds[obj.id], obj.visible, det)
+            elif entry.order != k:
+                entry = replace(entry, order=k)
             self.entries.append(entry)
             self.by_id[obj.id] = entry
+        if previous is not None:
+            # Per-mesh facts, for meshes both indexes use (the same immutable objects).
+            meshes = {id(e.mesh): e.mesh for e in self.entries}
+            before = {id(e.mesh): e.mesh for e in previous.entries}
+            for cache, old_cache in (
+                (self._topology, previous._topology),
+                (self._representatives, previous._representatives),
+            ):
+                for key, value in old_cache.items():
+                    if key in meshes and meshes[key] is before.get(key):
+                        cache[key] = value
 
     # -- selection --------------------------------------------------------------
 
@@ -283,12 +332,16 @@ class SpatialIndex:
 
     def mesh_users(self, entry: Entry) -> list[Entry]:
         """The entries whose geometry is the same mesh as ``entry``'s (instances), in order."""
+        return self.mesh_users_of(id(entry.mesh))
+
+    def mesh_users_of(self, key: int) -> list[Entry]:
+        """The entries whose mesh has ``id`` ``key``, in order (empty if none)."""
         if self._users is None:
             users: dict[int, list[Entry]] = {}
             for e in self.entries:
                 users.setdefault(id(e.mesh), []).append(e)
             self._users = users
-        return self._users[id(entry.mesh)]
+        return self._users.get(key, [])
 
     def representatives(self, entry: Entry) -> np.ndarray:
         """One vertex index of every connected component of the entry's mesh."""
@@ -321,11 +374,11 @@ class SpatialIndex:
         return found
 
     def accel(self, entries: list[Entry]) -> tuple[SceneAccel, list[Entry]]:
-        """The ray acceleration structure of these entries (cached)."""
-        usable = [e for e in entries if not e.singular]
-        key = tuple(e.order for e in usable)
+        """The ray acceleration structure of these entries (cached per selection)."""
+        key = tuple(entries)
         found = self._accels.get(key)
         if found is None:
+            usable = [e for e in entries if not e.singular]
             meshes: list[RenderMesh] = []
             index: dict[int, int] = {}
             instances: list[_Instance] = []
@@ -362,6 +415,6 @@ def get_index(scene: Scene) -> SpatialIndex:
     cached = derived.get("spatial")
     if cached is not None and cached.revision == scene.revision:
         return cached
-    index = SpatialIndex(scene)
+    index = SpatialIndex(scene, previous=cached)
     derived["spatial"] = index
     return index
