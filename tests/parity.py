@@ -45,6 +45,44 @@ def _diagnostics(items) -> list:
     return [(d.code, d.severity, d.message, d.location) for d in items]
 
 
+def _texture(t) -> tuple:
+    image = t.image
+    return (
+        t.slot,
+        t.kind,
+        t.texture_id,
+        t.name,
+        t.channel,
+        t.coordinates,
+        t.projection,
+        array_bytes(t.transform),
+        t.blend,
+        None
+        if image is None
+        else (image.name, image.digest, image.chain.mode, image.wrap, image.filter, image.mipmaps),
+        None if t.graph is None else json.dumps(t.graph.to_dict(), sort_keys=True, default=repr),
+        tuple(sorted((key, img.digest) for key, img in t.images.items())),
+    )
+
+
+def _instance_arrays(rs) -> tuple:
+    a = rs.instance_arrays
+    return tuple(
+        array_bytes(getattr(a, f))
+        for f in (
+            "world",
+            "normal_matrix",
+            "mirrored",
+            "mesh",
+            "base_color",
+            "specular",
+            "shininess",
+            "material",
+            "has_groups",
+        )
+    )
+
+
 def render_scene_fingerprint(rs) -> dict[str, Any]:
     """Everything a backend reads from a ``RenderScene``, as comparable plain data."""
     camera = rs.camera
@@ -115,10 +153,11 @@ def render_scene_fingerprint(rs) -> dict[str, Any]:
                 m.normal_strength,
                 m.occlusion_strength,
                 m.double_sided,
-                tuple(sorted(m.textures)),
+                tuple(_texture(m.textures[slot]) for slot in sorted(m.textures)),
             )
             for m in rs.materials
         ],
+        "instance_arrays": _instance_arrays(rs),
         "environment": None
         if rs.environment is None
         else json.dumps(rs.environment.to_dict(), sort_keys=True),

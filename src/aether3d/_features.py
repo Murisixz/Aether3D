@@ -74,3 +74,11 @@ GPU_PERSISTENT_BUFFERS = register(
     "keep the GPU's per-frame data buffers between renders and write only what changed "
     "(rendering/gpu/resources.py, FrameBuffers); 0 creates fresh buffers for every render",
 )
+
+RETAINED_RENDER_WORLD = register(
+    "AETHER3D_RETAINED_RENDER_WORLD",
+    True,
+    "keep what extraction computed between renders and update it from the history's "
+    "change journal (rendering/retained.py, RenderWorld); 0 walks the whole scene for "
+    "every render",
+)

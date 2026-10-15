@@ -111,6 +111,7 @@ output:      exposure → clamp → sRGB transfer function → 8 bits → PNG (o
 | `rendering/settings.py` | `Appearance`, `World`, `RenderSettings`, `RenderLimits` |
 | `rendering/color.py` | sRGB ↔ linear transfer functions, color parsing |
 | `rendering/scene_data.py` | `RenderScene` extraction (backend-independent) |
+| `rendering/retained.py` | the retained render world: extraction kept up to date between renders |
 | `rendering/raster.py` | clipping, fixed-point rasterization, visibility buffer |
 | `rendering/cpu.py` | the CPU backend: geometry, raster, shading, resolve |
 | `rendering/renderer.py` | `render()` and `RenderResult` |
@@ -121,6 +122,16 @@ output:      exposure → clamp → sRGB transfer function → 8 bits → PNG (o
 Rendering never modifies the scene. Extraction reads objects, transforms and
 the *current evaluated* procedural meshes (through the procedural cache), and
 everything after extraction works on immutable `RenderScene` data.
+
+Since 0.11.1 extraction is retained between renders (`rendering/retained.py`):
+what it computed for a scene is kept with the scene and updated from the
+history's change journal, so a frame where nothing changed, or one object moved,
+does not visit every object again. The render scene is exactly the one a full
+walk of the scene gives; the full walk runs inside open operations and
+transactions, when the scene fails to render (it reports the error), and with
+`AETHER3D_RETAINED_RENDER_WORLD=0`. A procedural object's mesh is evaluated again
+after any procedural or geometry change; between them it is reused (evaluations
+are deterministic, so a new evaluation of unchanged definitions is the same mesh).
 
 ## Coordinate conventions
 

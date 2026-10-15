@@ -93,6 +93,7 @@ is an error naming the variable). Benchmark records include their state.
 | --- | --- | --- |
 | `AETHER3D_MATERIAL_CACHE` | on | reuse materials resolved for earlier renders of a scene (`rendering/materials.py`, `MaterialCache`); `0` resolves every material for every render |
 | `AETHER3D_GPU_PERSISTENT_BUFFERS` | on | keep the GPU's per-frame data buffers between renders and write only what changed (`rendering/gpu/resources.py`, `FrameBuffers`); `0` creates fresh buffers for every render |
+| `AETHER3D_RETAINED_RENDER_WORLD` | on | keep what extraction computed between renders and update it from the history's change journal (`rendering/retained.py`, `RenderWorld`; it needs the material cache); `0` walks the whole scene for every render |
 
 ## Phase 0: foundation and baseline
 

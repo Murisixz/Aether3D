@@ -56,3 +56,12 @@ def strict_history(monkeypatch):
     from aether3d import history
 
     monkeypatch.setattr(history, "STRICT", True)
+
+
+@pytest.fixture(autouse=True)
+def strict_render_world(monkeypatch):
+    """An unexpected error of the retained render world fails the test, instead of being
+    covered by the full extraction it falls back to."""
+    from aether3d.rendering import retained
+
+    monkeypatch.setattr(retained, "STRICT", True)

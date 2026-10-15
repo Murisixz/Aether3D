@@ -224,9 +224,7 @@ def resolve_materials(
     table = MaterialTable()
     library = scene.materials
     cache = MaterialCache() if cache is None else cache
-    if cache.library is not library or cache.version != library.version:
-        cache.library, cache.version = library, library.version
-        cache.resolved.clear()
+    _prepare(cache, library)
     this_render: dict[str, RenderMaterial] = {}  # library materials resolved, by id
     per_object: list[tuple[int, dict[int, int]]] = []
     t0 = time.perf_counter()
@@ -250,27 +248,44 @@ def resolve_materials(
             groups[group] = table.add(
                 _material(library.material(ref), cache, this_render, table, position)
             )
-        used = [table.materials[default], *(table.materials[i] for i in groups.values())]
         if mesh.uvs is None:
-            for material in used:
-                slots = sorted(s for s, t in material.textures.items() if t.needs_uvs)
-                if slots:
-                    table.diagnostics.append(
-                        (
-                            position,
-                            Diagnostic(
-                                "MISSING_UVS",
-                                WARNING,
-                                f"object {obj.name!r} has no texture coordinates (UVs), so the "
-                                f"{', '.join(slots)} texture(s) of material {material.name!r} "
-                                "were ignored on it",
-                                f"objects[{obj.name}]",
-                            ),
-                        )
-                    )
+            used = [table.materials[default], *(table.materials[i] for i in groups.values())]
+            table.diagnostics += _missing_uvs(obj, used, position)
         per_object.append((default, groups))
     table.texture_seconds = time.perf_counter() - t0
     return table, per_object
+
+
+def _prepare(cache: MaterialCache, library: Any) -> None:
+    """Forget library resolutions made for another library or version of it."""
+    if cache.library is not library or cache.version != library.version:
+        cache.library, cache.version = library, library.version
+        cache.resolved.clear()
+
+
+def _missing_uvs(
+    obj: SceneObject, used: list[RenderMaterial], position: int
+) -> list[tuple[int, Diagnostic]]:
+    """``MISSING_UVS`` for each material in ``used`` (the object's, in order: its default
+    then its face groups') that maps a texture by UV, ``obj``'s mesh having no UVs."""
+    out = []
+    for material in used:
+        slots = sorted(s for s, t in material.textures.items() if t.needs_uvs)
+        if slots:
+            out.append(
+                (
+                    position,
+                    Diagnostic(
+                        "MISSING_UVS",
+                        WARNING,
+                        f"object {obj.name!r} has no texture coordinates (UVs), so the "
+                        f"{', '.join(slots)} texture(s) of material {material.name!r} "
+                        "were ignored on it",
+                        f"objects[{obj.name}]",
+                    ),
+                )
+            )
+    return out
 
 
 def _material(

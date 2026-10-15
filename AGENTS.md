@@ -59,7 +59,9 @@ apply to agents too.
 - Rendering: images are produced by Aether3D's own code (`rendering/`). Never shell out to Blender
   or another renderer to make an image; Blender may only be used for optional external checks.
   Backends consume a `RenderScene` from `extract_render_scene` and must not touch scene objects.
-  Rendering must never modify the scene or bake procedural geometry.
+  Rendering must never modify the scene or bake procedural geometry. A `RenderScene` is
+  immutable: its arrays may be shared with later frames (the retained render world makes them
+  read-only), so backends never write into them.
 - Cameras and lights look along local -Y with +Z up; user colors are display sRGB and lighting is
   linear; keep per-vertex/per-sample math explicit (no BLAS) so results stay bitwise reproducible.
   Validate new shading or projection code against `tests/render_reference.py` (an independent ray
@@ -192,6 +194,13 @@ apply to agents too.
   - **Caches derived from a scene live in `Scene._derived()`**, keyed by `scene.revision`
     or the history's own bookkeeping. Never key a module-level dictionary by a scene: a
     cache entry that refers to its scene keeps it alive (`tests/test_scene_lifecycle.py`).
+  - **Incremental caches follow the change journal.** `scene.history._changes_since(revision)`
+    names the parts changed after a revision (`None`: recompute everything). Every scene
+    change must go through the history (`_touch` before writing) or such caches go stale.
+    Inside an open operation (`history.in_progress`) changes are not journaled yet: compute
+    without the cache and keep nothing. A journaled aspect a cache does not know must make it
+    recompute everything (`rendering/retained.py` is the model; its tests compare it with the
+    full extraction along random edits, `tests/test_retained_world.py`).
   - **Identical results.** A cached or faster path must give exactly what the path it
     replaces gives (`tests/parity.py`); `tests/test_invariants.py` checks identity, undo,
     redo and cache coherence against a fresh copy of the scene along random edit chains.

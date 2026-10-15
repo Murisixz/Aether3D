@@ -79,6 +79,7 @@ Aether3D/
 │   │   ├── shadows.py     Backend-neutral shadow planning (lights, map fitting, bias)
 │   │   ├── color.py       sRGB <-> linear transfer functions, color parsing
 │   │   ├── scene_data.py  RenderScene extraction (backend-independent)
+│   │   ├── retained.py    The retained render world: extraction updated from the change journal
 │   │   ├── materials.py   Materials resolved per render (RenderMaterial), shared by both backends
 │   │   ├── surface.py     CPU material evaluation, projections, normal maps, lighting models
 │   │   ├── raster.py      Clipping, fixed-point rasterization, visibility buffer
@@ -400,6 +401,16 @@ All rendering logic lives in `rendering/`. The design is explained in
   The CPU backend consumes only this, and a GPU backend (Stage 6) can
   consume the same data, so `scene.render`, the CLI and the tests do not
   change. Rendering never modifies the scene.
+- **The render world is retained between renders** (since 0.11.1,
+  `rendering/retained.py`). Extraction keeps what it computed among the scene's
+  derived caches -- world and normal matrices as arrays over the objects in
+  depth-first order, the evaluated meshes, materials and render instances -- and
+  updates it from the history's change journal: a transform recomputes its
+  subtree's matrices, an edited object is classified again, a change of the
+  hierarchy reorders the objects and keeps what each unchanged one had. The
+  render scene is exactly the full walk's (tested along random edits); the full
+  walk still runs inside open operations, on errors and with
+  `AETHER3D_RETAINED_RENDER_WORLD=0`.
 - **A visibility buffer, then deferred shading.**
   - Rasterization writes one packed `int64` per sample (quantized depth
     above, triangle index below), using `np.minimum.at`.
