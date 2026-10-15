@@ -138,8 +138,8 @@ apply to agents too.
 - Spatial queries (`spatial/`):
   - **Read-only.** Queries never change a scene, record history or bump `scene.revision`
     (`test_queries_are_deterministic_and_change_nothing` runs every query). The index is a
-    weak cache keyed by the scene and its revision; do not add invalidation hooks, add
-    state to the history instead.
+    cache kept on the scene (`Scene._derived()`) and keyed by its revision; do not add
+    invalidation hooks, add state to the history instead.
   - **Exact or labeled.** Report facts decided on triangles; anything that rests on boxes
     or sampling must say so (`exact=False`, `"bounds"`, `visible_from`'s samples). Never
     call a box overlap a collision.

@@ -113,7 +113,7 @@ Aether3D/
 │   │   ├── types.py       Regions (Box/AABB, Sphere) and result types with to_dict()
 │   │   ├── geometry.py    Exact kernels: closest points, triangle intersection and distance,
 │   │   │                  separating axes, winding numbers, components, BVH box queries
-│   │   ├── index.py       SpatialIndex: world-space geometry per scene revision (weak cache)
+│   │   ├── index.py       SpatialIndex: world-space geometry per scene revision (cached on the scene)
 │   │   ├── rays.py        All-hits traversal of the Stage 8 BVH, shared-edge merging,
 │   │   │                  rendered surfaces (the path tracer's pass-through rules)
 │   │   ├── queries.py     The queries (bounds, rays, nearest, containment, overlaps,
@@ -642,8 +642,10 @@ exposes every query as a method. See [SPATIAL.md](SPATIAL.md). Key decisions:
   edge-manifold, consistently oriented mesh (inspection's welded topology); the
   winding number decides it (ray-crossing parity with retries for many points).
   Other meshes are reported as `"undefined"`, with the fractional winding number.
-- **One index per scene revision.** The index is a weak cache keyed by the
-  scene. `scene.revision` increases with every change, undo and redo included;
+- **One index per scene revision.** The index is a cache kept on the scene
+  (`Scene._derived()`, never scene state), so it dies with the scene; a
+  module-level weak dictionary would keep every queried scene alive, because the
+  index references the scene. `scene.revision` increases with every change, undo and redo included;
   inside an open operation (`history.in_progress`) a fresh index is built, so a
   query never sees stale geometry and caching needs no invalidation hooks.
   Queries never mutate the scene or record history.

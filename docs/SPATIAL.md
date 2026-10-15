@@ -364,7 +364,9 @@ object whose procedural geometry fails to evaluate has an `error` (the
   Inside an open operation or transaction (`scene.history.in_progress`), queries
   see the changes made so far and build a fresh index; after a rollback the
   scene is back at its revision and the cached index is valid again. The cache
-  is weak: it goes with the scene.
+  is kept on the scene (among its derived caches, never scene state), so it goes
+  with the scene: a scene that ran queries is freed like any other
+  (`tests/test_scene_lifecycle.py`).
 - **Deterministic.** The same scene and arguments give the same results, bit for
   bit, run after run and in a fresh copy of the scene: traversal orders and tie
   breaks are fixed, and sampling is a fixed sequence.

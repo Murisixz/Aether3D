@@ -900,6 +900,8 @@ class Scene:
         from .materials import MaterialLibrary
 
         self._materials = MaterialLibrary(self)
+        # Data that other modules derive from the scene (see _derived): never scene state.
+        self._derived_data: dict[str, Any] = {}
 
     @property
     def name(self) -> str:
@@ -929,6 +931,18 @@ class Scene:
         undo step, and none survives if the block raises (see
         :meth:`aether3d.history.History.transaction`)."""
         return self._history.transaction(label)
+
+    def _derived(self) -> dict[str, Any]:
+        """Caches that other modules compute from this scene, by consumer name.
+
+        Not scene state: never saved, recorded or compared. Each consumer keys its entry by
+        ``scene.revision`` (or its own bookkeeping) and rebuilds when that changes. Keeping
+        the caches on the scene ties their lifetime to it: an entry may reference the scene
+        (the spatial index holds its objects), which is an ordinary reference cycle, freed
+        with the scene. A module-level ``WeakKeyDictionary`` keyed by the scene would keep
+        such an entry -- and the scene -- alive forever, because its values are strong.
+        """
+        return self._derived_data
 
     def _edit_value(self, aspect: Aspect, fields: Iterable[str]) -> Any:
         """The operation of an in-place change of the world or the render settings."""

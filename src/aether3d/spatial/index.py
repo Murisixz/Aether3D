@@ -14,7 +14,8 @@ non-uniform and mirrored scales included) and, built on demand and kept:
   content-keyed BLAS cache).
 
 **Caching.** :func:`get_index` keeps one index per scene, valid while
-``scene.revision`` is unchanged. The history increases the revision with every
+``scene.revision`` is unchanged, among the scene's derived caches (so it dies with
+the scene). The history increases the revision with every
 change -- creation, removal, transforms, edits, procedural and material changes,
 imports, undo and redo -- so a cached index never outlives the geometry it
 describes. Inside an open operation or transaction the revision has not been
@@ -25,7 +26,6 @@ system's own cache, which is not scene state).
 
 from __future__ import annotations
 
-import weakref
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -349,17 +349,19 @@ def _as_list(value: Any) -> list[Any]:
     return list(value)
 
 
-_CACHE: weakref.WeakKeyDictionary[Scene, SpatialIndex] = weakref.WeakKeyDictionary()
-"""The last index of every scene (a cache, not scene state: it dies with the scene)."""
-
-
 def get_index(scene: Scene) -> SpatialIndex:
-    """The scene's spatial index, reused while ``scene.revision`` is unchanged."""
+    """The scene's spatial index, reused while ``scene.revision`` is unchanged.
+
+    The last index is kept in the scene's derived caches (``Scene._derived``), so it dies
+    with the scene. (It references the scene and its objects: kept in a module-level
+    ``WeakKeyDictionary`` keyed by the scene, it would keep every queried scene alive.)
+    """
     if scene.history.in_progress:  # inside an operation: its changes are not counted yet
         return SpatialIndex(scene)
-    cached = _CACHE.get(scene)
+    derived = scene._derived()
+    cached = derived.get("spatial")
     if cached is not None and cached.revision == scene.revision:
         return cached
     index = SpatialIndex(scene)
-    _CACHE[scene] = index
+    derived["spatial"] = index
     return index
