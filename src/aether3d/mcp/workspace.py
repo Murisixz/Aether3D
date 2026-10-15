@@ -12,6 +12,7 @@ to the root, so absolute paths of the machine do not leak into a conversation.
 from __future__ import annotations
 
 import os
+import re
 import stat
 from pathlib import Path
 
@@ -19,6 +20,19 @@ from ..errors import AetherError
 
 MAX_READ_BYTES = 512 * 2**20
 """Largest file a session reads (projects, glTF files, plans, images)."""
+
+# An absolute path (POSIX or Windows) that is not part of a word, a relative path, a URI
+# ("aether3d://scene/...") or a JSON pointer inside one.
+_ABSOLUTE_PATH = re.compile(
+    r"(?<![\w~<>.:/\\-])(?:[A-Za-z]:[\\/]|/)(?:[^\s'\"<>|*?\\/]+[\\/])+[^\s'\"<>|*?\\/,;)]*"
+)
+
+
+def redact_paths(text: str) -> str:
+    """``text`` with every absolute path replaced by ``<path>`` (for messages that this
+    package did not write, such as unexpected exceptions)."""
+    return _ABSOLUTE_PATH.sub("<path>", text)
+
 
 PROJECT_SUFFIXES = (".aether",)
 SCENE_SUFFIXES = (".aether", ".glb", ".gltf")
@@ -59,11 +73,15 @@ class Workspace:
             return "<outside the workspace>"
 
     def redact(self, text: str) -> str:
-        """``text`` with the workspace's absolute location replaced by ``<workspace>``."""
+        """``text`` with paths in the workspace made relative to it, the workspace itself
+        shown as ``<workspace>`` and the user's home folder as ``~``."""
         root = str(self.root)
         text = text.replace(root + os.sep, "").replace(root, "<workspace>")
         if os.sep != "/":
             text = text.replace(self.root.as_posix() + "/", "")
+        home = str(Path.home())
+        if len(home) > 1:
+            text = text.replace(home, "~")
         return text
 
     def path(

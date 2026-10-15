@@ -621,3 +621,25 @@ def test_gpu_preview(tmp_path, gpu):
         assert adapter.lower() in report["adapter"]["name"].lower()
     assert report["adapter"]["name"] and report["draw_calls"] == 3  # 3 meshes, instanced
     assert result.content[0].type == "image"
+
+
+def test_errors_never_show_paths_of_this_machine(tmp_path):
+    from aether3d import PlanError, RenderError
+    from aether3d.mcp.session import ServerConfig, Session
+    from aether3d.mcp.tools import error_payload
+
+    session = Session(ServerConfig(workspace=tmp_path))
+    inside = tmp_path / "scenes" / "castle.aether"
+    home = Path.home() / "private" / "notes.txt"
+    # an engine error: workspace paths become relative, the home folder becomes ~
+    engine = error_payload(RenderError("X", f"cannot use {inside} nor {home}"), session)
+    text = json.dumps(engine)
+    assert "scenes/castle.aether" in text and str(tmp_path) not in text
+    assert str(Path.home()) not in text and "~/private/notes.txt" in text
+    # a bug: no absolute path at all, but the exception type stays
+    bug = error_payload(OSError(f"[Errno 2] No such file: '{home}' (from /usr/lib/x.py)"), session)
+    assert bug["error"]["code"] == "INTERNAL_ERROR"
+    assert bug["error"]["message"] == "OSError: [Errno 2] No such file: '<path>' (from <path>)"
+    # plan errors keep their JSON pointers
+    plan = error_payload(PlanError("INVALID_VALUE", "bad", "/objects/towers/grid/count"), session)
+    assert plan["error"]["pointer"] == "/objects/towers/grid/count"

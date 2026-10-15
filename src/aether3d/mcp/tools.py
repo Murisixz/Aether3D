@@ -31,6 +31,7 @@ from .workspace import (
     IMAGE_SUFFIXES,
     PROJECT_SUFFIXES,
     SCENE_SUFFIXES,
+    redact_paths,
 )
 
 # --------------------------------------------------------------------------- #
@@ -1291,8 +1292,12 @@ def error_payload(exc: BaseException, session: Session) -> dict[str, Any]:
         data["type"] = "PlanError"
     elif isinstance(exc, AetherError):
         data = _engine_error(exc, session)
-    else:
-        data = {"type": "InternalError", "code": "INTERNAL_ERROR", "message": str(exc)}
+    else:  # a bug: say what happened, but no paths of this machine
+        data = {
+            "type": "InternalError",
+            "code": "INTERNAL_ERROR",
+            "message": f"{type(exc).__name__}: {redact_paths(str(exc))}",
+        }
     import json
 
     return json.loads(session.workspace.redact(json.dumps({"error": data}, default=str)))
