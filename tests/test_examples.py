@@ -195,6 +195,38 @@ def test_history_example_runs(tmp_path):
     assert (tmp_path / "history_undo.png").read_bytes().startswith(b"\x89PNG")
 
 
+def test_castle_spatial_example_runs(tmp_path):
+    pytest.importorskip("manifold3d")
+    result = subprocess.run(
+        [sys.executable, str(EXAMPLES / "castle_spatial.py"), str(tmp_path), "--quick"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "FAIL" not in result.stdout and result.stdout.count("ok    ") == 15
+    report = json.loads((tmp_path / "castle_spatial.json").read_text())
+    assert report["problems"] == [] and report["describe"]["format"] == "aether3d.spatial-scene"
+    assert report["pick"]["agreeing_with_the_rasterizer"] == report["pick"]["interior_samples"]
+    for name in ("castle_spatial_view.png", "castle_spatial_heights.png"):
+        assert (tmp_path / name).read_bytes().startswith(b"\x89PNG")
+
+
+def test_hero_picking_example_runs(tmp_path):
+    result = subprocess.run(
+        [sys.executable, str(EXAMPLES / "hero_picking.py"), str(tmp_path), "--quick"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "FAIL" not in result.stdout and result.stdout.count("ok    ") == 15
+    report = json.loads((tmp_path / "hero_picking.json").read_text())
+    assert report["problems"] == [] and report["clicks"]["sky"] is None
+    assert report["id_map"]["agreeing"] == report["id_map"]["interior_samples"] > 500
+    assert _decode(tmp_path / "hero_picking.png").shape[1] == 3 * 320 + 2 * 8
+
+
 def test_example_textures_are_reproducible(tmp_path):
     """``examples/make_textures.py`` regenerates the committed textures exactly."""
     pytest.importorskip("PIL.Image")  # the JPEG

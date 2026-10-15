@@ -1,0 +1,1320 @@
+{
+  "scene": "Minecraft Castle",
+  "describe": {
+    "format": "aether3d.spatial-scene",
+    "version": 1,
+    "scene": "Minecraft Castle",
+    "revision": 54,
+    "frame": {
+      "handedness": "right",
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "front": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "units": "scene units (meters by convention)"
+    },
+    "active_camera": "2e94a5cf-671a-4f8f-b3fc-771654a71ed2",
+    "bounds": {
+      "min": [
+        -19.200000762939453,
+        -19.200000762939453,
+        -1.0
+      ],
+      "max": [
+        19.200000762939453,
+        19.200000762939453,
+        20.0600004196167
+      ]
+    },
+    "objects": [
+      {
+        "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+        "name": "Ground",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "landscape"
+        ],
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -19.200000762939453,
+            -19.200000762939453,
+            -1.0
+          ],
+          "max": [
+            19.200000762939453,
+            19.200000762939453,
+            0.0
+          ]
+        },
+        "triangles": 12,
+        "closed": true
+      },
+      {
+        "id": "7212ff9b-a917-4371-97f3-37877dee9ab8",
+        "name": "Curtain Wall",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "fortification"
+        ],
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -12.600000381469727,
+            -12.600000381469727,
+            0.0
+          ],
+          "max": [
+            12.600000381469727,
+            12.600000381469727,
+            6.849999904632568
+          ]
+        },
+        "triangles": 1822,
+        "closed": true
+      },
+      {
+        "id": "1ab2c9c4-7cb2-482a-bf29-e07a19bf6d3b",
+        "name": "Towers",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "fortification"
+        ],
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -14.199999809265137,
+            -14.199999809265137,
+            0.0
+          ],
+          "max": [
+            14.199999809265137,
+            14.199999809265137,
+            9.300000190734863
+          ]
+        },
+        "triangles": 3288,
+        "closed": true
+      },
+      {
+        "id": "a0d5ee1b-a69f-4076-b4dc-7dfb2b936e41",
+        "name": "Keep",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "fortification"
+        ],
+        "metadata": {
+          "floors": 3,
+          "role": "residence"
+        },
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -3.5999999046325684,
+            0.0,
+            0.0
+          ],
+          "max": [
+            3.5999999046325684,
+            7.199999809265137,
+            9.0
+          ]
+        },
+        "triangles": 44,
+        "closed": true
+      },
+      {
+        "id": "bdb3da95-81ff-496e-afe9-18ab54b26843",
+        "name": "Watchtower",
+        "kind": "procedural",
+        "parent": "a0d5ee1b-a69f-4076-b4dc-7dfb2b936e41",
+        "tags": [
+          "fortification"
+        ],
+        "metadata": {
+          "lookout": true
+        },
+        "position": [
+          0.0,
+          3.5999999999999996,
+          9.0
+        ],
+        "bounds": {
+          "min": [
+            -2.200000047683716,
+            1.3999999523162838,
+            9.0
+          ],
+          "max": [
+            2.200000047683716,
+            5.8000000476837155,
+            16.5
+          ]
+        },
+        "triangles": 548,
+        "closed": true
+      },
+      {
+        "id": "b1cb648d-de6d-4f9f-a39e-565ba37bb163",
+        "name": "Watchtower Roof",
+        "kind": "procedural",
+        "parent": "bdb3da95-81ff-496e-afe9-18ab54b26843",
+        "tags": [
+          "fortification"
+        ],
+        "position": [
+          0.0,
+          3.5999999999999996,
+          9.0
+        ],
+        "bounds": {
+          "min": [
+            -2.75,
+            0.8499999999999996,
+            16.09999990463257
+          ],
+          "max": [
+            2.75,
+            6.35,
+            20.0600004196167
+          ]
+        },
+        "triangles": 30,
+        "closed": true
+      },
+      {
+        "id": "91518749-467d-487e-8370-0912eb668c01",
+        "name": "Bush 1",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "bush"
+        ],
+        "position": [
+          -6.0,
+          -6.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -6.702777802944183,
+            -6.702777802944183,
+            -0.02708333358168602
+          ],
+          "max": [
+            -5.297222197055817,
+            -5.297222197055817,
+            1.0270832777023315
+          ]
+        },
+        "triangles": 192,
+        "closed": true
+      },
+      {
+        "id": "21d0c59e-206e-4084-8d9c-3308891a0872",
+        "name": "Bush 2",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "bush"
+        ],
+        "position": [
+          6.0,
+          -6.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            5.297222197055817,
+            -6.702777802944183,
+            -0.02708333358168602
+          ],
+          "max": [
+            6.702777802944183,
+            -5.297222197055817,
+            1.0270832777023315
+          ]
+        },
+        "triangles": 192,
+        "closed": true
+      },
+      {
+        "id": "af47fbd0-a182-4cd9-9ed1-6b31df68c593",
+        "name": "Bush 3",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "bush"
+        ],
+        "position": [
+          -7.0,
+          2.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -7.702777802944183,
+            1.2972221970558167,
+            -0.02708333358168602
+          ],
+          "max": [
+            -6.297222197055817,
+            2.7027778029441833,
+            1.0270832777023315
+          ]
+        },
+        "triangles": 192,
+        "closed": true
+      },
+      {
+        "id": "b9d3754a-3652-4384-9d89-42f55bafa4c3",
+        "name": "Bush 4",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "bush"
+        ],
+        "position": [
+          7.0,
+          2.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            6.297222197055817,
+            1.2972221970558167,
+            -0.02708333358168602
+          ],
+          "max": [
+            7.702777802944183,
+            2.7027778029441833,
+            1.0270832777023315
+          ]
+        },
+        "triangles": 192,
+        "closed": true
+      },
+      {
+        "id": "13c3c005-09a0-49f0-b345-5cfbee0df40b",
+        "name": "Path",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "landscape"
+        ],
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -1.5,
+            -19.200000762939453,
+            0.0
+          ],
+          "max": [
+            1.5,
+            -12.0,
+            0.05999999865889549
+          ]
+        },
+        "triangles": 12,
+        "closed": true
+      },
+      {
+        "id": "4b609dba-b5f7-4d00-a042-ddb83cd04203",
+        "name": "Trunk 1",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "tree",
+          "trunk"
+        ],
+        "position": [
+          -17.0,
+          -14.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -17.349999994039536,
+            -14.349999994039536,
+            0.0
+          ],
+          "max": [
+            -16.650000005960464,
+            -13.650000005960464,
+            3.0
+          ]
+        },
+        "triangles": 12,
+        "closed": true
+      },
+      {
+        "id": "e779c990-7060-48f9-aab4-c8738ca97b7a",
+        "name": "Leaves 1",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "leaves",
+          "tree"
+        ],
+        "position": [
+          -17.0,
+          -14.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -18.600000023841858,
+            -15.600000023841858,
+            2.5999999046325684
+          ],
+          "max": [
+            -15.399999976158142,
+            -12.399999976158142,
+            5.199999809265137
+          ]
+        },
+        "triangles": 44,
+        "closed": true
+      },
+      {
+        "id": "d1507893-728e-4a26-9519-29438673f8ea",
+        "name": "Trunk 2",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "tree",
+          "trunk"
+        ],
+        "position": [
+          16.5,
+          -13.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            16.097500006854535,
+            -13.402499993145465,
+            0.0
+          ],
+          "max": [
+            16.902499993145465,
+            -12.597500006854535,
+            3.4499999999999997
+          ]
+        },
+        "triangles": 12,
+        "closed": true
+      },
+      {
+        "id": "a37f249f-3df5-4219-8e17-9046956c0b57",
+        "name": "Leaves 2",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "leaves",
+          "tree"
+        ],
+        "position": [
+          16.5,
+          -13.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            14.659999972581863,
+            -14.840000027418137,
+            2.989999890327453
+          ],
+          "max": [
+            18.340000027418135,
+            -11.159999972581863,
+            5.979999780654906
+          ]
+        },
+        "triangles": 44,
+        "closed": true
+      },
+      {
+        "id": "3c10393f-ccbf-4824-b9cb-4e7a7c244c5c",
+        "name": "Trunk 3",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "tree",
+          "trunk"
+        ],
+        "position": [
+          -17.5,
+          6.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -17.81499999463558,
+            5.685000005364418,
+            0.0
+          ],
+          "max": [
+            -17.18500000536442,
+            6.314999994635582,
+            2.7
+          ]
+        },
+        "triangles": 12,
+        "closed": true
+      },
+      {
+        "id": "221503c9-6808-449b-a61b-d8b8d14884c3",
+        "name": "Leaves 3",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "leaves",
+          "tree"
+        ],
+        "position": [
+          -17.5,
+          6.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -18.94000002145767,
+            4.5599999785423275,
+            2.3399999141693115
+          ],
+          "max": [
+            -16.05999997854233,
+            7.4400000214576725,
+            4.679999828338623
+          ]
+        },
+        "triangles": 44,
+        "closed": true
+      },
+      {
+        "id": "001a19f2-be22-4518-a719-0ffe7d6ea9c0",
+        "name": "Trunk 4",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "tree",
+          "trunk"
+        ],
+        "position": [
+          17.0,
+          9.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            16.63250000625849,
+            8.632500006258487,
+            0.0
+          ],
+          "max": [
+            17.36749999374151,
+            9.367499993741513,
+            3.1500000000000004
+          ]
+        },
+        "triangles": 12,
+        "closed": true
+      },
+      {
+        "id": "a8266d71-dff3-4758-99d6-ceb749961469",
+        "name": "Leaves 4",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "leaves",
+          "tree"
+        ],
+        "position": [
+          17.0,
+          9.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            15.319999974966048,
+            7.319999974966049,
+            2.7299998998641968
+          ],
+          "max": [
+            18.68000002503395,
+            10.680000025033952,
+            5.4599997997283936
+          ]
+        },
+        "triangles": 44,
+        "closed": true
+      },
+      {
+        "id": "d939fc32-c58b-4606-b0a0-b176ea70e278",
+        "name": "Trunk 5",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "tree",
+          "trunk"
+        ],
+        "position": [
+          -9.0,
+          -17.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -9.279999995231629,
+            -17.279999995231627,
+            0.0
+          ],
+          "max": [
+            -8.720000004768371,
+            -16.720000004768373,
+            2.4000000000000004
+          ]
+        },
+        "triangles": 12,
+        "closed": true
+      },
+      {
+        "id": "f1b743ae-8038-4e83-993e-b45a303a0e6a",
+        "name": "Leaves 5",
+        "kind": "procedural",
+        "parent": null,
+        "tags": [
+          "leaves",
+          "tree"
+        ],
+        "position": [
+          -9.0,
+          -17.0,
+          0.0
+        ],
+        "bounds": {
+          "min": [
+            -10.280000019073487,
+            -18.280000019073487,
+            2.0799999237060547
+          ],
+          "max": [
+            -7.719999980926514,
+            -15.719999980926513,
+            4.159999847412109
+          ]
+        },
+        "triangles": 44,
+        "closed": true
+      },
+      {
+        "id": "2e85dafa-f28d-4c4c-b6bd-d2a9242e1d2d",
+        "name": "Sun",
+        "kind": "light",
+        "parent": null,
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": "6dc13845-d9a6-45ab-ae47-9aa7271474cf",
+        "name": "Fill",
+        "kind": "light",
+        "parent": null,
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "id": "0f4e0a75-5538-4b80-b135-74d1f52e81f6",
+        "name": "Torch 1",
+        "kind": "light",
+        "parent": null,
+        "position": [
+          -2.6,
+          -14.0,
+          3.0
+        ]
+      },
+      {
+        "id": "b922defb-afec-437b-a725-5ffde530d66b",
+        "name": "Torch 2",
+        "kind": "light",
+        "parent": null,
+        "position": [
+          2.6,
+          -14.0,
+          3.0
+        ]
+      },
+      {
+        "id": "2e94a5cf-671a-4f8f-b3fc-771654a71ed2",
+        "name": "Camera",
+        "kind": "camera",
+        "parent": null,
+        "position": [
+          29.44688009822267,
+          -59.9837187394572,
+          37.2301554411287
+        ]
+      }
+    ]
+  },
+  "bounds": {
+    "site": {
+      "object": null,
+      "space": "world",
+      "aabb": {
+        "min": [
+          -19.200000762939453,
+          -19.200000762939453,
+          -1.0
+        ],
+        "max": [
+          19.200000762939453,
+          19.200000762939453,
+          20.0600004196167
+        ],
+        "center": [
+          0.0,
+          0.0,
+          9.53000020980835
+        ],
+        "size": [
+          38.400001525878906,
+          38.400001525878906,
+          21.0600004196167
+        ]
+      },
+      "obb": null,
+      "sphere": {
+        "center": [
+          0.0,
+          0.0,
+          9.53000020980835
+        ],
+        "radius": 29.12320317225279
+      },
+      "objects": 21,
+      "vertices": 10884,
+      "triangles": 6804
+    },
+    "keep_with_children": {
+      "object": {
+        "id": "a0d5ee1b-a69f-4076-b4dc-7dfb2b936e41",
+        "name": "Keep"
+      },
+      "space": "world",
+      "aabb": {
+        "min": [
+          -3.5999999046325684,
+          0.0,
+          0.0
+        ],
+        "max": [
+          3.5999999046325684,
+          7.199999809265137,
+          20.0600004196167
+        ],
+        "center": [
+          0.0,
+          3.5999999046325684,
+          10.03000020980835
+        ],
+        "size": [
+          7.199999809265137,
+          7.199999809265137,
+          20.0600004196167
+        ]
+      },
+      "obb": {
+        "center": [
+          0.0,
+          3.5999999046325684,
+          10.03000020980835
+        ],
+        "half_axes": [
+          [
+            3.5999999046325684,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            3.5999999046325684,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            10.03000020980835
+          ]
+        ],
+        "half_extents": [
+          3.5999999046325684,
+          3.5999999046325684,
+          10.03000020980835
+        ],
+        "orthogonal": true
+      },
+      "sphere": {
+        "center": [
+          0.0,
+          3.5999999046325684,
+          10.03000020980835
+        ],
+        "radius": 11.062590345524557
+      },
+      "objects": 3,
+      "vertices": 1163,
+      "triangles": 622
+    }
+  },
+  "find": {
+    "trees": [
+      "Trunk 1",
+      "Leaves 1",
+      "Trunk 2",
+      "Leaves 2",
+      "Trunk 3",
+      "Leaves 3",
+      "Trunk 4",
+      "Leaves 4",
+      "Trunk 5",
+      "Leaves 5"
+    ],
+    "inside_the_courtyard": [
+      "Keep",
+      "Watchtower",
+      "Watchtower Roof",
+      "Bush 1",
+      "Bush 2",
+      "Bush 3",
+      "Bush 4",
+      "Sun",
+      "Fill"
+    ]
+  },
+  "height_map": {
+    "cells": 96,
+    "max": 19.652706951096178,
+    "highest": "Watchtower Roof",
+    "objects_seen_from_above": [
+      "Ground",
+      "Towers",
+      "Curtain Wall",
+      "Leaves 4",
+      "Leaves 3",
+      "Keep",
+      "Watchtower Roof",
+      "Bush 3",
+      "Bush 4",
+      "Bush 1",
+      "Bush 2",
+      "Leaves 2",
+      "Leaves 1",
+      "Path",
+      "Leaves 5"
+    ]
+  },
+  "overlaps": {
+    "exact": [
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "7212ff9b-a917-4371-97f3-37877dee9ab8",
+          "name": "Curtain Wall"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "1ab2c9c4-7cb2-482a-bf29-e07a19bf6d3b",
+          "name": "Towers"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "a0d5ee1b-a69f-4076-b4dc-7dfb2b936e41",
+          "name": "Keep"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "91518749-467d-487e-8370-0912eb668c01",
+          "name": "Bush 1"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "21d0c59e-206e-4084-8d9c-3308891a0872",
+          "name": "Bush 2"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "af47fbd0-a182-4cd9-9ed1-6b31df68c593",
+          "name": "Bush 3"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "b9d3754a-3652-4384-9d89-42f55bafa4c3",
+          "name": "Bush 4"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "13c3c005-09a0-49f0-b345-5cfbee0df40b",
+          "name": "Path"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "4b609dba-b5f7-4d00-a042-ddb83cd04203",
+          "name": "Trunk 1"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "d1507893-728e-4a26-9519-29438673f8ea",
+          "name": "Trunk 2"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "3c10393f-ccbf-4824-b9cb-4e7a7c244c5c",
+          "name": "Trunk 3"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "001a19f2-be22-4518-a719-0ffe7d6ea9c0",
+          "name": "Trunk 4"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+          "name": "Ground"
+        },
+        "b": {
+          "id": "d939fc32-c58b-4606-b0a0-b176ea70e278",
+          "name": "Trunk 5"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "7212ff9b-a917-4371-97f3-37877dee9ab8",
+          "name": "Curtain Wall"
+        },
+        "b": {
+          "id": "1ab2c9c4-7cb2-482a-bf29-e07a19bf6d3b",
+          "name": "Towers"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "7212ff9b-a917-4371-97f3-37877dee9ab8",
+          "name": "Curtain Wall"
+        },
+        "b": {
+          "id": "13c3c005-09a0-49f0-b345-5cfbee0df40b",
+          "name": "Path"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "a0d5ee1b-a69f-4076-b4dc-7dfb2b936e41",
+          "name": "Keep"
+        },
+        "b": {
+          "id": "bdb3da95-81ff-496e-afe9-18ab54b26843",
+          "name": "Watchtower"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "bdb3da95-81ff-496e-afe9-18ab54b26843",
+          "name": "Watchtower"
+        },
+        "b": {
+          "id": "b1cb648d-de6d-4f9f-a39e-565ba37bb163",
+          "name": "Watchtower Roof"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "4b609dba-b5f7-4d00-a042-ddb83cd04203",
+          "name": "Trunk 1"
+        },
+        "b": {
+          "id": "e779c990-7060-48f9-aab4-c8738ca97b7a",
+          "name": "Leaves 1"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "d1507893-728e-4a26-9519-29438673f8ea",
+          "name": "Trunk 2"
+        },
+        "b": {
+          "id": "a37f249f-3df5-4219-8e17-9046956c0b57",
+          "name": "Leaves 2"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "3c10393f-ccbf-4824-b9cb-4e7a7c244c5c",
+          "name": "Trunk 3"
+        },
+        "b": {
+          "id": "221503c9-6808-449b-a61b-d8b8d14884c3",
+          "name": "Leaves 3"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "001a19f2-be22-4518-a719-0ffe7d6ea9c0",
+          "name": "Trunk 4"
+        },
+        "b": {
+          "id": "a8266d71-dff3-4758-99d6-ceb749961469",
+          "name": "Leaves 4"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      },
+      {
+        "a": {
+          "id": "d939fc32-c58b-4606-b0a0-b176ea70e278",
+          "name": "Trunk 5"
+        },
+        "b": {
+          "id": "f1b743ae-8038-4e83-993e-b45a303a0e6a",
+          "name": "Leaves 5"
+        },
+        "bounds_overlap": true,
+        "intersecting": true,
+        "contained": null,
+        "exact": true
+      }
+    ],
+    "bounds_only_candidates": 34
+  },
+  "relations": {
+    "watchtower_keep": {
+      "a": {
+        "id": "bdb3da95-81ff-496e-afe9-18ab54b26843",
+        "name": "Watchtower"
+      },
+      "b": {
+        "id": "a0d5ee1b-a69f-4076-b4dc-7dfb2b936e41",
+        "name": "Keep"
+      },
+      "distance": 0.0,
+      "intersecting": true,
+      "near": null,
+      "above": true,
+      "below": false,
+      "inside": false,
+      "contains": false,
+      "in_front_of": false,
+      "behind": false,
+      "viewer": null,
+      "tolerance": 1e-06
+    },
+    "keep_ground": {
+      "a": {
+        "id": "a0d5ee1b-a69f-4076-b4dc-7dfb2b936e41",
+        "name": "Keep"
+      },
+      "b": {
+        "id": "ae483849-33ba-412a-89c1-67cb00b9a963",
+        "name": "Ground"
+      },
+      "distance": 0.0,
+      "intersecting": true,
+      "near": null,
+      "above": true,
+      "below": false,
+      "inside": false,
+      "contains": false,
+      "in_front_of": false,
+      "behind": false,
+      "viewer": null,
+      "tolerance": 1e-06
+    }
+  },
+  "line_of_sight": {
+    "through_the_gate": {
+      "start": [
+        0.0,
+        -18.0,
+        1.0
+      ],
+      "end": [
+        0.0,
+        -0.25,
+        1.0
+      ],
+      "clear": true,
+      "distance": 17.75,
+      "blocker": null
+    },
+    "beside_it": {
+      "start": [
+        6.0,
+        -18.0,
+        1.0
+      ],
+      "end": [
+        0.0,
+        -0.25,
+        1.0
+      ],
+      "clear": false,
+      "distance": 18.736661922551733,
+      "blocker": {
+        "object": {
+          "id": "7212ff9b-a917-4371-97f3-37877dee9ab8",
+          "name": "Curtain Wall"
+        },
+        "position": [
+          4.1746480162714565,
+          -12.600000381469727,
+          1.0
+        ],
+        "distance": 5.700167168130145,
+        "normal": [
+          0.0,
+          -1.0,
+          0.0
+        ],
+        "shading_normal": [
+          0.0,
+          -1.0,
+          0.0
+        ],
+        "front_face": true,
+        "triangle": 956,
+        "face_group": 0,
+        "barycentric": [
+          0.2547283825020435,
+          0.07504347948322265,
+          0.6702281380147338
+        ],
+        "uv": [
+          0.33433935988112307,
+          0.16666666625053428
+        ],
+        "material": null,
+        "instance_of": {
+          "id": "7212ff9b-a917-4371-97f3-37877dee9ab8",
+          "name": "Curtain Wall"
+        },
+        "instance_count": 1
+      }
+    }
+  },
+  "visible_from": {
+    "target": {
+      "id": "a0d5ee1b-a69f-4076-b4dc-7dfb2b936e41",
+      "name": "Keep"
+    },
+    "observer": [
+      29.44688009822267,
+      -59.9837187394572,
+      37.2301554411287
+    ],
+    "samples": 256,
+    "visible": 108,
+    "fraction": 0.421875,
+    "outside_view": 0,
+    "blockers": [
+      {
+        "object": {
+          "id": "a0d5ee1b-a69f-4076-b4dc-7dfb2b936e41",
+          "name": "Keep"
+        },
+        "samples": 123
+      },
+      {
+        "object": {
+          "id": "bdb3da95-81ff-496e-afe9-18ab54b26843",
+          "name": "Watchtower"
+        },
+        "samples": 25
+      }
+    ]
+  },
+  "pick": {
+    "interior_samples": 3492,
+    "agreeing_with_the_rasterizer": 3492
+  },
+  "seconds": 14.805708917000175,
+  "problems": []
+}

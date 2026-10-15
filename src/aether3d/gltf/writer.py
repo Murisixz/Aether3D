@@ -281,7 +281,13 @@ def build_gltf(
                 node["mesh"] = mesh_ref
         if obj.children:
             node["children"] = [node_of[child.id] for child in obj.children]
-        node["extras"] = {EXTRAS_KEY: {"id": obj.id}}
+        stored: dict[str, Any] = {"id": obj.id}
+        if obj.tags:
+            stored["tags"] = list(obj.tags)
+        metadata = obj.metadata
+        if metadata:
+            stored["metadata"] = metadata
+        node["extras"] = {EXTRAS_KEY: stored}
         nodes.append(node)
         node_map.append({"node": len(nodes) - 1, "id": obj.id, "name": obj.name, "mesh": mesh_ref})
 

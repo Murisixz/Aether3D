@@ -31,7 +31,8 @@ crossing a shared edge or vertex hits at least one of the adjacent triangles
 (no cracks) and the test is consistent for both windings (two-sided).
 Object-space corners and boxes are stored as float32 (the mesh's own
 positions, exactly; top-level boxes are rounded outward); all arithmetic is
-float64.
+float64. Every box is grown by one ulp, so that slab tests treat boxes as
+closed sets (see ``_closed``).
 
 **Self-intersection.** Queries accept, per ray, an instance and triangle to
 ignore: a ray leaving a triangle cannot hit that (planar) triangle again,
@@ -109,6 +110,19 @@ def build_mesh_blas(mesh: RenderMesh) -> MeshBLAS:
         0 if keep is None else int(tris.shape[0] - keep.size),
         time.perf_counter() - t0,
     )
+
+
+def _closed(lo: np.ndarray, hi: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Boxes grown by one ulp on every side, so that slab tests treat them as closed.
+
+    A ray whose direction has a zero component sees that axis's slab as
+    ``(lo - o) / 0`` to ``(hi - o) / 0`` (inverted with a tiny stand-in for zero):
+    unbounded when ``lo < o < hi``, but empty for a ray lying exactly in the plane
+    of the face on one side (``0 * inv``). Growing the boxes puts such rays strictly
+    inside; the watertight triangle test then decides as for any other ray.
+    """
+    top = np.asarray(np.inf, dtype=lo.dtype)
+    return np.nextafter(lo, -top), np.nextafter(hi, top)
 
 
 def _round_out(lo: np.ndarray, hi: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -281,7 +295,9 @@ class SceneAccel:
             world = corners @ linear.T + m[:3, 3]
             if not np.all(np.isfinite(world)):
                 continue
-            inst_lo[k], inst_hi[k] = world.min(axis=0), world.max(axis=0)
+            # One ulp outward (see _closed): a ray parallel to a face exactly in its plane.
+            inst_lo[k] = np.nextafter(world.min(axis=0), -np.inf)
+            inst_hi[k] = np.nextafter(world.max(axis=0), np.inf)
             usable[k] = True
         ids = np.flatnonzero(usable)
         top = build_bvh(inst_lo[ids], inst_hi[ids])
@@ -313,10 +329,11 @@ class SceneAccel:
             tri_base += blas.prim.shape[0]
         inst_root = np.array([mesh_root[i.mesh] for i in rs.instances], dtype=np.int64)
         empty3 = np.zeros((0, 3), dtype=np.float32)
+        child_lo, child_hi = _closed(np.concatenate(parts_lo), np.concatenate(parts_hi))
         accel = cls(
             child=np.concatenate(parts_child),
-            child_lo=np.concatenate(parts_lo),
-            child_hi=np.concatenate(parts_hi),
+            child_lo=child_lo,
+            child_hi=child_hi,
             kind=np.concatenate(kind),
             first=np.concatenate(first),
             count=np.concatenate(count),

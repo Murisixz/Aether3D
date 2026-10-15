@@ -4,6 +4,97 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.10.0: Scene intelligence and spatial queries
+
+### Added
+
+- **Spatial queries: `aether3d.spatial` and `Scene` methods**
+  ([docs/SPATIAL.md](docs/SPATIAL.md)). Read-only answers about where things
+  are, computed exactly from the triangles in world space (hierarchies,
+  rotations, non-uniform and mirrored scales, shared meshes and evaluated
+  procedural geometry included):
+  - **Bounds:** `scene.bounds(obj, space="world"|"local", children=...)` and
+    `obj.bounds()`: exact axis-aligned boxes, oriented boxes, enclosing
+    spheres, and aggregates over hierarchies.
+  - **Discovery:** `scene.find_objects(...)` by name (glob), kind, tags,
+    metadata, parent or ancestor, visibility, material and region.
+  - **Rays:** `scene.raycast` and `scene.raycast_all`: position, distance,
+    geometric and shading normals, front/back, triangle, face group,
+    barycentrics, UVs, material and instance identity. They run on the Stage 8
+    two-level BVH and its watertight test; a ray through a shared edge or
+    vertex reports one hit; `surfaces="rendered"` lets rays through alpha-mask
+    cut-outs and backs of single-sided materials, as the path tracer does.
+  - **Nearest points and distances:** `scene.closest_point`,
+    `scene.nearest_objects`, `scene.distance(a, b)` (exact, with closest
+    points; zero when touching).
+  - **Containment:** `scene.contains_point(obj, point)`: inside, outside or
+    surface for closed meshes, by the winding number; `"undefined"` (with the
+    fractional winding number and the reason) for open, non-manifold or
+    inconsistently oriented meshes.
+  - **Overlaps:** `scene.overlaps(...)`: a broad phase on world boxes, then exact
+    triangle tests (separating axes, edge crossings) and containment of one
+    closed solid in another. Box overlaps are only reported as candidates
+    (`exact=False`), never as collisions.
+  - **Regions:** `scene.query_region(Box(...) | Sphere(...), mode=...)`: inside,
+    intersecting, or enclosing the region.
+  - **Cameras:** `scene.camera_ray` (the path tracer's camera ray, bit for bit),
+    `scene.pick` (agrees with the rasterizer's object ids away from
+    silhouettes), `scene.project`, `scene.objects_in_view` (exact frustum
+    tests).
+  - **Sight:** `scene.line_of_sight`, `scene.visible_from` (deterministic
+    area-weighted surface samples; a camera observer also limits the view to
+    its frustum).
+  - **Relations:** `scene.relation(a, b)`: distance, intersecting, near, above,
+    below, inside, contains, in front of, behind, and nearer to a viewer, with
+    documented definitions and tolerances.
+  - **`scene.describe()`:** a compact JSON summary of the scene for tools and
+    agents.
+  - Results are frozen dataclasses with `to_dict()`; errors are `QueryError`
+    (`code`, `location`, `hint`).
+- **JSON requests and the command line:** `aether3d.run_query(scene,
+  request)`, `aether3d query QUERY PATH KEY=VALUE ...` and `aether3d query run
+  PATH --request FILE` (one request or a list), and a read-only `query`
+  operation in scene scripts. Python, CLI and scripts give the same JSON.
+- **Object tags and metadata:** `obj.tags` (with `add_tags`, `remove_tags`,
+  `has_tag`) and `obj.metadata` (JSON, with `set_metadata`, `remove_metadata`).
+  They are undo steps, saved in projects and history files, written to and read
+  from glTF (`node.extras.aether3d`), and copied by `duplicate` and `merge`.
+  Scene scripts (`set_object`) and `aether3d object set` (`--tags`, `--add-tag`,
+  `--remove-tag`, `--metadata KEY=VALUE`) set them.
+- **`history.in_progress`:** whether an operation or transaction is open.
+- **Examples:** `examples/castle_spatial.py` inspects the Minecraft castle (a
+  height map from rays, exact contacts, relations, sight lines through the
+  gate, visibility, picking checked against the rasterizer);
+  `examples/hero_picking.py` picks and probes the blocky hero (clicks, an id
+  map, dropping a crate onto the ground, contacts). Both draw cheap diagnostic
+  images (`examples/output/castle_spatial_*.png`, `hero_picking.png`).
+- **Tests:** 84 new tests. Geometric kernels are compared with
+  independent references (Moller's interval test for triangle pairs, polygon
+  clipping for triangle-box tests, closest points and segment distances).
+  Queries are compared with brute force and analytic answers through every
+  kind of transform, instancing, procedural modifiers, hidden and degenerate
+  geometry, shared edges and grazing rays. Picking is checked against the
+  rasterizer's object ids, and camera rays against the path tracer's, bit for
+  bit. Also tested: determinism, cache invalidation through edits, undo, redo
+  and rollback, history neutrality, serialization, and Python/CLI/script parity.
+
+### Changed
+
+- **Project format 6** adds `tags` and `metadata` to every object. Version 5
+  projects load unchanged (the migration adds nothing); 0.9.0 history files
+  load too.
+- **The ray tracing core's boxes are closed.** `SceneAccel` grows every node
+  and instance box by one ulp when it is built. A ray with a zero direction
+  component lying exactly in the plane of a box face used to miss the box on
+  one side (the slab test computed `0 x 1/0` there); it now reaches the
+  triangles, whose watertight test decides. Renders change only for such
+  rays: no golden image or test changed. A new test covers it.
+- **Changed old tests:**
+  - `tests/test_material_persistence.py` and `tests/test_pathtrace_api.py`
+    asserted that projects are written as format version 5; they now expect
+    6.
+- `aether3d.QueryError` and `aether3d.run_query` are in the public API.
+
 ## 0.9.0: Operations history (undo, redo and transactions)
 
 ### Added

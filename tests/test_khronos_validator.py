@@ -60,6 +60,12 @@ def corpus(directory: Path) -> list[Path]:
         "Tri", mesh=Mesh([(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 1, 2)]), scale=(-1, 2, 0.5)
     )
     scenes["no_attributes_mirrored"] = tri
+    tagged = Scene("Tagged")  # tags and metadata in node extras (0.10.0)
+    keep = tagged.add_cube("Keep")
+    keep.tags = ["castle", "stone"]
+    keep.metadata = {"floors": 3, "doors": [{"side": "south", "open": True}], "note": "naïve ✓"}
+    tagged.add_sphere("Ball", parent=keep).set_metadata("weight", None)
+    scenes["tags_and_metadata"] = tagged
     paths = []
     for name, scene in scenes.items():
         for fmt in ("glb", "gltf"):

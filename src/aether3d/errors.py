@@ -234,3 +234,41 @@ class HistoryError(AetherError, ValueError):
             "hint": self.hint,
             "details": self.details,
         }
+
+
+class QueryError(AetherError, ValueError):
+    """A spatial query is malformed or cannot be answered; nothing changed.
+
+    ``code`` is a stable identifier (e.g. ``"INVALID_ARGUMENT"``, ``"NO_GEOMETRY"``,
+    ``"NO_CAMERA"``, ``"GEOMETRY_EVALUATION_FAILED"``, ``"INVALID_REQUEST"``),
+    ``location`` names the offending argument, ``hint`` suggests how to proceed and
+    ``details`` carries structured context.
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        location: str | None = None,
+        *,
+        hint: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.location = location
+        self.hint = hint
+        self.details = dict(details or {})
+        text = f"[{code}] " + (f"{location}: " if location else "") + message
+        if hint:
+            text += f". Hint: {hint}"
+        super().__init__(text)
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "location": self.location,
+            "hint": self.hint,
+            "details": self.details,
+        }

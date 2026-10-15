@@ -286,6 +286,26 @@ def test_grazing_rays_in_a_triangles_plane_miss_it():
     assert not hits.hit.any()
 
 
+def test_axis_parallel_rays_on_a_box_face_plane_still_reach_its_edges():
+    # A ray along -z through x = 1 runs exactly in the plane of the cube's +x face (and of
+    # every box bounding it there); it must still hit the top and bottom faces' edges, on
+    # both sides of the box and in both directions (boxes are closed, 0.10.0).
+    scene = a3.Scene()
+    scene.add_cube(size=2.0)
+    scene.add_camera(position=(0, -5, 0))
+    rs, accel = accel_for(scene)
+    o = np.array(
+        [[1.0, 0.0, 5.0], [-1.0, 0.0, 5.0], [0.0, 1.0, -5.0], [0.0, -1.0, -5.0], [1.0, 1.0, 5.0]]
+    )
+    d = np.array([[0.0, 0.0, -1.0]] * 2 + [[0.0, 0.0, 1.0]] * 2 + [[0.0, 0.0, -1.0]])
+    hits = accel.closest_hit(o, d)
+    assert hits.hit.all() and np.allclose(hits.t, 4.0)
+    tris, _, _ = world_triangles(rs)
+    want, _ = brute_force(tris, o, d)
+    assert np.allclose(want, 4.0)  # the reference agrees (edges belong to the triangles)
+    assert accel.occluded(o, d).all()
+
+
 def test_rays_from_inside_closed_meshes_hit_the_inside():
     scene = a3.Scene()
     scene.add_sphere(radius=1.0, segments=48, rings=24)

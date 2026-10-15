@@ -247,6 +247,18 @@ class _Data(Aspect):
         return () if state[0] is None else (state[0],)
 
 
+class _Annotations(Aspect):
+    """An object's tags and metadata (metadata kept as canonical JSON text)."""
+
+    __slots__ = ()
+
+    def capture(self, obj: SceneObject) -> tuple:
+        return (obj._tags, obj._metadata)
+
+    def apply(self, obj: SceneObject, state: tuple) -> None:
+        obj._tags, obj._metadata = state
+
+
 class _Materials(Aspect):
     """An object's material and per-face-group materials."""
 
@@ -468,6 +480,7 @@ MATERIALS = _Materials("material", (_LIBRARY,))
 PARENT = _Attr("parent", "_parent")
 CHILDREN = _Members("children", "_children")
 ALIVE = _Alive("alive", (_NAMES,))
+ANNOTATIONS = _Annotations("annotations")
 # Scene aspects.
 SCENE_NAME = _Attr("name", "_name", root="scene")
 ROOTS = _Members("roots", "_roots", root="scene")
@@ -942,6 +955,12 @@ class History:
     def revision(self) -> int:
         """Increases with every change of the scene, undo and redo included."""
         return self._revision
+
+    @property
+    def in_progress(self) -> bool:
+        """Whether an operation or transaction is open: its changes are not counted in
+        :attr:`revision` until it ends (spatial-query caches rebuild meanwhile)."""
+        return bool(self._frames)
 
     @property
     def can_undo(self) -> bool:

@@ -45,6 +45,7 @@ $ aether3d geometry world.glb --json
 | Interleaved buffer views (`byteStride`), sparse accessors, accessors without buffer views | n/a | yes |
 | Embedded (`data:` URI), GLB-binary, and external `.bin` buffers | GLB binary; `.gltf` with an embedded buffer | yes |
 | Object ids | stored in `node.extras.aether3d.id` | restored from `extras` when present and unique; generated otherwise |
+| Object tags and metadata | `node.extras.aether3d.tags` / `.metadata` (when present) | restored from `extras`; invalid ones are reported (`STORED_ANNOTATIONS_REJECTED`) and skipped |
 | Scene name | `scenes[0].name` | from the imported scene, else the file name |
 
 Export writes:
@@ -217,6 +218,10 @@ together into glTF's packed texture. Each bake is reported (`TEXTURE_BAKED`).
   reported.
 - Nodes without that metadata get new UUIDs (`"id_source": "generated"` in
   `ImportResult.objects`).
+- Objects with tags or metadata (0.10.0) also write `"tags": [...]` and
+  `"metadata": {...}` there; import restores them, and reports values that are
+  not valid tags or metadata (`STORED_ANNOTATIONS_REJECTED`, a warning) instead
+  of importing them.
 - glTF names may repeat or be missing; Aether3D names must be unique.
   - An unnamed node takes its mesh's name, or else `"Node"`.
   - A duplicate name gets a suffix (`"Twin.001"`), reported as `NAME_CHANGED`.
