@@ -287,3 +287,48 @@ def test_packing_is_bitwise_that_of_the_loops(seed, cull):
         assert_bitwise(words[first : first + groups.size], groups, "groups")
     bounds = mesh_bounds(rs)
     assert_bitwise(instance_corners(rs, bounds), _reference_corners(rs, bounds), "corners")
+
+
+def _reference_finite_instances(rs, eye, bounds):
+    from aether3d.rendering.gpu.renderer import MAX_COORDINATE
+    from aether3d.rendering.shadows import instance_corners
+
+    corners = instance_corners(rs, bounds) - eye
+    return np.all(np.isfinite(corners) & (np.abs(corners) < MAX_COORDINATE), axis=(1, 2))
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_float32_range_checks_decide_as_the_exact_test(seed):
+    """Objects near and beyond float32 range relative to the camera are kept or skipped
+    exactly as the per-corner test decides, through the fast bound or not."""
+    from aether3d.rendering.gpu.renderer import _finite_instances
+    from aether3d.rendering.shadows import mesh_bounds
+
+    rng = np.random.default_rng(seed)
+    s = Scene("Far")
+    cube, ball = create_cube(1.0), create_sphere(0.5, 8, 4)
+    for k in range(60):
+        s.add_object(f"near{k}", mesh=cube if k % 2 else ball, position=(float(k), 0.0, 0.0))
+    camera = s.add_camera("c", position=(0, -50, 5))
+    rs = extract_render_scene(s, camera)
+    bounds = mesh_bounds(rs)
+    for eye in (np.array([0.0, -50.0, 5.0]), np.array([9.9e29, 0.0, 0.0])):
+        keep, _ = _finite_instances(rs, eye, bounds)
+        assert_bitwise(keep, _reference_finite_instances(rs, eye, bounds), "keep")
+    far = Scene("Far")
+    for k in range(80):
+        scale = float(10.0 ** rng.uniform(0, 31))
+        far.add_object(
+            f"o{k}",
+            mesh=cube if k % 2 else ball,
+            position=tuple((rng.uniform(-1, 1, 3) * 10.0 ** rng.uniform(25, 30.5)).tolist()),
+            scale=(scale, 1.0, scale),
+        )
+    camera = far.add_camera("c", position=(0, -5, 0))
+    rs = extract_render_scene(far, camera)
+    bounds = mesh_bounds(rs)
+    keep, diagnostics = _finite_instances(rs, rs.camera.frame.position, bounds)
+    reference = _reference_finite_instances(rs, rs.camera.frame.position, bounds)
+    assert_bitwise(keep, reference, "keep")
+    assert 0 < int(reference.sum()) < len(rs.instances)
+    assert diagnostics and diagnostics[0].code == "NONFINITE_GEOMETRY"

@@ -29,6 +29,7 @@ from typing import Any
 
 import numpy as np
 
+from ... import _features
 from ...diagnostics import INFO, WARNING, Diagnostic
 from ...errors import RenderError
 from ..backends import Antialiasing
@@ -153,6 +154,17 @@ def _finite_instances(
     """Which instances stay within float32 range relative to the camera."""
     if not rs.instances:
         return np.zeros(0, dtype=bool), []
+    # Every corner is within |translation - eye| + |linear| @ max(|lo|, |hi|) of the camera.
+    # When that bound (with a margin far above rounding) is in range for every instance,
+    # so is every corner the exact test below would compute: it is skipped.
+    arrays = rs.instance_arrays
+    reach = np.maximum(np.abs(bounds[:, 0]), np.abs(bounds[:, 1]))
+    with np.errstate(over="ignore", invalid="ignore"):
+        bound = np.abs(arrays.world[:, :3, 3] - eye) + np.sum(
+            np.abs(arrays.world[:, :3, :3]) * reach[arrays.mesh][:, None, :], axis=2
+        )
+        if np.all(bound * (1.0 + 1e-9) < MAX_COORDINATE):  # NaN and inf fail: exact test
+            return np.ones(len(rs.instances), dtype=bool), []
     corners = instance_corners(rs, bounds) - eye
     keep = np.all(np.isfinite(corners) & (np.abs(corners) < MAX_COORDINATE), axis=(1, 2))
     diagnostics = []
@@ -229,13 +241,25 @@ def _render(
     storage = wgpu.BufferUsage.STORAGE
     uniform = wgpu.BufferUsage.UNIFORM
     frame_buffers = []
+    persistent = _features.enabled("AETHER3D_GPU_PERSISTENT_BUFFERS")
+    writes_before = context.frame_buffers.writes
+    written_before = context.frame_buffers.bytes_written
+    bound: dict[int, int] = {}  # id(buffer): bytes of this render's data
 
     def buffer(data: np.ndarray, usage: int, label: str) -> Any:
-        created = device.create_buffer_with_data(label=label, data=data, usage=usage)
+        if persistent:
+            kept, size = context.frame_buffers.upload(label, data, usage)
+            bound[id(kept)] = size
+            return kept
+        created = device.create_buffer_with_data(label=f"aether3d-{label}", data=data, usage=usage)
         frame_buffers.append(created)
+        bound[id(created)] = created.size
         return created
 
-    instance_buffer = buffer(pack_instances(rs, order, eye), storage, "aether3d-instances")
+    def binding(buf: Any) -> dict[str, Any]:
+        return {"buffer": buf, "offset": 0, "size": bound[id(buf)]}
+
+    instance_buffer = buffer(pack_instances(rs, order, eye), storage, "instances")
     materials = pack_material_data(rs, order)
     textures_before = (context.textures.uploads, context.textures.upload_bytes)
     t_textures = time.perf_counter()
@@ -244,22 +268,22 @@ def _render(
     words = materials.words
     for i, image in enumerate(materials.images):  # where each image's levels start in the pool
         words[words[HEADER_IMAGES] + i * IMAGE_WORDS] = offsets[image_key(image)]
-    material_buffer = buffer(words, storage, "aether3d-materials")
-    light_buffer = buffer(pack_lights(rs, eye, plan), storage, "aether3d-lights")
-    shadow_buffer = buffer(pack_shadow_maps(plan), storage, "aether3d-shadow-maps")
-    frame_buffer = buffer(pack_frame(rs, aspect, plan), uniform, "aether3d-frame")
+    material_buffer = buffer(words, storage, "materials")
+    light_buffer = buffer(pack_lights(rs, eye, plan), storage, "lights")
+    shadow_buffer = buffer(pack_shadow_maps(plan), storage, "shadow-maps")
+    frame_buffer = buffer(pack_frame(rs, aspect, plan), uniform, "frame")
     params_buffer = buffer(
         pack_finalize(width, height, aa.supersample, aa.msaa, rs, exposure),
         uniform,
-        "aether3d-finalize",
+        "finalize",
     )
     shadow_pass_buffers = [
         buffer(
             np.concatenate([m.matrix.T.reshape(-1), eye, [0.0]]).astype(np.float32),
             uniform,
-            "aether3d-shadow-pass",
+            f"shadow-pass-{layer}",
         )
-        for m in (plan.maps if plan is not None else ())
+        for layer, m in enumerate(plan.maps if plan is not None else ())
     ]
     t_upload = time.perf_counter() - t0
 
@@ -277,13 +301,13 @@ def _render(
     frame_group = device.create_bind_group(
         layout=context.shaders.layout("frame"),
         entries=[
-            {"binding": 0, "resource": {"buffer": frame_buffer}},
-            {"binding": 1, "resource": {"buffer": instance_buffer}},
-            {"binding": 2, "resource": {"buffer": light_buffer}},
-            {"binding": 3, "resource": {"buffer": shadow_buffer}},
+            {"binding": 0, "resource": binding(frame_buffer)},
+            {"binding": 1, "resource": binding(instance_buffer)},
+            {"binding": 2, "resource": binding(light_buffer)},
+            {"binding": 3, "resource": binding(shadow_buffer)},
             {"binding": 4, "resource": targets.shadow_view},
             {"binding": 5, "resource": utility.shadow_sampler},
-            {"binding": 6, "resource": {"buffer": material_buffer}},
+            {"binding": 6, "resource": binding(material_buffer)},
             {"binding": 7, "resource": {"buffer": texel_buffer}},
         ],
     )
@@ -304,7 +328,7 @@ def _render(
             {"binding": 0, "resource": targets.color_view},
             {"binding": 1, "resource": targets.objects_view},
             {"binding": 2, "resource": targets.depth_view},
-            {"binding": 3, "resource": {"buffer": params_buffer}},
+            {"binding": 3, "resource": binding(params_buffer)},
             {"binding": 4, "resource": {"buffer": utility.thresholds}},
             *output_entries,
         ],
@@ -329,9 +353,9 @@ def _render(
             group = device.create_bind_group(
                 layout=context.shaders.layout("shadow"),
                 entries=[
-                    {"binding": 0, "resource": {"buffer": shadow_pass_buffers[layer]}},
-                    {"binding": 1, "resource": {"buffer": instance_buffer}},
-                    {"binding": 6, "resource": {"buffer": material_buffer}},
+                    {"binding": 0, "resource": binding(shadow_pass_buffers[layer])},
+                    {"binding": 1, "resource": binding(instance_buffer)},
+                    {"binding": 6, "resource": binding(material_buffer)},
                     {"binding": 7, "resource": {"buffer": texel_buffer}},
                 ],
             )
@@ -514,7 +538,10 @@ def _render(
         "texel_pool": context.textures.stats(),
         "target_bytes": targets.nbytes,
         "targets_allocated": allocated,
-        "frame_buffer_bytes": int(sum(b.size for b in frame_buffers)),
+        "frame_buffer_bytes": int(sum(bound.values())),
+        "frame_buffers_kept": persistent,
+        "frame_buffer_writes": context.frame_buffers.writes - writes_before,
+        "frame_buffer_bytes_written": context.frame_buffers.bytes_written - written_before,
         "color_format": color_format,
         "pipelines": context.shaders.pipeline_count,
     }

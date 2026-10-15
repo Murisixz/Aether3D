@@ -553,6 +553,87 @@ class TargetCache:
         )
 
 
+class FrameBuffers:
+    """The per-frame data buffers (instances, materials, lights, uniforms), kept between
+    renders and updated in place.
+
+    Each named slot holds a GPU buffer and a copy of what it contains. A render's data
+    is compared with that copy (as 32-bit words) and only the changed ranges are
+    written, merged when they are close (``MERGE_WORDS``) and with few writes per
+    render (``MAX_WRITES``; beyond, one write spans them all). A buffer grows when
+    the data no longer fits and shrinks when it would be more than four times too
+    large. Bindings name the data's exact size, so the shaders see exactly this
+    render's data. ``AETHER3D_GPU_PERSISTENT_BUFFERS=0`` creates fresh buffers for
+    every render instead.
+    """
+
+    MERGE_WORDS = 64  # changed ranges closer than 256 bytes are written together
+    MAX_WRITES = 32
+
+    def __init__(self, context: GPUContext) -> None:
+        self.context = context
+        self.slots: dict[str, tuple[Any, np.ndarray, int]] = {}  # name: (buffer, copy, usage)
+        self.writes = 0
+        self.bytes_written = 0
+        self.allocations = 0
+
+    def clear(self) -> None:
+        for buffer, _, _ in self.slots.values():
+            buffer.destroy()
+        self.slots.clear()
+
+    def stats(self) -> dict[str, int]:
+        return {
+            "buffers": len(self.slots),
+            "bytes": int(sum(b.size for b, _, _ in self.slots.values())),
+            "writes": self.writes,
+            "bytes_written": self.bytes_written,
+            "allocations": self.allocations,
+        }
+
+    def upload(self, name: str, data: np.ndarray, usage: int) -> tuple[Any, int]:
+        """The slot ``name``'s buffer holding ``data``, and the data's size in bytes."""
+        words = np.ascontiguousarray(data).reshape(-1).view(np.uint32)
+        size = words.size * 4
+        wgpu = self.context.wgpu
+        usage |= wgpu.BufferUsage.COPY_DST
+        found = self.slots.get(name)
+        if found is not None:
+            buffer, copy, slot_usage = found
+            if slot_usage != usage or buffer.size < size or buffer.size > 4 * _align(size):
+                buffer.destroy()
+                found = None
+        if found is None:
+            buffer = self.context.device.create_buffer(
+                label=f"aether3d-{name}", size=_align(max(size, 4)), usage=usage
+            )
+            self.allocations += 1
+            self.context.queue.write_buffer(buffer, 0, words)
+            self.writes += 1
+            self.bytes_written += size
+            self.slots[name] = (buffer, words.copy(), usage)
+            return buffer, size
+        n = min(copy.size, words.size)
+        changed = np.flatnonzero(copy[:n] != words[:n])
+        ranges: list[tuple[int, int]] = []
+        if changed.size:
+            gaps = np.flatnonzero(np.diff(changed) > self.MERGE_WORDS)
+            starts = np.concatenate(([changed[0]], changed[gaps + 1]))
+            ends = np.concatenate((changed[gaps] + 1, [changed[-1] + 1]))
+            ranges = list(zip(starts.tolist(), ends.tolist(), strict=True))
+            if len(ranges) > self.MAX_WRITES:
+                ranges = [(ranges[0][0], ranges[-1][1])]
+        if words.size > copy.size:
+            ranges.append((copy.size, words.size))
+        for start, end in ranges:
+            self.context.queue.write_buffer(buffer, 4 * start, words[start:end])
+            self.writes += 1
+            self.bytes_written += 4 * (end - start)
+        if ranges or words.size != copy.size:
+            self.slots[name] = (buffer, words.copy(), usage)
+        return buffer, size
+
+
 # --------------------------------------------------------------------------- #
 # Packed per-frame data (exact WGSL layouts)
 # --------------------------------------------------------------------------- #

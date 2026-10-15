@@ -67,3 +67,10 @@ MATERIAL_CACHE = register(
     "reuse materials resolved for earlier renders of a scene (rendering/materials.py, "
     "MaterialCache); 0 resolves every material again for every render",
 )
+
+GPU_PERSISTENT_BUFFERS = register(
+    "AETHER3D_GPU_PERSISTENT_BUFFERS",
+    True,
+    "keep the GPU's per-frame data buffers between renders and write only what changed "
+    "(rendering/gpu/resources.py, FrameBuffers); 0 creates fresh buffers for every render",
+)
