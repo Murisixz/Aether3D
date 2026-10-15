@@ -104,7 +104,8 @@ VALID = [
                     "offset": [2, 0, 0],
                     "rotation_step": [0, 0, 10],
                     "scale_step": 1.1,
-                }
+                },
+                "where": {"expr": "i != 2"},
             },
             "fence": {
                 "line": {"from": [0, 0, 0], "to": [10, 0, 0], "count": 6},
@@ -143,7 +144,7 @@ VALID = [
                 "select": {"tags": ["house"], "expect": {"min": 1}},
                 "set": {"scale_by": 1.1},
             },
-            {"op": "delete", "select": {"refs": ["@row[4]"]}, "recursive": False},
+            {"op": "delete", "select": {"refs": ["@row[-1]"]}, "recursive": False},
             {"op": "set_parameters", "values": {"width": 3}},
             {"op": "frame_camera", "camera": "@cam", "targets": {"name_glob": "Brick*"}},
             {"op": "set_active_camera", "camera": "@cam"},

@@ -383,6 +383,11 @@ def _defs() -> dict[str, Any]:
                 "propertyNames": {"enum": list(VARY_FIELDS)},
                 "additionalProperties": _ref("generator"),
             },
+            "where": {
+                "allOf": [_ref("expr")],
+                "description": "pattern instances for which this expression is false are not "
+                "created (e.g. a door: not (x >= 4 and x <= 5 and z <= 2))",
+            },
             "children": _symbols(_ref("object"), "child objects, by symbol"),
             **patterns,
         },

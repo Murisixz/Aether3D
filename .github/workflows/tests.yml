@@ -20,6 +20,18 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: ruff format --check .
+      - name: The wheel ships the data files (plan guide and examples, WGSL shaders)
+        run: |
+          pip wheel --no-deps -w dist .
+          python - <<'EOF'
+          import glob, sys, zipfile
+          names = set(zipfile.ZipFile(glob.glob("dist/aether3d-*.whl")[0]).namelist())
+          need = ["aether3d/plans/guide.md", "aether3d/mcp/server.py"]
+          need += [f"aether3d/plans/examples/{n}.json" for n in ("basics", "castle", "village")]
+          need += ["aether3d/rendering/gpu/wgsl/scene.wgsl"]
+          missing = [n for n in need if n not in names]
+          sys.exit(f"missing from the wheel: {missing}" if missing else 0)
+          EOF
 
   test:
     # Portable tests: everything except GPU rendering, which the gpu jobs below cover.

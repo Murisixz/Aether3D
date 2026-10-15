@@ -412,6 +412,7 @@ class ObjectSpec:
     active: bool | None = None
     frame: dict[str, Any] | None = None
     pattern: Pattern | None = None
+    where: Expr | None = None  # instances for which it is false are not created
     vary: dict[str, Generator] = field(default_factory=dict)
     children: list[ObjectSpec] = field(default_factory=list)
 
@@ -1509,6 +1510,7 @@ _OBJECT_KEYS = (
     "active",
     "frame",
     "vary",
+    "where",
     "children",
     *PATTERNS,
 )
@@ -1679,6 +1681,12 @@ def _parse_object(
         spec.frame = _parse_frame(r, obj["frame"], join(ptr, "frame"))
     if patterns:
         spec.pattern = _parse_pattern(r, patterns[0], obj[patterns[0]], join(ptr, patterns[0]))
+    if "where" in obj:
+        if not instance:
+            r.issues.add("INVALID_VALUE", "where needs a pattern (it selects instances)", ptr)
+        else:
+            expr = r.expression(obj["where"], join(ptr, "where"), INSTANCE_VARIABLES)
+            spec.where = None if expr is _BAD else expr
     if "vary" in obj:
         if not instance:
             r.issues.add("INVALID_VALUE", "vary needs a pattern (it varies instances)", ptr)
@@ -2384,6 +2392,10 @@ def _check_symbols(r: Reader, plan: Plan) -> None:
                 f"{ref.text!r} names a {_SINGULAR[found]}, not a "
                 f"{' or '.join(_SINGULAR[w] for w in wanted)}",
                 ptr,
+                hint="a prefab is a template: reach its copies through the objects that use "
+                "it (@object/child), or select them by tag"
+                if found == "prefabs" and "objects" in wanted
+                else None,
             )
         elif found != "objects" and (len(ref.path) > 1 or ref.path[0][1] is not None):
             r.issues.add("INVALID_REFERENCE", f"{ref.text!r}: only objects have instances", ptr)
@@ -2473,6 +2485,22 @@ def _check_symbols(r: Reader, plan: Plan) -> None:
                 issue["operation"] = op.index
     if plan.active_camera is not None:
         check(plan.active_camera, "/active_camera", ("objects",))
+
+    def query_refs(value: Any, ptr: str) -> None:  # "@..." strings in query arguments
+        if isinstance(value, str):
+            ref = parse_ref_text(value)
+            if ref is not None:
+                check(ref, ptr, ("objects",))
+        elif isinstance(value, list):
+            for k, item in enumerate(value):
+                query_refs(item, join(ptr, k))
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                if key != "query":
+                    query_refs(item, join(ptr, key))
+
+    for q in plan.queries:
+        query_refs(q.request, q.pointer)
 
 
 def _check_selector(sel: Selector, check) -> None:

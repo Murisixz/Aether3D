@@ -4,7 +4,7 @@ Resources (read-only):
 
 * ``aether3d://guide`` -- the scene plan guide for agents (Markdown).
 * ``aether3d://schema/scene-plan`` -- the JSON Schema of scene plans.
-* ``aether3d://examples/{name}`` -- example plans (``basics``, ``castle``).
+* ``aether3d://examples/{name}`` -- example plans (``basics``, ``castle``, ``village``).
 * ``aether3d://scene/summary`` -- a compact summary of the open scene.
 * ``aether3d://scene/objects/{ref}`` -- one object (by id or name), all fields.
 * ``aether3d://render/last-preview`` -- the last preview image (PNG).
@@ -24,7 +24,7 @@ import mcp_types as types
 
 from .session import Session, ToolError
 
-EXAMPLES = ("basics", "castle")
+EXAMPLES = ("basics", "castle", "village")
 
 
 def _package_text(name: str) -> str:
@@ -66,6 +66,7 @@ def resources(session: Session) -> list[types.Resource]:
                 description={
                     "basics": "meshes, materials, patterns, a light, a camera, a query",
                     "castle": "a Minecraft-style castle of thousands of blocks, with prefabs",
+                    "village": "a village of about 11,000 objects from reusable structures",
                 }[name],
                 mime_type="application/json",
             )

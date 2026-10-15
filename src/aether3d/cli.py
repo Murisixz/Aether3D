@@ -1785,7 +1785,10 @@ def cmd_plan_validate(args: argparse.Namespace) -> CommandOutput:
     data = {"valid": result.ok, "project": args.project, **report}
     if result.ok:
         estimate = report.get("estimate", {})
-        lines = [f"OK: plan {result.label!r} is valid ({estimate.get('objects', 0)} objects)"]
+        bound = "at most " if estimate.get("objects_at_most") else ""
+        lines = [
+            f"OK: plan {result.label!r} is valid ({bound}{estimate.get('objects', 0)} objects)"
+        ]
         lines += [f"  warning {w['code']}: {w['message']}" for w in report["warnings"]]
         return data, "\n".join(lines), EXIT_OK
     lines = [f"plan {result.label!r} has {len(result.issues)} problem(s):"]

@@ -490,8 +490,10 @@ def test_resources_and_prompts(tmp_path):
         ]
         schema = await client.read_resource("aether3d://schema/scene-plan")
         out["schema"] = json.loads(schema.contents[0].text)
-        example = await client.read_resource("aether3d://examples/basics")
-        out["example"] = json.loads(example.contents[0].text)
+        out["examples"] = {}
+        for name in ("basics", "castle", "village"):
+            example = await client.read_resource(f"aether3d://examples/{name}")
+            out["examples"][name] = json.loads(example.contents[0].text)
         obj = await client.read_resource("aether3d://scene/objects/ground")
         out["object"] = json.loads(obj.contents[0].text)
         preview = await client.read_resource("aether3d://render/last-preview")
@@ -511,7 +513,13 @@ def test_resources_and_prompts(tmp_path):
     )
     assert "aether3d://scene/objects/{ref}" in out["templates"]
     assert out["schema"]["$id"] == "urn:aether3d:schema:scene-plan:1"
-    assert out["example"] == BASICS
+    assert out["examples"]["basics"] == BASICS
+    assert {plan["label"] for plan in out["examples"].values()} == {
+        BASICS["label"],
+        "Minecraft castle",
+        "Village",
+    }
+    assert all(f"aether3d://examples/{name}" in out["before"] for name in out["examples"])
     assert out["object"]["name"] == "ground" and out["object"]["kind"] == "mesh"
     assert out["preview"].mime_type == "image/png" and len(out["preview"].blob) > 100
     assert out["prompts"] == ["build_scene", "inspect_and_fix", "from_example"]

@@ -779,3 +779,38 @@ def test_parse_plan_exposes_typed_specs():
     parsed = parse_plan(plan(objects={"a": {"repeat": 3}}, label="Typed"))
     assert parsed.label == "Typed" and parsed.objects[0].pattern.count == 3
     assert len(parsed.fingerprint) == 64
+
+
+def test_where_skips_instances():
+    scene = Scene("Where")
+    result = scene.execute_plan(
+        plan(
+            objects={
+                "wall": {
+                    "mesh": {"primitive": "cube"},
+                    "grid": {"count": [6, 1, 4]},
+                    "name": "Brick {x}-{z}",
+                    "where": {"expr": "not (x >= 2 and x <= 3 and z <= 1)"},  # a doorway
+                    "children": {"moss": {}},
+                },
+                "posts": {"repeat": 10, "where": {"expr": "i % 3 == 0"}},
+            },
+            operations=[{"op": "update", "select": "@wall[2]", "set": {"tags": ["third"]}}],
+        )
+    )
+    names = {o.name for o in scene}
+    assert result.counts["objects"] == 20 * 2 + 4
+    assert "Brick 2-0" not in names and "Brick 2-2" in names  # names keep grid coordinates
+    assert "Brick 2-0/moss" not in names and "Brick 2-2/moss" in names
+    assert [o.name for o in scene if o.tags] == ["Brick 4-0"]  # @wall[2]: the third created
+    assert sorted(n for n in names if n.startswith("posts")) == [
+        "posts 0", "posts 3", "posts 6", "posts 9"
+    ]  # fmt: skip
+    assert codes(plan(objects={"x": {"where": {"expr": "true"}}})) == {"INVALID_VALUE"}
+    with pytest.raises(PlanError) as info:
+        scene.execute_plan(plan(objects={"y": {"repeat": 2, "where": {"expr": "i"}}}))
+    assert info.value.code == "INVALID_VALUE" and info.value.pointer == "/objects/y/where"
+    estimate = validate_plan(
+        plan(objects={"z": {"repeat": 5, "where": {"expr": "i < 2"}}})
+    ).estimate
+    assert estimate["objects"] == 5 and estimate["objects_at_most"]

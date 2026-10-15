@@ -164,6 +164,23 @@ class _Layout:
     positions: list[tuple] = field(default_factory=list)
     rotations: Any = None  # one quaternion, or one per instance
     scales: Any = None  # one scale, or one per instance
+    indices: list[int] = field(default_factory=list)  # pattern index of each instance
+
+    def subset(self, keep: list[int]) -> None:
+        """Keep only these instances (a ``where`` filter); everything stays aligned."""
+
+        def pick(values: Any) -> Any:
+            return [values[i] for i in keep] if isinstance(values, list) else values
+
+        self.positions = pick(self.positions)
+        self.rotations = pick(self.rotations)
+        self.scales = pick(self.scales)
+        self.varied = {f: pick(v) for f, v in self.varied.items()}
+        self.rows = pick(self.rows)
+        self.envs = pick(self.envs)
+        self.variables = {k: pick(v) for k, v in self.variables.items()}
+        self.indices = keep
+        self.count = len(keep)
 
 
 @dataclass
@@ -326,8 +343,12 @@ def _static_validation(plan: Any, limits: PlanLimits) -> PlanResult:
     start = time.perf_counter()
     parsed = parse_plan(plan, limits)
 
+    filtered = []
+
     def count(spec: ObjectSpec, depth: int = 0) -> int:
         n = spec.pattern.count if spec.pattern is not None else 1
+        if spec.where is not None:
+            filtered.append(spec.path)
         children = list(spec.children)
         if spec.kind == "prefab" and isinstance(spec.prefab, SymbolRef):
             prefab = parsed.prefabs.get(spec.prefab.head)
@@ -361,6 +382,7 @@ def _static_validation(plan: Any, limits: PlanLimits) -> PlanResult:
         ],
         estimate={
             "objects": total,
+            "objects_at_most": bool(filtered),  # "where" filters skip some instances
             "by_symbol": by_symbol,
             "meshes": len(parsed.meshes),
             "materials": len(parsed.materials),
@@ -866,11 +888,21 @@ class _Run:
                     paths = [paths[index]]
                 matched += paths
             if not matched:
+                section = self.plan.symbols.get(name) if depth == 0 else None
+                if section == "prefabs":
+                    hint = (
+                        f"{name!r} is a prefab, not an object: reach its copies through the "
+                        f"objects that use it (@object/child), or select them by tag"
+                    )
+                elif section is not None and section != "objects":
+                    hint = f"{name!r} is defined in {section}, not in objects"
+                else:
+                    hint = "children are reached as @parent/child, instances as @symbol[index]"
                 raise PlanError(
                     "UNKNOWN_REFERENCE",
                     f"{ref.text!r} names no object of this plan",
                     pointer,
-                    hint="children are reached as @parent/child, instances as @symbol[index]",
+                    hint=hint,
                 )
             current = matched
         return [self.instances[p] for p in current]
@@ -975,32 +1007,33 @@ class _Run:
         self.groups.setdefault(_INDEX_RE.sub("", spec_path), []).append(spec_path)
         template = spec.name
         default_base = spec.symbol if parent_name is None or top else f"{parent_name}/{spec.symbol}"
-        name_values = {"n": n, "symbol": spec.symbol, "parent": parent_name or ""}
+        name_values = {"n": lay.inst.count, "symbol": spec.symbol, "parent": parent_name or ""}
         grid = lay.variables
         records = self.records
         positions, scales, rotations = lay.positions, lay.scales, lay.rotations
-        for i in range(n):
+        for i in range(n):  # i: this definition's i-th created instance
             path = f"{spec_path}[{i}]" if patterned else spec_path
+            index_i = lay.indices[i]  # its pattern index (names, expressions)
             row = rows[i] if rows is not None else None
             # name
             row_template = row.get("name") if row else None
             if row_template is not None:
-                name = render_name(row_template, {**name_values, "i": i})
+                name = render_name(row_template, {**name_values, "i": index_i})
             elif template is not None:
                 name = render_name(
                     template,
                     {
                         **name_values,
-                        "i": i,
+                        "i": index_i,
                         "x": grid["x"][i] if "x" in grid else 0,
                         "y": grid["y"][i] if "y" in grid else 0,
                         "z": grid["z"][i] if "z" in grid else 0,
                     },
                 )
                 if patterned and not template.placeholders:
-                    name = f"{name} {i}"
+                    name = f"{name} {index_i}"
             else:
-                name = f"{default_base} {i}" if patterned else default_base
+                name = f"{default_base} {index_i}" if patterned else default_base
             # per-instance overrides
             material = c.material
             appearance = c.appearance
@@ -1159,7 +1192,7 @@ class _Run:
         dynamic = dynamic or (
             c.aims and _uses_instance(spec.look_at, spec.look_along, spec.direction)
         )
-        if dynamic or any(g.kind == "expr" for g in spec.vary.values()):
+        if dynamic or spec.where is not None or any(g.kind == "expr" for g in spec.vary.values()):
             envs = [self._instance_env(inst, i, n) for i in range(n)]
         else:
             envs = None
@@ -1227,6 +1260,19 @@ class _Run:
             scales is not None and not np.all(np.isfinite(scales))
         ):
             raise PlanError("INVALID_VALUE", "an instance has a non-finite position or scale", ptr)
+        keep = None
+        if spec.where is not None:
+            keep = []
+            for i, env in enumerate(envs):
+                value = evaluate(spec.where, env, f"{ptr}/where")
+                if not isinstance(value, bool):
+                    raise PlanError(
+                        "INVALID_VALUE",
+                        f"where must be true or false, got {value!r}",
+                        f"{ptr}/where",
+                    )
+                if value:
+                    keep.append(i)
         lay = _Layout(inst=inst, count=n, varied=varied, rows=rows, envs=envs)
         lay.variables = inst.variables
         lay.positions = [tuple(p) for p in np.broadcast_to(positions, (n, 3)).tolist()]
@@ -1256,6 +1302,9 @@ class _Run:
                     q = memo[key] = quat_from_euler(key)
                 rotations.append(q)
             lay.rotations = rotations
+        lay.indices = list(range(n))
+        if keep is not None and len(keep) < n:
+            lay.subset(keep)
         if not random:
             self._layouts[id(spec)] = lay
         return lay

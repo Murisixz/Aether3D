@@ -80,6 +80,9 @@ Each pattern turns one definition into many instances:
 | `"repeat": n` | `n` instances, placed with expressions over `i` |
 
 - `position` adds to the pattern's positions.
+- **where** skips instances: `"where": {"expr": "not (x >= 2 and x <= 3 and z <= 1)"}`
+  leaves a doorway in a wall of blocks. Names keep the pattern's indexes; `"@wall[k]"`
+  counts the instances made.
 - **vary** changes fields per instance (`color`, `material`, `mesh`, `scale`,
   `rotation_euler`, `offset`, `visible`, `tags`):
   `{"cycle": [...]}`, `{"choose": [...], "seed": 1}`, `{"uniform": [low, high], "seed": 2}`,
@@ -96,6 +99,10 @@ Each pattern turns one definition into many instances:
   "roof": {"mesh": "@roof", "position": [0, 0, 3.5], "material": "@tiles"}}}},
 "objects": {"street": {"prefab": "@house", "array": {"count": 12, "offset": [8, 0, 0]}}}
 ```
+
+A prefab is a template, not an object: reach its copies through the objects that use it
+(`"@street/roof"`, `"@street[3]/walls"`). Prefabs can use other prefabs. The example plans
+(`aether3d://examples/castle`, `aether3d://examples/village`) show larger structures.
 
 ## Operations (after building, in order)
 

@@ -1,0 +1,178 @@
+{
+  "format": "aether3d.scene-plan",
+  "version": 1,
+  "label": "Village",
+  "description": "A procedural village of reusable structures: three house prefabs (body, roof, door, windows, chimney, a front fence with a gate) in blocks of nine, each block with trees and street lamps, on an 8x8 street grid, plus a park, a plaza with a fountain, cars with varied paint, the sun and a framed camera. About 11,000 objects that share 18 meshes, so the GPU draws them in a few instanced draw calls.",
+  "parameters": {"block": 42},
+  "materials": {
+    "grass": {"preset": "grass"},
+    "road": {"base_color": "#3a3d40", "roughness": 0.95},
+    "plaster_a": {"base_color": "#ead9bf", "roughness": 0.9},
+    "plaster_b": {"base_color": "#d7b98f", "roughness": 0.9},
+    "plaster_c": {"base_color": "#c5d3dc", "roughness": 0.9},
+    "roof_red": {"base_color": "#9a3b2c", "roughness": 0.8},
+    "roof_slate": {"base_color": "#4a5562", "roughness": 0.7},
+    "roof_brown": {"base_color": "#6e4a2e", "roughness": 0.8},
+    "wood": {"preset": "wood"},
+    "paint": {"base_color": "#efe9dd", "roughness": 0.7},
+    "glass": {"base_color": "#87aecf", "roughness": 0.1, "metallic": 0.1},
+    "leaves": {"base_color": "#3d7a2f", "roughness": 0.9},
+    "bark": {"base_color": "#6b4a2b", "roughness": 0.9},
+    "metal": {"preset": "metal"},
+    "tire": {"base_color": "#1d1d1d", "roughness": 0.8},
+    "stone": {"preset": "stone"},
+    "water": {"base_color": "#3d7fb3", "roughness": 0.1}
+  },
+  "meshes": {
+    "body": {"primitive": "box", "size": [6, 6, 4]},
+    "roof": {"primitive": "cone", "radius_bottom": 4.6, "depth": 2.6, "segments": 4, "smooth": false},
+    "door": {"primitive": "box", "size": [1.2, 0.12, 2.2]},
+    "window": {"primitive": "box", "size": [1.1, 0.1, 1.1]},
+    "chimney": {"primitive": "box", "size": [0.6, 0.6, 1.6]},
+    "post": {"primitive": "box", "size": [0.12, 0.12, 0.9]},
+    "trunk": {"primitive": "cylinder", "radius": 0.18, "depth": 2.4, "segments": 8},
+    "crown": {"primitive": "sphere", "radius": 1.3, "segments": 12, "rings": 8},
+    "pole": {"primitive": "cylinder", "radius": 0.08, "depth": 4.5, "segments": 8},
+    "lamp_head": {"primitive": "box", "size": [0.5, 0.5, 0.3]},
+    "car_body": {"primitive": "box", "size": [4.2, 1.8, 0.8]},
+    "car_cabin": {"primitive": "box", "size": [2.2, 1.6, 0.7]},
+    "wheel": {"primitive": "cylinder", "radius": 0.36, "depth": 0.28, "segments": 12}
+  },
+  "prefabs": {
+    "house_a": {
+      "tags": ["house"],
+      "children": {
+        "body": {"mesh": "@body", "material": "@plaster_a", "position": [0, 0, 2]},
+        "roof": {"mesh": "@roof", "material": "@roof_red", "position": [0, 0, 5.3], "rotation_euler": [0, 0, 45]},
+        "door": {"mesh": "@door", "material": "@wood", "position": [0, -3.04, 1.1]},
+        "windows": {"mesh": "@window", "material": "@glass", "position": [-1.8, -3.03, 2.4],
+                    "array": {"count": 2, "offset": [3.6, 0, 0]}},
+        "chimney": {"mesh": "@chimney", "material": "@stone", "position": [1.6, 1.4, 6.0]},
+        "fence": {"mesh": "@post", "material": "@paint", "tags": ["fence"],
+                  "line": {"from": [-4, -4.4, 0.45], "to": [4, -4.4, 0.45], "count": 9},
+                  "where": {"expr": "i != 4"}}
+      }
+    },
+    "house_b": {
+      "tags": ["house"],
+      "children": {
+        "body": {"mesh": "@body", "material": "@plaster_b", "position": [0, 0, 3], "scale": [1, 1, 1.5]},
+        "roof": {"mesh": "@roof", "material": "@roof_slate", "position": [0, 0, 7.3], "rotation_euler": [0, 0, 45]},
+        "door": {"mesh": "@door", "material": "@wood", "position": [-1.5, -3.04, 1.1]},
+        "windows": {"mesh": "@window", "material": "@glass", "position": [-1.8, -3.03, 2.4],
+                    "grid": {"count": [2, 1, 2], "spacing": [3.6, 1, 2.4]},
+                    "where": {"expr": "not (x == 0 and z == 0)"}},
+        "fence": {"mesh": "@post", "material": "@paint", "tags": ["fence"],
+                  "line": {"from": [-4, -4.4, 0.45], "to": [4, -4.4, 0.45], "count": 9},
+                  "where": {"expr": "i != 2 and i != 3"}}
+      }
+    },
+    "house_c": {
+      "tags": ["house"],
+      "children": {
+        "body": {"mesh": "@body", "material": "@plaster_c", "position": [0, 0, 2]},
+        "roof": {"mesh": "@roof", "material": "@roof_brown", "position": [0, 0, 5.3], "rotation_euler": [0, 0, 45]},
+        "door": {"mesh": "@door", "material": "@wood", "position": [1.5, -3.04, 1.1]},
+        "windows": {"mesh": "@window", "material": "@glass", "position": [-1.5, -3.03, 2.4]},
+        "chimney": {"mesh": "@chimney", "material": "@stone", "position": [-1.6, 1.4, 6.0]},
+        "fence": {"mesh": "@post", "material": "@paint", "tags": ["fence"],
+                  "line": {"from": [-4, -4.4, 0.45], "to": [4, -4.4, 0.45], "count": 9},
+                  "where": {"expr": "i != 5 and i != 6"}}
+      }
+    },
+    "tree": {
+      "tags": ["tree"],
+      "children": {
+        "trunk": {"mesh": "@trunk", "material": "@bark", "position": [0, 0, 1.2]},
+        "crown": {"mesh": "@crown", "material": "@leaves", "position": [0, 0, 3.2]}
+      }
+    },
+    "lamp": {
+      "tags": ["lamp"],
+      "children": {
+        "pole": {"mesh": "@pole", "material": "@metal", "position": [0, 0, 2.25]},
+        "head": {"mesh": "@lamp_head", "color": "#fff1c4", "position": [0, 0, 4.6]}
+      }
+    },
+    "yard": {
+      "children": {
+        "trees": {"prefab": "@tree", "line": {"from": [-15, 15, 0], "to": [15, 15, 0], "count": 4}},
+        "lamps": {"prefab": "@lamp", "line": {"from": [16, -12, 0], "to": [16, 12, 0], "count": 3}}
+      }
+    },
+    "block_a": {
+      "tags": ["block"],
+      "children": {
+        "houses": {"prefab": "@house_a", "grid": {"count": [3, 3], "spacing": 10, "center": true}},
+        "yard": {"prefab": "@yard"}
+      }
+    },
+    "block_b": {
+      "tags": ["block"],
+      "children": {
+        "houses": {"prefab": "@house_b", "grid": {"count": [3, 3], "spacing": 10, "center": true}},
+        "yard": {"prefab": "@yard"}
+      }
+    },
+    "block_c": {
+      "tags": ["block"],
+      "children": {
+        "houses": {"prefab": "@house_c", "grid": {"count": [3, 3], "spacing": 10, "center": true}},
+        "yard": {"prefab": "@yard"}
+      }
+    },
+    "car": {
+      "mesh": "@car_body", "color": "#b03a2e", "tags": ["car"],
+      "children": {
+        "cabin": {"mesh": "@car_cabin", "material": "@glass", "position": [-0.2, 0, 0.75]},
+        "wheels": {
+          "mesh": "@wheel", "material": "@tire", "rotation_euler": [90, 0, 0],
+          "instances": [{"position": [-1.3, -0.95, -0.39]}, {"position": [1.3, -0.95, -0.39]},
+                        {"position": [-1.3, 0.95, -0.39]}, {"position": [1.3, 0.95, -0.39]}]
+        }
+      }
+    }
+  },
+  "objects": {
+    "ground": {"mesh": {"primitive": "plane", "size": 600}, "material": "@grass", "tags": ["ground"]},
+    "roads_x": {"mesh": {"primitive": "box", "size": [344, 8, 0.1]}, "material": "@road", "tags": ["road"],
+                "array": {"count": 9, "offset": [0, {"expr": "block"}, 0]}, "position": [0, {"expr": "-4 * block"}, 0.05]},
+    "roads_y": {"mesh": {"primitive": "box", "size": [8, 344, 0.1]}, "material": "@road", "tags": ["road"],
+                "array": {"count": 9, "offset": [{"expr": "block"}, 0, 0]}, "position": [{"expr": "-4 * block"}, 0, 0.06]},
+    "town": {"tags": ["town"]},
+    "blocks_a": {"parent": "@town", "prefab": "@block_a", "name": "Block {x}-{y}",
+                 "grid": {"count": [8, 8], "spacing": {"expr": "block"}, "center": true},
+                 "where": {"expr": "(x + y) % 3 == 0 and not (x == 3 and y == 3) and not (x == 4 and y == 4)"}},
+    "blocks_b": {"parent": "@town", "prefab": "@block_b", "name": "Block {x}-{y}",
+                 "grid": {"count": [8, 8], "spacing": {"expr": "block"}, "center": true},
+                 "where": {"expr": "(x + y) % 3 == 1 and not (x == 3 and y == 3) and not (x == 4 and y == 4)"}},
+    "blocks_c": {"parent": "@town", "prefab": "@block_c", "name": "Block {x}-{y}",
+                 "grid": {"count": [8, 8], "spacing": {"expr": "block"}, "center": true},
+                 "where": {"expr": "(x + y) % 3 == 2 and not (x == 3 and y == 3) and not (x == 4 and y == 4)"}},
+    "park_trees": {"parent": "@town", "prefab": "@tree", "name": "Park tree {i}",
+                   "scatter": {"count": 120, "seed": 7, "box": {"min": [-36, -36], "max": [-6, -6]}, "min_distance": 2.0},
+                   "vary": {"scale": {"uniform": [0.8, 1.3], "seed": 3}}},
+    "plaza": {"parent": "@town", "position": [21, 21, 0], "tags": ["plaza"],
+              "children": {
+                "basin": {"mesh": {"primitive": "cylinder", "radius": 6, "depth": 0.8, "segments": 32}, "material": "@stone", "position": [0, 0, 0.4]},
+                "water": {"mesh": {"primitive": "cylinder", "radius": 5.4, "depth": 0.2, "segments": 32}, "material": "@water", "position": [0, 0, 0.75]},
+                "column": {"mesh": {"primitive": "cylinder", "radius": 0.5, "depth": 3, "segments": 16}, "material": "@stone", "position": [0, 0, 2.3]},
+                "benches": {"mesh": {"primitive": "box", "size": [2.4, 0.6, 0.5]}, "material": "@wood",
+                            "circle": {"count": 8, "radius": 9, "z": 0.25, "orient": "tangent"}}
+              }},
+    "cars": {"parent": "@town", "prefab": "@car", "name": "Car {i}",
+             "grid": {"count": [38, 9], "spacing": [9, {"expr": "block"}]}, "position": [-166.5, {"expr": "-4 * block - 2"}, 0.75],
+             "where": {"expr": "(x * 7 + y * 3) % 5 != 0"},
+             "vary": {"offset": {"uniform": [[-1.5, 0, 0], [1.5, 0, 0]], "seed": 5},
+                      "color": {"choose": ["#b03a2e", "#2e5fa8", "#e8e8e8", "#1f1f1f", "#d9a32e", "#3d7a4a"], "seed": 9}}},
+    "sun": {"light": {"type": "directional", "intensity": 2.2, "angle": 1}, "direction": [-0.35, 0.55, -0.75]},
+    "camera": {"camera": {"fov": 38}, "active": true,
+               "frame": {"targets": ["@roads_x", "@roads_y"], "direction": [-0.5, 0.62, -0.6], "margin": 0.02}}
+  },
+  "world": {"background": "#a8cbe8", "ambient_intensity": 0.3},
+  "queries": [
+    {"query": "overlaps", "objects": "@cars",
+     "against": ["@blocks_a/yard/lamps/pole", "@blocks_b/yard/lamps/pole", "@blocks_c/yard/lamps/pole"]},
+    {"query": "nearest", "point": [21, 21, 1], "count": 3}
+  ]
+}

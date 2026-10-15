@@ -27,7 +27,7 @@
       "children": {
         "front": {"mesh": "@block", "material": "@stone", "position": [-2.5, -2.5, 0.5],
                   "grid": {"count": [6, 1, 11]},
-                  "vary": {"visible": {"expr": "not (x >= 2 and x <= 3 and z >= 6 and z <= 7)"}}},
+                  "where": {"expr": "not (x >= 2 and x <= 3 and z >= 6 and z <= 7)"}},
         "back": {"mesh": "@block", "material": "@stone", "position": [-2.5, 2.5, 0.5],
                  "grid": {"count": [6, 1, 11]}},
         "left": {"mesh": "@block", "material": "@stone", "position": [-2.5, -1.5, 0.5],
@@ -53,7 +53,7 @@
         "trunk": {"mesh": "@block", "material": "@trunk", "position": [0, 0, 0.5], "array": {"count": 4, "offset": [0, 0, 1]}},
         "leaves": {"mesh": "@block", "material": "@leaves", "position": [-1, -1, 4.5],
                    "grid": {"count": [3, 3, 2]},
-                   "vary": {"visible": {"expr": "not (z == 1 and x != 1 and y != 1)"}}}
+                   "where": {"expr": "not (z == 1 and x != 1 and y != 1)"}}
       }
     }
   },
@@ -107,7 +107,7 @@
       "parent": "@castle", "position": [0, 4, 0], "tags": ["keep"],
       "children": {
         "front": {"mesh": "@block", "material": "@stone", "position": [-4.5, -4.5, 0.5], "grid": {"count": [10, 1, 14]},
-                  "vary": {"visible": {"expr": "not ((x >= 4 and x <= 5 and z <= 2) or (z >= 8 and z <= 9 and (x == 2 or x == 7)))"}}},
+                  "where": {"expr": "not ((x >= 4 and x <= 5 and z <= 2) or (z >= 8 and z <= 9 and (x == 2 or x == 7)))"}},
         "back": {"mesh": "@block", "material": "@stone", "position": [-4.5, 4.5, 0.5], "grid": {"count": [10, 1, 14]}},
         "left": {"mesh": "@block", "material": "@stone", "position": [-4.5, -3.5, 0.5], "grid": {"count": [1, 8, 14]}},
         "right": {"mesh": "@block", "material": "@stone", "position": [4.5, -3.5, 0.5], "grid": {"count": [1, 8, 14]}},
