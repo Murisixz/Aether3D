@@ -21,6 +21,7 @@ applies the plan and rolls it back, reporting exactly what it would do.
 from __future__ import annotations
 
 import contextlib
+import gc
 import math
 import re
 import time
@@ -258,7 +259,29 @@ def execute_plan(
             )
         run.expected_revision = expected_revision
     run.timings["parse"] = time.perf_counter() - start
-    return run.run()
+    with _collector_paused():
+        return run.run()
+
+
+@contextlib.contextmanager
+def _collector_paused():
+    """Pause Python's cyclic garbage collector while a plan runs (restored after).
+
+    A plan allocates many objects that all stay alive, and every allocation counts
+    toward the collector's thresholds. A full collection triggered meanwhile walks every
+    object of the process: in a long-running process holding a large scene (an MCP
+    server, a test session) it dominated the plan (8,000 objects: 256 ms instead of
+    136 ms with 700,000 objects alive). The little garbage a plan makes is collected
+    after it. A collector that is already off (the caller's choice) stays off.
+    """
+    if not gc.isenabled():
+        yield
+        return
+    gc.disable()
+    try:
+        yield
+    finally:
+        gc.enable()
 
 
 def validate_plan(

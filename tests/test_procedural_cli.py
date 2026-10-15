@@ -317,7 +317,7 @@ def test_cli_entry_point(project):
 def test_creating_many_objects_with_a_script_scales_linearly():
     """Each step is checked, but a created object needs no scan of every object (which
     made N creations cost O(N^2)): 8x the objects cost about 8x the time."""
-    import time
+    from timing import seconds
 
     def run(n):
         operations = [
@@ -328,11 +328,9 @@ def test_creating_many_objects_with_a_script_scales_linearly():
             ),
         ]
         scene = Scene("Blocks")
-        start = time.perf_counter()
-        run_procedural_script(scene, script(*operations))
-        seconds = time.perf_counter() - start
+        elapsed = seconds(lambda: run_procedural_script(scene, script(*operations)))
         assert len(scene) == n and len(scene.history) == 1
-        return seconds
+        return elapsed
 
     run(100)  # warm up
     small, large = min(run(500) for _ in range(2)), min(run(4000) for _ in range(2))

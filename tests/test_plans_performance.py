@@ -1,14 +1,16 @@
 """Scene plans scale as designed: regression tests that do not assume a machine's speed.
 
 Times are compared with each other on the same machine (the median of a few runs, with
-generous margins), never with fixed budgets; sizes are deterministic and are checked
-exactly. ``benchmarks/bench_plans.py`` measures the actual speed.
+generous margins, the garbage collector paused: see ``timing.py``), never with fixed
+budgets; sizes are deterministic and are checked exactly. ``benchmarks/bench_plans.py``
+measures the actual speed.
 """
 
 from __future__ import annotations
 
 import statistics
-import time
+
+from timing import seconds
 
 from aether3d import Scene
 
@@ -31,12 +33,7 @@ def blocks(n: int) -> dict:
 
 
 def median_seconds(fn, repeat: int = 5) -> float:
-    times = []
-    for _ in range(repeat):
-        start = time.perf_counter()
-        fn()
-        times.append(time.perf_counter() - start)
-    return statistics.median(times)
+    return statistics.median(seconds(fn) for _ in range(repeat))
 
 
 def test_building_scales_linearly():

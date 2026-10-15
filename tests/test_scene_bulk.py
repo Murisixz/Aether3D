@@ -8,9 +8,8 @@ however objects come and go, now that ``_unique_name`` remembers where it stoppe
 
 from __future__ import annotations
 
-import time
-
 import pytest
+from timing import seconds
 
 from aether3d import Scene, create_cube, create_sphere
 from aether3d.errors import NameConflictError, ObjectNotFoundError, ValidationError
@@ -94,10 +93,12 @@ def test_asking_for_a_free_name_does_not_rescan_the_taken_ones():
         names = ["Crate"] + [f"Crate.{k:03d}" for k in range(1, n)]
         scene._create_many([NewObject(name) for name in names])
         assert scene.unique_name("Crate") == f"Crate.{n:03d}"
-        start = time.perf_counter()
-        for _ in range(2_000):
-            scene.unique_name("Crate")
-        return time.perf_counter() - start
+
+        def ask() -> None:
+            for _ in range(2_000):
+                scene.unique_name("Crate")
+
+        return seconds(ask)
 
     small, large = min(calls(1_000) for _ in range(2)), min(calls(16_000) for _ in range(2))
     # A scan from .001 would make every call 16x slower in the larger scene.
@@ -252,9 +253,7 @@ def test_create_many_scales_linearly():
     def build(n: int) -> float:
         scene = Scene("Bulk")
         records = [NewObject(f"C{i}", mesh=mesh, position=(float(i), 0.0, 0.0)) for i in range(n)]
-        start = time.perf_counter()
-        scene._create_many(records)
-        return time.perf_counter() - start
+        return seconds(lambda: scene._create_many(records))
 
     build(500)  # warm up
     small, large = min(build(2_000) for _ in range(2)), min(build(16_000) for _ in range(2))

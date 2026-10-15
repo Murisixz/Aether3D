@@ -4,10 +4,10 @@ determinism and parity with the per-object API."""
 from __future__ import annotations
 
 import threading
-import time
 
 import numpy as np
 import pytest
+from timing import seconds
 
 from aether3d import PlanError, Scene, create_cube, create_sphere
 from aether3d.history import check_scene
@@ -581,9 +581,7 @@ def test_large_plans_scale_linearly():
             meshes={"b": {"primitive": "cube"}},
             objects={"g": {"mesh": "@b", "grid": {"count": [n // 50, 50]}}},
         )
-        start = time.perf_counter()
-        scene.execute_plan(doc)
-        elapsed = time.perf_counter() - start
+        elapsed = seconds(lambda: scene.execute_plan(doc))
         assert len(scene) == n
         return elapsed
 
@@ -694,3 +692,32 @@ def test_plan_queries_answer_exactly_as_spatial_queries_do():
     for answer, request in zip(result.queries, direct, strict=True):
         assert answer["result"] == run_query(scene, request)["result"], request["query"]
     assert result.queries[0]["result"]  # the crates do overlap
+
+
+def test_plans_run_with_the_garbage_collector_paused():
+    """A full collection in a large process would walk every object of it during the
+    plan; the collector is paused while the plan runs, and restored however it ends."""
+    import gc
+
+    states: list[bool] = []
+
+    def watch() -> bool:  # called at every safe point of the plan
+        states.append(gc.isenabled())
+        return False
+
+    assert gc.isenabled()
+    Scene("Paused").execute_plan(
+        plan(objects={"crates": {"mesh": {"primitive": "cube"}, "repeat": 300}}), cancel=watch
+    )
+    assert states and not any(states) and gc.isenabled()
+    scene = Scene("Conflict")
+    scene.add_object("a")
+    with pytest.raises(PlanError) as info:  # fails while it runs: restored too
+        scene.execute_plan(plan(objects={"a": {}}), cancel=watch)
+    assert info.value.code == "NAME_CONFLICT" and gc.isenabled()
+    gc.disable()
+    try:
+        Scene("Off").execute_plan(plan(objects={"b": {}}))
+        assert not gc.isenabled()  # the caller turned it off: it stays off
+    finally:
+        gc.enable()
