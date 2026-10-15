@@ -216,8 +216,23 @@ def test_build_inspect_fix_undo_preview_save_export(tmp_path):
             "result"
         ]
         out["undo"] = await call(client, "history", {"action": "undo"})
-        again = await call(client, "spatial_query", {"request": CRATE_VS_PILLARS})
-        out["after_undo"] = again["result"]
+        again = await call(
+            client,
+            "spatial_query",
+            {
+                "requests": [
+                    CRATE_VS_PILLARS,
+                    # the same question with selectors instead of names
+                    {
+                        "query": "overlaps",
+                        "objects": {"names": ["crate"]},
+                        "against": {"name_glob": "pillars *", "expect": 8},
+                    },
+                    {"query": "overlaps", "objects": {"tags": ["none"], "expect": {"min": 1}}},
+                ]
+            },
+        )
+        out["after_undo"], out["by_selectors"], out["unmet"] = again["results"]
         out["redo"] = await call(client, "history", {"action": "redo"})
         out["list"] = await call(
             client,
@@ -243,7 +258,10 @@ def test_build_inspect_fix_undo_preview_save_export(tmp_path):
     assert [{o["a"]["name"], o["b"]["name"]} for o in out["overlaps"]] == [{"crate", "pillars 0"}]
     assert out["fixed"] == []
     assert [m["label"] for m in out["undo"]["moved"]] == ["Move the crate"]
-    assert len(out["after_undo"]) >= 1
+    assert len(out["after_undo"]["result"]) >= 1
+    assert out["by_selectors"]["result"] == out["after_undo"]["result"]
+    assert out["unmet"]["error"]["code"] == "SELECTION_MISMATCH"
+    assert out["unmet"]["error"]["pointer"] == "/requests/2/objects"
     assert out["redo"]["scene"]["dirty"]
     assert out["list"]["total"] == 33 and len(out["list"]["objects"]) == 10
     assert out["page2"]["offset"] == 10 and out["page2"]["objects"][0]["name"] == "wall 10"

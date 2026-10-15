@@ -11,7 +11,7 @@ import pytest
 
 from aether3d import PlanError, Scene, create_cube, create_sphere
 from aether3d.history import check_scene
-from aether3d.plans import ID_NAMESPACE
+from aether3d.plans import ID_NAMESPACE, select_objects
 
 
 def plan(**sections) -> dict:
@@ -497,13 +497,23 @@ def test_queries_answer_with_plan_references():
                 {"query": "overlaps", "objects": "@crates"},
                 {"query": "distance", "a": "@crates[0]", "b": "@floor"},
                 {"query": "bounds", "object": "Nope"},
+                # object lists may be selectors, with plan references inside
+                {"query": "overlaps", "objects": {"refs": ["@crates"]}},
+                {"query": "nearest", "point": [0, 0, 9], "objects": {"name_glob": "crates *"}},
+                {"query": "nearest", "point": [0, 0, 9], "exclude": {"under": "@floor"}},
+                {"query": "overlaps", "objects": {"tags": ["none"], "expect": 1}},
             ],
         )
     )
-    overlaps, distance, error = result.queries
+    overlaps, distance, error, by_refs, by_glob, excluding, unmet = result.queries
     assert len(overlaps["result"]) == 1  # the two crates intersect
     assert distance["result"]["distance"] == pytest.approx(0)
     assert error["error"]["code"] == "OBJECT_NOT_FOUND"
+    assert by_refs["result"] == overlaps["result"]
+    assert {n["object"]["name"] for n in by_glob["result"]} == {"crates 0", "crates 1"}
+    assert {n["object"]["name"] for n in excluding["result"]} == {"floor", "crates 0", "crates 1"}
+    assert unmet["error"]["code"] == "SELECTION_MISMATCH"
+    assert unmet["error"]["pointer"] == "/queries/6/objects"
 
 
 # --------------------------------------------------------------------------- #
@@ -612,3 +622,26 @@ def test_gpu_draws_instances_of_a_shared_mesh_in_one_call(gpu):
     result = gpu.render(scene, width=160, height=90)
     assert result.backend["name"] == "gpu"
     assert result.stats["draw_calls"] == 1  # 800 objects sharing one mesh: one instanced draw
+
+
+def test_explicit_selections_come_in_scene_order():
+    import random
+
+    scene = Scene("Order")
+    tree = {"repeat": 12, "children": {"b": {"repeat": 3, "children": {"c": {"repeat": 2}}}}}
+    scene.execute_plan(plan(objects={"a": tree, "z": {"repeat": 5}}))
+    rng = random.Random(5)
+    for k in range(3):  # reparent some objects, so the order is not the creation order
+        moved = rng.choice([o for o in scene if o.parent is None and o.name.startswith("a ")])
+        scene.execute_plan(
+            plan(operations=[{"op": "update", "select": moved.name, "set": {"parent": f"z {k}"}}])
+        )
+    objects = list(scene)
+    for _ in range(60):
+        picked = rng.sample(objects, rng.randint(1, 15))
+        rng.shuffle(picked)
+        expected = [o.name for o in objects if o in picked]
+        assert [o.name for o in select_objects(scene, {"names": [o.name for o in picked]})] == (
+            expected
+        )
+        assert [o.name for o in select_objects(scene, [o.id for o in picked])] == expected

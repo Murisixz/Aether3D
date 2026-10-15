@@ -614,6 +614,7 @@ def check_scene_plan(session: Session, args: dict, ctx: ToolContext) -> ToolOutp
 
 
 def spatial_query(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
+    from ..plans import with_selections
     from ..spatial import run_query
 
     scene = session.require_scene()
@@ -625,7 +626,8 @@ def spatial_query(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
         if ctx.cancel.is_set():
             raise ToolError("CANCELLED", "cancelled")
         try:
-            results.append(run_query(scene, request))
+            where = "/request" if "request" in args else f"/requests/{k}"
+            results.append(run_query(scene, with_selections(scene, request, where)))
         except AetherError as exc:
             results.append(
                 {"query": request.get("query"), "index": k, "error": _engine_error(exc, session)}
@@ -1095,7 +1097,9 @@ TOOLS: tuple[ToolSpec, ...] = (
         "describe, bounds, find, raycast, raycast_all, closest_point, nearest, contains, "
         "distance, overlaps, region, camera_ray, pick, project, in_view, line_of_sight, "
         'visible_from, relation. request: {"query": name, ...arguments} (as aether3d '
-        "query), or requests: a list of them. Objects are ids or names; points [x, y, z].",
+        "query), or requests: a list of them. Objects are ids or names; objects, against "
+        'and exclude also take a selector ({"tags": [...]}, {"under": id or name}, '
+        '{"name_glob": "Tower */*"}, ...); points [x, y, z].',
         _schema(
             {
                 "request": {

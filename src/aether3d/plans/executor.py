@@ -300,27 +300,28 @@ def validate_plan(
         )
 
 
-def select_objects(scene: Scene, selector: Any) -> list[SceneObject]:
+def select_objects(scene: Scene, selector: Any, pointer: str = "/select") -> list[SceneObject]:
     """The objects of ``scene`` a plan selector names, in scene order.
 
     ``selector`` is what a plan operation's ``select`` takes: an id or name, a list of
     them, or an object with ``ids``, ``names``, ``tags``, ``any_tags``, ``name_glob``,
     ``kind``, ``under``, ``visible``, ``material`` and ``expect`` (plan symbols such as
-    ``"@towers"`` exist only inside a plan). Raises :class:`PlanError`.
+    ``"@towers"`` exist only inside a plan). Raises :class:`PlanError`, located at
+    ``pointer`` (where the selector came from).
     """
     from .model import Issues, Reader, parse_selector
 
     issues = Issues()
-    sel = parse_selector(Reader(issues, PlanLimits()), selector, "/select")
+    sel = parse_selector(Reader(issues, PlanLimits()), selector, pointer)
     issues.raise_if_any()
     if sel is None:  # pragma: no cover - an issue was recorded
-        raise PlanError("INVALID_VALUE", "invalid selector", "/select")
+        raise PlanError("INVALID_VALUE", "invalid selector", pointer)
     for k, ref in enumerate(sel.refs):
         if isinstance(ref, SymbolRef):
             raise PlanError(
                 "INVALID_REFERENCE",
                 f"{ref.text!r}: plan symbols exist only inside a plan",
-                f"/select/refs/{k}",
+                f"{pointer}/refs/{k}",
                 hint="name objects by id or name here",
             )
     run = _Run(
@@ -335,7 +336,28 @@ def select_objects(scene: Scene, selector: Any) -> list[SceneObject]:
         timeout=None,
         start=time.perf_counter(),
     )
-    return run.select(sel, "/select")
+    return run.select(sel, pointer)
+
+
+def with_selections(scene: Scene, request: Any, pointer: str = "") -> Any:
+    """A spatial query request whose object lists may be selectors.
+
+    ``objects``, ``against`` and ``exclude`` take ids or names; here they may also be a
+    selector object as :func:`select_objects` takes (``{"tags": ["tree"]}``,
+    ``{"under": "Keep"}``, ``{"name_glob": "Tower */*"}``), which becomes the list of the
+    objects it selects (possibly empty: then the query sees none). Raises
+    :class:`PlanError` for a malformed selector or an unmet ``expect``, located under
+    ``pointer`` (the request's own location).
+    """
+    from ..spatial.request import OBJECT_LISTS
+
+    if not isinstance(request, dict):
+        return request
+    out = dict(request)
+    for key in OBJECT_LISTS:
+        if isinstance(out.get(key), dict):
+            out[key] = [o.id for o in select_objects(scene, out[key], f"{pointer}/{key}")]
+    return out
 
 
 def _static_validation(plan: Any, limits: PlanLimits) -> PlanResult:
@@ -435,6 +457,7 @@ class _Run:
         self.warnings: list[dict[str, Any]] = []
         self.meshes: dict[str, Mesh] = {}  # mesh symbol -> mesh
         self._mesh_cache: dict[str, Mesh] = {}  # content key -> mesh (sharing)
+        self._borrowed_meshes: set[int] = set()  # ids of scene meshes (from_object)
         self._mesh_users: dict[int, int] = {}  # id(mesh) -> objects using it
         self.records: list[_Record] = []
         self.by_path: dict[str, list[int]] = {}  # spec path -> record indices (in order)
@@ -833,6 +856,8 @@ class _Run:
                     f"object {obj.name!r} has no mesh",
                     f"{spec.pointer}/from_object",
                 )
+            if obj._mesh is mesh:  # shared with the scene: costs no new memory
+                self._borrowed_meshes.add(id(mesh))
             return mesh
         if key is not None:
             self._mesh_cache[key] = mesh
@@ -1513,11 +1538,12 @@ class _Run:
         self.new_mesh_bytes = new_bytes
 
     def _new_meshes(self) -> list[Mesh]:
-        live = {id(o._mesh) for o in self.scene._objects.values() if o._mesh is not None}
+        """The meshes the new objects bring: every mesh this plan made. (The only meshes
+        a plan takes from the scene are ``from_object`` ones, which are recorded.)"""
         out: dict[int, Mesh] = {}
         for rec in self.records:
             mesh = rec.new.mesh
-            if mesh is not None and id(mesh) not in live:
+            if mesh is not None and id(mesh) not in self._borrowed_meshes:
                 out[id(mesh)] = mesh
         return list(out.values())
 
@@ -1857,8 +1883,7 @@ class _Run:
                         "UNKNOWN_REFERENCE", f"no object named {name!r}", f"{pointer}/names/{k}"
                     )
                 found[obj._id] = obj
-            order = {o._id: k for k, o in enumerate(scene)}
-            objects = sorted(found.values(), key=lambda o: order[o._id])
+            objects = self._in_scene_order(list(found.values()))
         else:
             objects = list(scene)
         filters = sel.filters
@@ -1890,6 +1915,32 @@ class _Run:
                     details={"matched": len(objects), "names": [o.name for o in objects[:10]]},
                 )
         return objects
+
+    def _in_scene_order(self, objects: list[SceneObject]) -> list[SceneObject]:
+        """``objects`` in scene order (depth first), without walking the whole scene: each
+        is keyed by its sibling positions from the root, and only the sibling lists on
+        their paths are indexed (an edit of one door costs the same in any scene)."""
+        if len(objects) <= 1:
+            return objects
+        positions: dict[int, dict[str, int]] = {}
+
+        def position(obj: SceneObject) -> int:
+            parent = obj._parent
+            table = positions.get(id(parent))
+            if table is None:
+                siblings = self.scene._roots if parent is None else parent._children
+                table = positions[id(parent)] = {o._id: k for k, o in enumerate(siblings)}
+            return table[obj._id]
+
+        def key(obj: SceneObject) -> tuple[int, ...]:
+            path = []
+            node: SceneObject | None = obj
+            while node is not None:
+                path.append(position(node))
+                node = node._parent
+            return tuple(reversed(path))
+
+        return sorted(objects, key=key)
 
     def _apply_operations(self) -> None:
         for op in self.plan.operations:
@@ -2050,7 +2101,7 @@ class _Run:
         for spec in self.plan.queries:
             request = self._substitute(spec.request, spec.pointer)
             try:
-                answer = run_query(self.scene, request)
+                answer = run_query(self.scene, with_selections(self.scene, request, spec.pointer))
             except AetherError as exc:
                 answer = {"query": spec.request.get("query"), "error": _material_error(exc)}
             self.query_results.append({"index": spec.index, **answer})

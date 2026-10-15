@@ -123,6 +123,8 @@ A prefab is a template, not an object: reach its copies through the objects that
 - `queries` in a plan are answered right after it, for example
   `{"query": "overlaps", "objects": "@houses/walls"}` or
   `{"query": "raycast", "origin": [0, 0, 50], "direction": [0, 0, -1]}`.
+- Object lists in queries (`objects`, `against`, `exclude`) also take a selector:
+  `{"query": "overlaps", "objects": {"name_glob": "Tree */*"}, "against": {"under": "keep"}}`.
 - `spatial_query` answers the same queries any time: `describe`, `bounds`, `find`,
   `raycast`, `closest_point`, `nearest`, `contains`, `distance`, `overlaps`, `region`,
   `pick`, `in_view`, `line_of_sight`, `visible_from`, `relation`.
