@@ -7,6 +7,7 @@ import math
 import os
 import uuid
 from collections.abc import Iterable, Iterator
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Union
 
 import numpy as np
@@ -77,6 +78,23 @@ ObjectRef = Union["SceneObject", str]
 def new_object_id() -> str:
     """Return a new globally unique object identifier (a UUID4 string)."""
     return str(uuid.uuid4())
+
+
+def new_object_ids(count: int) -> list[str]:
+    """``count`` new object identifiers, as :func:`new_object_id` makes them -- random
+    version-4 UUIDs, ``str(uuid.uuid4())``'s format -- from one read of the system's random
+    source (instead of one per identifier)."""
+    if count <= 0:
+        return []
+    raw = np.frombuffer(os.urandom(16 * count), dtype=np.uint8).reshape(count, 16).copy()
+    raw[:, 6] = (raw[:, 6] & 0x0F) | 0x40  # version 4
+    raw[:, 8] = (raw[:, 8] & 0x3F) | 0x80  # the RFC 4122 variant
+    h = raw.tobytes().hex()
+    return [
+        f"{h[i : i + 8]}-{h[i + 8 : i + 12]}-{h[i + 12 : i + 16]}-{h[i + 16 : i + 20]}-"
+        f"{h[i + 20 : i + 32]}"
+        for i in range(0, 32 * count, 32)
+    ]
 
 
 def _check_name(name: Any, what: str = "name") -> str:
@@ -244,6 +262,28 @@ def _finite3(value: Any, what: str) -> None:
         or not all(type(v) is float and math.isfinite(v) for v in value)
     ):
         raise ValidationError(f"{what} must be a tuple of 3 finite floats, got {value!r}")
+
+
+def _valid_transforms(records: list[NewObject]) -> bool:
+    """Whether every record's position, scale and rotation pass ``_create_many``'s checks,
+    tested for all records at once with the same tests (a tuple of Python floats, finite;
+    a unit quaternion with its squares summed in the same order). When this says no, each
+    record is checked on its own, so the first error is reported as it always was."""
+    positions = [r.position for r in records]
+    scales = [r.scale for r in records]
+    rotations = [r.rotation for r in records]
+    for items, size in ((positions, 3), (scales, 3), (rotations, 4)):
+        if not all(type(t) is tuple and len(t) == size for t in items):
+            return False
+    flat = list(chain.from_iterable(positions + scales + rotations))
+    if not all(type(v) is float for v in flat):
+        return False
+    values = np.array(flat, dtype=np.float64)
+    if not np.all(np.isfinite(values)):
+        return False
+    q = values[6 * len(records) :].reshape(-1, 4)
+    norm = ((q[:, 0] * q[:, 0] + q[:, 1] * q[:, 1]) + q[:, 2] * q[:, 2]) + q[:, 3] * q[:, 3]
+    return bool(np.all(np.abs(norm - 1.0) <= 1e-9))
 
 
 class SceneObject:
@@ -1092,6 +1132,8 @@ class Scene:
         tag_cache: dict[tuple, tuple[str, ...]] = {}
         meta_cache: dict[int, tuple[Any, str]] = {}
         resolved: list[tuple[str, str, SceneObject | int | None, tuple, str]] = []
+        fresh_ids = iter(new_object_ids(sum(1 for rec in records if rec.object_id is None)))
+        transforms_valid = _valid_transforms(records)
         for k, rec in enumerate(records):
             where = f"objects[{k}]"
             name = rec.name
@@ -1106,7 +1148,7 @@ class Scene:
             names.add(name)
             object_id = rec.object_id
             if object_id is None:
-                object_id = new_object_id()
+                object_id = next(fresh_ids)
             elif not isinstance(object_id, str) or not object_id:
                 raise ValidationError(f"{where}: object_id must be a non-empty string")
             if object_id in objects or object_id in ids:
@@ -1132,16 +1174,17 @@ class Scene:
                 rec.material is not None or rec.group_materials or rec.appearance is not None
             ):
                 raise ValidationError(f"{where}: cameras and lights have no material or color")
-            _finite3(rec.position, f"{where}: position")
-            _finite3(rec.scale, f"{where}: scale")
-            q = rec.rotation
-            if (
-                not isinstance(q, tuple)
-                or len(q) != 4
-                or not all(type(v) is float and math.isfinite(v) for v in q)
-                or abs(sum(v * v for v in q) - 1.0) > 1e-9
-            ):
-                raise ValidationError(f"{where}: rotation must be a unit quaternion tuple")
+            if not transforms_valid:
+                _finite3(rec.position, f"{where}: position")
+                _finite3(rec.scale, f"{where}: scale")
+                q = rec.rotation
+                if (
+                    not isinstance(q, tuple)
+                    or len(q) != 4
+                    or not all(type(v) is float and math.isfinite(v) for v in q)
+                    or abs(sum(v * v for v in q) - 1.0) > 1e-9
+                ):
+                    raise ValidationError(f"{where}: rotation must be a unit quaternion tuple")
             if rec.appearance is not None and not isinstance(rec.appearance, Appearance):
                 raise ValidationError(f"{where}: appearance must be an Appearance")
             if not isinstance(rec.visible, bool):
