@@ -148,8 +148,10 @@ def _run(scene: Scene, step: Any, loc: str, created: list[str]) -> dict[str, Any
     try:
         result = {"op": op, **_dispatch(scene, system, op, step, created)}
         # Check after every step (cheap: unchanged nodes hit the cache) so a failure
-        # is reported at the operation that caused it.
-        system._check_all()
+        # is reported at the operation that caused it. A created object uses a node
+        # that exists, so it needs no scan of every object (which made N creations
+        # cost O(N^2)); the batch checks everything once more at its end.
+        system._check_all(objects=op != "create_object")
         return result
     except ProceduralError as exc:
         location = f"{loc}: {exc.location}" if exc.location else loc
