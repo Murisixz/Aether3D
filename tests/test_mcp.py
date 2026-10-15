@@ -633,9 +633,9 @@ def test_errors_never_show_paths_of_this_machine(tmp_path):
     home = Path.home() / "private" / "notes.txt"
     # an engine error: workspace paths become relative, the home folder becomes ~
     engine = error_payload(RenderError("X", f"cannot use {inside} nor {home}"), session)
-    text = json.dumps(engine)
-    assert "scenes/castle.aether" in text and str(tmp_path) not in text
-    assert str(Path.home()) not in text and "~/private/notes.txt" in text
+    message = engine["error"]["message"]  # paths keep the platform's separators
+    assert str(Path("scenes", "castle.aether")) in message and str(tmp_path) not in message
+    assert str(Path.home()) not in message and str(Path("~", "private", "notes.txt")) in message
     # a bug: no absolute path at all, but the exception type stays
     bug = error_payload(OSError(f"[Errno 2] No such file: '{home}' (from /usr/lib/x.py)"), session)
     assert bug["error"]["code"] == "INTERNAL_ERROR"
