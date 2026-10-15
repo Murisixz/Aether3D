@@ -196,3 +196,22 @@ def test_path_tracing_quick_start(tmp_path, monkeypatch):
     assert result.backend["name"] == "path" and result.backend["device"] == "cpu"
     assert "ao" in result.passes and (tmp_path / "studio.hdr").is_file()
     assert (tmp_path / "studio.png").read_bytes().startswith(b"\x89PNG")
+
+
+def test_history_quick_start(capsys):
+    """The history guide's first example runs as written and prints what it says."""
+    source = python_block(ROOT / "docs/HISTORY.md", "from aether3d import Scene\n")
+    namespace: dict = {}
+    exec(compile(source, "HISTORY.md", "exec"), namespace)
+    printed = capsys.readouterr().out.strip()
+    assert printed == str(
+        [
+            "Add object 'Crate'",
+            "Set position of 'Crate'",
+            "Set appearance color of 'Crate'",
+            "Build the gate",
+        ]
+    )
+    scene = namespace["scene"]
+    assert scene.get_by_name("Crate").position == (2.0, 0.0, 0.5)
+    assert len(scene) == 3 and not scene.history.can_redo

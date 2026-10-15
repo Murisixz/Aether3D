@@ -401,6 +401,22 @@ def test_scene_edits_reach_the_next_gpu_render(gpu):
     assert_same_paths(after, reference, centers=0.9)  # diagonal pixel centers lie on seams
 
 
+def test_undo_restores_the_gpu_render_exactly(gpu):
+    scene = cornell_box()
+    before = gpu_path(gpu, scene, 16, 16, samples=2, bounces=2)  # caches are warm now
+    scene.get_by_name("Lamp").position = (0.4, 0.3, 1.99)
+    scene.materials["Red"].base_color = "#2040c0"
+    scene.remove(next(o for o in scene if o.mesh is not None and o.name != "Lamp"))
+    changed = gpu_path(gpu, scene, 16, 16, samples=2, bounces=2)
+    assert not np.array_equal(before.passes["beauty"], changed.passes["beauty"])
+    scene.history.undo(3)
+    again = gpu_path(gpu, scene, 16, 16, samples=2, bounces=2)
+    assert np.array_equal(again.passes["beauty"], before.passes["beauty"])  # bit for bit
+    scene.history.redo(3)
+    redone = gpu_path(gpu, scene, 16, 16, samples=2, bounces=2)
+    assert np.array_equal(redone.passes["beauty"], changed.passes["beauty"])
+
+
 # --------------------------------------------------------------------------- #
 # Limits and errors
 # --------------------------------------------------------------------------- #
