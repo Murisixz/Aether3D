@@ -1,0 +1,17 @@
+{
+ "world_matrices_ms": 13.39,
+ "extract_render_scene_ms": 65.987,
+ "draw_order_ms": 2.906,
+ "pack_instances_ms": 9.221,
+ "full_pack_numpy_ms": 0.635,
+ "full_pack_numba_ms": 0.098,
+ "full_pack_c_ms": 0.078,
+ "dirty_1_numpy_us": 6.434,
+ "dirty_1_c_us": 7.322,
+ "dirty_10_numpy_us": 7.246,
+ "dirty_10_c_us": 6.96,
+ "dirty_100_numpy_us": 13.764,
+ "dirty_100_c_us": 7.717,
+ "dirty_1000_numpy_us": 75.341,
+ "dirty_1000_c_us": 16.168
+}

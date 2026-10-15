@@ -1,0 +1,48 @@
+{
+ "castle_path.png": {
+  "size": "1920x1080x3",
+  "bytes": 3333317,
+  "Aether3D decode_png ms": 300.2,
+  "Aether3D decode MP/s": 6.91,
+  "Pillow decode ms": 34.7,
+  "Pillow decode MP/s": 59.7,
+  "filter types used (None,Sub,Up,Avg,Paeth)": [
+   0,
+   1,
+   0,
+   1016,
+   63
+  ],
+  "zlib inflate ms": 22.4,
+  "C unfilter ms": 4.9,
+  "zlib + C unfilter MP/s": 76.1,
+  "Aether3D decode matches Pillow": "shape differs",
+  "Aether3D encode_png ms": 568.1,
+  "Aether3D encode bytes": 3333183,
+  "Pillow encode ms": 519.3,
+  "Pillow encode bytes": 3390795
+ },
+ "hero_gpu.png": {
+  "size": "1920x1080x3",
+  "bytes": 1992813,
+  "Aether3D decode_png ms": 288.6,
+  "Aether3D decode MP/s": 7.18,
+  "Pillow decode ms": 25.2,
+  "Pillow decode MP/s": 82.2,
+  "filter types used (None,Sub,Up,Avg,Paeth)": [
+   0,
+   1,
+   156,
+   510,
+   413
+  ],
+  "zlib inflate ms": 15.2,
+  "C unfilter ms": 5.8,
+  "zlib + C unfilter MP/s": 98.8,
+  "Aether3D decode matches Pillow": "shape differs",
+  "Aether3D encode_png ms": 259.8,
+  "Aether3D encode bytes": 1992685,
+  "Pillow encode ms": 145.7,
+  "Pillow encode bytes": 2011434
+ }
+}

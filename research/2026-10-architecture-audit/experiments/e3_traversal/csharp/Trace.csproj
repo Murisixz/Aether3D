@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot>
+    <NativeLib>Shared</NativeLib>
+    <IlcInstructionSet>x86-64-v3</IlcInstructionSet>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AssemblyName>trace_cs</AssemblyName>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,15 @@
+{
+ "triangles": 199808,
+ "vertices": 101025,
+ "EditableMesh.from_mesh(quads=False) s": 0.932,
+ "EditableMesh.from_mesh(sphere with normals/uvs, quads=True) s": 16.094,
+ "weld (NumPy, shared) ms": 21.46,
+ "NumPy (vectorized) ms": 21.86,
+ "NumPy (vectorized) matches Aether3D edge ids/faces": true,
+ "C (open addressing) ms": 12.96,
+ "C (open addressing) matches Aether3D edge ids/faces": true,
+ "Rust (std HashMap, SipHash) ms": 7.67,
+ "Rust (std HashMap, SipHash) matches Aether3D edge ids/faces": true,
+ "Rust (std HashMap, fast hasher) ms": 4.3,
+ "Rust (std HashMap, fast hasher) matches Aether3D edge ids/faces": true
+}

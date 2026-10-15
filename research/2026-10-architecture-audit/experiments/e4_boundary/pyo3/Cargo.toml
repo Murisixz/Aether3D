@@ -1,0 +1,13 @@
+[package]
+name = "pyo3_mod"
+version = "0.1.0"
+edition = "2021"
+[lib]
+name = "pyo3_mod"
+crate-type = ["cdylib"]
+[dependencies]
+pyo3 = { version = "0.30", features = ["extension-module"] }
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

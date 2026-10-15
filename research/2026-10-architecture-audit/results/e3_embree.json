@@ -1,0 +1,80 @@
+{
+ "sphere 100k tris": {
+  "build_seconds (all threads, TBB)": 0.005,
+  "aether3d_blas_build_seconds (NumPy, 1 thread)": 0.237,
+  "camera 640x480": {
+   "x1": 13.38,
+   "x8": 75.42,
+   "x20": 133.96,
+   "agreement": {
+    "hit/miss same": 1.0,
+    "same triangle (of rays both hit)": 0.999985,
+    "t rel. diff median": 4.8795980498540256e-08,
+    "t rel. diff max": 3.892684438370526e-06
+   }
+  },
+  "bounce (diffuse)": {
+   "x1": 4.19,
+   "x8": 23.87,
+   "x20": 36.28,
+   "agreement": {
+    "hit/miss same": 0.999992,
+    "same triangle (of rays both hit)": 0.999985,
+    "t rel. diff median": 6.981345208170762e-08,
+    "t rel. diff max": 0.07137538788508085
+   }
+  }
+ },
+ "400 cube instances": {
+  "build_seconds (all threads, TBB)": 0.0003,
+  "aether3d_blas_build_seconds (NumPy, 1 thread)": 0.0,
+  "camera 640x480": {
+   "x1": 13.05,
+   "x8": 78.15,
+   "x20": 127.49,
+   "agreement": {
+    "hit/miss same": 0.999974,
+    "same triangle (of rays both hit)": 0.999916,
+    "t rel. diff median": 1.5749194905960377e-08,
+    "t rel. diff max": 0.023809591396933723
+   }
+  },
+  "bounce (diffuse)": {
+   "x1": 13.14,
+   "x8": 74.7,
+   "x20": 134.7,
+   "agreement": {
+    "hit/miss same": 1.0,
+    "same triangle (of rays both hit)": 0.999987,
+    "t rel. diff median": 2.1902652939386628e-07,
+    "t rel. diff max": 0.9999989164601915
+   }
+  }
+ },
+ "sphere 1M tris": {
+  "build_seconds (all threads, TBB)": 0.059,
+  "aether3d_blas_build_seconds (NumPy, 1 thread)": 3.166,
+  "camera 640x480": {
+   "x1": 10.88,
+   "x8": 63.52,
+   "x20": 99.22,
+   "agreement": {
+    "hit/miss same": 1.0,
+    "same triangle (of rays both hit)": 0.99997,
+    "t rel. diff median": 4.835218082632996e-08,
+    "t rel. diff max": 3.7251298082481377e-06
+   }
+  },
+  "bounce (diffuse)": {
+   "x1": 2.7,
+   "x8": 16.41,
+   "x20": 24.77,
+   "agreement": {
+    "hit/miss same": 0.999992,
+    "same triangle (of rays both hit)": 0.999939,
+    "t rel. diff median": 7.036228971936197e-08,
+    "t rel. diff max": 0.9913835867775675
+   }
+  }
+ }
+}
