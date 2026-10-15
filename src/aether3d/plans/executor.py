@@ -88,7 +88,7 @@ class PlanResult:
     fingerprint: str
     idempotency_key: str | None = None
     revision: dict[str, int] = field(default_factory=dict)
-    history: dict[str, Any] | None = None
+    step: dict[str, Any] | None = None
     counts: dict[str, Any] = field(default_factory=dict)
     symbols: dict[str, Any] = field(default_factory=dict)
     operations: list[dict[str, Any]] = field(default_factory=list)
@@ -108,7 +108,7 @@ class PlanResult:
             "fingerprint": self.fingerprint,
             "idempotency_key": self.idempotency_key,
             "revision": dict(self.revision),
-            "history": self.history,
+            "step": self.step,
             "counts": dict(self.counts),
             "symbols": self.symbols,
             "operations": self.operations,
@@ -470,7 +470,7 @@ class _Run:
         if chunks is not None:
             chunk_report = self.apply_chunked(chunks)
             self.timings["apply"] = time.perf_counter() - t
-            result = self._result("applied", revision_before, chunk_report.get("history"))
+            result = self._result("applied", revision_before, chunk_report.get("step"))
             result.chunks = chunk_report
             self._remember(result)
             return result
@@ -507,7 +507,7 @@ class _Run:
             fingerprint=plan.fingerprint,
             idempotency_key=plan.idempotency_key,
             revision={"before": revision_before, "after": self.scene.revision},
-            history=history,
+            step=history,
             counts=self._counts(),
             symbols=self._symbols(),
             operations=self.op_results,
@@ -2057,7 +2057,7 @@ class _Run:
             "skipped": skipped,
             "checkpoint": checkpoint if start_marked else None,
             "steps": steps,
-            "history": steps[-1] if steps else None,
+            "step": steps[-1] if steps else None,
         }
 
     def _adopt_resources(self) -> None:

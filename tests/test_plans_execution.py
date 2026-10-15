@@ -84,7 +84,7 @@ def test_a_plan_is_one_undoable_step():
     before = _document(scene)
     result = scene.execute_plan(village())
     after = _document(scene)
-    assert result.status == "applied" and result.history["label"] == "Village"
+    assert result.status == "applied" and result.step["label"] == "Village"
     assert [e.label for e in scene.history.entries] == ["Add object 'Before'", "Village"]
     assert result.revision == {"before": 1, "after": 2}
     scene.history.undo()
