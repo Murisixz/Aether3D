@@ -52,7 +52,8 @@ features; breaking changes are called out explicitly).
   replies; resources (the guide, the schema, example plans, the scene, the last preview)
   and prompts. stdio only; every file inside the `--workspace` (checked after resolving
   symbolic links), no overwrites without `overwrite`, `--read-only`, no code execution,
-  bounded renders, timeouts, cancellation with rollback, progress. Previews use the GPU
+  bounded renders, timeouts, cancellation with rollback, progress, errors that show no
+  paths of the machine (workspace-relative, `~`, `<path>`). Previews use the GPU
   rasterizer when it works, the CPU rasterizer otherwise, and say which. Replies stay
   small: long query answers keep their first `max_results` entries (with `total` and
   `truncated`), and read-only replies above `--max-reply-kib` are refused with a hint.
@@ -70,12 +71,14 @@ features; breaking changes are called out explicitly).
   `add_object` calls in one transaction; one CLI plan 0.79 s against a projected 3.2
   hours for one CLI call per block; one MCP call 131 ms against 21 s for one call per
   block.
-- **Tests:** 162 new tests: the format (the checker fuzzed against the JSON Schema, the
-  executor fuzzed for crashes and atomicity), patterns and references, idempotency and
-  chunks, cancellation and timeouts, the CLI, the examples, the docs' plans, the MCP
-  server as a real subprocess (both protocol generations, raw JSON-RPC for a clean
+- **Tests:** 170 new tests (no existing test changed): the format (the checker fuzzed
+  against the JSON Schema, the executor fuzzed for crashes and atomicity), patterns and
+  references, idempotency and chunks, cancellation and timeouts, the CLI, projects of
+  0.1.0, 0.4.0 and 0.7.0, parity with spatial queries, the examples, the docs' plans, the
+  MCP server as a real subprocess (both protocol generations, raw JSON-RPC for a clean
   stdout, path escapes and symbolic links, overwrite and read-only rules, cancellation
-  with rollback), and performance regressions that compare times on the same machine.
+  with rollback, bounded replies, Unicode, redaction), and performance regressions that
+  compare times on the same machine.
 
 ### Changed
 
