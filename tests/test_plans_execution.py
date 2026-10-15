@@ -645,3 +645,52 @@ def test_explicit_selections_come_in_scene_order():
             expected
         )
         assert [o.name for o in select_objects(scene, [o.id for o in picked])] == expected
+
+
+def test_plan_queries_answer_exactly_as_spatial_queries_do():
+    """A plan's queries are Stage 10's queries: the same answers as run_query afterwards."""
+    from aether3d.spatial.request import run_query
+
+    scene = Scene("Parity")
+    result = scene.execute_plan(
+        plan(
+            objects={
+                "floor": {"mesh": {"primitive": "plane", "size": 10}},
+                "crates": {
+                    "mesh": {"primitive": "cube"},
+                    "array": {"count": 3, "offset": [0.75, 0, 0]},
+                    "position": [0, 0, 0.5],
+                    "rotation_euler": [0, 0, 10],
+                },
+                "cam": {"camera": {"fov": 50}, "position": [2, -8, 3], "look_at": [0.75, 0, 0.5]},
+            },
+            queries=[
+                {"query": "overlaps", "objects": "@crates"},
+                {"query": "raycast", "origin": [0.3, 0, 10], "direction": [0, 0, -1]},
+                {"query": "nearest", "point": [3, 3, 3], "count": 2},
+                {"query": "relation", "a": "@crates[0]", "b": "@floor"},
+                {
+                    "query": "pick",
+                    "x": 320,
+                    "y": 180,
+                    "camera": "@cam",
+                    "width": 640,
+                    "height": 360,
+                },
+                {"query": "describe"},
+            ],
+        )
+    )
+    crates = [f"crates {i}" for i in range(3)]
+    direct = [
+        {"query": "overlaps", "objects": crates},
+        {"query": "raycast", "origin": [0.3, 0, 10], "direction": [0, 0, -1]},
+        {"query": "nearest", "point": [3, 3, 3], "count": 2},
+        {"query": "relation", "a": "crates 0", "b": "floor"},
+        {"query": "pick", "x": 320, "y": 180, "camera": "cam", "width": 640, "height": 360},
+        {"query": "describe"},
+    ]
+    assert len(result.queries) == len(direct)
+    for answer, request in zip(result.queries, direct, strict=True):
+        assert answer["result"] == run_query(scene, request)["result"], request["query"]
+    assert result.queries[0]["result"]  # the crates do overlap

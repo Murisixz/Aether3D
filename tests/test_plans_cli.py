@@ -170,3 +170,44 @@ def test_the_mcp_server_explains_how_to_install_its_sdk(capsys, tmp_path):
     code = main(["mcp", "serve", "--workspace", str(tmp_path)])
     assert code == 1
     assert 'pip install "aether3d[mcp]"' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "project", ["v0.1.0/first_scene.aether", "v0.4.0/castle.aether", "v0.7.0/studio.aether"]
+)
+def test_plans_apply_to_projects_of_older_versions(tmp_path, project):
+    """A plan changes a project saved by an older Aether3D; the result loads as format 6."""
+    import shutil
+    from pathlib import Path
+
+    from aether3d.serialization import FORMAT_VERSION
+
+    if project.startswith("v0.4.0"):
+        pytest.importorskip("manifold3d")  # the castle uses booleans
+    source = Path(__file__).parent / "data" / project
+    path = tmp_path / source.name
+    shutil.copyfile(source, path)
+    before = Scene.load(path)
+    plan = {
+        "format": "aether3d.scene-plan",
+        "version": 1,
+        "label": "Crates",
+        "objects": {"crates": {"mesh": {"primitive": "cube", "size": 0.5}, "repeat": 3}},
+        "operations": [
+            {
+                "op": "update",
+                "select": [before.roots[0].name],
+                "set": {"add_tags": ["old"], "metadata": {"from": project}},
+            }
+        ],
+    }
+    (tmp_path / "plan.json").write_text(json.dumps(plan))
+    assert main(["execute-plan", str(path), str(tmp_path / "plan.json")]) == 0
+    after = Scene.load(path)
+    assert len(after) == len(before) + 3
+    assert json.loads(path.read_text())["format_version"] == FORMAT_VERSION
+    first = after.get_by_name(before.roots[0].name)
+    assert first.tags == ("old",) and first.metadata == {"from": project}
+    for obj in before:  # everything else as it was
+        again = after.get(obj.id)
+        assert again.name == obj.name and again.position == obj.position

@@ -710,3 +710,41 @@ def test_long_answers_are_cut_short_and_large_replies_refused(tmp_path):
         assert refused["error"]["details"]["limit"] == 8 * 1024
     assert "max_results" in out["too_large"]["error"]["hint"]
     assert "limit" in out["list"]["error"]["hint"]
+
+
+def test_unicode_names_round_trip(tmp_path):
+    name = "Château ★ 城/塔"
+    plan = {
+        "format": "aether3d.scene-plan",
+        "version": 1,
+        "label": "Ünïcode",
+        "materials": {"stone": {"name": "Pierre ✓", "base_color": "#8a8a8a"}},
+        "objects": {"keep": {"mesh": {"primitive": "cube"}, "name": name, "material": "@stone"}},
+    }
+
+    async def body(client):
+        out = {}
+        await call(client, "scene_new", {"name": "Été"})
+        out["plan"] = await call(client, "execute_scene_plan", {"plan": plan})
+        out["list"] = await call(
+            client,
+            "objects_list",
+            {"select": {"name_glob": "Château*"}, "fields": ["name", "material"]},
+        )
+        result = await client.call_tool(
+            "spatial_query", {"request": {"query": "bounds", "object": name}}
+        )
+        out["text"] = result.content[-1].text
+        out["saved"] = await call(client, "scene_save", {"path": "été.aether"})
+        return out
+
+    out = session(tmp_path, body)
+    assert out["plan"]["label"] == "Ünïcode"
+    listed = out["list"]["objects"]
+    assert [o["name"] for o in listed] == [name]
+    assert "Pierre ✓" in json.dumps(listed[0]["material"], ensure_ascii=False)
+    assert name in out["text"]  # UTF-8 text, not \\u escapes
+    assert out["saved"]["saved"] == "été.aether"
+    from aether3d import Scene
+
+    assert Scene.load(tmp_path / "été.aether").get_by_name(name).material.name == "Pierre ✓"
