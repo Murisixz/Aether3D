@@ -21,6 +21,8 @@ apply to agents too.
   lights, environment, AO, sampling, color management, passes, performance).
 - Materials, textures and procedural shaders: [docs/MATERIALS.md](docs/MATERIALS.md) (models and
   formulas, slots, images, coordinates, node graphs, presets, face groups, CLI, security).
+- Undo, redo and transactions: [docs/HISTORY.md](docs/HISTORY.md) (what is recorded, design,
+  history files, CLI).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 
 ## Conventions to preserve
@@ -113,9 +115,29 @@ apply to agents too.
     traversal: never claim hardware ray tracing, and report `"device": "gpu"` with the
     adapter. Without a usable GPU it fails with a `GPU_*` error, never a silent CPU render.
 
+- Operations history (`history.py`):
+  - **Every change of a scene is recorded.** A new public method that changes the
+    scene runs as an operation (`scene._history._op(label, ...)`) and *touches* every
+    aspect it writes before writing it (`history._touch(ASPECT, target)`); value objects
+    go through their owner (`recording(...)`). Test it with the catalog in
+    `tests/test_history.py`: undo must give back the same project document and the same
+    Python objects, and redo the changed ones.
+  - **Strict mode is on in the tests** (`history.STRICT`, conftest.py): a write recorded
+    outside an operation fails, and every undo, redo and rollback re-checks the scene.
+  - **Never write private attributes from outside their module** to change a scene:
+    such changes bypass the history.
+  - **A new kind of state needs an aspect** (capture, apply, its encoding in
+    `_history_file.py`) rather than ad-hoc rollback code. Loaders build scenes with
+    recording suspended (`history._suspended()`).
+
 ## Using Aether3D from an agent
 
 - Prefer ids (`obj.id`) over names for durable references.
+- Every change can be undone: `scene.history.undo()`, `with scene.transaction("label"):`
+  for several changes as one step (all or nothing), `scene.history.checkpoint(name)` and
+  `goto(name)` to try something and come back. On the command line, `aether3d history
+  start PROJECT` makes a project keep a history file, then `aether3d history undo
+  PROJECT` and `show`, `redo`, `checkpoint`, `goto` and `verify` work across commands.
 - Use `aether3d inspect PATH --json` to read a project's structure and
   `aether3d validate PATH --json` after editing a `.aether` file by hand.
   Error responses include a `location` such as `scene.objects[2].transform`.

@@ -135,6 +135,8 @@ scene.materials.remove_material(stone, force=True)  # unassigns it, then removes
 - **One source of truth.** While an object uses a material, setting its color
   raises `MaterialError("OBJECT_HAS_MATERIAL")`: change the material instead,
   or unassign it.
+- **History.** Every material and texture change is a step of `scene.history`
+  and can be undone (see [HISTORY.md](HISTORY.md)).
 - **Transactions.** `with scene.materials.transaction():` makes a block of
   changes all-or-nothing. If the block raises, materials, textures and
   assignments return to their previous state (the same Python objects, with

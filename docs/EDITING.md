@@ -131,8 +131,9 @@ persistence (`.aether`), inspection and glTF. `EditableMesh.from_mesh()` and
   mesh is bit-identical to before. The session stays usable.
 - **History.** `undo()` and `redo()` replay or re-run operations exactly; up to
   `EditableMesh.max_history` (256) operations are kept. `history` lists the
-  applied operations with their results. This is a per-session undo stack,
-  not the persistent modifier history planned for a later stage.
+  applied operations with their results. This is a per-session undo stack.
+  Committing the session is one step of the scene's history (`scene.history`,
+  [HISTORY.md](HISTORY.md)), which `scene.history.undo()` reverses.
 - **Commit.** `commit(scope="object", allow_invalid=False)`:
   1. Validates the mesh and refuses error-severity findings (`VALIDATION_FAILED`;
      the session stays open).

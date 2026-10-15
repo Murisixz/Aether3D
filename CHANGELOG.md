@@ -4,6 +4,100 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.9.0: Operations history (undo, redo and transactions)
+
+### Added
+
+- **`scene.history`: every change can be undone and redone exactly**
+  ([docs/HISTORY.md](docs/HISTORY.md)). Changes through the Python API, scripts
+  and the command line are recorded: one step per public call or transaction.
+  - **Coverage:** objects (create, remove, duplicate, merge, rename), the
+    hierarchy, transforms, visibility and appearance, cameras, lights and the
+    active camera, the world and its environment, render settings, meshes and
+    committed edit sessions, materials, textures and assignments, and
+    procedural parameters, rules, nodes, sources, modifiers, assignments and
+    bakes.
+  - **Exact:** undo gives back the same project document and the same Python
+    objects (removed objects, materials, textures and procedural handles come
+    back as the same instances), and the same renders, pixel for pixel, on the
+    CPU and GPU rasterizers and path tracers.
+  - **API:** `undo(steps)`, `redo(steps)` (all or nothing), `can_undo`,
+    `can_redo`, `entries`, `redo_entries` (`HistoryEntry`: index, label,
+    changes, paths, bytes), `clear()`, `to_dict()`, and `scene.revision`.
+  - **Transactions:** `with scene.transaction("label") as tx:` makes one
+    step, and rolls everything back if the block raises. Transactions nest as
+    savepoints; `tx.rollback()` restores the start.
+  - **Checkpoints:** `checkpoint(name)`, `goto(name)`, `checkpoints`,
+    `remove_checkpoint(name)`. They cost no memory.
+  - **Limits:** `max_entries` (256 steps) and `max_bytes` (256 MiB), with
+    memory accounting. Steps store the before/after states of the parts they
+    changed, never a copy of the scene, and share meshes and images by
+    reference.
+  - `history.disabled()` and `history.enabled` switch recording off.
+  - **Failed operations change nothing.** Every public call is rolled back
+    whole if it raises.
+- **History files:** `scene.save(path, history=True)` and `Scene.load(path,
+  history=True)` keep the history next to the project (`<project>.history`),
+  so a later session can undo.
+  - **Tied to their project.** A history file records its project's
+    fingerprint, and a mismatch is refused (`HISTORY_MISMATCH`).
+  - **Checked by replay.** Loading replays the history on a copy before using
+    it (`INVALID_HISTORY` if it is not exact).
+  - **Verification on demand.** `history.verify()` replays the current history
+    through the file format.
+- **CLI:** `aether3d history start|show|undo|redo|checkpoint|goto|clear|verify
+  PROJECT`.
+  - **Recording on the command line.** Every command that changes a project
+    records its change when the project has a history file, or with
+    `--history`. Undo then works across commands.
+  - **Merging from the command line:** `aether3d scene merge PROJECT SOURCE`.
+- **`scene.duplicate(obj, name=None, parent=..., children=True)`:** copies
+  objects in one step. Meshes and geometry nodes are shared.
+- **`scene.merge(source, parent=None, allow_lossy=False)`:** copies another
+  scene, project or glTF file into the scene, in one undoable step. Materials
+  and textures come along, and procedural objects become static meshes.
+- **Scripts:** scene, edit and procedural scripts take an optional `"label"`
+  (and a `label=` argument) that names their history step.
+- **`HistoryError`** with stable codes; `History`, `HistoryEntry` and
+  `Transaction` in the public API.
+- **Example:** `examples/history_undo.py` makes 13 changes (a transaction, a
+  rolled-back transaction, a checkpoint, a glTF import), undoes them back to
+  identical pixels, and saves and replays the history.
+- **Tests:** `tests/test_history.py`, 90 tests.
+  - **61 kinds of change**, each undone and redone twice to the same project
+    document and the same objects.
+  - **A random chain:** 150 random changes undone and redone through every
+    intermediate state.
+  - **Failures and grouping:** failed operations, transactions, savepoints,
+    redo branches, checkpoints, limits and memory.
+  - **Files and imports:** scripts, procedural undo, loading, importing and
+    merging, history files (tampered ones too).
+  - **Behavior around undo:** renders after undo, caches, the CLI.
+
+  There are also GPU tests for renders after undo, and an example test. Every
+  test of the suite now runs with `history.STRICT`, which re-checks the scene's
+  indexes after every undo, redo and rollback.
+
+### Changed
+
+- **Atomic by construction.** Scene changes run as operations of the history.
+  - The scene, edit and procedural script runners and
+    `MaterialLibrary.transaction()` now roll back through it; their own
+    rollback code is gone. `MaterialLibrary.transaction()` now also rolls back
+    non-material changes made in its block.
+  - `ProceduralSystem.batch()` is a history operation too, and keeps its own
+    validation and restore.
+  - Their results are unchanged.
+- **The procedural system's own `undo()`/`redo()`** stay (procedural
+  definitions only), and each call is now a step of the scene's history.
+- **Loading or importing a scene starts an empty history.**
+- **Removed objects keep a reference to the scene that removed them,** whose
+  history records their changes.
+- **The project format is unchanged** (version 5); history files are separate.
+- **Cost:** recording adds about 3 µs per change (setting a position: 5 µs
+  instead of 2 µs). Building the path tracing castle (108 steps) takes the
+  same 0.31 s, with 0.9 MiB of history.
+
 ## 0.8.1: GPU path tracing
 
 ### Added
