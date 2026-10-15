@@ -1,0 +1,201 @@
+{
+  "calls": [
+    {
+      "tool": "capabilities",
+      "arguments": null,
+      "ms": 6.3,
+      "ok": true
+    },
+    {
+      "tool": "scene_new",
+      "arguments": {
+        "name": "Castle"
+      },
+      "ms": 2.1,
+      "ok": true
+    },
+    {
+      "tool": "execute_scene_plan",
+      "arguments": "the castle (first draft)",
+      "ms": 181.5,
+      "ok": true,
+      "found": {
+        "objects": 2190,
+        "server_ms": 176.4
+      }
+    },
+    {
+      "tool": "spatial_query",
+      "arguments": "trees in the keep, the towers' lowest points, the gate",
+      "ms": 85.9,
+      "ok": true,
+      "found": {
+        "trees_in_the_keep": [
+          "Tree 1"
+        ],
+        "floating_towers": {
+          "Tower NE": 3.0
+        },
+        "gate_clear": true
+      }
+    },
+    {
+      "tool": "execute_scene_plan",
+      "arguments": "Fix: move Tree 1 out of the keep, lower Tower NE",
+      "ms": 30.5,
+      "ok": true,
+      "found": {
+        "trees_in_the_keep": [],
+        "floating_towers": {}
+      }
+    },
+    {
+      "tool": "history",
+      "arguments": {
+        "action": "undo"
+      },
+      "ms": 2.6,
+      "ok": true
+    },
+    {
+      "tool": "spatial_query",
+      "arguments": {
+        "requests": [
+          {
+            "query": "overlaps",
+            "objects": {
+              "name_glob": "Tree */*"
+            },
+            "against": {
+              "under": "keep"
+            }
+          },
+          {
+            "query": "bounds",
+            "object": "Tower SW",
+            "children": true
+          },
+          {
+            "query": "bounds",
+            "object": "Tower SE",
+            "children": true
+          },
+          {
+            "query": "bounds",
+            "object": "Tower NE",
+            "children": true
+          },
+          {
+            "query": "bounds",
+            "object": "Tower NW",
+            "children": true
+          }
+        ]
+      },
+      "ms": 117.9,
+      "ok": true
+    },
+    {
+      "tool": "history",
+      "arguments": {
+        "action": "redo"
+      },
+      "ms": 2.5,
+      "ok": true
+    },
+    {
+      "tool": "spatial_query",
+      "arguments": {
+        "requests": [
+          {
+            "query": "overlaps",
+            "objects": {
+              "name_glob": "Tree */*"
+            },
+            "against": {
+              "under": "keep"
+            }
+          },
+          {
+            "query": "bounds",
+            "object": "Tower SW",
+            "children": true
+          },
+          {
+            "query": "bounds",
+            "object": "Tower SE",
+            "children": true
+          },
+          {
+            "query": "bounds",
+            "object": "Tower NE",
+            "children": true
+          },
+          {
+            "query": "bounds",
+            "object": "Tower NW",
+            "children": true
+          }
+        ]
+      },
+      "ms": 37.0,
+      "ok": true
+    },
+    {
+      "tool": "render_preview",
+      "arguments": {
+        "width": 960,
+        "height": 540,
+        "backend": "auto",
+        "save_to": "castle_preview.png",
+        "overwrite": true
+      },
+      "ms": 1028.4,
+      "ok": true,
+      "found": {
+        "device": "gpu",
+        "backend": "gpu",
+        "draw_calls": 10
+      }
+    },
+    {
+      "tool": "scene_save",
+      "arguments": {
+        "path": "castle.aether",
+        "overwrite": true,
+        "history": true
+      },
+      "ms": 162.9,
+      "ok": true
+    },
+    {
+      "tool": "export_scene",
+      "arguments": {
+        "path": "castle.glb",
+        "overwrite": true
+      },
+      "ms": 16.3,
+      "ok": true
+    },
+    {
+      "tool": "scene_open",
+      "arguments": {
+        "path": "castle.aether",
+        "history": true
+      },
+      "ms": 417.4,
+      "ok": true
+    },
+    {
+      "tool": "history",
+      "arguments": {
+        "action": "list"
+      },
+      "ms": 3.2,
+      "ok": true
+    }
+  ],
+  "tool_calls": 14,
+  "total_ms": 2094.5,
+  "problems": []
+}

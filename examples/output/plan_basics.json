@@ -1,0 +1,47 @@
+{
+  "built": {
+    "objects": 161,
+    "ms": 39.0
+  },
+  "errors": [
+    {
+      "code": "INVALID_VALUE",
+      "message": "expected a finite number, got '0.3' (a string)",
+      "pointer": "/objects/bench/position/2",
+      "operation": null,
+      "hint": null,
+      "details": {}
+    },
+    {
+      "code": "OUT_OF_RANGE",
+      "message": "0 is outside [1, 100000]",
+      "pointer": "/objects/posts/grid/count/0",
+      "operation": null,
+      "hint": null,
+      "details": {}
+    },
+    {
+      "code": "INVALID_VALUE",
+      "message": "deleting by filters needs expect (the number of objects you mean)",
+      "pointer": "/operations/0/select",
+      "operation": 0,
+      "hint": "add \"expect\": N, or list the objects in refs, ids or names",
+      "details": {}
+    },
+    {
+      "code": "UNKNOWN_REFERENCE",
+      "message": "'@seat': no symbol 'seat' in this plan",
+      "pointer": "/objects/bench/mesh",
+      "operation": null,
+      "hint": "define it, or name an existing object without \"@\"",
+      "details": {}
+    }
+  ],
+  "objects": 159,
+  "history": [
+    "Market square",
+    "Close two stalls, paint the lamps, fell two trees",
+    "Benches"
+  ],
+  "problems": []
+}
