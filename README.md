@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.8.1 (render quality: path tracing on the CPU and the GPU).** Aether3D provides:
+> **Status: v0.9.0 (operations history: undo, redo and transactions).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -38,7 +38,10 @@ graphical interface required.
 >   the GPU): global illumination, ray-traced shadows and reflections,
 >   emissive area lights, sky environments, ambient occlusion, render passes
 >   and linear HDR output, on a BVH ray tracing core, with reproducible
->   seeds.
+>   seeds;
+> - an **operations history**: every change -- from Python, scripts or the
+>   command line -- can be undone and redone exactly, with transactions,
+>   checkpoints, memory limits, and histories saved with projects.
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
 > Animation, physics and other systems are intentionally **not** part of
@@ -267,6 +270,34 @@ See [docs/MATERIALS.md](docs/MATERIALS.md).
 [`examples/hero_render.py`](examples/hero_render.py) gives the blocky hero
 fabric, a diamond blade and a grass block with per-face-group materials.
 
+### Undo, redo and transactions
+
+Every change to a scene is a step of `scene.history`, whichever way it is made.
+Undo gives back the exact scene: the same project document, the same Python
+objects, the same renders.
+
+```python
+crate = scene.add_cube(name="Crate")
+crate.position = (2, 0, 0.5)
+with scene.transaction("Build the gate"):  # one step, all or nothing
+    scene.add_cube(name="Post A", position=(-1, 3, 1))
+    scene.add_cube(name="Post B", position=(1, 3, 1))
+scene.history.checkpoint("gate")
+scene.merge("props.glb", allow_lossy=True)  # importing into a scene: undoable too
+scene.history.undo()  # the props are gone
+scene.history.goto("gate")
+scene.save("yard.aether", history=True)  # a later session can undo
+```
+
+![First render | after 13 edits | after undoing them all: identical pixels](examples/output/history_undo.png)
+
+*[`examples/history_undo.py`](examples/history_undo.py) makes 13 changes, then undoes
+them: the render equals the first one, pixel for pixel.*
+
+On the command line, a project with a history file records every change, and
+`aether3d history undo PROJECT` undoes the last one. See
+[docs/HISTORY.md](docs/HISTORY.md).
+
 ### GPU rendering
 
 ![The castle: CPU renderer | GPU | GPU with shadows](examples/output/castle_comparison.png)
@@ -399,6 +430,9 @@ $ aether3d camera add castle.aether --frame --fov 30      # camera framed on eve
 $ aether3d light add castle.aether --direction 0.5 0.6 -0.8 --intensity 2.4
 $ aether3d object set castle.aether Keep --color "#8c7356"
 $ aether3d material create castle.aether Stone --preset stone      # procedural material
+$ aether3d history start castle.aether         # record changes: castle.aether.history
+$ aether3d history undo castle.aether          # undo the last change (show, redo, goto, ...)
+$ aether3d scene merge castle.aether props.glb # import a file into a project (undoable)
 $ aether3d material assign castle.aether Stone "Curtain Wall"
 $ aether3d material texture castle.aether Stone normal --image textures/stone_normal.png
 $ aether3d material validate castle.aether --json                  # exit code 3 on errors
@@ -505,6 +539,7 @@ Apache-2.0) and a Vulkan, Metal or Direct3D 12 driver; see
 | [docs/GPU.md](docs/GPU.md) | The GPU backend: installation, adapters, pipeline, antialiasing, shadows, memory, CPU/GPU differences, benchmarks, debugging, the backend decision |
 | [docs/MATERIALS.md](docs/MATERIALS.md) | Materials, textures and procedural shaders: models and formulas, slots, images, coordinates, node graphs, presets, face groups, persistence, glTF, CLI, GPU, security, performance, limitations |
 | [docs/RENDER_QUALITY.md](docs/RENDER_QUALITY.md) | The path tracer: architecture, BVH and ray/triangle methods, BSDF sampling and PDFs, lights and MIS, environment, AO, sampling and reproducibility, color management and HDR, passes, API, CLI, performance, verification, limitations |
+| [docs/HISTORY.md](docs/HISTORY.md) | Undo, redo, transactions and checkpoints: what is recorded, limits and memory, identity and caches, history files, CLI, design, limitations |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |

@@ -156,20 +156,27 @@ _SPECS.update(_material_specs())
 
 
 def run_scene_script(
-    scene: Scene, script: Any, *, base_dir: Any = None, trusted_paths: bool = False
+    scene: Scene,
+    script: Any,
+    *,
+    base_dir: Any = None,
+    trusted_paths: bool = False,
+    label: str | None = None,
 ) -> dict[str, Any]:
     """Apply a scene-setup script atomically; returns per-operation results.
 
-    Image paths are resolved inside ``base_dir`` (default: the project's
-    directory, else the current one) and may not leave it, unless
-    ``trusted_paths`` (paths typed by the user, as the CLI's material commands
-    pass them).
+    The whole script is one step of ``scene.history`` (``label`` names it). Image
+    paths are resolved inside ``base_dir`` (default: the project's directory, else
+    the current one) and may not leave it, unless ``trusted_paths`` (paths typed
+    by the user, as the CLI's material commands pass them).
     """
     if not isinstance(script, dict):
         raise ScriptError("the script must be a JSON object", "script")
-    unknown = sorted(set(script) - {"format", "version", "operations"})
+    unknown = sorted(set(script) - {"format", "version", "operations", "label"})
     if unknown:
         raise ScriptError(f"unknown key(s): {', '.join(unknown)}", "script")
+    if "label" in script and (not isinstance(script["label"], str) or not script["label"].strip()):
+        raise ScriptError("label must be a non-empty string", "script.label")
     if script.get("format") != FORMAT_ID:
         raise ScriptError(f"format must be {FORMAT_ID!r}", "script.format")
     if script.get("version") != VERSION:
@@ -182,64 +189,26 @@ def run_scene_script(
         raise ScriptError("operations must be a non-empty array", "script.operations")
     if len(operations) > MAX_OPERATIONS:
         raise ScriptError(f"too many operations (limit {MAX_OPERATIONS})", "script.operations")
-    journal = _Journal(scene)
     from pathlib import Path
 
     root = Path(base_dir) if base_dir is not None else scene.materials.base_dir or Path.cwd()
-    journal.paths = (root.absolute(), trusted_paths)
+    journal = _Journal((root.absolute(), trusted_paths))
     results = []
-    try:
+    # One step of the scene's history, all or nothing: if an operation fails, the
+    # transaction restores everything the earlier ones changed.
+    count = len(operations)
+    label = label or script.get("label") or f"Scene script ({count} operation{'s' * (count != 1)})"
+    with scene.history.transaction(label):
         for i, step in enumerate(operations):
             results.append(_run(scene, step, f"operations[{i}]", journal))
-    except BaseException:
-        journal.rollback()
-        raise
     return {"operations": results}
 
 
 class _Journal:
-    """Snapshot of everything a script can change, for exact rollback."""
+    """What operations of one script run share: where image paths may point."""
 
-    def __init__(self, scene: Scene) -> None:
-        self.scene = scene
-        self.created: list[SceneObject] = []
-        self.removed: list[tuple[SceneObject, SceneObject | None, int]] = []
-        self.objects = {
-            o.id: (
-                o,
-                (o.transform.position, o.transform.rotation, o.transform.scale),
-                o.appearance.to_dict(),
-                o.visible,
-                None if o.camera is None else o.camera.to_dict(),
-                None if o.light is None else o.light.to_dict(),
-            )
-            for o in scene
-        }
-        self.active = scene._active_camera
-        self.world = scene.world.to_dict()
-        self.settings = scene.render_settings.to_dict()
-        self.library = scene.materials.snapshot()
-        self.paths: tuple = (None, False)
-
-    def rollback(self) -> None:
-        scene = self.scene
-        for obj in reversed(self.created):
-            if obj.scene is scene:
-                scene.remove(obj)
-        for obj, parent, index in reversed(self.removed):
-            scene._restore_subtree(obj, parent, index)
-        for obj, (pos, rot, scale), appearance, visible, camera, light in self.objects.values():
-            obj.transform.position, obj.transform.rotation, obj.transform.scale = pos, rot, scale
-            obj.appearance.configure(**appearance)
-            obj._visible = visible
-            if camera is not None:
-                obj.camera.configure(**camera)
-            if light is not None:
-                obj.light.configure(**light)
-        scene._active_camera = self.active
-        scene.world.configure(**self.world)
-        scene.render_settings.configure(**self.settings)
-        scene.materials.restore(self.library)
+    def __init__(self, paths: tuple) -> None:
+        self.paths = paths
 
 
 def _run(scene: Scene, step: Any, loc: str, journal: _Journal) -> dict[str, Any]:
@@ -312,7 +281,6 @@ def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> di
             active=s.get("active"),
             **params,
         )
-        journal.created.append(obj)
         if "rotation_euler" in s:
             obj.rotation_euler = s["rotation_euler"]
         result: dict[str, Any] = {"object": _ref(obj), "active": scene.active_camera is obj}
@@ -337,7 +305,6 @@ def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> di
             up=s.get("up", (0.0, 0.0, 1.0)),
             **params,
         )
-        journal.created.append(obj)
         if "rotation_euler" in s:
             obj.rotation_euler = s["rotation_euler"]
         return {"object": _ref(obj)}
@@ -403,9 +370,6 @@ def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> di
         return {"render_settings": scene.render_settings.to_dict()}
     if op == "remove":
         obj = _obj(scene, s["object"])
-        parent = obj.parent
-        siblings = scene.roots if parent is None else parent.children
-        journal.removed.append((obj, parent, siblings.index(obj)))
         removed = [obj.id, *(d.id for d in obj.iter_descendants())]
         scene.remove(obj)
         return {"removed": removed}

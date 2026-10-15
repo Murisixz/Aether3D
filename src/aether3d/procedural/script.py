@@ -86,13 +86,19 @@ _SPECS: dict[str, tuple[set[str], set[str]]] = {  # op -> (required, optional)
 }
 
 
-def run_procedural_script(scene: Scene, script: Any) -> dict[str, Any]:
-    """Apply a procedural script atomically; returns per-operation results."""
+def run_procedural_script(scene: Scene, script: Any, *, label: str | None = None) -> dict[str, Any]:
+    """Apply a procedural script atomically; returns per-operation results.
+
+    The script is one step of ``scene.history``, named ``label`` (default: the
+    script's own ``"label"``, else a description).
+    """
     if not isinstance(script, dict):
         raise ScriptError("the script must be a JSON object", "script")
-    unknown = sorted(set(script) - {"format", "version", "operations"})
+    unknown = sorted(set(script) - {"format", "version", "operations", "label"})
     if unknown:
         raise ScriptError(f"unknown key(s): {', '.join(unknown)}", "script")
+    if "label" in script and (not isinstance(script["label"], str) or not script["label"].strip()):
+        raise ScriptError("label must be a non-empty string", "script.label")
     if script.get("format") != FORMAT_ID:
         raise ScriptError(f"format must be {FORMAT_ID!r}", "script.format")
     if script.get("version") != VERSION:
@@ -109,15 +115,15 @@ def run_procedural_script(scene: Scene, script: Any) -> dict[str, Any]:
     system = scene.procedural
     created: list[str] = []
     results: list[dict[str, Any]] = []
-    try:
-        with system.batch():
-            for i, step in enumerate(operations):
-                results.append(_run(scene, step, f"operations[{i}]", created))
-    except BaseException:
-        for oid in reversed(created):
-            if oid in scene:
-                scene.remove(oid)
-        raise
+    # One step of the scene's history, all or nothing (objects created by earlier
+    # operations included); validated and evaluated once, at the end.
+    count = len(operations)
+    label = (
+        label or script.get("label") or f"Procedural script ({count} operation{'s' * (count != 1)})"
+    )
+    with scene.history.transaction(label), system.batch(label):
+        for i, step in enumerate(operations):
+            results.append(_run(scene, step, f"operations[{i}]", created))
     return {"operations": results, "revision": system.revision}
 
 

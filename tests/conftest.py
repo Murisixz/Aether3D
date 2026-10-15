@@ -47,3 +47,12 @@ def gpu() -> GPU:
             pytest.fail(message)
         pytest.skip(message)
     return GPU(adapter, status["selected"])
+
+
+@pytest.fixture(autouse=True)
+def strict_history(monkeypatch):
+    """Every test runs with the history's strict checks: a change recorded outside an
+    operation fails, and every undo, redo or rollback re-checks the scene's indexes."""
+    from aether3d import history
+
+    monkeypatch.setattr(history, "STRICT", True)

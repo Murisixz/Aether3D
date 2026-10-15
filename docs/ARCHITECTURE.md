@@ -35,6 +35,8 @@ Aether3D/
 │   ├── mesh.py            Mesh: immutable indexed triangle mesh
 │   ├── primitives.py      Cube, sphere and plane generators
 │   ├── scene.py           Scene and SceneObject: the scene graph
+│   ├── history.py         Undo/redo history: operations, aspects, transactions, limits
+│   ├── _history_file.py   History files (<project>.history): encoding, checks, replay
 │   ├── serialization.py   .aether reader/writer, validation, migrations
 │   ├── inspection.py      Geometry analysis of meshes and scenes
 │   ├── editing/           Polygon mesh editing engine (see docs/EDITING.md)
@@ -132,9 +134,10 @@ Aether3D/
 | `errors`, `diagnostics`, `_fileio` | none |
 | `math3d` | `errors` |
 | `mesh` | `errors` |
-| `transform` | `math3d` |
+| `history` | `errors`; `materials` lazily (texture states), `serialization` lazily (files) |
+| `transform` | `math3d`, `history` (it records changes of an object's transform) |
 | `primitives` | `mesh`, `math3d` |
-| `scene` | `transform`, `mesh`, `primitives`, `math3d`, `errors` |
+| `scene` | `history`, `transform`, `mesh`, `primitives`, `math3d`, `errors` |
 | `serialization` | `scene`, `transform`, `mesh`, `errors`, `_fileio` |
 | `inspection` | `mesh`, `math3d`, `diagnostics` |
 | `gltf.axes` | `math3d` |
@@ -143,7 +146,7 @@ Aether3D/
 | `editing.*` | `mesh`, `math3d`, `diagnostics`, `errors`, `primitives` (box layout), `inspection` (session commit reports); `scene` only for type hints and the session |
 | `procedural.*` | `mesh`, `math3d`, `diagnostics`, `errors`, `inspection`, `editing` (bevel, base-mesh sessions, polygon helpers); `scene` only for type hints; `manifold3d` (optional, lazily, boolean modifier only) |
 | `serialization` (v2) | additionally `procedural.params` (value encoding), and `procedural` lazily when reading |
-| `rendering.camera`, `.light`, `.settings`, `.color` | `errors`, `diagnostics` (value types; imported by `scene` and `serialization`) |
+| `rendering.camera`, `.light`, `.settings`, `.color` | `errors`, `diagnostics`, `history` (value types that record in-place changes; imported by `scene` and `serialization`) |
 | `rendering.*` (others) | the above, `mesh`, `math3d`, `_fileio`; `scene` only for type hints and lazily for lookups |
 | `rendering.gpu.*` | `rendering` (scene data, settings, shadows, color, backends), `errors`, `diagnostics`; `wgpu` (optional, imported lazily on the first GPU call; never by `import aether3d`) |
 | `materials.*` | `errors`, `diagnostics`, `rendering.color`, `_fileio`; `scene` only for type hints; Pillow (optional, lazily, JPEG only) |
@@ -151,7 +154,8 @@ Aether3D/
 | `rendering.raytrace.*` | `rendering.scene_data` (types only); NumPy only |
 | `rendering.pathtrace.*` | `rendering.raytrace`, `rendering.surface` (material evaluation), `rendering` (scene data, settings, color), `diagnostics`, `errors`; the standard library's `multiprocessing` and `mmap` for worker processes |
 | `gltf.materials` | `materials`, `rendering.color`, `diagnostics`, `errors` |
-| `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `errors` |
+| `_history_file` | `history`, `serialization`, `scene`, `materials`, `procedural` (states and entities), `_fileio` |
+| `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `history`, `errors` |
 
 Lower layers never import higher ones. `scene` provides convenience methods
 (`save`/`load`, `export`/`import_file`, `inspect_geometry`, `edit_mesh`) by importing
@@ -227,7 +231,8 @@ large meshes later need binary storage, that becomes a new format version
 | Future system | Expected integration point |
 | --- | --- |
 | Rendering | Implemented in v0.5.0 (`rendering/`): backends consume a `RenderScene` from `extract_render_scene` (see below). |
-| Animation | Targets objects by `id`; writes transform components through the public setters. |
+| Animation | Targets objects by `id`; writes transform components through the public setters. The history already records every animatable property per aspect, under id-based paths (`objects[<id>].transform`, `materials[<id>]`, ...). |
+| Operations history | Implemented in v0.9.0 (`history.py`): new mutating methods run as operations and touch the aspects they write (see below). |
 | Physics | Reads/writes world transforms; stores per-object data alongside the transform. |
 | Procedural modeling | Implemented in v0.4.0 (`procedural/`): new primitive and modifier types are registry entries (see below). |
 | Materials / shaders | Replace `Appearance` (the only place surface properties enter shading) with materials; extend the per-triangle shading table. Format version bump. |
@@ -523,3 +528,58 @@ runs the path tracer on a GPU adapter. Key decisions:
 - **Deterministic sums.** Each pixel's samples are added by one invocation,
   in sample order, into float32 sums: no atomics on pixels, so images repeat
   bit for bit on a device, however the image is tiled.
+
+## Operations history (v0.9.0)
+
+`scene.history` (`history.py`) records every change of a scene, so that it can be
+undone and redone exactly. See [HISTORY.md](HISTORY.md). Key decisions:
+
+- **Operations and aspects, not commands with inverses.** Each mutating method
+  runs as an *operation* (`history._op`), and nested operations join the outermost
+  one: a step is a whole user-level action. The scene's state is divided into
+  *aspects*, small independent parts: an object's transform, camera, parent,
+  children or membership; a material; the procedural definitions; ...
+  - **Touch before write.** Before an operation first writes an aspect, it
+    *touches* it: the aspect's state is captured.
+  - **Commit.** When the operation ends, the new states are captured, and the
+    pairs that differ are the step.
+  - **Undo and redo** write the before or after states back and rebuild the
+    indexes.
+
+  No method needs a hand-written inverse. Capture is per aspect, at the first
+  write, so an operation cannot change a touched aspect without recording it. A
+  missing touch is an internal error that the test suite's strict mode
+  (`history.STRICT`) reports.
+- **No copies of the scene.** States are small values: tuples of floats, ids and
+  references. Meshes, image bytes and texture graphs are immutable, so states
+  share them by reference.
+  - The procedural definitions are copied once per revision and shared by
+    consecutive steps.
+  - `max_entries` and `max_bytes` bound the history. Memory counts the states,
+    plus the meshes and images only the history still refers to.
+- **Atomic operations.** The same captures roll back an operation that raises, so
+  every public call is all or nothing. Nested transactions are savepoints: each
+  keeps the states at its own first writes.
+- **Identity.** States restore values into the existing Python objects: removed
+  objects keep their instance, id and children, and come back the same.
+  Value objects (cameras, lights, appearances, transforms, the world, its
+  environment, render settings) know their owner, so in-place edits are
+  recorded and restored in place. Removed objects keep a reference to the scene
+  whose history records them (`SceneObject._home`).
+- **Caches need no invalidation.** Renderer caches are keyed by immutable content
+  (array identity, image digests, definition hashes), so undo reuses them. The
+  version counters (`materials.version`, `procedural.revision`,
+  `scene.revision`) still increase with undo and redo.
+- **Linear history.** A new change discards the redo branch.
+- **Subsystems keep their own undo, as steps.**
+  - An edit session's undo stays local to the session; committing is one step.
+  - The procedural system's own stack remains for compatibility, and each of
+    its undos is a step of the scene's history.
+  - Scripts and `materials.transaction()` are history transactions.
+- **Persistence through the project format.** `_history_file.py` encodes each
+  aspect state with the project's encodings, plus records of the entities the
+  project no longer holds. The file's fingerprint ties it to its project, and
+  loading replays it on a copy of the scene before using it. The CLI loads and
+  saves the history around every command that changes a project with a history
+  file, so command-line sessions can undo across processes.
+

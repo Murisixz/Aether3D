@@ -32,6 +32,7 @@ from typing import Any
 import numpy as np
 
 from ..errors import RenderError
+from ..history import recording
 from .color import Color, parse_color
 
 LIGHT_TYPES = ("directional", "point")
@@ -58,7 +59,7 @@ class Light:
       path tracer.
     """
 
-    __slots__ = tuple(f"_{name}" for name in _FIELDS)
+    __slots__ = (*(f"_{name}" for name in _FIELDS), "_owner")
 
     def __init__(
         self,
@@ -84,6 +85,7 @@ class Light:
         )
         for name in _FIELDS:
             setattr(self, f"_{name}", values[name])
+        self._owner = None  # the object this belongs to (records its changes)
 
     def configure(self, **changes: Any) -> Light:
         """Change several parameters at once; validated together (all or nothing)."""
@@ -96,8 +98,9 @@ class Light:
                 hint=f"parameters: {', '.join(_FIELDS)}",
             )
         values = _validate({**self.to_dict(), **changes}, "light")
-        for name in _FIELDS:
-            setattr(self, f"_{name}", values[name])
+        with recording(self, changes):
+            for name in _FIELDS:
+                setattr(self, f"_{name}", values[name])
         return self
 
     type = property(lambda self: self._type, lambda self, v: self.configure(type=v))

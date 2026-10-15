@@ -339,6 +339,7 @@ class ProceduralSystem:
         self._history: list[dict] = []
         self._redo: list[dict] = []
         self._revision = 0
+        self._defs_cache: tuple[int, dict] | None = None
 
     # ------------------------------------------------------------------ #
     # Discovery
@@ -399,7 +400,24 @@ class ProceduralSystem:
     # Transactions and history
     # ------------------------------------------------------------------ #
 
+    def _defs_state(self) -> dict:
+        """A deep copy of the definitions (parameters, rules, geometry nodes).
+
+        Between changes it is computed once per revision and shared, so consecutive
+        history steps hold one copy of the definitions between them.
+        """
+        cached = self._defs_cache
+        if cached is not None and cached[0] == self._revision and not self._batch_depth:
+            return cached[1]
+        state = self._copy_defs()
+        if not self._batch_depth:
+            self._defs_cache = (self._revision, state)
+        return state
+
     def _state(self) -> dict:
+        return {**self._defs_state(), "objects": {o.id: (o._geometry, o._mesh) for o in self.scene}}
+
+    def _copy_defs(self) -> dict:
         return {
             "parameters": copy.deepcopy(self.parameters),
             "rules": copy.deepcopy(self.rules),
@@ -422,11 +440,20 @@ class ProceduralSystem:
                 }
                 for g in self._geometries.values()
             ],
-            "objects": {o.id: (o._geometry, o._mesh) for o in self.scene},
         }
 
     def _restore(self, state: dict) -> None:
         """Restore definitions *into the existing objects*, so handles stay valid."""
+        self._restore_defs(state)
+        for obj in self.scene:
+            saved = state["objects"].get(obj.id)
+            # Objects that were and are static are not procedural history: leave their
+            # meshes alone (they may have been edited since).
+            if saved is not None and (saved[0] is not None or obj._geometry is not None):
+                obj._geometry, obj._mesh = saved
+
+    def _restore_defs(self, state: dict) -> None:
+        """Restore the definitions of :meth:`_defs_state` (the state is not modified)."""
         self.parameters = _restore_parameters(self.parameters, state["parameters"])
         self.rules = copy.deepcopy(state["rules"])
         geometries = {}
@@ -454,25 +481,20 @@ class ProceduralSystem:
             g.modifiers = modifiers
             geometries[g.id] = g
         self._geometries = geometries
-        for obj in self.scene:
-            saved = state["objects"].get(obj.id)
-            # Objects that were and are static are not procedural history: leave their
-            # meshes alone (they may have been edited since).
-            if saved is not None and (saved[0] is not None or obj._geometry is not None):
-                obj._geometry, obj._mesh = saved
 
     @contextmanager
-    def batch(self):
+    def batch(self, label: str = "Procedural changes"):
         """Group several changes into one atomic, undoable transaction.
 
         Validation and evaluation run once at the end; if anything fails, every
-        change made inside the block is rolled back.
+        change made inside the block is rolled back. The batch is one step of the
+        scene's history (``scene.history``) and of :meth:`undo` here.
         """
-        with self._transaction():
+        with self._transaction(label):
             yield self
 
     @contextmanager
-    def _transaction(self):
+    def _transaction(self, label: str = "Procedural change"):
         if self._batch_depth:
             self._batch_depth += 1
             try:
@@ -480,34 +502,53 @@ class ProceduralSystem:
             finally:
                 self._batch_depth -= 1
             return
-        before = self._state()
-        self._batch_depth = 1
-        try:
-            yield
-            self._batch_depth = 0
-            self._check_all()
-        except BaseException:
-            self._batch_depth = 0
-            self._restore(before)
-            raise
-        self._history.append(before)
-        if len(self._history) > self.max_history:
-            del self._history[0]
-        self._redo.clear()
-        self._revision += 1
+        from ..history import PROCEDURAL
+
+        with self.scene._history._op(label, PROCEDURAL, self):
+            before = self._state()
+            self._batch_depth = 1
+            try:
+                yield
+                self._batch_depth = 0
+                self._check_all()
+            except BaseException:
+                self._batch_depth = 0
+                self._restore(before)
+                raise
+            self._history.append(before)
+            if len(self._history) > self.max_history:
+                del self._history[0]
+            self._redo.clear()
+            self._revision += 1
 
     def undo(self) -> None:
-        """Restore the procedural definitions as they were before the last change."""
+        """Restore the procedural definitions as they were before the last procedural change.
+
+        This is the procedural system's own history (definitions and geometry
+        assignments only). ``scene.history.undo()`` undoes the last change of any
+        kind; this undo is itself a step of the scene's history.
+        """
         if not self._history:
             raise ProceduralError("NOTHING_TO_UNDO", "there is no procedural change to undo")
-        self._step(self._history, self._redo)
+        self._step(self._history, self._redo, "Undo procedural change")
 
     def redo(self) -> None:
         if not self._redo:
             raise ProceduralError("NOTHING_TO_REDO", "there is no undone procedural change to redo")
-        self._step(self._redo, self._history)
+        self._step(self._redo, self._history, "Redo procedural change")
 
-    def _step(self, source: list[dict], target: list[dict]) -> None:
+    def _step(self, source: list[dict], target: list[dict], label: str) -> None:
+        from ..history import DATA, PROCEDURAL
+
+        history = self.scene._history
+        with history._op(label, PROCEDURAL, self):
+            for obj in self.scene:
+                saved = source[-1]["objects"].get(obj.id)
+                if saved is not None and (saved[0] is not None or obj._geometry is not None):
+                    history._touch(DATA, obj)
+            self._step_restore(source, target)
+
+    def _step_restore(self, source: list[dict], target: list[dict]) -> None:
         current = self._state()
         self._restore(source[-1])
         try:
@@ -540,7 +581,7 @@ class ProceduralSystem:
         self, name: str, value: Any, *, geometry: Any = None, **options: Any
     ) -> Parameter:
         """Add a scene parameter, or a parameter of ``geometry``."""
-        with self._transaction():
+        with self._transaction(f"Add parameter {name!r}"):
             scope = self.geometry(geometry).parameters if geometry is not None else self.parameters
             if name in scope:
                 raise ProceduralError("DUPLICATE_PARAMETER", f"parameter {name!r} already exists")
@@ -550,7 +591,7 @@ class ProceduralSystem:
 
     def set_parameter(self, name: str, value: Any, *, geometry: Any = None) -> None:
         """Set a parameter's value (literal or :class:`Expr`); affected geometry regenerates."""
-        with self._transaction():
+        with self._transaction(f"Set parameter {name!r}"):
             scope = self.geometry(geometry).parameters if geometry is not None else self.parameters
             if name not in scope:
                 raise ProceduralError(
@@ -569,7 +610,7 @@ class ProceduralSystem:
         including with overrides, so invalid combinations are rejected with
         ``CONSTRAINT_VIOLATED`` and nothing changes.
         """
-        with self._transaction():
+        with self._transaction(f"Add rule {name!r}"):
             scope = self.geometry(geometry).rules if geometry is not None else self.rules
             if name in scope:
                 raise ProceduralError("DUPLICATE_RULE", f"rule {name!r} already exists")
@@ -578,19 +619,19 @@ class ProceduralSystem:
             return rule
 
     def remove_rule(self, name: str, *, geometry: Any = None) -> None:
-        with self._transaction():
+        with self._transaction(f"Remove rule {name!r}"):
             scope = self.geometry(geometry).rules if geometry is not None else self.rules
             if name not in scope:
                 raise ProceduralError("UNKNOWN_RULE", f"no rule {name!r}")
             del scope[name]
 
     def set_parameters(self, values: dict[str, Any], *, geometry: Any = None) -> None:
-        with self._transaction():
+        with self._transaction("Set parameters"):
             for name, value in values.items():
                 self.set_parameter(name, value, geometry=geometry)
 
     def remove_parameter(self, name: str, *, geometry: Any = None) -> None:
-        with self._transaction():
+        with self._transaction(f"Remove parameter {name!r}"):
             scope = self.geometry(geometry).parameters if geometry is not None else self.parameters
             if name not in scope:
                 raise ProceduralError("UNKNOWN_PARAMETER", f"no parameter {name!r}")
@@ -614,7 +655,7 @@ class ProceduralSystem:
             raise ProceduralError(
                 "INVALID_SOURCE", "give exactly one of primitive=, mesh= or source="
             )
-        with self._transaction():
+        with self._transaction(f"Add geometry {name!r}"):
             if not isinstance(name, str) or not name.strip():
                 raise ProceduralError("INVALID_NAME", "geometry names must be non-empty strings")
             if any(g.name == name for g in self._geometries.values()):
@@ -647,7 +688,7 @@ class ProceduralSystem:
             return g
 
     def remove_geometry(self, ref: Any) -> None:
-        with self._transaction():
+        with self._transaction(f"Remove geometry {_named(ref)}"):
             g = self.geometry(ref)
             users = g.users
             if users:
@@ -667,7 +708,7 @@ class ProceduralSystem:
             del self._geometries[g.id]
 
     def rename_geometry(self, ref: Any, name: str) -> None:
-        with self._transaction():
+        with self._transaction(f"Rename geometry {_named(ref)} to {name!r}"):
             g = self.geometry(ref)
             if any(o.name == name and o is not g for o in self._geometries.values()):
                 raise ProceduralError("DUPLICATE_NAME", f"a geometry named {name!r} already exists")
@@ -676,7 +717,7 @@ class ProceduralSystem:
             g.name = name
 
     def set_source(self, ref: Any, params: dict[str, Any]) -> None:
-        with self._transaction():
+        with self._transaction(f"Set source of geometry {_named(ref)}"):
             g = self.geometry(ref)
             if g.source.kind == "primitive":
                 g.source.params.update(_values(params))
@@ -690,14 +731,14 @@ class ProceduralSystem:
                 )
 
     def set_source_mesh(self, ref: Any, mesh: Mesh) -> None:
-        with self._transaction():
+        with self._transaction(f"Set source mesh of geometry {_named(ref)}"):
             g = self.geometry(ref)
             if not isinstance(mesh, Mesh):
                 raise ProceduralError("INVALID_SOURCE", "expected an aether3d.Mesh")
             g.source = Source("mesh", mesh=mesh)
 
     def convert_source_to_mesh(self, ref: Any) -> None:
-        with self._transaction():
+        with self._transaction(f"Convert the source of geometry {_named(ref)} to a mesh"):
             g = self.geometry(ref)
             if g.source.kind == "mesh":
                 return
@@ -715,7 +756,7 @@ class ProceduralSystem:
         index: int | None = None,
         params: dict | None = None,
     ) -> Modifier:
-        with self._transaction():
+        with self._transaction(f"Add {mtype} modifier to {_named(ref)}"):
             g = self.geometry(ref)
             if mtype not in MODIFIER_TYPES:
                 raise ProceduralError(
@@ -756,7 +797,7 @@ class ProceduralSystem:
         name: str | None = None,
         params: dict | None = None,
     ) -> None:
-        with self._transaction():
+        with self._transaction(f"Set modifier {_named(modifier)} of {_named(ref)}"):
             g = self.geometry(ref)
             m = self._find_modifier(g, modifier)
             if enabled is not None:
@@ -773,13 +814,13 @@ class ProceduralSystem:
                 m.params.update(self._normalize_params(m.type, params))
 
     def remove_modifier(self, ref: Any, modifier: Any) -> None:
-        with self._transaction():
+        with self._transaction(f"Remove modifier {_named(modifier)} of {_named(ref)}"):
             g = self.geometry(ref)
             m = self._find_modifier(g, modifier)
             g.modifiers.remove(m)
 
     def move_modifier(self, ref: Any, modifier: Any, index: int) -> None:
-        with self._transaction():
+        with self._transaction(f"Move modifier {_named(modifier)} of {_named(ref)}"):
             g = self.geometry(ref)
             m = self._find_modifier(g, modifier)
             if not isinstance(index, int) or not 0 <= index < len(g.modifiers):
@@ -791,13 +832,16 @@ class ProceduralSystem:
 
     def assign(self, obj: Any, ref: Any | None) -> None:
         """Make a scene object use a geometry node (``None`` detaches, leaving no mesh)."""
-        with self._transaction():
+        with self._transaction(f"Set geometry of {obj.name!r}"):
             g = None if ref is None else self.geometry(ref)
             if g is not None and (obj._camera is not None or obj._light is not None):
                 raise ProceduralError(
                     "INVALID_TARGET",
                     f"object {obj.name!r} is a {obj.kind}; it cannot use procedural geometry",
                 )
+            from ..history import DATA
+
+            self.scene._history._touch(DATA, obj)
             obj._geometry = None if g is None else g.id
             if g is not None:
                 obj._mesh = None
@@ -1263,6 +1307,11 @@ class ProceduralSystem:
                 "diagnostics": [d.to_dict() for d in evaluation.diagnostics],
             }
         return data
+
+
+def _named(ref: Any) -> str:
+    """How a history label names a geometry node or modifier (handle, name, id or index)."""
+    return repr(getattr(ref, "name", ref))
 
 
 def _restore_parameters(current: dict[str, Parameter], saved: dict[str, Parameter]) -> dict:

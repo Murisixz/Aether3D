@@ -366,7 +366,7 @@ class Material:
     with ``obj.material = material`` or :meth:`aether3d.Scene.assign_material`.
     """
 
-    __slots__ = ("_library", "_id", "_name", "_model", "_values", "_textures")
+    __slots__ = ("_library", "_home", "_id", "_name", "_model", "_values", "_textures")
 
     def __init__(
         self,
@@ -378,6 +378,7 @@ class Material:
         textures: dict[str, TextureBinding] | None = None,
     ) -> None:
         self._library: MaterialLibrary | None = library
+        self._home = library  # the library whose scene history records this material
         self._id = material_id
         self._name = name
         self._model = model
@@ -480,15 +481,22 @@ class Material:
                 )
             values[name] = normalized
         textures = {s: b for s, b in self._textures.items() if model in SLOTS[s].models}
-        self._model = model
-        self._values = values
-        self._textures = textures
-        self._touch()
+        with self._edit(f"Set {', '.join(changes) or 'model'} of material {self._name!r}"):
+            self._model = model
+            self._values = values
+            self._textures = textures
+            self._touch()
         return self
 
     def _touch(self) -> None:
         if self._library is not None:
             self._library._changed()
+
+    def _edit(self, label: str) -> Any:
+        """An operation changing this material, recorded in its scene's history."""
+        from ..history import MATERIAL
+
+        return self._home._scene._history._op(label, MATERIAL, self)
 
     # -- textures -------------------------------------------------------------------
 
@@ -512,11 +520,14 @@ class Material:
         """
         library = self._require_library()
         slot = _check_slot(slot, self._model, self.location)
-        tex = library._texture_or_file(texture, f"{self.location}.textures.{slot}")
-        binding = TextureBinding.build(slot, tex.id, options, f"{self.location}.textures.{slot}")
-        library._check_binding(self, slot, binding, tex)
-        self._textures[slot] = binding
-        self._touch()
+        with self._edit(f"Set {slot} texture of material {self._name!r}"):
+            tex = library._texture_or_file(texture, f"{self.location}.textures.{slot}")
+            binding = TextureBinding.build(
+                slot, tex.id, options, f"{self.location}.textures.{slot}"
+            )
+            library._check_binding(self, slot, binding, tex)
+            self._textures[slot] = binding
+            self._touch()
         return binding
 
     def set_procedural_texture(
@@ -547,7 +558,7 @@ class Material:
                     f"{self.location}.textures.{slot}",
                 )
             data = graph
-        with library._transaction():
+        with library._transaction(f"Set {slot} texture of material {self._name!r}"):
             tex = library.add_procedural_texture(
                 name or library._unique_texture_name(f"{self._name} {slot}"), data
             )
@@ -556,8 +567,10 @@ class Material:
     def clear_texture(self, slot: str) -> None:
         """Remove the texture of ``slot`` (the texture itself stays in the scene)."""
         slot = _check_slot(slot, self._model, self.location)
-        if self._textures.pop(slot, None) is not None:
-            self._touch()
+        if slot in self._textures:
+            with self._edit(f"Clear {slot} texture of material {self._name!r}"):
+                del self._textures[slot]
+                self._touch()
 
     def set_texture_options(self, slot: str, **options: Any) -> TextureBinding:
         """Change binding options of ``slot`` (``scale``, ``coordinates``, ...)."""
@@ -573,8 +586,9 @@ class Material:
         )
         library = self._require_library()
         library._check_binding(self, slot, new, library.texture(new.texture))
-        self._textures[slot] = new
-        self._touch()
+        with self._edit(f"Set {slot} texture options of material {self._name!r}"):
+            self._textures[slot] = new
+            self._touch()
         return new
 
     # -- inspection -----------------------------------------------------------------

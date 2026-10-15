@@ -909,34 +909,36 @@ class _Reader:
                 self.note("NO_SCENE", INFO, "asset defines no scene; all root nodes are imported")
 
         scene = Scene(name or self.path.stem.strip() or "Imported Scene")
-        self.importer = MaterialImporter(self, scene)
-        objects: list[dict[str, Any]] = []
-        used_ids: set[str] = set()
-        stack: list[tuple[int, SceneObject | None]] = [(r, None) for r in reversed(roots)]
-        while stack:
-            index, parent_obj = stack.pop()
-            node, where = self.item("nodes", index, "/nodes")
-            obj = self.create_object(scene, node, index, where, parent_obj, used_ids, objects)
-            for child in reversed(node.get("children", [])):
-                stack.append((child, obj))
-        unused = self.importer.unused()
-        if unused:
-            self.note(
-                "MATERIALS_UNUSED",
-                INFO,
-                f"{unused} materials are not used by imported meshes and were not imported",
-                "/materials",
-                unused,
-            )
-        skipped = len(nodes) - len(objects)
-        if skipped:
-            self.note(
-                "NODES_NOT_IN_SCENE",
-                WARNING,
-                f"{skipped} nodes are not part of the imported scene and were skipped",
-                "/nodes",
-                skipped,
-            )
+        # Importing builds a new scene: its history starts empty.
+        with scene.history._suspended():
+            self.importer = MaterialImporter(self, scene)
+            objects: list[dict[str, Any]] = []
+            used_ids: set[str] = set()
+            stack: list[tuple[int, SceneObject | None]] = [(r, None) for r in reversed(roots)]
+            while stack:
+                index, parent_obj = stack.pop()
+                node, where = self.item("nodes", index, "/nodes")
+                obj = self.create_object(scene, node, index, where, parent_obj, used_ids, objects)
+                for child in reversed(node.get("children", [])):
+                    stack.append((child, obj))
+            unused = self.importer.unused()
+            if unused:
+                self.note(
+                    "MATERIALS_UNUSED",
+                    INFO,
+                    f"{unused} materials are not used by imported meshes and were not imported",
+                    "/materials",
+                    unused,
+                )
+            skipped = len(nodes) - len(objects)
+            if skipped:
+                self.note(
+                    "NODES_NOT_IN_SCENE",
+                    WARNING,
+                    f"{skipped} nodes are not part of the imported scene and were skipped",
+                    "/nodes",
+                    skipped,
+                )
         return ImportResult(
             scene,
             self.path,

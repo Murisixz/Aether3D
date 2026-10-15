@@ -17,6 +17,25 @@ from .errors import (
     ObjectNotFoundError,
     ValidationError,
 )
+from .history import (
+    ACTIVE_CAMERA,
+    ALIVE,
+    APPEARANCE,
+    CAMERA,
+    CHILDREN,
+    DATA,
+    LIGHT,
+    NAME,
+    PARENT,
+    RENDER,
+    ROOTS,
+    SCENE_NAME,
+    TRANSFORM,
+    VISIBLE,
+    WORLD,
+    Aspect,
+    History,
+)
 from .math3d import Quat, Vec3, decompose_matrix, look_rotation_matrix, matrix3_to_quat, vec3
 from .mesh import Mesh
 from .rendering.camera import Camera
@@ -48,6 +67,35 @@ def _check_name(name: Any, what: str = "name") -> str:
     return name
 
 
+def _owned(value: Any, holder: Any, aspect: Aspect) -> Any:
+    """``value`` (a camera, light, appearance, ...) with its owner set, so that in-place
+    changes are recorded in the holder's history."""
+    if value is not None and getattr(value, "_owner", None) is None:
+        value._owner = (holder, aspect)
+    return value
+
+
+def _merge_source(source: Any, allow_lossy: bool) -> Scene:
+    if isinstance(source, Scene):
+        return source
+    if not isinstance(source, (str, os.PathLike)):
+        raise ValidationError(
+            f"merge needs a Scene or the path of a .aether, .glb or .gltf file, got {source!r}"
+        )
+    path = os.fspath(source)
+    if path.lower().endswith((".glb", ".gltf")):
+        from .gltf import import_gltf
+
+        return import_gltf(path, allow_lossy=allow_lossy).scene
+    return Scene.load(path)
+
+
+def _base_name(name: str) -> str:
+    """``"Cube"`` for ``"Cube.003"`` (the name duplicates are numbered from)."""
+    stem, dot, digits = name.rpartition(".")
+    return stem if dot and stem and len(digits) == 3 and digits.isdigit() else name
+
+
 class SceneObject:
     """A node in a scene's hierarchy.
 
@@ -66,6 +114,7 @@ class SceneObject:
 
     __slots__ = (
         "_scene",
+        "_home",
         "_id",
         "_name",
         "_transform",
@@ -85,14 +134,17 @@ class SceneObject:
         self, scene: Scene, object_id: str, name: str, transform: Transform, mesh: Mesh | None
     ) -> None:
         self._scene: Scene | None = scene
+        self._home = scene  # the scene whose history records this object, even once removed
         self._id = object_id
         self._name = name
+        transform._owner = self
         self._transform = transform
         self._mesh = mesh
         self._geometry: str | None = None  # id of a procedural geometry node, if any
         self._camera: Camera | None = None
         self._light: Light | None = None
         self._appearance = Appearance()
+        self._appearance._owner = (self, APPEARANCE)
         self._visible = True
         self._material: str | None = None  # id of a material in scene.materials
         self._group_materials: dict[int, str] = {}  # face group -> material id
@@ -150,7 +202,8 @@ class SceneObject:
             raise ValidationError(
                 f"object {self._name!r} is a {self.kind}; it cannot also have a mesh"
             )
-        self._mesh = value
+        with self._edit(DATA, f"Set mesh of {self._name!r}"):
+            self._mesh = value
 
     # -- cameras, lights and appearance -------------------------------------
 
@@ -172,23 +225,27 @@ class SceneObject:
         Edit it in place (``obj.camera.fov = 35``); create cameras with
         :meth:`Scene.add_camera`.
         """
-        return self._camera
+        return _owned(self._camera, self, CAMERA)
 
     @property
     def light(self) -> Light | None:
         """The :class:`~aether3d.rendering.Light` of a light object (``None`` otherwise)."""
-        return self._light
+        return _owned(self._light, self, LIGHT)
 
     @property
     def appearance(self) -> Appearance:
         """How the object's mesh renders (color, highlight); edit it in place."""
-        return self._appearance
+        return _owned(self._appearance, self, APPEARANCE)
 
     @appearance.setter
     def appearance(self, value: Appearance) -> None:
         if not isinstance(value, Appearance):
             raise ValidationError(f"appearance must be an Appearance, got {type(value).__name__}")
-        self._appearance = value.copy()
+        new = value.copy()
+        with self._edit(APPEARANCE, f"Set appearance of {self._name!r}"):
+            self._appearance._owner = None
+            new._owner = (self, APPEARANCE)
+            self._appearance = new
 
     @property
     def color(self) -> tuple[float, float, float]:
@@ -203,7 +260,7 @@ class SceneObject:
     @color.setter
     def color(self, value: Any) -> None:
         self._check_no_material("color")
-        self._appearance.color = value
+        _owned(self._appearance, self, APPEARANCE).color = value
 
     def _check_no_material(self, what: str) -> None:
         if self._material is not None:
@@ -260,7 +317,8 @@ class SceneObject:
     def visible(self, value: bool) -> None:
         if not isinstance(value, bool):
             raise ValidationError(f"visible must be True or False, got {value!r}")
-        self._visible = value
+        with self._edit(VISIBLE, f"Set visible of {self._name!r}"):
+            self._visible = value
 
     # -- procedural geometry ------------------------------------------------
 
@@ -293,7 +351,7 @@ class SceneObject:
         if self._geometry is None:
             return self._mesh
         mesh = scene.procedural.mesh(self._geometry)  # evaluate first: failures change nothing
-        with scene.procedural.batch():
+        with scene._history._op(f"Bake {self._name!r}"), scene.procedural.batch():
             scene.procedural.assign(self, None)
             self._mesh = mesh
         return mesh
@@ -307,7 +365,20 @@ class SceneObject:
     def transform(self, value: Transform) -> None:
         if not isinstance(value, Transform):
             raise ValidationError(f"transform must be a Transform, got {type(value).__name__}")
-        self._transform = value.copy()
+        new = value.copy()
+        with self._edit(TRANSFORM, f"Set transform of {self._name!r}"):
+            self._transform._owner = None
+            new._owner = self
+            self._transform = new
+
+    def _place(self, transform: Transform) -> None:
+        """Copy ``transform``'s values into this object's own transform (same instance)."""
+        t = self._transform
+        t._position, t._rotation, t._scale = (
+            transform._position,
+            transform._rotation,
+            transform._scale,
+        )
 
     # Local-space shortcuts, so ``obj.position = (0, 0, 1)`` just works.
 
@@ -445,7 +516,9 @@ class SceneObject:
         self, direction: Iterable[float], *, up: Iterable[float] = (0.0, 0.0, 1.0)
     ) -> None:
         """Turn the object so its front (local -Y) points along a world ``direction``."""
-        self._transform.rotation = self._aim_rotation(direction, up)
+        rotation = self._aim_rotation(direction, up)
+        with self._edit(TRANSFORM, f"Aim {self._name!r}"):
+            self._transform.rotation = rotation
 
     def _aim_rotation(self, direction: Iterable[float], up: Iterable[float]) -> Quat:
         """Local rotation that makes the world front/up axes match ``direction``/``up``.
@@ -486,7 +559,8 @@ class SceneObject:
                 raise ValidationError(
                     f"cannot place {self._name!r}: its parent has a zero world scale"
                 ) from None
-        self._transform.position = p[:3]
+        with self._edit(TRANSFORM, f"Move {self._name!r}"):
+            self._transform.position = p[:3]
 
     def frame(
         self,
@@ -510,15 +584,16 @@ class SceneObject:
         """
         from .rendering.framing import frame_object
 
-        return frame_object(
-            self,
-            targets,
-            direction=direction,
-            up=up,
-            margin=margin,
-            fit_clipping=fit_clipping,
-            aspect=aspect,
-        )
+        with self._home._history._op(f"Frame {self._name!r}"):
+            return frame_object(
+                self,
+                targets,
+                direction=direction,
+                up=up,
+                margin=margin,
+                fit_clipping=fit_clipping,
+                aspect=aspect,
+            )
 
     # -- editing -----------------------------------------------------------
 
@@ -544,6 +619,14 @@ class SceneObject:
 
     # -- misc --------------------------------------------------------------
 
+    def _edit(self, aspect: Aspect, label: str) -> Any:
+        """An operation changing ``aspect`` of this object, recorded in its scene's history."""
+        return self._home._history._op(label, aspect, self)
+
+    def _edit_value(self, aspect: Aspect, fields: Iterable[str]) -> Any:
+        """The operation of an in-place change of this object's camera, light or appearance."""
+        return self._edit(aspect, f"Set {aspect.name} {', '.join(fields)} of {self._name!r}")
+
     def _require_scene(self) -> Scene:
         if self._scene is None:
             raise DetachedObjectError(
@@ -568,14 +651,15 @@ class Scene:
     """
 
     def __init__(self, name: str = "Untitled Scene") -> None:
+        self._history = History(self)
         self._procedural: ProceduralSystem | None = None
         self._name = _check_name(name, "scene name")
         self._objects: dict[str, SceneObject] = {}
         self._by_name: dict[str, SceneObject] = {}
         self._roots: list[SceneObject] = []
         self._active_camera: str | None = None
-        self._world = World()
-        self._render_settings = RenderSettings()
+        self._world = _owned(World(), self, WORLD)
+        self._render_settings = _owned(RenderSettings(), self, RENDER)
         from .materials import MaterialLibrary
 
         self._materials = MaterialLibrary(self)
@@ -586,7 +670,39 @@ class Scene:
 
     @name.setter
     def name(self, value: str) -> None:
-        self._name = _check_name(value, "scene name")
+        value = _check_name(value, "scene name")
+        with self._history._op(f"Rename scene to {value!r}", SCENE_NAME, self):
+            self._name = value
+
+    # -- history -----------------------------------------------------------
+
+    @property
+    def history(self) -> History:
+        """The scene's undo/redo history (see :class:`aether3d.history.History`)."""
+        return self._history
+
+    @property
+    def revision(self) -> int:
+        """Increases with every change of the scene (undo and redo included); viewers and
+        tools can compare it to know whether to refresh."""
+        return self._history._revision
+
+    def transaction(self, label: str = "Transaction") -> Any:
+        """``with scene.transaction("Build tower"):`` -- every change in the block is one
+        undo step, and none survives if the block raises (see
+        :meth:`aether3d.history.History.transaction`)."""
+        return self._history.transaction(label)
+
+    def _edit_value(self, aspect: Aspect, fields: Iterable[str]) -> Any:
+        """The operation of an in-place change of the world or the render settings."""
+        return self._history._op(f"Set {aspect.name} {', '.join(fields)}", aspect, self)
+
+    def _touch_siblings(self, parent: SceneObject | None) -> None:
+        """Record the child list ``parent`` (or the root list) is about to change."""
+        if parent is None:
+            self._history._touch(ROOTS, self)
+        else:
+            self._history._touch(CHILDREN, parent)
 
     # -- creating objects --------------------------------------------------
 
@@ -615,8 +731,9 @@ class Scene:
             if mesh is not None:
                 raise ValidationError("give either mesh= or geometry=, not both")
             node = self.procedural.geometry(geometry)  # validates the reference first
-            obj = self._create(name, None, parent, position, rotation, scale, object_id)
-            self.procedural.assign(obj, node)  # an undoable procedural change
+            with self._history._op(f"Add object {name!r}"):
+                obj = self._create(name, None, parent, position, rotation, scale, object_id)
+                self.procedural.assign(obj, node)  # an undoable procedural change
             return obj
         return self._create(name, mesh, parent, position, rotation, scale, object_id)
 
@@ -699,9 +816,13 @@ class Scene:
             transform.scale = scale
 
         obj = SceneObject(self, object_id, name, transform, mesh)
-        self._objects[object_id] = obj
-        self._by_name[name] = obj
-        self._attach(obj, parent_obj)
+        history = self._history
+        with history._op(f"Add object {name!r}", ALIVE, obj):
+            history._touch(PARENT, obj)
+            self._touch_siblings(parent_obj)
+            self._objects[object_id] = obj
+            self._by_name[name] = obj
+            self._attach(obj, parent_obj)
         return obj
 
     # -- lookup ------------------------------------------------------------
@@ -753,30 +874,156 @@ class Scene:
         object's parent, keeping their world-space placement.
         """
         target = self._resolve(obj)
-        if recursive:
-            doomed = [target, *target.iter_descendants()]
-        else:
-            # Compute every new transform first so a failure leaves the scene intact.
-            new_parent = target._parent
-            moves = [
-                (child, self._local_transform_for(child, new_parent)) for child in target._children
-            ]
-            siblings = self._siblings(target)
-            index = siblings.index(target)
-            for offset, (child, transform) in enumerate(moves):
-                child._transform = transform
-                child._parent = new_parent
-                siblings.insert(index + 1 + offset, child)
-            target._children = []
-            doomed = [target]
+        history = self._history
+        doomed = [target, *target.iter_descendants()] if recursive else [target]
+        more = f" and {len(doomed) - 1} descendant(s)" if len(doomed) > 1 else ""
+        with history._op(f"Remove {target._name!r}{more}"):
+            self._touch_siblings(target._parent)
+            history._touch(PARENT, target)
+            for item in doomed:
+                history._touch(ALIVE, item)
+            if any(item._id == self._active_camera for item in doomed):
+                history._touch(ACTIVE_CAMERA, self)
+            if not recursive:
+                # Compute every new transform first so a failure leaves the scene intact.
+                new_parent = target._parent
+                moves = [
+                    (child, self._local_transform_for(child, new_parent))
+                    for child in target._children
+                ]
+                history._touch(CHILDREN, target)
+                siblings = self._siblings(target)
+                index = siblings.index(target)
+                for offset, (child, transform) in enumerate(moves):
+                    history._touch(TRANSFORM, child)
+                    history._touch(PARENT, child)
+                    child._place(transform)
+                    child._parent = new_parent
+                    siblings.insert(index + 1 + offset, child)
+                target._children = []
 
-        self._detach(target)
-        for item in doomed:
-            del self._objects[item._id]
-            del self._by_name[item._name]
-            item._scene = None
-            if item._id == self._active_camera:
-                self._active_camera = None
+            self._detach(target)
+            for item in doomed:
+                del self._objects[item._id]
+                del self._by_name[item._name]
+                item._scene = None
+                if item._id == self._active_camera:
+                    self._active_camera = None
+
+    def duplicate(
+        self,
+        obj: ObjectRef,
+        name: str | None = None,
+        *,
+        parent: Any = "same",
+        children: bool = True,
+    ) -> SceneObject:
+        """Copy an object -- and, with ``children``, its descendants -- in one undoable step.
+
+        Copies get new ids and names (``name`` for the top copy, by default the first
+        free ``"<name>.001"``, ``"<name>.002"``, ...), and the originals' transforms,
+        visibility, colors, camera or light settings and materials. Meshes are
+        immutable and shared with the originals; a procedural object's copy uses the
+        same geometry node (``bake()`` either one to separate them). The copy has the
+        original's parent unless ``parent`` (an object, or ``None`` for the scene
+        root) says otherwise. A copied camera does not become the active camera.
+        """
+        source = self._resolve_object(obj)
+        if name is not None:
+            _check_name(name)
+            if name in self._by_name:
+                raise NameConflictError(f"an object named {name!r} already exists in this scene")
+        if not isinstance(children, bool):
+            raise ValidationError(f"children must be True or False, got {children!r}")
+        if isinstance(parent, str) and parent == "same":
+            parent_obj = source._parent
+        else:
+            parent_obj = None if parent is None else self._resolve_object(parent)
+        # The subtree as it is now: a copy placed inside it is not copied again.
+        nodes = [source, *source.iter_descendants()] if children else [source]
+        kids = {id(n): list(n._children) for n in nodes} if children else {id(source): []}
+        with self._history._op(f"Duplicate {source._name!r}"):
+            top = self._copy_object(source, name, parent_obj)
+            pending = [(source, top)]
+            while pending:
+                original, copy = pending.pop(0)
+                for child in kids[id(original)]:
+                    pending.append((child, self._copy_object(child, None, copy)))
+        return top
+
+    def _copy_object(
+        self, source: SceneObject, name: str | None, parent: SceneObject | None
+    ) -> SceneObject:
+        name = self._unique_name(_base_name(source._name)) if name is None else name
+        t = source._transform
+        mesh = source._mesh if source._geometry is None else None
+        obj = self._create(name, mesh, parent, t._position, t._rotation, t._scale, None)
+        # The copy is new in this operation: undo removes it whole, so these writes need
+        # no recording of their own.
+        obj._visible = source._visible
+        obj._appearance = _owned(source._appearance.copy(), obj, APPEARANCE)
+        if source._camera is not None:
+            obj._camera = _owned(source._camera.copy(), obj, CAMERA)
+        if source._light is not None:
+            obj._light = _owned(source._light.copy(), obj, LIGHT)
+        obj._material = source._material
+        obj._group_materials = dict(source._group_materials)
+        if source._geometry is not None:
+            self.procedural.assign(obj, source._geometry)
+        return obj
+
+    def merge(
+        self,
+        source: Scene | str | os.PathLike[str],
+        *,
+        parent: ObjectRef | None = None,
+        allow_lossy: bool = False,
+    ) -> list[SceneObject]:
+        """Copy the objects of another scene into this one, in one undoable step.
+
+        ``source`` is a :class:`Scene`, a ``.aether`` project or a ``.glb``/``.gltf``
+        file (imported with ``allow_lossy``). Its objects keep their hierarchy and are
+        placed under ``parent`` (default: the scene root); they get new ids, and names
+        free in this scene (``"Cube"`` becomes ``"Cube.001"`` if taken). Their materials
+        and textures are copied too, renamed the same way, with every reference
+        followed. Procedural objects are copied as static meshes of their current
+        evaluation (their geometry nodes stay in the source); cameras and lights are
+        copied, but the active camera, the world and the render settings stay this
+        scene's. Returns the copies of the source's root objects.
+        """
+        other = _merge_source(source, allow_lossy)
+        parent_obj = None if parent is None else self._resolve_object(parent)
+        roots = list(other._roots)
+        # The hierarchy as it is now (merging a scene into itself must not copy the copies).
+        children = {id(o): list(o._children) for o in other}
+        label = f"Merge {other._name!r} ({len(other)} object{'s' * (len(other) != 1)})"
+        with self._history._op(label):
+            materials = self._materials._copy_from(other._materials)
+            copies: list[SceneObject] = []
+            pending = [(obj, parent_obj) for obj in roots]
+            while pending:
+                original, target_parent = pending.pop(0)
+                t = original._transform
+                mesh = original.mesh  # procedural objects: the evaluation, as a static mesh
+                name = self._unique_name(original._name)
+                obj = self._create(
+                    name, mesh, target_parent, t._position, t._rotation, t._scale, None
+                )
+                # New in this operation: undo removes it whole (no recording needed).
+                obj._visible = original._visible
+                obj._appearance = _owned(original._appearance.copy(), obj, APPEARANCE)
+                if original._camera is not None:
+                    obj._camera = _owned(original._camera.copy(), obj, CAMERA)
+                if original._light is not None:
+                    obj._light = _owned(original._light.copy(), obj, LIGHT)
+                obj._material = materials.get(original._material)
+                obj._group_materials = {
+                    g: materials[m] for g, m in original._group_materials.items()
+                }
+                if target_parent is parent_obj:
+                    copies.append(obj)
+                pending.extend((child, obj) for child in children[id(original)])
+        return copies
 
     # -- cameras, lights and rendering -------------------------------------
 
@@ -809,10 +1056,13 @@ class Scene:
         camera = Camera(projection, fov, fov_axis, ortho_scale, near, far, aspect_ratio)
         if active is not None and not isinstance(active, bool):
             raise ValidationError(f"active must be True, False or None, got {active!r}")
-        obj = self._create_with(name, "Camera", parent, position, rotation, look_at, up)
-        obj._camera = camera
-        if active or (active is None and self._active_camera is None):
-            self._active_camera = obj.id
+        label = "Add camera" if name is None else f"Add camera {name!r}"
+        with self._history._op(label):
+            obj = self._create_with(name, "Camera", parent, position, rotation, look_at, up)
+            obj._camera = _owned(camera, obj, CAMERA)
+            if active or (active is None and self._active_camera is None):
+                self._history._touch(ACTIVE_CAMERA, self)
+                self._active_camera = obj.id
         return obj
 
     def add_light(
@@ -846,14 +1096,12 @@ class Scene:
             raise ValidationError("give either direction= or look_at=, not both")
         if direction is not None:
             look_rotation_matrix(direction, up)  # validate before creating anything
-        obj = self._create_with(name, "Light", parent, position, rotation, look_at, up)
-        if direction is not None:
-            try:
+        label = "Add light" if name is None else f"Add light {name!r}"
+        with self._history._op(label):  # all or nothing
+            obj = self._create_with(name, "Light", parent, position, rotation, look_at, up)
+            if direction is not None:
                 obj.look_along(direction, up=up)
-            except BaseException:
-                self.remove(obj)
-                raise
-        obj._light = light
+            obj._light = _owned(light, obj, LIGHT)
         return obj
 
     def add_directional_light(
@@ -888,13 +1136,10 @@ class Scene:
     ) -> SceneObject:
         """Create an empty object and aim it; nothing is added if aiming fails."""
         name = self._unique_name(base) if name is None else name
-        obj = self._create(name, None, parent, position, rotation, None, None)
-        if look_at is not None:
-            try:
+        with self._history._op(f"Add object {name!r}"):  # all or nothing
+            obj = self._create(name, None, parent, position, rotation, None, None)
+            if look_at is not None:
                 obj.look_at(look_at, up=up)
-            except BaseException:
-                self.remove(obj)
-                raise
         return obj
 
     @property
@@ -914,29 +1159,34 @@ class Scene:
 
     @active_camera.setter
     def active_camera(self, value: ObjectRef | None) -> None:
-        if value is None:
-            self._active_camera = None
-            return
-        obj = self._resolve_object(value)
-        if obj._camera is None:
-            raise ValidationError(f"object {obj.name!r} is not a camera")
-        self._active_camera = obj.id
+        camera_id = None
+        if value is not None:
+            obj = self._resolve_object(value)
+            if obj._camera is None:
+                raise ValidationError(f"object {obj.name!r} is not a camera")
+            camera_id = obj.id
+        label = "Clear active camera" if camera_id is None else f"Activate camera {obj._name!r}"
+        with self._history._op(label, ACTIVE_CAMERA, self):
+            self._active_camera = camera_id
 
     @property
     def world(self) -> World:
         """Background color and ambient light (edit in place: ``scene.world.background = ...``)."""
-        return self._world
+        return _owned(self._world, self, WORLD)
 
     @world.setter
     def world(self, value: World) -> None:
         if not isinstance(value, World):
             raise ValidationError(f"world must be a World, got {type(value).__name__}")
-        self._world = value.copy()
+        new = value.copy()
+        with self._history._op("Set world", WORLD, self):
+            self._world._owner = None
+            self._world = _owned(new, self, WORLD)
 
     @property
     def render_settings(self) -> RenderSettings:
         """Saved output settings (size, antialiasing, exposure, culling, default lights)."""
-        return self._render_settings
+        return _owned(self._render_settings, self, RENDER)
 
     @render_settings.setter
     def render_settings(self, value: RenderSettings) -> None:
@@ -944,7 +1194,10 @@ class Scene:
             raise ValidationError(
                 f"render_settings must be a RenderSettings, got {type(value).__name__}"
             )
-        self._render_settings = value.copy()
+        new = value.copy()
+        with self._history._op("Set render settings", RENDER, self):
+            self._render_settings._owner = None
+            self._render_settings = _owned(new, self, RENDER)
 
     def render(self, **options: Any) -> RenderResult:
         """Render an image (see :func:`aether3d.rendering.render`).
@@ -971,15 +1224,6 @@ class Scene:
                 return self._by_name[ref]
             raise ObjectNotFoundError(f"no object with id or name {ref!r} in this scene")
         raise ValidationError(f"expected an object, id or name, got {type(ref).__name__}")
-
-    def _restore_subtree(self, obj: SceneObject, parent: SceneObject | None, index: int) -> None:
-        """Put back an object removed with ``remove(recursive=True)`` (script rollback)."""
-        for item in (obj, *obj.iter_descendants()):
-            self._objects[item._id] = item
-            self._by_name[item._name] = item
-            item._scene = self
-        obj._parent = parent
-        (self._roots if parent is None else parent._children).insert(index, obj)
 
     # -- materials -----------------------------------------------------------
 
@@ -1096,7 +1340,7 @@ class Scene:
         gname, k = name, 1
         while gname in taken:
             gname, k = f"{name}.{k:03d}", k + 1
-        with system.batch():
+        with self._history._op(f"Add procedural {name!r}"), system.batch():
             node = self.add_geometry(gname, primitive, parameters=parameters, **params)
             obj = self.add_object(
                 name,
@@ -1110,18 +1354,42 @@ class Scene:
 
     # -- persistence -------------------------------------------------------
 
-    def save(self, path: str | os.PathLike[str]) -> None:
-        """Save the scene to a ``.aether`` project file (written atomically)."""
+    def save(self, path: str | os.PathLike[str], *, history: bool = False) -> None:
+        """Save the scene to a ``.aether`` project file (written atomically).
+
+        With ``history=True`` its undo history is saved too, next to it
+        (``<path>.history``), so that a later session can undo and redo the changes
+        made in this one (see :meth:`load`).
+        """
         from .serialization import save_scene
 
         save_scene(self, path)
+        if history:
+            from pathlib import Path
+
+            from ._history_file import history_path
+
+            self._history.save(history_path(path), project_dir=Path(path).absolute().parent)
 
     @classmethod
-    def load(cls, path: str | os.PathLike[str]) -> Scene:
-        """Load a scene from a ``.aether`` project file."""
+    def load(cls, path: str | os.PathLike[str], *, history: bool = False) -> Scene:
+        """Load a scene from a ``.aether`` project file.
+
+        Its history starts empty, unless ``history=True``: then the history saved with
+        it (``scene.save(path, history=True)``) is restored and checked, and
+        ``HistoryError`` is raised if there is none or if it no longer matches the
+        project (``NO_HISTORY``, ``HISTORY_MISMATCH``, ``INVALID_HISTORY``).
+        """
         from .serialization import load_scene
 
-        return load_scene(path)
+        scene = load_scene(path)
+        if history:
+            from pathlib import Path
+
+            from ._history_file import history_path
+
+            scene._history.load(history_path(path), project_dir=Path(path).absolute().parent)
+        return scene
 
     def to_dict(self) -> dict[str, Any]:
         """The scene as a JSON-compatible document (the ``.aether`` file content)."""
@@ -1209,9 +1477,10 @@ class Scene:
             return
         if new_name in self._by_name:
             raise NameConflictError(f"an object named {new_name!r} already exists in this scene")
-        del self._by_name[obj._name]
-        obj._name = new_name
-        self._by_name[new_name] = obj
+        with self._history._op(f"Rename {obj._name!r} to {new_name!r}", NAME, obj):
+            del self._by_name[obj._name]
+            obj._name = new_name
+            self._by_name[new_name] = obj
 
     def _siblings(self, obj: SceneObject) -> list[SceneObject]:
         return self._roots if obj._parent is None else obj._parent._children
@@ -1246,10 +1515,21 @@ class Scene:
         if new_parent is not None and obj in new_parent.iter_ancestors():
             raise HierarchyError(f"cannot parent {obj!r} to its own descendant {new_parent!r}")
         transform = self._local_transform_for(obj, new_parent) if keep_world_transform else None
-        self._detach(obj)
-        self._attach(obj, new_parent)
-        if transform is not None:
-            obj._transform = transform
+        label = (
+            f"Unparent {obj._name!r}"
+            if new_parent is None
+            else f"Parent {obj._name!r} to {new_parent._name!r}"
+        )
+        history = self._history
+        with history._op(label, PARENT, obj):
+            self._touch_siblings(obj._parent)
+            self._touch_siblings(new_parent)
+            if transform is not None:
+                history._touch(TRANSFORM, obj)
+            self._detach(obj)
+            self._attach(obj, new_parent)
+            if transform is not None:
+                obj._place(transform)
 
     def __repr__(self) -> str:
         return f"Scene(name={self._name!r}, objects={len(self._objects)})"

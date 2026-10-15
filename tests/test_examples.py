@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -177,6 +178,21 @@ def test_hero_render_example_runs(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert "All checks passed." in result.stdout
     assert _decode(tmp_path / "hero_flat_vs_materials.png").shape == (45, 2 * 80 + 8, 3)
+
+
+def test_history_example_runs(tmp_path):
+    result = subprocess.run(
+        [sys.executable, str(EXAMPLES / "history_undo.py"), str(tmp_path), "--quick"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "FAILED" not in result.stdout and result.stdout.rstrip().endswith("done")
+    assert "the render equals the first one, pixel for pixel" in result.stdout
+    report = json.loads((tmp_path / "history_undo.json").read_text())
+    assert len(report["steps"]) == 13 and report["problems"] == []
+    assert (tmp_path / "history_undo.png").read_bytes().startswith(b"\x89PNG")
 
 
 def test_example_textures_are_reproducible(tmp_path):

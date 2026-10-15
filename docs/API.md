@@ -70,11 +70,16 @@ Scene(name: str = "Untitled Scene")
 | `get(object_id)` | Object by id; raises `ObjectNotFoundError`. |
 | `get_by_name(name)` | Object by name; raises `ObjectNotFoundError`. |
 | `remove(obj_or_id, *, recursive=True)` | Remove an object. With `recursive=False`, its children move up to its parent and keep their world placement. |
+| `duplicate(obj, name=None, *, parent="same", children=True)` | Copy an object (and its descendants) in one undoable step: new ids, free names, shared meshes and geometry nodes. Returns the top copy. |
+| `merge(source, *, parent=None, allow_lossy=False)` | Copy another `Scene`, `.aether` project or `.glb`/`.gltf` file into this one, in one undoable step, with its materials and textures (procedural objects as static meshes). Returns the copies of its roots. |
+| `history` | The scene's `History`: undo, redo, transactions, checkpoints (see [History](#history)). |
+| `transaction(label="Transaction")` | `with scene.transaction("..."):` -- the block's changes are one undo step, all or nothing. |
+| `revision` | Increases with every change, undo and redo included. |
 | `roots` | Tuple of root objects, in order. |
 | `objects` | Tuple of all objects in depth-first order (parents before children). |
 | `len(scene)`, `iter(scene)`, `x in scene` | Object count, depth-first iteration, membership (object or id). |
-| `save(path)` | Write a `.aether` file (atomically). |
-| `Scene.load(path)` | Read and validate a `.aether` file. |
+| `save(path, *, history=False)` | Write a `.aether` file (atomically); with `history=True` its undo history too (`<path>.history`). |
+| `Scene.load(path, *, history=False)` | Read and validate a `.aether` file; with `history=True` restore and check the history saved with it. |
 | `to_dict()` / `Scene.from_dict(doc)` | Convert to/from the JSON-compatible document stored in `.aether` files. |
 | `export(path, *, allow_lossy=False, bake_textures=None)` | Export to `.glb` or `.gltf` (by extension); returns an `ExportResult`. `bake_textures=SIZE` bakes UV-mapped procedural textures into PNG images. |
 | `Scene.import_file(path, *, allow_lossy=False, limits=None)` | Import a `.glb` or `.gltf` file as a new scene. |
@@ -88,8 +93,11 @@ altered.
 
 **Parents.** `parent` arguments accept a `SceneObject` or an object id string.
 
-**Atomicity.** Creation and hierarchy operations validate all their inputs
-before changing anything; a call that raises leaves the scene unchanged.
+**Atomicity.** A call that raises leaves the scene unchanged: operations validate
+their inputs first, and a change that fails part-way is rolled back.
+
+**History.** Every change is recorded in `scene.history` and can be undone (see
+[History](#history) and [HISTORY.md](HISTORY.md)).
 
 ## `SceneObject`
 
@@ -390,6 +398,30 @@ directly.
 decoder, `decode_image(data, *, limits=None)` with `ImageLimits` and
 `jpeg_available()`; and the image cache, `IMAGE_CACHE` (`stats()`, `clear()`).
 
+## History
+
+`scene.history` is a `History` ([HISTORY.md](HISTORY.md)). Every public call that
+changes the scene is one step; a transaction is one step.
+
+| Member | Description |
+| --- | --- |
+| `undo(steps=1)`, `redo(steps=1)` | Reverse or re-apply steps (all or nothing); return their `HistoryEntry` objects. |
+| `can_undo`, `can_redo` | Whether there is anything to undo or redo. |
+| `entries`, `redo_entries` | `HistoryEntry` tuples: the steps to undo (oldest first) and the undone ones (next first). |
+| `transaction(label="Transaction")` | Context manager: one step, all or nothing; nests as savepoints. Yields a `Transaction` (`entry`, `rollback()`). |
+| `checkpoint(name)`, `checkpoints`, `goto(name)`, `remove_checkpoint(name)` | Name the current state, list the names, undo or redo to one, forget one. |
+| `max_entries`, `max_bytes`, `configure(max_entries=None, max_bytes=None)` | Limits (default 256 steps, 256 MiB); the oldest steps are dropped first. |
+| `nbytes`, `dropped`, `revision` | Memory held only by the history, steps dropped so far, changes so far. |
+| `enabled`, `disabled()` | Recording on or off (disabling clears the history; operations stay atomic). |
+| `clear()` | Forget every step and checkpoint. |
+| `save(path, *, project_dir=None)`, `load(path, *, project_dir=None, verify=True)` | Write or read a history file (see `Scene.save`/`Scene.load` with `history=True`). |
+| `verify()` | Replay the history on a copy of the scene and report whether it comes back exactly. |
+| `to_dict()` | JSON summary. |
+
+`HistoryEntry`: `index` (unique, increasing), `label`, `changes` (count), `paths`
+(the parts of the scene it changed, such as `objects[<id>].transform`), `bytes`
+(memory estimate), `to_dict()`.
+
 ## `aether3d.math3d`
 
 Stateless helpers used by the engine, available for scripts:
@@ -417,6 +449,7 @@ All deliberate errors derive from `AetherError`.
 | `RenderError` | `ValueError` | A camera, light, appearance, world or render setting is invalid, or rendering failed (including GPU problems: `GPU_UNAVAILABLE`, `GPU_ADAPTER_NOT_FOUND`, `GPU_DEVICE_LOST`, ...; see [GPU.md](GPU.md#errors-diagnostics-and-debugging)); nothing changed and no file was written. `.code` (stable), `.location`, `.hint`, `.details` |
 | `ProceduralError` | `ValueError` | A procedural definition, parameter or evaluation is invalid; nothing changed. `.code` (stable), `.location` (e.g. `geometry[Tower].modifiers[Row].params.count`), `.hint`, `.details` |
 | `MaterialError` | `ValueError` | A material, texture, graph or image is invalid or cannot be used (`INVALID_MATERIAL`, `TEXTURE_MISSING`, `IMAGE_TOO_LARGE`, `UNSAFE_PATH`, ...; see [MATERIALS.md](MATERIALS.md#errors-and-diagnostics)); nothing changed. `.code` (stable), `.location` (e.g. `materials[Stone].roughness`), `.hint`, `.details` |
+| `HistoryError` | `ValueError` | An undo, redo, checkpoint or history file operation cannot be performed (`NOTHING_TO_UNDO`, `TRANSACTION_OPEN`, `HISTORY_MISMATCH`, `INVALID_HISTORY`, ...; see [HISTORY.md](HISTORY.md#errors)); nothing changed. `.code` (stable), `.location`, `.hint`, `.details` |
 
 Missing files raise the standard `FileNotFoundError`.
 
@@ -447,10 +480,17 @@ aether3d camera add|set|frame|activate|list PROJECT ... [--output PATH] [--dry-r
 aether3d light add|set|list PROJECT ... [--output PATH] [--dry-run] [--json]
 aether3d object set|remove PROJECT OBJECT ... [--output PATH] [--dry-run] [--json]
 aether3d scene set PROJECT ... | scene run PROJECT SCRIPT.json|- [--output PATH] [--dry-run] [--json]
+aether3d scene merge PROJECT SOURCE.aether|.glb|.gltf [--parent REF] [--allow-lossy] [--output PATH] [--dry-run] [--json]
 aether3d material list|presets|schema|create|set|assign|texture|inspect|validate|remove|convert-colors|preview ...
 aether3d texture list|add|procedural|set|inspect|preview|remove ...
+aether3d history start|show|undo|redo|checkpoint|goto|clear|verify PROJECT ... [--json]
 aether3d --version
 ```
+
+Commands that change a project accept `--history`: the change is recorded in the
+project's history file (`<project>.history`), which starts if there is none. A
+project that has a history file records every change, and `aether3d history
+undo PROJECT` undoes the last one (see [HISTORY.md](HISTORY.md#command-line)).
 
 `validate`, `inspect`, `geometry` and `export` read `.aether` projects as well
 as `.glb`/`.gltf` files. For glTF input they add `source_format`, `generator`,

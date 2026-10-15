@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from ..errors import RenderError
+from ..history import recording
 from .color import Color, parse_color
 
 DEFAULT_COLOR: Color = (0.8, 0.8, 0.8)
@@ -49,11 +50,15 @@ def _color(value: Any, code: str, location: str) -> Color:
 
 
 class _Validated:
-    """Small base for validated value objects with ``configure`` and dict round trips."""
+    """Small base for validated value objects with ``configure`` and dict round trips.
+
+    A value object that belongs to a scene (an object's appearance, the world, the
+    render settings) has an owner, and its changes are recorded in the scene's history.
+    """
 
     _FIELDS: tuple[str, ...] = ()
     _CODE = ""
-    __slots__ = ()
+    __slots__ = ("_owner",)
 
     def _check(self, values: dict[str, Any], location: str) -> dict[str, Any]:
         raise NotImplementedError
@@ -71,7 +76,9 @@ class _Validated:
                 f"unknown parameter(s): {', '.join(unknown)}",
                 hint=f"parameters: {', '.join(self._FIELDS)}",
             )
-        self._assign(self._check({**self.to_dict(), **changes}, self._location()))
+        values = self._check({**self.to_dict(), **changes}, self._location())
+        with recording(self, changes):
+            self._assign(values)
         return self
 
     def _location(self) -> str:
@@ -283,6 +290,13 @@ class World(_Validated):
         if isinstance(env, dict):  # partial updates keep the other environment fields
             changes = {**changes, "environment": {**self._environment.to_dict(), **env}}
         return super().configure(**changes)
+
+    def _assign(self, values: dict[str, Any]) -> None:
+        super()._assign(values)
+        self._environment._owner = (self, None)  # its changes are changes of the world
+
+    def _edit_value(self, aspect: Any, fields: Any) -> Any:
+        return recording(self, [f"environment.{f}" for f in fields])
 
     def to_dict(self) -> dict[str, Any]:
         data = super().to_dict()
