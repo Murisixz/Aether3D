@@ -41,6 +41,7 @@ from collections import deque
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from ...errors import RenderError
@@ -54,6 +55,8 @@ INSTALL_HINT = (
 ADAPTER_ENV = "AETHER3D_GPU_ADAPTER"
 DEBUG_ENV = "AETHER3D_GPU_DEBUG"
 BACKENDS_ENV = "AETHER3D_GPU_BACKENDS"
+DXC_ENV = "AETHER3D_GPU_DXC"
+"""Path of ``dxcompiler.dll``: Direct3D 12 then compiles shaders with DXC instead of FXC."""
 
 WANTED_FEATURES = ("texture-adapter-specific-format-features", "timestamp-query")
 """Optional features requested when the adapter has them (more MSAA counts; GPU timings)."""
@@ -181,7 +184,7 @@ def load_wgpu() -> Any:
 
 
 def _configure_instance() -> None:
-    """Apply AETHER3D_GPU_DEBUG / AETHER3D_GPU_BACKENDS (must run before the first enumeration)."""
+    """Apply AETHER3D_GPU_DEBUG / _BACKENDS / _DXC (must run before the first enumeration)."""
     flags: list[str] = []
     backends: list[str] = []
     if os.environ.get(DEBUG_ENV, "").strip().lower() not in ("", "0", "false", "no", "off"):
@@ -199,15 +202,32 @@ def _configure_instance() -> None:
                     hint="use a comma-separated list of vulkan, metal, d3d12, opengl",
                 )
             backends.append(names[api])
-    if not flags and not backends:
+    compiler: dict[str, Any] = {}
+    dxc = os.environ.get(DXC_ENV, "").strip()
+    if dxc:
+        path = Path(dxc)
+        if path.is_dir():
+            path = path / "dxcompiler.dll"
+        if not path.is_file():
+            raise RenderError(
+                "GPU_UNAVAILABLE",
+                f"{DXC_ENV} names no file: {str(path)!r}",
+                DXC_ENV,
+                hint="give the path of dxcompiler.dll (Windows SDK, or a DirectX Shader "
+                "Compiler release), or unset it to compile with FXC",
+            )
+        compiler = {"dx12_compiler": "dxc", "dxc_path": str(path.absolute())}
+    if not flags and not backends and not compiler:
         return
     try:
         from wgpu.backends.wgpu_native.extras import set_instance_extras
 
-        set_instance_extras(backends=backends or ["All"], flags=flags or ["Default"])
+        set_instance_extras(backends=backends or ["All"], flags=flags or ["Default"], **compiler)
     except Exception as exc:  # the instance already exists (wgpu used before Aether3D)
-        _instance_notes.append(f"{DEBUG_ENV}/{BACKENDS_ENV} not applied: {exc}")
+        _instance_notes.append(f"{DEBUG_ENV}/{BACKENDS_ENV}/{DXC_ENV} not applied: {exc}")
         return
+    if compiler:
+        _instance_notes.append(f"Direct3D 12 compiles shaders with DXC ({compiler['dxc_path']})")
     if flags:
         _instance_notes.append("GPU validation enabled (wgpu validation and debug layers)")
     if backends:

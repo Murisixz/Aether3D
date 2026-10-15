@@ -29,6 +29,7 @@ path tracer returns.
 from __future__ import annotations
 
 import math
+import os
 import time
 from typing import Any
 
@@ -43,7 +44,7 @@ from ..raytrace.accel import KIND_INNER, _round_out
 from ..scene_data import RenderScene
 from ..settings import AOSettings, PathSettings, RenderLimits
 from ..surface import LUMINANCE
-from .device import GPUContext, translate_errors
+from .device import DXC_ENV, GPUContext, translate_errors
 from .materials import HEADER_IMAGES, IMAGE_WORDS, image_key, pack_material_data
 from .resources import pack_instances
 
@@ -556,6 +557,9 @@ def render_scene(
         "readback": t_readback,
         "compile": compile_seconds,
     }
+    slow = compile_diagnostic(compile_seconds, context.info.backend)
+    if slow is not None:
+        frame.diagnostics.append(slow)
     frame.info.update(
         {
             "dispatch": {"tiles": len(tiles), "tile_size": TILE, "samples_per_dispatch": per},
@@ -570,6 +574,30 @@ def render_scene(
 
 
 MESH_BUFFERS = ("positions", "normals", "indices", "uvs", "groups")
+
+SLOW_COMPILE_SECONDS = 60.0
+
+
+def compile_diagnostic(seconds: float, api: str) -> Diagnostic | None:
+    """``SLOW_SHADER_COMPILE`` when compiling the kernel took over a minute.
+
+    It is compiled once per process and device. On Direct3D 12 without DXC, FXC is
+    the reason: on GitHub's Windows runners it compiles this kernel in about 13
+    minutes, where DXC needs about 12 seconds.
+    """
+    if seconds < SLOW_COMPILE_SECONDS:
+        return None
+    message = (
+        f"compiling the GPU path tracer took {seconds:.0f} s; later renders in this "
+        "process reuse it"
+    )
+    if api == "d3d12" and not os.environ.get(DXC_ENV, "").strip():
+        message += (
+            ". Direct3D 12 compiles with FXC, which is slow on this kernel: set "
+            f"{DXC_ENV} to the path of dxcompiler.dll (Windows SDK, or a DirectX Shader "
+            "Compiler release) to compile with DXC in seconds, or use a Vulkan adapter"
+        )
+    return Diagnostic("SLOW_SHADER_COMPILE", INFO, message, "path")
 
 
 def _frame(

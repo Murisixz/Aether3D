@@ -682,6 +682,13 @@ Feature parity with `backend="path"`:
   needs more fail with `GPU_LIMIT_EXCEEDED` (use `backend="path"`).
 - **Work per dispatch:** samples are dispatched in tiles of at most 512x512
   pixels and about a million pixel-samples, which keeps every dispatch short.
+- **Compiling the kernel:** once per process and device. Vulkan and Metal
+  compile it in about a second. Direct3D 12 compiles shaders with FXC by
+  default, which is slow on this kernel: on GitHub's Windows runner, FXC took
+  about 13 minutes (725-772 s), where DXC took 12 s. Set `AETHER3D_GPU_DXC`
+  to the path of `dxcompiler.dll` (Windows SDK, or a DirectX Shader Compiler
+  release) to compile with DXC, or select a Vulkan adapter. A compile over a
+  minute is reported as `SLOW_SHADER_COMPILE`.
 
 **Performance.** These measurements are one run each, on the RTX 4060
 Laptop GPU, with the device already created:

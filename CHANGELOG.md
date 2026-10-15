@@ -37,20 +37,26 @@ features; breaking changes are called out explicitly).
     ray tracing (RT cores) is used.
 - **CLI:** `aether3d render --backend gpu_path` with the path tracer's options
   and `--adapter`.
+- **`AETHER3D_GPU_DXC`:** the path of `dxcompiler.dll` makes Direct3D 12
+  compile shaders with DXC instead of FXC. FXC compiles the path tracing
+  kernel in about 13 minutes on GitHub's Windows runner (once per process),
+  DXC in 12 s. A compile over a minute is reported as `SLOW_SHADER_COMPILE`.
 - **Examples:** `examples/gpu_path_showcase.py` renders the Stage 8 showcases on
   the GPU with many more samples, and compares the CPU and GPU tracing the
   same paths.
 - **Benchmark:** `benchmarks/bench_gpu_pathtrace.py` renders the showcase scenes
   at their CPU settings on the GPU and compares with the recorded CPU times.
-- **Tests:** `tests/test_gpu_pathtrace.py` (24 tests):
+- **Tests:** `tests/test_gpu_pathtrace.py` (26 tests):
   - the GPU's random numbers equal the CPU's;
   - per-pixel agreement with the CPU path tracer on every feature;
   - an exact white furnace and the inverse-square law on the GPU;
   - determinism across tilings, `progress` and stopping;
-  - honest reports, limits and errors, the CLI.
+  - honest reports, limits and errors, the CLI;
+  - the slow-compile report and the DXC setting.
 
   The GPU CI jobs run them (lavapipe on Linux, the native adapters on
-  Windows and macOS), with a quick GPU showcase run.
+  Windows and macOS), with a quick GPU showcase run. On Windows they run
+  twice: with FXC (the default) and with the Windows SDK's DXC.
 
 ### Changed
 

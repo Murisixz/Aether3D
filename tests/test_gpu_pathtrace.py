@@ -448,6 +448,39 @@ def test_without_wgpu_gpu_path_fails_and_never_falls_back(monkeypatch):
     assert cornell_box().render(width=8, height=8, backend="path", default_lights=False)
 
 
+def test_a_slow_kernel_compile_is_reported_with_its_remedy(monkeypatch):
+    from aether3d.rendering.gpu.pathtrace import compile_diagnostic
+
+    monkeypatch.delenv("AETHER3D_GPU_DXC", raising=False)
+    assert compile_diagnostic(12.0, "d3d12") is None  # e.g. DXC; Vulkan, Metal: ~1 s
+    fxc = compile_diagnostic(770.0, "d3d12")
+    assert fxc.code == "SLOW_SHADER_COMPILE" and fxc.severity == "info"
+    assert "770 s" in fxc.message and "FXC" in fxc.message
+    assert "AETHER3D_GPU_DXC" in fxc.message
+    other = compile_diagnostic(70.0, "vulkan")
+    assert other is not None and "FXC" not in other.message
+    monkeypatch.setenv("AETHER3D_GPU_DXC", "C:/sdk/dxcompiler.dll")  # DXC was asked for
+    assert "FXC" not in compile_diagnostic(770.0, "d3d12").message
+
+
+def test_a_dxc_path_that_does_not_exist_is_an_error(tmp_path):
+    pytest.importorskip("wgpu")
+    import subprocess
+
+    code = (
+        "from aether3d.rendering.gpu import device\n"
+        "try:\n"
+        "    device.load_wgpu()\n"
+        "except Exception as exc:\n"
+        "    print(exc.code, exc.location)\n"
+    )
+    env = {**__import__("os").environ, "AETHER3D_GPU_DXC": str(tmp_path / "dxcompiler.dll")}
+    out = subprocess.run(
+        [sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=120
+    )
+    assert out.stdout.split() == ["GPU_UNAVAILABLE", "AETHER3D_GPU_DXC"], out.stdout + out.stderr
+
+
 def test_the_cli_renders_with_the_gpu_path_tracer(gpu, tmp_path, capsys):
     from aether3d.cli import main
 

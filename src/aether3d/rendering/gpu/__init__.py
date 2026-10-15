@@ -87,7 +87,13 @@ def gpu_status(*, adapter: Any = None, check: bool = False) -> dict[str, Any]:
         "versions": None,
         "environment": {
             name: os.environ.get(name)
-            for name in (dev.ADAPTER_ENV, dev.DEBUG_ENV, dev.BACKENDS_ENV, "AETHER3D_GPU_CACHE_MB")
+            for name in (
+                dev.ADAPTER_ENV,
+                dev.DEBUG_ENV,
+                dev.BACKENDS_ENV,
+                dev.DXC_ENV,
+                "AETHER3D_GPU_CACHE_MB",
+            )
             if os.environ.get(name) is not None
         },
         "notes": [],

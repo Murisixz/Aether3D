@@ -1493,15 +1493,23 @@ fn run_state(st: ptr<function, State>) {
       (*st).sv = evaluate_surface((*st).eval_m, (*st).eval_in, (*st).eval_uvs, (*st).eval_alpha);
       (*st).eval_pending = false;
     }
-    switch ((*st).phase) {
-      case 1u: { on_hit(st); }
-      case 2u: { on_alpha(st); }
-      case 3u: { on_shade(st); }
-      case 4u: { on_nee(st); }
-      case 5u: { on_emit(st); }
-      case 6u: { on_bounce(st); }
-      case 7u: { on_ao(st); }
-      default: { }
+    // An if-chain, not a switch: D3D12's FXC cannot inline these calls inside the cases
+    // of a switch in this loop ("internal error: l-value expected").
+    let phase = (*st).phase;
+    if (phase == PH_HIT) {
+      on_hit(st);
+    } else if (phase == PH_ALPHA) {
+      on_alpha(st);
+    } else if (phase == PH_SHADE) {
+      on_shade(st);
+    } else if (phase == PH_NEE) {
+      on_nee(st);
+    } else if (phase == PH_EMIT) {
+      on_emit(st);
+    } else if (phase == PH_BOUNCE) {
+      on_bounce(st);
+    } else if (phase == PH_AO) {
+      on_ao(st);
     }
     if ((*st).phase == PH_DONE) {
       break;
