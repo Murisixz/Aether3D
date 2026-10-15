@@ -239,3 +239,38 @@ def test_readme_spatial_example(capsys):
     assert [(o.a.name, o.b.name) for o in namespace["touching"]] == [("Ground", "Crate")]
     assert [m.object.name for m in namespace["in_yard"]] == ["Ground", "Crate"]  # Cam: y = -8
     assert [o.name for o in namespace["props"]] == ["Crate"]
+
+
+def test_readme_scene_plan_example():
+    source = python_block(
+        ROOT / "README.md", 'from aether3d import Scene\n\nscene = Scene("Courtyard")'
+    )
+    namespace: dict = {}
+    exec(compile(source, "README.md", "exec"), namespace)
+    result, scene = namespace["result"], namespace["scene"]
+    assert result.counts["objects"] == 37 and result.queries[0]["result"] == []
+    assert len(scene) == 0  # the example ends with an undo
+
+
+def test_scene_plan_docs_first_plan():
+    text = (ROOT / "docs/SCENE_PLANS.md").read_text(encoding="utf-8")
+    plan = json.loads(re.search(r"## A first plan\n\n```json\n(.*?)```", text, re.S).group(1))
+    scene = Scene("Courtyard")
+    result = scene.execute_plan(plan)
+    assert result.counts["objects"] == 38 and result.queries[0]["result"] == []
+    assert sum(1 for o in scene if o.name.startswith("wall ")) == 27
+
+
+def test_every_complete_plan_in_the_docs_is_valid():
+    from aether3d import validate_plan
+
+    found = 0
+    for doc in ("docs/SCENE_PLANS.md", "docs/MCP.md", "README.md"):
+        text = (ROOT / doc).read_text(encoding="utf-8")
+        for block in re.findall(r"```json\n(.*?)```", text, re.S):
+            if '"aether3d.scene-plan"' not in block:
+                continue
+            result = validate_plan(json.loads(block))
+            assert result.ok, (doc, result.issues)
+            found += 1
+    assert found >= 1

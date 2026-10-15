@@ -107,6 +107,13 @@ jobs:
           aether3d render ci_render/minecraft_castle_render.aether -o ci_path/cli_castle_path.png --backend path --width 160 --height 90 --spp 4 --bounces 2 --ao --passes ci_path/passes --json
           aether3d render ci_render/minecraft_castle_render.aether -o ci_path/cli_castle_path.hdr --backend path --width 64 --height 36 --spp 2 --tonemap neutral
           python benchmarks/bench_raytrace.py --quick
+      - name: Scene plans and the MCP server - examples and a benchmark smoke run
+        run: |
+          python examples/plan_basics.py ci_plans --quick
+          python examples/village.py ci_plans --quick --backend cpu
+          python examples/mcp_castle_agent.py ci_plans --quick --backend cpu
+          aether3d plan validate src/aether3d/plans/examples/castle.json
+          python benchmarks/bench_plans.py --quick --sizes 100 --no-cli-per-object --no-gpu --json ci_plans/bench_plans.json
       - name: Upload the CI renders
         uses: actions/upload-artifact@v4
         with:
@@ -115,6 +122,8 @@ jobs:
             ci_render/*.png
             ci_path/*.png
             ci_path/*.json
+            ci_plans/*.png
+            ci_plans/*.json
           if-no-files-found: error
 
   optional-dependencies:

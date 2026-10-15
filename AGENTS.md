@@ -25,6 +25,9 @@ apply to agents too.
   history files, CLI).
 - Spatial queries, tags and metadata: [docs/SPATIAL.md](docs/SPATIAL.md) (conventions,
   semantics of every query, caching, JSON and CLI, errors, limitations).
+- Scene plans: [docs/SCENE_PLANS.md](docs/SCENE_PLANS.md) (the format, patterns, operations,
+  errors, idempotency, chunks, limits, performance); the MCP server for AI agents:
+  [docs/MCP.md](docs/MCP.md) (tools, resources, Claude Code, security).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 
 ## Conventions to preserve
@@ -148,7 +151,43 @@ apply to agents too.
     tests in `tests/test_spatial_queries.py`; a new query also needs a JSON request
     (`spatial/request.py`), a case in `tests/test_spatial_cli.py` and docs.
 
+- Scene plans (`plans/`):
+  - **Plans are data.** A plan is parsed and checked as a whole (`model.py`), bound to the
+    scene (`executor.py`: patterns, names, references), then applied; nothing in it is
+    ever run as code, and expressions go through the procedural whitelist. Report every
+    problem with a stable code, a JSON pointer and a hint, before changing anything.
+  - **All or nothing.** A plan is one transaction: a failure, a timeout or a
+    cancellation rolls back completely. Only the opt-in `chunk_size` gives up atomicity,
+    with a checkpoint and resumable chunks.
+  - **One format, three descriptions in step.** A new plan feature needs the checker, the
+    JSON Schema (`schema.py`), the guide (`guide.md`) and docs; `tests/test_plans_schema.py`
+    fuzzes the checker against the schema and the executor against crashes.
+  - **Bulk, but equivalent.** Objects are created with `Scene._create_many` (one history
+    step); it must give the same document as the per-object API
+    (`test_create_many_gives_the_document_of_the_per_object_api`).
+  - **Measure, do not assume.** `benchmarks/bench_plans.py` measures; regression tests
+    (`tests/test_plans_performance.py`) compare times on the same machine with generous
+    margins, never against fixed budgets.
+- MCP server (`mcp/`):
+  - **Optional and isolated.** Only `aether3d.mcp` imports the MCP SDK; `import aether3d`
+    must never load it (`test_importing_aether3d_does_not_load_the_mcp_sdk`).
+  - **stdout is the protocol.** Log to stderr only; nothing else may print to stdout.
+  - **Every path is untrusted.** Read and write files only through `Workspace.path`
+    (containment after resolving links, suffixes, no writes through links, `overwrite`,
+    read-only mode). Never open a network connection or run a subprocess from a tool.
+  - **Honest replies.** Errors are structured (code, message, hint) and show no paths of
+    the machine; a render reports the backend that drew it, never a GPU for a CPU image.
+  - Test tools through a real server process (`tests/test_mcp.py` uses the SDK client and
+    raw JSON-RPC).
+
 ## Using Aether3D from an agent
+
+- **Build with scene plans.** One plan creates or changes many objects in one call and one
+  undo step: `scene.execute_plan(plan)`, `aether3d execute-plan PROJECT plan.json`, or
+  the `execute_scene_plan` tool of `aether3d mcp serve`. Check first with `aether3d plan
+  validate plan.json` (or `mode="dry_run"`), read every issue's `code` and `pointer`, pass
+  the revision you read as `expected_revision`, and give retried plans an
+  `idempotency_key`. Put the spatial checks in the plan's `queries`.
 
 - Prefer ids (`obj.id`) over names for durable references.
 - Every change can be undone: `scene.history.undo()`, `with scene.transaction("label"):`

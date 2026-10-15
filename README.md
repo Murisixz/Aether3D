@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.10.0 (scene intelligence and spatial queries).** Aether3D provides:
+> **Status: v0.11.0 (AI tools and MCP).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -45,7 +45,14 @@ graphical interface required.
 > - **spatial queries**: exact, read-only answers about where things are --
 >   bounds, object discovery by tags and metadata, ray casts, nearest points,
 >   containment, overlaps, regions, camera picking and projection, lines of
->   sight, visibility and spatial relations -- from Python, JSON and the CLI.
+>   sight, visibility and spatial relations -- from Python, JSON and the CLI;
+> - **scene plans**: one declarative JSON document builds or changes a whole scene --
+>   shared meshes and materials, reusable prefabs, patterns (grids, arrays, rings,
+>   scatters) with per-instance variation, edits, spatial checks -- checked as a whole
+>   and applied as one undo step; 10,000 objects in about 0.1 s;
+> - an **MCP server** for AI agents (`aether3d mcp serve`): Claude Code and other MCP
+>   clients build, inspect, fix, preview, save and export scenes through tools, inside
+>   a workspace folder, with no network exposure.
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
 > Animation, physics and other systems are intentionally **not** part of
@@ -340,6 +347,77 @@ Objects carry `tags` and `metadata` for discovery. On the command line:
 `aether3d query raycast castle.aether origin=0,0,30 direction=0,0,-1 --json`. See
 [docs/SPATIAL.md](docs/SPATIAL.md).
 
+### Scene plans: whole scenes in one call
+
+A scene plan is one JSON document that builds or changes a scene: checked as a whole,
+applied as one undo step, all or nothing. Thousands of objects cost one call.
+
+```python
+from aether3d import Scene
+
+scene = Scene("Courtyard")
+result = scene.execute_plan(
+    {
+        "format": "aether3d.scene-plan",
+        "version": 1,
+        "label": "Courtyard",
+        "materials": {"stone": {"preset": "stone"}},
+        "meshes": {"block": {"primitive": "cube", "size": 1}},
+        "objects": {
+            "ground": {"mesh": {"primitive": "plane", "size": 40}, "color": "#4f7f3a"},
+            "wall": {
+                "mesh": "@block",
+                "material": "@stone",
+                "position": [-5, 0, 0.5],
+                "grid": {"count": [11, 1, 3]},
+                "where": {"expr": "not (x >= 4 and x <= 6 and z <= 1)"},  # a gate
+            },
+            "pillars": {
+                "mesh": {"primitive": "cylinder", "radius": 0.3, "depth": 3},
+                "circle": {"count": 8, "radius": 6, "z": 1.5},
+            },
+            "cam": {
+                "camera": {"fov": 45},
+                "position": [14, -16, 9],
+                "look_at": [0, 0, 1],
+                "active": True,
+            },
+        },
+        "queries": [{"query": "overlaps", "objects": "@pillars", "against": "@wall"}],
+    }
+)
+result.counts["objects"], result.queries[0]["result"]  # (37, []): nothing collides
+scene.history.undo()  # the whole plan, one step
+```
+
+![A village of 11,270 objects built by one plan, drawn by the GPU in 20 instanced draw calls](examples/output/village.png)
+
+*[`examples/village.py`](examples/village.py) builds a village of 11,270 objects from
+reusable houses, trees, lamps and cars with one plan in about 0.4 s, then paints one
+door (0.4 ms, one object changed) and renders it on the GPU in 20 instanced draw calls.
+[`examples/plan_basics.py`](examples/plan_basics.py) shows checks, errors, edits,
+retries and undo. The format: [docs/SCENE_PLANS.md](docs/SCENE_PLANS.md), with
+benchmarks against per-object creation.*
+
+### AI agents: the MCP server
+
+```bash
+pip install -e ".[mcp]"
+claude mcp add aether3d -- aether3d mcp serve --workspace "$PWD"   # Claude Code
+```
+
+The server gives MCP clients 15 tools -- `execute_scene_plan`, `spatial_query`,
+`render_preview` (the GPU rasterizer when it works, the CPU one otherwise, and it says
+which), `history`, `scene_save`, `export_scene`, ... -- plus the plan guide, its JSON
+Schema and example plans as resources. It speaks stdio only, keeps every file inside the
+workspace, and never runs code from its arguments.
+
+![An agent's castle: built with two mistakes, found by spatial queries, fixed, undone, redone, previewed and exported over MCP](examples/output/mcp_castle_agent.png)
+
+*[`examples/mcp_castle_agent.py`](examples/mcp_castle_agent.py) runs an agent's whole
+loop as MCP tool calls; [`examples/mcp_client.py`](examples/mcp_client.py) is a minimal
+client. See [docs/MCP.md](docs/MCP.md).*
+
 ### GPU rendering
 
 ![The castle: CPU renderer | GPU | GPU with shadows](examples/output/castle_comparison.png)
@@ -468,6 +546,9 @@ $ aether3d procedural run castle.aether build.json         # declarative procedu
 $ aether3d procedural set castle.aether tower_count=8      # change parameters (validated)
 $ aether3d procedural inspect castle.aether --evaluate     # parameters, nodes, stacks
 $ aether3d procedural types --json                         # primitive/modifier schemas
+$ aether3d execute-plan castle.aether plan.json --json     # a scene plan: one atomic step
+$ aether3d plan validate plan.json                         # check a plan without a project
+$ aether3d mcp serve --workspace .                         # the MCP server (stdio)
 $ aether3d camera add castle.aether --frame --fov 30      # camera framed on everything
 $ aether3d light add castle.aether --direction 0.5 0.6 -0.8 --intensity 2.4
 $ aether3d object set castle.aether Keep --color "#8c7356"
@@ -522,8 +603,8 @@ Exit codes:
 - `0`: success
 - `1`: failure (invalid file, missing file, unsupported content, …)
 - `2`: usage error
-- `3`: `geometry`, `topology`, `procedural validate` or `material validate`
-  found error-severity problems
+- `3`: `geometry`, `topology`, `procedural validate`, `material validate` or
+  `plan validate` found error-severity problems
 `python -m aether3d` works the same as `aether3d`.
 
 ## Installation
@@ -536,7 +617,7 @@ git clone https://github.com/Murisixz/Aether3D.git
 cd Aether3D
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"     # editable install + pytest, ruff, trimesh, manifold3d, pillow, wgpu
+pip install -e ".[dev]"     # editable install + pytest, ruff, trimesh, manifold3d, pillow, wgpu, mcp
 pytest                      # run the test suite
 ```
 
@@ -571,6 +652,8 @@ GPU rendering needs the optional `gpu` extra (`pip install "aether3d[gpu]"`,
 Python 3.11+, which installs wgpu, BSD-2-Clause, with wgpu-native, MIT or
 Apache-2.0) and a Vulkan, Metal or Direct3D 12 driver; see
 [docs/GPU.md](docs/GPU.md#installing-gpu-support).
+The MCP server needs the optional `mcp` extra (`pip install "aether3d[mcp]"`, which
+installs the official MCP Python SDK, MIT, and its permissively licensed dependencies).
 
 ## Documentation
 
@@ -588,6 +671,8 @@ Apache-2.0) and a Vulkan, Metal or Direct3D 12 driver; see
 | [docs/RENDER_QUALITY.md](docs/RENDER_QUALITY.md) | The path tracer: architecture, BVH and ray/triangle methods, BSDF sampling and PDFs, lights and MIS, environment, AO, sampling and reproducibility, color management and HDR, passes, API, CLI, performance, verification, limitations |
 | [docs/HISTORY.md](docs/HISTORY.md) | Undo, redo, transactions and checkpoints: what is recorded, limits and memory, identity and caches, history files, CLI, design, limitations |
 | [docs/SPATIAL.md](docs/SPATIAL.md) | Spatial queries: conventions, tags and metadata, bounds, discovery, rays, nearest points, containment, overlaps, regions, cameras and picking, sight lines, relations, caching, JSON and CLI, errors, performance, limitations |
+| [docs/SCENE_PLANS.md](docs/SCENE_PLANS.md) | Scene plans: the format, symbols and references, resources, prefabs, patterns, variation, operations, selectors, queries, errors, idempotency, chunks, limits, CLI, performance |
+| [docs/MCP.md](docs/MCP.md) | The MCP server for AI agents: Claude Code setup, tools, resources, prompts, progress and cancellation, security |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
