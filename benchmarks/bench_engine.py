@@ -332,7 +332,7 @@ def group_frame(quick: bool, adapter: str | None) -> dict[str, Any]:
         out[f"{name}_wall_ms"] = ms(statistics.median(walls))
         out[f"{name}_stages_ms"] = {k: ms(statistics.median(v)) for k, v in stages.items()}
         out[f"{name}_gpu_passes_ms"] = {k: ms(statistics.median(v)) for k, v in passes.items()}
-    # The same frames reading back only the image (render(outputs=...), since 0.12).
+    # The same frames reading back only the image (render(outputs=...), since 0.11.1).
     if "outputs" in inspect.signature(scene.render.__func__).parameters or _accepts_outputs():
         for name in ("unchanged", "one_moved"):
             edit = edits[name]

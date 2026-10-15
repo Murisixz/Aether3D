@@ -431,7 +431,7 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
 | `scene.cameras`, `scene.lights`, `scene.active_camera` | Lookup and active camera (settable) |
 | `scene.world` | `World`: `background`, `ambient_color`, `ambient_intensity`, and `environment` (the path tracer's `Environment`: `"ambient"`, `"uniform"` or `"sky"`) |
 | `scene.render_settings` | `RenderSettings`: `width`, `height`, `samples`, `exposure`, `cull`, `default_lights`; saved with the project |
-| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows, path, ao, tonemap, progress)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md); `backend="path"`, `"gpu_path"`, `path`, `ao` and `progress` in [RENDER_QUALITY.md](RENDER_QUALITY.md). `tonemap` applies to every backend. Returns a `RenderResult`. |
+| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows, path, ao, tonemap, progress, outputs)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md); `backend="path"`, `"gpu_path"`, `path`, `ao` and `progress` in [RENDER_QUALITY.md](RENDER_QUALITY.md). `tonemap` applies to every backend. `outputs` (since 0.11.1) chooses the per-pixel outputs to return (default: all; the image always comes): the GPU backend reads back only those, which makes small renders and previews faster ([GPU.md](GPU.md)); the others are `None`, and the CPU renderer and path tracers return every output anyway. Returns a `RenderResult`. |
 | `obj.camera`, `obj.light`, `obj.kind` | Components (`Camera`/`Light` or `None`); `"mesh"`, `"procedural"`, `"camera"`, `"light"` or `"empty"`. An object holds at most one of mesh, camera and light. |
 | `obj.appearance`, `obj.color`, `obj.visible` | Appearance and render visibility |
 | `obj.material`, `obj.group_materials`, `scene.create_material(...)`, `scene.assign_material(...)`, `scene.materials` | Materials and textures ([MATERIALS.md](MATERIALS.md)) |
@@ -460,7 +460,7 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
 | `color` | The output transform: working space, exposure, tone mapper, encoding |
 | `passes` | Path tracer only: `beauty`, `direct`, `indirect`, `albedo`, `normal`, `depth`, `ao`, `sample_count`, `variance` (empty for the rasterizers) |
 | `save(path)` | Atomic write: `.png`, or `.hdr`/`.pfm` (linear, unclipped) |
-| `png_bytes()`, `pixel(x, y)`, `to_dict()` | Encoded PNG, one pixel, JSON-compatible report |
+| `png_bytes(compression=6)`, `pixel(x, y)`, `to_dict()` | Encoded PNG (zlib level 0-9: 1 encodes several times faster, a few percent larger), one pixel, JSON-compatible report |
 
 `stats` holds:
 - counts: `instances`, `meshes`, `lights`, `triangles`, `culled_backface`,

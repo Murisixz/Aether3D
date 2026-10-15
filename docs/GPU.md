@@ -631,6 +631,13 @@ How to read these numbers:
   Python-side extraction for scenes with many objects. Those costs are the
   same however fast the GPU draws, so its advantage is smaller for small
   images and many-object scenes.
+- **Since 0.11.1** (the performance modernization, [PERFORMANCE.md](PERFORMANCE.md)):
+  the per-frame buffers are kept on the device and only what changed is
+  written (`AETHER3D_GPU_PERSISTENT_BUFFERS`); `render(outputs=...)` reads back
+  only the outputs asked for (the image alone: 4 bytes per pixel), with the
+  non-finite check and the covered-pixel count made on the GPU; MCP previews
+  read back the image only. The tables above predate these changes; the
+  engine-wide measurements are in PERFORMANCE.md.
 - **PNG encoding.** Aether3D's own PNG encoder runs on the CPU and costs more
   than a whole GPU render at 1080p and above; `result.image` is available
   without it.

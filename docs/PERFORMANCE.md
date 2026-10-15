@@ -10,6 +10,7 @@ tracing as a separate decision).
 - [Correctness guards](#correctness-guards)
 - [Implementation switches](#implementation-switches)
 - [Phase 0: foundation and baseline](#phase-0-foundation-and-baseline)
+- [Phase 1: quick wins in the current architecture](#phase-1-quick-wins-in-the-current-architecture)
 
 ## Measuring
 
@@ -90,7 +91,8 @@ is an error naming the variable). Benchmark records include their state.
 
 | Variable | Default | Selects |
 | --- | --- | --- |
-| (none yet) | | |
+| `AETHER3D_MATERIAL_CACHE` | on | reuse materials resolved for earlier renders of a scene (`rendering/materials.py`, `MaterialCache`); `0` resolves every material for every render |
+| `AETHER3D_GPU_PERSISTENT_BUFFERS` | on | keep the GPU's per-frame data buffers between renders and write only what changed (`rendering/gpu/resources.py`, `FrameBuffers`); `0` creates fresh buffers for every render |
 
 ## Phase 0: foundation and baseline
 
@@ -158,3 +160,108 @@ What it shows:
   in 268 ms, PNG decoding at 6.7 MP/s.
 - **Editing is per-element Python**: bevelling every edge of a 2,048-face sphere takes
   0.66 s.
+
+## Phase 1: quick wins in the current architecture
+
+Optimizations inside the existing Python/NumPy/wgpu architecture. Every one gives
+exactly the results of the code it replaces; the replaced loops are kept as references
+in `tests/test_vectorized_parity.py`, and the caches are compared with fresh
+computations in `tests/test_invariants.py`, `tests/test_render_caches.py` and
+`tests/test_gpu_frame_buffers.py`.
+
+**What changed**
+
+- **Spatial index** (`spatial/index.py`, `rendering/raytrace/accel.py`). Entries compute
+  `singular` once (it was recomputed for every entry on every query); the acceleration
+  structure cache is keyed by the selection itself (a tuple built and hashed in C); an
+  index reuses, from the previous revision's index, every entry whose object, mesh,
+  visibility and world matrix are unchanged, with what it built (world vertices,
+  per-object BVHs, boxes) and the per-mesh topology facts; determinants, inverses and
+  instance bounds are computed for all objects at once with exactly the per-object
+  LAPACK/BLAS operations (bitwise, checked against the old loop on random transforms,
+  including singular, tiny and non-finite ones).
+- **Materials between renders** (`rendering/materials.py`, `MaterialCache`): a library
+  material's resolution is kept for one `MaterialLibrary.version` and while the images it
+  read are unchanged (every render reads them again, so files changed on disk are used);
+  its diagnostics are reported again at its first use in each render; an object's own
+  color is keyed by the exact bytes of its values (`-0.0` and `0.0` stay distinct, as their
+  `repr` keys were). Switch: `AETHER3D_MATERIAL_CACHE`.
+- **Extraction** checks all world matrices for finiteness at once and builds an object's
+  location text only when it reports something; the render scene carries its instances
+  as arrays (`RenderScene.arrays`, `InstanceArrays`: row `k` is `instances[k]`, exactly).
+- **GPU frame preparation** reads those arrays: the draw order is one `lexsort`, instance
+  records, material tables and instance corners are indexed, `triangle_count` is summed by
+  index. The float32-range check that skips objects too far from the camera first bounds
+  every instance's corners (`|translation - eye| + |linear| @ max(|lo|, |hi|)`, with a margin
+  far above rounding); when every bound is in range the exact per-corner test would keep
+  everything and is skipped, otherwise it runs as before.
+- **Persistent GPU buffers** (`rendering/gpu/resources.py`, `FrameBuffers`): instance
+  records, material tables, lights, shadow maps and uniforms live in buffers kept between
+  renders; each render's data is compared with the buffer's copy and only changed ranges
+  are written, compared per 32-bit word (merged when closer than 256 bytes, at most 32
+  writes per buffer). An unchanged frame writes nothing; moving one object along one axis
+  wrote one 4-byte word (2,000 objects, measured with the `frame_buffer_writes` and
+  `frame_buffer_bytes_written` statistics). Switch: `AETHER3D_GPU_PERSISTENT_BUFFERS`.
+- **Selective readback**: `render(outputs=...)` returns only some per-pixel outputs; the
+  GPU then copies and reads back only those (4 bytes per pixel for the image alone,
+  instead of 28). The non-finite check (`RENDER_FAILED`) and the covered-pixel count
+  that needed the full readback are counted on the GPU by the finalize pass (the
+  non-finite test reads the float bits, which shader compilers cannot fold). MCP
+  previews read back only the image; `render_image` and the CLI's `render` read back what
+  the file needs.
+- **Images**: MCP previews and inline MCP images are encoded at zlib level 1
+  (`RenderResult.png_bytes(compression=...)`; the default 6 and every written file are
+  unchanged); choosing each PNG row's filter works in 16-bit integers with a lookup
+  table, the same filters and bytes 1.8x faster.
+- **Scene plans** draw new object ids from one read of the system's random source
+  (`new_object_ids`, `str(uuid.uuid4())`'s format) and check all records' transforms at
+  once with the per-record tests (per-record checks still run when a batch fails, for the
+  same first error).
+
+**Measured** (`benchmarks/results/phase1.json`, same machine and method as Phase 0):
+
+| metric | phase 0 | phase 1 |
+| --- | ---: | ---: |
+| `frame.unchanged_wall_ms` | 115.5 | 71.78 |
+| `frame.one_moved_wall_ms` | 113.4 | 71.88 |
+| `frame.all_moved_wall_ms` | 116.2 | 75.54 |
+| `frame.camera_moved_wall_ms` | 117.3 | 75.12 |
+| `frame.unchanged_image_only_wall_ms` |  | 67.71 |
+| `frame.unchanged_stages_ms.extract` | 49.42 | 41.25 |
+| `frame.unchanged_stages_ms.textures` | 16.53 | 11.22 |
+| `frame.unchanged_stages_ms.upload` | 27.93 | 2.46 |
+| `frame.unchanged_stages_ms.gpu` | 4.357 | 4.506 |
+| `frame.unchanged_stages_ms.readback` | 8.009 | 6.064 |
+| `frame.unchanged_image_only_stages_ms.gpu` |  | 2.454 |
+| `frame.unchanged_image_only_stages_ms.readback` |  | 2.616 |
+| `frame.unchanged_gpu_passes_ms.scene` | 1.548 | 1.552 |
+| `frame.unchanged_gpu_passes_ms.finalize` | 0.224 | 0.224 |
+| `frame.preview_640x360_png_ms` |  | 76.56 |
+| `extract.extract_unchanged_ms` | 69.08 | 54.49 |
+| `queries.raycast_first_ms` | 245.6 | 63.27 |
+| `queries.raycast_warm_ms` | 7.385 | 2.778 |
+| `queries.raycast_after_edit_ms` | 242.7 | 59.35 |
+| `queries.overlaps_first_ms` | 49.3 | 26.83 |
+| `memory.first_raycast_s` | 2.68 | 0.805 |
+| `memory.peak_rss_mib` | 311.2 | 374.9 |
+| `core.plan_create_10k_ms` | 89.1 | 72.88 |
+| `images.png_encode_1080p_level6_ms` | 595.3 | 484.8 |
+| `images.png_encode_1080p_level1_ms` | 309.4 | 173.1 |
+| `lifecycle.scenes_still_alive` | 0 | 0 |
+
+- A 10,000-object GPU frame takes 72-76 ms instead of 113-117 (68 ms reading back only
+  the image). The GPU's own pass times are unchanged (1.8 ms): the gain is CPU work.
+  Uploads went from 28 ms to 2.5; the synchronized `gpu` stage and the readback halve when
+  only the image is read back.
+- What remains is still O(N) per frame: extraction (41 ms) and material resolution
+  (11 ms) visit every object whatever changed. That is Phase 2's subject.
+- The first spatial query after an edit takes 59 ms instead of 243; at 100,000 objects
+  0.8 s instead of 2.7. A warm query takes 2.8 ms instead of 7.4.
+- Peak memory of the 100,000-object case rose from 311 to 375 MiB, with the vectorized
+  spatial build, which holds arrays for all objects at once: the first raycast's own
+  allocation peak (tracemalloc) is 169 MiB instead of 115.
+- Extraction also builds the instance arrays now, which costs 3-5 ms at 10,000 objects
+  (alternating runs of the material cache commit and of this phase's last one: 45-48 ms
+  against 50-51 ms for `extract.extract_unchanged_ms`); the GPU's packing reads them
+  instead of visiting instances, which took the upload stage from 28 ms to 10.6 (and the
+  persistent buffers, from 10.6 to 2.5).
