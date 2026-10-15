@@ -1283,6 +1283,14 @@ def cmd_object_set(args: argparse.Namespace) -> CommandOutput:
             op[key] = value
     if args.scale is not None:
         op["scale"] = _vec(args.scale)
+    if args.tags is not None:
+        op["tags"] = [t for t in args.tags.split(",") if t] if args.tags else []
+    if args.add_tag:
+        op["add_tags"] = args.add_tag
+    if args.remove_tag:
+        op["remove_tags"] = args.remove_tag
+    if args.metadata:
+        op["metadata"] = dict(_parse_assignment(a) for a in args.metadata)
     if len(op) == 2:
         raise CommandError("UsageError", "nothing to change")
     _, data, _ = _run_scene(args, [op], "object set")
@@ -1933,6 +1941,15 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p.add_argument("--specular", type=float, help="highlight strength in [0, 1]")
     p.add_argument("--shininess", type=float, help="highlight exponent in [1, 10000]")
     p.add_argument("--visible", type=_bool_arg, help="true or false")
+    p.add_argument("--tags", help="replace the tags: comma-separated ('' removes all)")
+    p.add_argument("--add-tag", action="append", metavar="TAG", help="add a tag (repeatable)")
+    p.add_argument("--remove-tag", action="append", metavar="TAG", help="remove a tag (repeatable)")
+    p.add_argument(
+        "--metadata",
+        action="append",
+        metavar="KEY=VALUE",
+        help="set a metadata entry; VALUE is JSON or a bare string, null removes (repeatable)",
+    )
     p.set_defaults(handler=cmd_object_set)
     p = objs.add_parser("remove", parents=[common, writing], help="remove an object and children")
     p.add_argument("path", help="the .aether project")

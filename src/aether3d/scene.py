@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import math
 import os
 import uuid
 from collections.abc import Iterable, Iterator
@@ -20,6 +22,7 @@ from .errors import (
 from .history import (
     ACTIVE_CAMERA,
     ALIVE,
+    ANNOTATIONS,
     APPEARANCE,
     CAMERA,
     CHILDREN,
@@ -90,6 +93,61 @@ def _merge_source(source: Any, allow_lossy: bool) -> Scene:
     return Scene.load(path)
 
 
+MAX_TAGS = 64
+MAX_TAG_LENGTH = 64
+MAX_METADATA_BYTES = 16 * 1024
+
+
+def _check_tags(value: Any) -> tuple[str, ...]:
+    """Validated tags as a sorted tuple of unique strings."""
+    if isinstance(value, str) or not isinstance(value, Iterable):
+        raise ValidationError(f"tags must be a list of strings, got {value!r}")
+    tags = set()
+    for tag in value:
+        if not isinstance(tag, str) or not tag or tag != tag.strip() or len(tag) > MAX_TAG_LENGTH:
+            raise ValidationError(
+                f"a tag must be a string of 1 to {MAX_TAG_LENGTH} characters without leading "
+                f"or trailing whitespace, got {tag!r}"
+            )
+        tags.add(tag)
+    if len(tags) > MAX_TAGS:
+        raise ValidationError(f"an object has at most {MAX_TAGS} tags, got {len(tags)}")
+    return tuple(sorted(tags))
+
+
+def _check_json(value: Any, location: str, depth: int = 0) -> None:
+    if depth > 16:
+        raise ValidationError(f"{location}: metadata is nested too deeply")
+    if value is None or isinstance(value, (bool, str)):
+        return
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValidationError(f"{location}: metadata numbers must be finite")
+        return
+    if isinstance(value, (list, tuple)):
+        for k, item in enumerate(value):
+            _check_json(item, f"{location}[{k}]", depth + 1)
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str) or not key:
+                raise ValidationError(f"{location}: metadata keys must be non-empty strings")
+            _check_json(item, f"{location}.{key}", depth + 1)
+        return
+    raise ValidationError(f"{location}: {type(value).__name__} is not a JSON value")
+
+
+def _check_metadata(value: Any) -> str:
+    """Validated metadata as canonical JSON text (sorted keys, no spaces)."""
+    if not isinstance(value, dict):
+        raise ValidationError(f"metadata must be a dict, got {type(value).__name__}")
+    _check_json(value, "metadata")
+    text = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    if len(text.encode("utf-8")) > MAX_METADATA_BYTES:
+        raise ValidationError(f"metadata is limited to {MAX_METADATA_BYTES} bytes of JSON")
+    return text
+
+
 def _base_name(name: str) -> str:
     """``"Cube"`` for ``"Cube.003"`` (the name duplicates are numbered from)."""
     stem, dot, digits = name.rpartition(".")
@@ -128,6 +186,8 @@ class SceneObject:
         "_visible",
         "_material",
         "_group_materials",
+        "_tags",
+        "_metadata",
     )
 
     def __init__(
@@ -148,6 +208,8 @@ class SceneObject:
         self._visible = True
         self._material: str | None = None  # id of a material in scene.materials
         self._group_materials: dict[int, str] = {}  # face group -> material id
+        self._tags: tuple[str, ...] = ()  # sorted, unique
+        self._metadata = "{}"  # canonical JSON text (immutable; see `metadata`)
         self._parent: SceneObject | None = None
         self._children: list[SceneObject] = []
 
@@ -319,6 +381,72 @@ class SceneObject:
             raise ValidationError(f"visible must be True or False, got {value!r}")
         with self._edit(VISIBLE, f"Set visible of {self._name!r}"):
             self._visible = value
+
+    # -- tags and metadata --------------------------------------------------
+
+    @property
+    def tags(self) -> tuple[str, ...]:
+        """Labels for finding objects (``scene.find_objects(tags=...)``), sorted and unique.
+
+        Assign any iterable of tag strings; :meth:`add_tags` and :meth:`remove_tags`
+        change some. Tags are case-sensitive; each is 1 to 64 characters without
+        leading or trailing whitespace, and an object has at most 64.
+        """
+        return self._tags
+
+    @tags.setter
+    def tags(self, value: Iterable[str]) -> None:
+        if isinstance(value, str):
+            raise ValidationError("tags must be an iterable of strings, not a single string")
+        tags = _check_tags(value)
+        with self._edit(ANNOTATIONS, f"Set tags of {self._name!r}"):
+            self._tags = tags
+
+    def add_tags(self, *tags: str) -> None:
+        """Add tags (one undo step); tags it already has are kept once."""
+        new = _check_tags((*self._tags, *tags))
+        with self._edit(ANNOTATIONS, f"Tag {self._name!r} {', '.join(map(repr, tags))}"):
+            self._tags = new
+
+    def remove_tags(self, *tags: str) -> None:
+        """Remove tags (one undo step); tags it does not have are ignored."""
+        drop = set(_check_tags(tags))
+        with self._edit(ANNOTATIONS, f"Untag {self._name!r} {', '.join(map(repr, tags))}"):
+            self._tags = tuple(t for t in self._tags if t not in drop)
+
+    def has_tag(self, tag: str) -> bool:
+        return tag in self._tags
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        """Free-form JSON data about the object (a copy: change it with :meth:`set_metadata`
+        or by assigning a whole dict).
+
+        Keys are non-empty strings; values are JSON values (``None``, booleans,
+        finite numbers, strings, lists and objects), at most 16 KiB in all.
+        """
+        return json.loads(self._metadata)
+
+    @metadata.setter
+    def metadata(self, value: dict[str, Any]) -> None:
+        text = _check_metadata(value)
+        with self._edit(ANNOTATIONS, f"Set metadata of {self._name!r}"):
+            self._metadata = text
+
+    def set_metadata(self, key: str, value: Any) -> None:
+        """Set one metadata entry (one undo step)."""
+        text = _check_metadata({**json.loads(self._metadata), key: value})
+        with self._edit(ANNOTATIONS, f"Set metadata {key!r} of {self._name!r}"):
+            self._metadata = text
+
+    def remove_metadata(self, key: str) -> None:
+        """Remove one metadata entry if present (one undo step)."""
+        data = json.loads(self._metadata)
+        if key in data:
+            del data[key]
+            text = _check_metadata(data)
+            with self._edit(ANNOTATIONS, f"Remove metadata {key!r} of {self._name!r}"):
+                self._metadata = text
 
     # -- procedural geometry ------------------------------------------------
 
@@ -968,6 +1096,7 @@ class Scene:
             obj._light = _owned(source._light.copy(), obj, LIGHT)
         obj._material = source._material
         obj._group_materials = dict(source._group_materials)
+        obj._tags, obj._metadata = source._tags, source._metadata
         if source._geometry is not None:
             self.procedural.assign(obj, source._geometry)
         return obj
@@ -1020,6 +1149,7 @@ class Scene:
                 obj._group_materials = {
                     g: materials[m] for g, m in original._group_materials.items()
                 }
+                obj._tags, obj._metadata = original._tags, original._metadata
                 if target_parent is parent_obj:
                     copies.append(obj)
                 pending.extend((child, obj) for child in children[id(original)])

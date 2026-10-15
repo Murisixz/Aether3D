@@ -1002,6 +1002,19 @@ class _Reader:
                 )
         obj = scene.add_object(name, mesh=mesh, parent=parent_obj, object_id=object_id)
         obj.transform = transform
+        if isinstance(stored, dict) and ("tags" in stored or "metadata" in stored):
+            from ..scene import _check_metadata, _check_tags
+
+            try:
+                obj._tags = _check_tags(stored.get("tags", []))
+                obj._metadata = _check_metadata(stored.get("metadata", {}))
+            except ValidationError as exc:
+                self.note(
+                    "STORED_ANNOTATIONS_REJECTED",
+                    WARNING,
+                    f"extras.aether3d tags or metadata are invalid and were not imported: {exc}",
+                    f"{where}/extras",
+                )
         if mesh is not None and node["mesh"] in self.mesh_materials:
             materials, grouped = self.mesh_materials[node["mesh"]]
             assign(

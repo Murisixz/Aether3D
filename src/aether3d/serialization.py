@@ -30,13 +30,13 @@ from .procedural.params import value_from_json, value_to_json
 from .rendering.camera import Camera
 from .rendering.light import Light
 from .rendering.settings import Appearance, RenderSettings, World
-from .scene import Scene, _owned
+from .scene import Scene, _check_metadata, _check_tags, _owned
 from .transform import Transform
 
 FORMAT_ID = "aether3d.project"
 """Value of the top-level ``format`` field identifying an Aether3D project."""
 
-FORMAT_VERSION = 5
+FORMAT_VERSION = 6
 """Version written by this release. Files with a higher version are rejected.
 
 * Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
@@ -49,6 +49,7 @@ FORMAT_VERSION = 5
   ``material`` and ``group_materials``.
 * Version 5 (Aether3D 0.8.0) adds path-tracing data: ``scene.world.environment``
   and the light sizes ``radius`` and ``angle``.
+* Version 6 (Aether3D 0.10.0) adds ``tags`` and ``metadata`` on every object.
 
 Older files are upgraded on load by the functions in :data:`MIGRATIONS`.
 """
@@ -145,11 +146,17 @@ def _migrate_v4_to_v5(document: dict[str, Any]) -> dict[str, Any]:
     return doc
 
 
+def _migrate_v5_to_v6(document: dict[str, Any]) -> dict[str, Any]:
+    """v5 -> v6: objects have no tags and no metadata (the reader's defaults)."""
+    return dict(document)
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
     4: _migrate_v4_to_v5,
+    5: _migrate_v5_to_v6,
 }
 """``MIGRATIONS[n]`` upgrades a version-``n`` document to version ``n + 1``."""
 
@@ -208,6 +215,8 @@ def scene_to_dict(
             {
                 "id": obj.id,
                 "name": obj.name,
+                "tags": list(obj._tags),
+                "metadata": json.loads(obj._metadata),
                 "parent": None if obj.parent is None else obj.parent.id,
                 "transform": {
                     "position": list(t.position),
@@ -484,7 +493,16 @@ def _read_scene(
             loc,
             ("id", "name", "parent", "transform", "mesh", "geometry"),
             # optional: null/null/null/true/null/{}
-            ("camera", "light", "appearance", "visible", "material", "group_materials"),
+            (
+                "camera",
+                "light",
+                "appearance",
+                "visible",
+                "material",
+                "group_materials",
+                "tags",
+                "metadata",
+            ),
         )
         data = {
             "camera": None,
@@ -493,6 +511,8 @@ def _read_scene(
             "visible": True,
             "material": None,
             "group_materials": {},
+            "tags": [],
+            "metadata": {},
             **data,
         }
         object_id = _string(data["id"], f"{loc}.id")
@@ -579,6 +599,8 @@ def _read_scene(
                 "light": light,
                 "appearance": appearance,
                 "visible": data["visible"],
+                "tags": _annotation(_check_tags, data["tags"], f"{loc}.tags"),
+                "metadata": _annotation(_check_metadata, data["metadata"], f"{loc}.metadata"),
                 "geometry": geometry_ref,
                 "loc": loc,
                 "id": object_id,
@@ -612,6 +634,7 @@ def _read_scene(
         obj._visible = record["visible"]
         obj._material = record["material"]
         obj._group_materials = record["group_materials"]
+        obj._tags, obj._metadata = record["tags"], record["metadata"]
         stack.extend(reversed(children.get(record["id"], [])))
 
     if len(scene) != len(records):
@@ -645,6 +668,15 @@ def _read_scene(
                 )
     if project_dir is not None:
         library.base_dir = base.absolute()
+
+
+def _annotation(check: Callable[[Any], Any], value: Any, loc: str) -> Any:
+    if loc.endswith(".tags") and isinstance(value, str):
+        raise ProjectFormatError("expected an array of strings", loc)
+    try:
+        return check(value)
+    except ValidationError as exc:
+        raise ProjectFormatError(str(exc), loc) from None
 
 
 def _group_materials(value: Any, loc: str) -> dict[int, str]:

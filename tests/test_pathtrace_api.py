@@ -12,6 +12,7 @@ import pytest
 
 import aether3d as a3
 from aether3d import (
+    FORMAT_VERSION,
     AOSettings,
     Environment,
     PathSettings,
@@ -289,7 +290,7 @@ def test_light_sizes_and_environments_are_validated_and_saved(tmp_path):
     path = tmp_path / "scene.aether"
     scene.save(path)
     doc = json.loads(path.read_text())
-    assert doc["format_version"] == 5
+    assert doc["format_version"] == FORMAT_VERSION == 6
     assert doc["scene"]["world"]["environment"]["type"] == "sky"
     loaded = Scene.load(path)
     assert loaded.world == scene.world

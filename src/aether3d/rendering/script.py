@@ -27,7 +27,8 @@ Operations (``object``/``camera``/``light``/``parent`` are object ids or names;
 * ``set_camera`` / ``set_light`` -- ``camera``/``light`` plus any of their parameters.
 * ``set_object`` -- ``object`` plus ``position``, ``rotation_euler``, ``scale``,
   ``look_at`` or ``look_along`` (with ``up``), ``color``, ``specular``, ``shininess``,
-  ``visible``.
+  ``visible``; ``tags`` (replaces them), ``add_tags``, ``remove_tags``, ``metadata``
+  (entries to set; ``null`` removes one).
 * ``frame_camera`` -- ``camera`` (default: the active camera), ``targets``, ``direction``,
   ``up``, ``margin``, ``fit_clipping``.
 * ``set_active_camera`` -- ``camera`` (or ``null``).
@@ -112,6 +113,10 @@ _SPECS: dict[str, tuple[set[str], set[str]]] = {
             "specular",
             "shininess",
             "visible",
+            "tags",
+            "add_tags",
+            "remove_tags",
+            "metadata",
         },
     ),
     "frame_camera": (set(), {"camera", "targets", "direction", "up", "margin", "fit_clipping"}),
@@ -330,6 +335,20 @@ def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> di
             obj.appearance.configure(**appearance)
         if "visible" in s:
             obj.visible = s["visible"]
+        if "tags" in s:
+            obj.tags = _string_list(s["tags"], "tags")
+        if "add_tags" in s:
+            obj.add_tags(*_string_list(s["add_tags"], "add_tags"))
+        if "remove_tags" in s:
+            obj.remove_tags(*_string_list(s["remove_tags"], "remove_tags"))
+        if "metadata" in s:
+            if not isinstance(s["metadata"], dict):
+                raise ScriptError("metadata must be an object", "metadata")
+            for key, value in s["metadata"].items():  # null removes an entry
+                if value is None:
+                    obj.remove_metadata(key)
+                else:
+                    obj.set_metadata(key, value)
         if "scale" in s:
             obj.scale = s["scale"]
         if "rotation_euler" in s:
@@ -341,7 +360,10 @@ def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> di
             obj.look_at(_target(scene, s["look_at"]), up=up)
         if "look_along" in s:
             obj.look_along(s["look_along"], up=up)
-        return {"object": _ref(obj), **_object_summary(obj)}
+        result = {"object": _ref(obj), **_object_summary(obj)}
+        if any(k in s for k in ("tags", "add_tags", "remove_tags", "metadata")):
+            result.update(tags=list(obj.tags), metadata=obj.metadata)
+        return result
     if op == "frame_camera":
         if "camera" in s:
             obj = _obj(scene, s["camera"])
@@ -533,6 +555,12 @@ def _material_op(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) ->
     if op == "materials":
         return library.inspect()
     raise AssertionError(op)  # pragma: no cover
+
+
+def _string_list(value: Any, key: str) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise ScriptError(f"{key} must be an array of strings", key)
+    return value
 
 
 def _object_summary(obj: SceneObject) -> dict[str, Any]:
