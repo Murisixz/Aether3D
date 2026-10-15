@@ -1,0 +1,490 @@
+{
+  "placement": {
+    "surface": {
+      "object": {
+        "id": "2b7a573b-760a-4b5d-8b55-e310fa7b9ee7",
+        "name": "Grass Block"
+      },
+      "position": [
+        1.4000000000000004,
+        0.6000000000000001,
+        0.0
+      ],
+      "distance": 3.0000000000000004,
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "shading_normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "front_face": true,
+      "triangle": 8,
+      "face_group": 0,
+      "barycentric": [
+        0.325,
+        0.10000000000000002,
+        0.5750000000000001
+      ],
+      "uv": [
+        0.675,
+        0.5750000000000001
+      ],
+      "material": null,
+      "instance_of": {
+        "id": "2b7a573b-760a-4b5d-8b55-e310fa7b9ee7",
+        "name": "Grass Block"
+      },
+      "instance_count": 1
+    },
+    "crate_z": 0.30000001192092896
+  },
+  "clicks": {
+    "head": {
+      "object": {
+        "id": "f19a99f5-d8d9-4078-a501-b352a6b984a3",
+        "name": "Head"
+      },
+      "position": [
+        0.08795170577504102,
+        -0.26936491169890847,
+        1.7455450008992905
+      ],
+      "distance": 5.132198959065422,
+      "normal": [
+        -0.17364817766693041,
+        -0.984807753012208,
+        -0.0
+      ],
+      "shading_normal": [
+        -0.17364817766693033,
+        -0.9848077530122081,
+        2.498001805406602e-16
+      ],
+      "front_face": true,
+      "triangle": 28,
+      "face_group": 0,
+      "barycentric": [
+        0.47327000619236054,
+        0.22638851754233552,
+        0.3003414762653039
+      ],
+      "uv": [
+        0.7667805059894006,
+        0.4910900166997427
+      ],
+      "material": null,
+      "instance_of": {
+        "id": "f19a99f5-d8d9-4078-a501-b352a6b984a3",
+        "name": "Head"
+      },
+      "instance_count": 1
+    },
+    "sword": {
+      "object": {
+        "id": "7327fb9e-b79e-46f8-b7bb-176c9d3081f9",
+        "name": "Sword"
+      },
+      "position": [
+        0.47056376016943735,
+        -0.7338199709667248,
+        1.2938058879060064
+      ],
+      "distance": 4.591578145831638,
+      "normal": [
+        0.707106781186547,
+        -0.664463024388675,
+        -0.24184476264797583
+      ],
+      "shading_normal": [
+        0.7071067811865476,
+        -0.6644630243886747,
+        -0.24184476264797555
+      ],
+      "front_face": true,
+      "triangle": 21,
+      "face_group": 0,
+      "barycentric": [
+        0.18545859179496654,
+        0.7462029056078587,
+        0.06833850259717475
+      ],
+      "uv": [
+        0.2640939438462249,
+        0.17625387694788106
+      ],
+      "material": null,
+      "instance_of": {
+        "id": "7327fb9e-b79e-46f8-b7bb-176c9d3081f9",
+        "name": "Sword"
+      },
+      "instance_count": 1
+    },
+    "crate": {
+      "object": {
+        "id": "90f2e664-6374-44d1-b24c-cc310d1ae437",
+        "name": "Crate"
+      },
+      "position": [
+        1.4146532079183356,
+        0.29999998807907097,
+        0.37124164475050797
+      ],
+      "distance": 5.605292867673569,
+      "normal": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "shading_normal": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "front_face": true,
+      "triangle": 7,
+      "face_group": 0,
+      "barycentric": [
+        0.38126395000218155,
+        0.5244220122267829,
+        0.09431403777103546
+      ],
+      "uv": [
+        0.5244220122267829,
+        0.6187360499978183
+      ],
+      "material": null,
+      "instance_of": {
+        "id": "90f2e664-6374-44d1-b24c-cc310d1ae437",
+        "name": "Crate"
+      },
+      "instance_count": 1
+    },
+    "ground": {
+      "object": {
+        "id": "2b7a573b-760a-4b5d-8b55-e310fa7b9ee7",
+        "name": "Grass Block"
+      },
+      "position": [
+        -0.8335972984031048,
+        -1.6985592228121618,
+        0.0
+      ],
+      "distance": 4.5813406147226425,
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "shading_normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "front_face": true,
+      "triangle": 8,
+      "face_group": 0,
+      "barycentric": [
+        0.6041996623003881,
+        0.10812024055113213,
+        0.2876800971484798
+      ],
+      "uv": [
+        0.3958003376996119,
+        0.2876800971484798
+      ],
+      "material": null,
+      "instance_of": {
+        "id": "2b7a573b-760a-4b5d-8b55-e310fa7b9ee7",
+        "name": "Grass Block"
+      },
+      "instance_count": 1
+    },
+    "sky": null
+  },
+  "id_map": {
+    "interior_samples": 56259,
+    "agreeing": 56259
+  },
+  "hero_bounds": {
+    "object": {
+      "id": "dce2cef3-bef6-44b4-99b5-b892d840413a",
+      "name": "Hero"
+    },
+    "space": "world",
+    "aabb": {
+      "min": [
+        -0.5,
+        -0.7432553581498732,
+        -0.666437685625695
+      ],
+      "max": [
+        0.7100000083446503,
+        0.3431948811630151,
+        2.0
+      ],
+      "center": [
+        0.10500000417232513,
+        -0.20003023849342905,
+        0.6667811571871525
+      ],
+      "size": [
+        1.2100000083446503,
+        1.0864502393128883,
+        2.666437685625695
+      ]
+    },
+    "obb": {
+      "center": [
+        0.10500000417232513,
+        -0.20003023849342905,
+        0.6667811571871525
+      ],
+      "half_axes": [
+        [
+          0.6050000041723251,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.5432251196564442,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.3332188428128475
+        ]
+      ],
+      "half_extents": [
+        0.6050000041723251,
+        0.5432251196564442,
+        1.3332188428128475
+      ],
+      "orthogonal": true
+    },
+    "sphere": {
+      "center": [
+        0.10500000417232513,
+        -0.20003023849342905,
+        0.6667811571871525
+      ],
+      "radius": 1.4532579149847868
+    },
+    "objects": 7,
+    "vertices": 816,
+    "triangles": 446
+  },
+  "near_the_sword_tip": [
+    {
+      "object": {
+        "id": "7327fb9e-b79e-46f8-b7bb-176c9d3081f9",
+        "name": "Sword"
+      },
+      "position": [
+        0.32999999821186066,
+        -0.01640744574872163,
+        -0.40188668067314753
+      ],
+      "distance": 0.0,
+      "normal": [
+        -1.0,
+        -0.0,
+        0.0
+      ],
+      "shading_normal": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "front_face": null,
+      "triangle": 161,
+      "face_group": 0,
+      "barycentric": [
+        0.0,
+        0.4844010807965916,
+        0.5155989192034084
+      ],
+      "uv": [
+        0.3125,
+        0.6875
+      ],
+      "material": null,
+      "instance_of": {
+        "id": "7327fb9e-b79e-46f8-b7bb-176c9d3081f9",
+        "name": "Sword"
+      },
+      "instance_count": 1
+    },
+    {
+      "object": {
+        "id": "2b7a573b-760a-4b5d-8b55-e310fa7b9ee7",
+        "name": "Grass Block"
+      },
+      "position": [
+        0.3299999982118609,
+        -0.016407445748721772,
+        0.0
+      ],
+      "distance": 0.40188668067314753,
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "shading_normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "front_face": null,
+      "triangle": 8,
+      "face_group": 0,
+      "barycentric": [
+        0.45875000022351736,
+        0.04330093049507283,
+        0.49794906928140975
+      ],
+      "uv": [
+        0.5412499997764826,
+        0.49794906928140975
+      ],
+      "material": null,
+      "instance_of": {
+        "id": "2b7a573b-760a-4b5d-8b55-e310fa7b9ee7",
+        "name": "Grass Block"
+      },
+      "instance_count": 1
+    },
+    {
+      "object": {
+        "id": "0c5e8146-7df9-4e58-9dad-449171610f5c",
+        "name": "Right Leg"
+      },
+      "position": [
+        0.25,
+        0.07337355554075702,
+        -0.006796750354616354
+      ],
+      "distance": 0.4129850856211891,
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "shading_normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "front_face": null,
+      "triangle": 0,
+      "face_group": 0,
+      "barycentric": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "uv": [
+        0.0,
+        0.0
+      ],
+      "material": null,
+      "instance_of": {
+        "id": "0c5e8146-7df9-4e58-9dad-449171610f5c",
+        "name": "Right Leg"
+      },
+      "instance_count": 2
+    }
+  ],
+  "contacts": [
+    [
+      "Grass Block",
+      "Ball"
+    ],
+    [
+      "Grass Block",
+      "Crate"
+    ],
+    [
+      "Head",
+      "Right Arm"
+    ],
+    [
+      "Left Leg",
+      "Grass Block"
+    ],
+    [
+      "Right Arm",
+      "Sword"
+    ],
+    [
+      "Right Leg",
+      "Grass Block"
+    ],
+    [
+      "Right Leg",
+      "Left Leg"
+    ],
+    [
+      "Sword",
+      "Grass Block"
+    ],
+    [
+      "Torso",
+      "Head"
+    ],
+    [
+      "Torso",
+      "Left Arm"
+    ],
+    [
+      "Torso",
+      "Left Leg"
+    ],
+    [
+      "Torso",
+      "Right Arm"
+    ],
+    [
+      "Torso",
+      "Right Leg"
+    ]
+  ],
+  "head_visibility": {
+    "target": {
+      "id": "f19a99f5-d8d9-4078-a501-b352a6b984a3",
+      "name": "Head"
+    },
+    "observer": [
+      1.6807300902709974,
+      -5.147480749418506,
+      1.6648663351698454
+    ],
+    "samples": 128,
+    "visible": 43,
+    "fraction": 0.3359375,
+    "outside_view": 0,
+    "blockers": [
+      {
+        "object": {
+          "id": "f19a99f5-d8d9-4078-a501-b352a6b984a3",
+          "name": "Head"
+        },
+        "samples": 83
+      },
+      {
+        "object": {
+          "id": "809ce79e-510a-43c9-a409-6337df6f6ab8",
+          "name": "Right Arm"
+        },
+        "samples": 2
+      }
+    ]
+  },
+  "problems": []
+}
