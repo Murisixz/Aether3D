@@ -1,12 +1,12 @@
 {
-  "aether3d": "0.8.1",
+  "aether3d": "0.9.0",
   "steps": [
     {
       "index": 1,
       "label": "Set position of 'Crate'",
       "changes": 1,
       "paths": [
-        "objects[14fa500c-d7ac-4c23-a496-7aed2ce9d956].transform"
+        "objects[50591ac7-110f-49b7-843a-b6e560d39a60].transform"
       ],
       "bytes": 384
     },
@@ -15,7 +15,7 @@
       "label": "Set appearance color of 'Crate'",
       "changes": 1,
       "paths": [
-        "objects[14fa500c-d7ac-4c23-a496-7aed2ce9d956].appearance"
+        "objects[50591ac7-110f-49b7-843a-b6e560d39a60].appearance"
       ],
       "bytes": 384
     },
@@ -33,7 +33,7 @@
       "label": "Set roughness of material 'Stone'",
       "changes": 1,
       "paths": [
-        "materials[fccdaed0-7479-4930-891f-c12720dae329]"
+        "materials[8edbfd58-37ca-4224-8f73-fe0bf1e71bf9]"
       ],
       "bytes": 1984
     },
@@ -42,7 +42,7 @@
       "label": "Edit mesh of 'Wall'",
       "changes": 1,
       "paths": [
-        "objects[d977b022-25a4-472c-954d-990ec73296d0].geometry"
+        "objects[c67b8a87-9dd6-43ce-b1e4-1cc2e2703e0b].geometry"
       ],
       "bytes": 2752
     },
@@ -51,7 +51,7 @@
       "label": "Duplicate 'Crate'",
       "changes": 2,
       "paths": [
-        "objects[c7a34de0-7327-403f-9509-ce9f9539e2ff]",
+        "objects[522fa13a-c987-473b-9c4b-6f260f112090]",
         "scene.roots"
       ],
       "bytes": 664
@@ -61,7 +61,7 @@
       "label": "Set position of 'Crate 2'",
       "changes": 1,
       "paths": [
-        "objects[c7a34de0-7327-403f-9509-ce9f9539e2ff].transform"
+        "objects[522fa13a-c987-473b-9c4b-6f260f112090].transform"
       ],
       "bytes": 384
     },
@@ -70,13 +70,13 @@
       "label": "Build the gate",
       "changes": 7,
       "paths": [
-        "objects[4ff37c62-a321-43f6-8a0d-fc1be98a6d9e]",
+        "objects[7b6f7d72-9f0a-4bef-bae8-4e7b88bd7c5d]",
         "scene.roots",
-        "objects[4ff37c62-a321-43f6-8a0d-fc1be98a6d9e].transform",
-        "objects[d0d4a467-4f1c-4420-8f9a-e27048ae6bee]",
-        "objects[d0d4a467-4f1c-4420-8f9a-e27048ae6bee].transform",
-        "objects[7603ebc8-27bd-43a9-8801-995f0ef99cca]",
-        "objects[7603ebc8-27bd-43a9-8801-995f0ef99cca].transform"
+        "objects[7b6f7d72-9f0a-4bef-bae8-4e7b88bd7c5d].transform",
+        "objects[dc649c1d-df4e-4ea6-b47c-f1e219b31e06]",
+        "objects[dc649c1d-df4e-4ea6-b47c-f1e219b31e06].transform",
+        "objects[50fa707d-e47e-4332-b8db-a7cbd5d4c101]",
+        "objects[50fa707d-e47e-4332-b8db-a7cbd5d4c101].transform"
       ],
       "bytes": 2136
     },
@@ -85,7 +85,7 @@
       "label": "Set light intensity of 'Sun'",
       "changes": 1,
       "paths": [
-        "objects[9b16aac0-1bc3-4b61-99eb-8d7441430343].light"
+        "objects[c128c361-92cb-472c-8d5d-a1f10376decb].light"
       ],
       "bytes": 384
     },
@@ -103,9 +103,9 @@
       "label": "Merge 'Props' (2 objects)",
       "changes": 3,
       "paths": [
-        "objects[a0e021dc-a2c9-4bf0-92f4-25628e4b4ad1]",
+        "objects[f336502b-8915-4b2f-9985-14b98e77e96d]",
         "scene.roots",
-        "objects[dc44cad1-3188-469b-a8bd-92ff79873f40]"
+        "objects[c6be77d0-f8be-4ba6-b7ed-e4dc2c3fdb43]"
       ],
       "bytes": 1024
     },
@@ -114,7 +114,7 @@
       "label": "Set position of 'Barrel'",
       "changes": 1,
       "paths": [
-        "objects[a0e021dc-a2c9-4bf0-92f4-25628e4b4ad1].transform"
+        "objects[f336502b-8915-4b2f-9985-14b98e77e96d].transform"
       ],
       "bytes": 384
     },
@@ -123,7 +123,7 @@
       "label": "Set position of 'Post'",
       "changes": 1,
       "paths": [
-        "objects[dc44cad1-3188-469b-a8bd-92ff79873f40].transform"
+        "objects[c6be77d0-f8be-4ba6-b7ed-e4dc2c3fdb43].transform"
       ],
       "bytes": 384
     }
