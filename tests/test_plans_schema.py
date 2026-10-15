@@ -17,7 +17,12 @@ import pytest
 from aether3d import PlanError, plan_schema
 from aether3d.plans import parse_plan
 
-jsonschema = pytest.importorskip("jsonschema")
+try:
+    import jsonschema
+except ImportError:  # the job without optional dependencies
+    jsonschema = None
+
+needs_jsonschema = pytest.mark.skipif(jsonschema is None, reason="jsonschema is not installed")
 
 
 def plan(**sections) -> dict:
@@ -163,11 +168,13 @@ def _parser_accepts(doc: dict) -> bool:
     return True
 
 
+@needs_jsonschema
 def test_the_schema_is_a_valid_draft_2020_12_schema():
     jsonschema.Draft202012Validator.check_schema(plan_schema())
     assert len(json.dumps(plan_schema())) < 60_000
 
 
+@needs_jsonschema
 @pytest.mark.parametrize("doc", VALID, ids=["minimal", "everything"])
 def test_valid_plans_satisfy_both(doc):
     assert _parser_accepts(doc)
@@ -206,6 +213,7 @@ def _mutate(doc: dict, rng: random.Random) -> dict:
     return out
 
 
+@needs_jsonschema
 def test_random_mutations_never_split_the_checker_from_the_schema():
     rng = random.Random(11)
     checked = refused = 0

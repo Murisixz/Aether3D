@@ -1,0 +1,141 @@
+{
+  "format": "aether3d.scene-plan",
+  "version": 1,
+  "label": "Minecraft castle",
+  "description": "A blocky castle of 1 m blocks: curtain walls with a gate and battlements, four hollow corner towers with windows, roofs and banners (one prefab), a keep, a moat with a drawbridge, a courtyard with trees and a well, torches, the sun and a camera. Every block shares one mesh, so the GPU draws them in a few instanced draw calls.",
+  "materials": {
+    "stone": {"preset": "stone", "scale": 0.6},
+    "dark_stone": {"preset": "stone", "scale": 0.6, "color": "#6b6f73"},
+    "roof": {"base_color": "#7a2e22", "roughness": 0.85},
+    "wood": {"preset": "wood"},
+    "banner": {"preset": "fabric", "color": "#b8282c"},
+    "leaves": {"base_color": "#3f7d2e", "roughness": 0.9},
+    "trunk": {"base_color": "#6b4a2b", "roughness": 0.9},
+    "water": {"base_color": "#2f6fa3", "roughness": 0.15},
+    "grass": {"preset": "grass"}
+  },
+  "meshes": {
+    "block": {"primitive": "cube", "size": 1},
+    "pyramid": {"primitive": "cone", "radius_bottom": 4.6, "radius_top": 0, "depth": 4, "segments": 4, "smooth": false},
+    "keep_roof": {"primitive": "cone", "radius_bottom": 7.4, "radius_top": 0, "depth": 5, "segments": 4, "smooth": false},
+    "pole": {"primitive": "cylinder", "radius": 0.08, "depth": 3, "segments": 8},
+    "flag": {"primitive": "box", "size": [0.06, 1.4, 0.9]}
+  },
+  "prefabs": {
+    "tower": {
+      "tags": ["tower"],
+      "children": {
+        "front": {"mesh": "@block", "material": "@stone", "position": [-2.5, -2.5, 0.5],
+                  "grid": {"count": [6, 1, 11]},
+                  "vary": {"visible": {"expr": "not (x >= 2 and x <= 3 and z >= 6 and z <= 7)"}}},
+        "back": {"mesh": "@block", "material": "@stone", "position": [-2.5, 2.5, 0.5],
+                 "grid": {"count": [6, 1, 11]}},
+        "left": {"mesh": "@block", "material": "@stone", "position": [-2.5, -1.5, 0.5],
+                 "grid": {"count": [1, 4, 11]}},
+        "right": {"mesh": "@block", "material": "@stone", "position": [2.5, -1.5, 0.5],
+                  "grid": {"count": [1, 4, 11]}},
+        "crenels_front": {"mesh": "@block", "material": "@dark_stone", "position": [-2.5, -2.5, 11.5],
+                          "array": {"count": 3, "offset": [2, 0, 0]}},
+        "crenels_back": {"mesh": "@block", "material": "@dark_stone", "position": [-2.5, 2.5, 11.5],
+                         "array": {"count": 3, "offset": [2, 0, 0]}},
+        "crenels_left": {"mesh": "@block", "material": "@dark_stone", "position": [-2.5, -0.5, 11.5],
+                         "array": {"count": 2, "offset": [0, 2, 0]}},
+        "crenels_right": {"mesh": "@block", "material": "@dark_stone", "position": [2.5, -0.5, 11.5],
+                          "array": {"count": 2, "offset": [0, 2, 0]}},
+        "roof": {"mesh": "@pyramid", "material": "@roof", "position": [0, 0, 14], "rotation_euler": [0, 0, 45]},
+        "pole": {"mesh": "@pole", "material": "@wood", "position": [0, 0, 17.3]},
+        "flag": {"mesh": "@flag", "material": "@banner", "position": [0, 0.75, 18.2]}
+      }
+    },
+    "tree": {
+      "tags": ["tree"],
+      "children": {
+        "trunk": {"mesh": "@block", "material": "@trunk", "position": [0, 0, 0.5], "array": {"count": 4, "offset": [0, 0, 1]}},
+        "leaves": {"mesh": "@block", "material": "@leaves", "position": [-1, -1, 4.5],
+                   "grid": {"count": [3, 3, 2]},
+                   "vary": {"visible": {"expr": "not (z == 1 and x != 1 and y != 1)"}}}
+      }
+    }
+  },
+  "objects": {
+    "ground": {"mesh": {"primitive": "plane", "size": 120}, "material": "@grass", "position": [0, 0, -0.02], "tags": ["ground"]},
+    "moat": {
+      "mesh": {"primitive": "box", "size": [52, 4, 0.2]}, "material": "@water", "tags": ["moat"],
+      "instances": [
+        {"position": [0, -24, 0.06], "name": "moat south"},
+        {"position": [0, 24, 0.06], "name": "moat north"},
+        {"position": [-24, 0, 0.06], "rotation_euler": [0, 0, 90], "name": "moat west"},
+        {"position": [24, 0, 0.06], "rotation_euler": [0, 0, 90], "name": "moat east"}
+      ]
+    },
+    "castle": {"tags": ["castle"]},
+    "wall_north": {"parent": "@castle", "mesh": "@block", "material": "@stone", "tags": ["wall"],
+                   "position": [-11.5, 15.5, 0.5], "grid": {"count": [24, 1, 6]}},
+    "wall_east": {"parent": "@castle", "mesh": "@block", "material": "@stone", "tags": ["wall"],
+                  "position": [15.5, -11.5, 0.5], "grid": {"count": [1, 24, 6]}},
+    "wall_west": {"parent": "@castle", "mesh": "@block", "material": "@stone", "tags": ["wall"],
+                  "position": [-15.5, -11.5, 0.5], "grid": {"count": [1, 24, 6]}},
+    "wall_south_left": {"parent": "@castle", "mesh": "@block", "material": "@stone", "tags": ["wall"],
+                        "position": [-11.5, -15.5, 0.5], "grid": {"count": [10, 1, 6]}},
+    "wall_south_right": {"parent": "@castle", "mesh": "@block", "material": "@stone", "tags": ["wall"],
+                         "position": [2.5, -15.5, 0.5], "grid": {"count": [10, 1, 6]}},
+    "gate_lintel": {"parent": "@castle", "mesh": "@block", "material": "@dark_stone", "tags": ["wall", "gate"],
+                    "position": [-1.5, -15.5, 4.5], "grid": {"count": [4, 1, 2]}},
+    "battlements": {
+      "parent": "@castle", "mesh": "@block", "material": "@dark_stone", "tags": ["battlement"],
+      "instances": {"positions": [
+        [-11.5, 15.5, 6.5], [-9.5, 15.5, 6.5], [-7.5, 15.5, 6.5], [-5.5, 15.5, 6.5], [-3.5, 15.5, 6.5], [-1.5, 15.5, 6.5],
+        [0.5, 15.5, 6.5], [2.5, 15.5, 6.5], [4.5, 15.5, 6.5], [6.5, 15.5, 6.5], [8.5, 15.5, 6.5], [10.5, 15.5, 6.5],
+        [-11.5, -15.5, 6.5], [-9.5, -15.5, 6.5], [-7.5, -15.5, 6.5], [-5.5, -15.5, 6.5], [-3.5, -15.5, 6.5], [-1.5, -15.5, 6.5],
+        [0.5, -15.5, 6.5], [2.5, -15.5, 6.5], [4.5, -15.5, 6.5], [6.5, -15.5, 6.5], [8.5, -15.5, 6.5], [10.5, -15.5, 6.5],
+        [15.5, -11.5, 6.5], [15.5, -9.5, 6.5], [15.5, -7.5, 6.5], [15.5, -5.5, 6.5], [15.5, -3.5, 6.5], [15.5, -1.5, 6.5],
+        [15.5, 0.5, 6.5], [15.5, 2.5, 6.5], [15.5, 4.5, 6.5], [15.5, 6.5, 6.5], [15.5, 8.5, 6.5], [15.5, 10.5, 6.5],
+        [-15.5, -11.5, 6.5], [-15.5, -9.5, 6.5], [-15.5, -7.5, 6.5], [-15.5, -5.5, 6.5], [-15.5, -3.5, 6.5], [-15.5, -1.5, 6.5],
+        [-15.5, 0.5, 6.5], [-15.5, 2.5, 6.5], [-15.5, 4.5, 6.5], [-15.5, 6.5, 6.5], [-15.5, 8.5, 6.5], [-15.5, 10.5, 6.5]
+      ]}
+    },
+    "towers": {
+      "parent": "@castle", "prefab": "@tower", "name": "Tower {i}",
+      "instances": [
+        {"position": [-15, -15, 0], "name": "Tower SW"},
+        {"position": [15, -15, 0], "name": "Tower SE"},
+        {"position": [15, 15, 0], "rotation_euler": [0, 0, 180], "name": "Tower NE"},
+        {"position": [-15, 15, 0], "rotation_euler": [0, 0, 180], "name": "Tower NW"}
+      ]
+    },
+    "keep": {
+      "parent": "@castle", "position": [0, 4, 0], "tags": ["keep"],
+      "children": {
+        "front": {"mesh": "@block", "material": "@stone", "position": [-4.5, -4.5, 0.5], "grid": {"count": [10, 1, 14]},
+                  "vary": {"visible": {"expr": "not ((x >= 4 and x <= 5 and z <= 2) or (z >= 8 and z <= 9 and (x == 2 or x == 7)))"}}},
+        "back": {"mesh": "@block", "material": "@stone", "position": [-4.5, 4.5, 0.5], "grid": {"count": [10, 1, 14]}},
+        "left": {"mesh": "@block", "material": "@stone", "position": [-4.5, -3.5, 0.5], "grid": {"count": [1, 8, 14]}},
+        "right": {"mesh": "@block", "material": "@stone", "position": [4.5, -3.5, 0.5], "grid": {"count": [1, 8, 14]}},
+        "roof": {"mesh": "@keep_roof", "material": "@roof", "position": [0, 0, 16.5], "rotation_euler": [0, 0, 45]},
+        "door": {"mesh": {"primitive": "box", "size": [2, 0.2, 3]}, "material": "@wood", "position": [0, -4.9, 1.5]}
+      }
+    },
+    "drawbridge": {"mesh": {"primitive": "box", "size": [4, 8, 0.3]}, "material": "@wood", "position": [0, -22, 0.2], "tags": ["gate"]},
+    "trees": {
+      "parent": "@castle", "prefab": "@tree", "name": "Tree {i}",
+      "instances": [
+        {"position": [-10, -10, 0]}, {"position": [-8, -4, 0]}, {"position": [-11, 3, 0]},
+        {"position": [10, -10, 0]}, {"position": [9, -3, 0]}, {"position": [11, 4, 0]},
+        {"position": [-6, 12, 0]}, {"position": [7, 12, 0]}
+      ]
+    },
+    "well": {"parent": "@castle", "mesh": {"primitive": "cylinder", "radius": 1.2, "depth": 1.2, "segments": 16},
+             "material": "@dark_stone", "position": [6, -9, 0.6], "tags": ["well"]},
+    "torches": {
+      "light": {"type": "point", "color": "#ffb060", "intensity": 3, "range": 14},
+      "instances": [{"position": [-2.6, -16.6, 3.6]}, {"position": [2.6, -16.6, 3.6]}, {"position": [0, -1.2, 3.8]}]
+    },
+    "sun": {"light": {"type": "directional", "intensity": 2.2, "angle": 1.5}, "direction": [-0.45, 0.55, -0.7]},
+    "camera": {"camera": {"fov": 42}, "position": [46, -58, 34], "look_at": [0, 0, 5], "active": true}
+  },
+  "world": {"background": "#9fc8ec", "ambient_intensity": 0.25},
+  "queries": [
+    {"query": "overlaps", "objects": "@trees/leaves", "against": ["@keep/front", "@keep/back", "@keep/left", "@keep/right"]},
+    {"query": "raycast", "origin": [0, -30, 20], "direction": [0, 0.6, -0.4]}
+  ]
+}

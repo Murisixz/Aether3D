@@ -283,6 +283,44 @@ def validate_plan(
         )
 
 
+def select_objects(scene: Scene, selector: Any) -> list[SceneObject]:
+    """The objects of ``scene`` a plan selector names, in scene order.
+
+    ``selector`` is what a plan operation's ``select`` takes: an id or name, a list of
+    them, or an object with ``ids``, ``names``, ``tags``, ``any_tags``, ``name_glob``,
+    ``kind``, ``under``, ``visible``, ``material`` and ``expect`` (plan symbols such as
+    ``"@towers"`` exist only inside a plan). Raises :class:`PlanError`.
+    """
+    from .model import Issues, Reader, parse_selector
+
+    issues = Issues()
+    sel = parse_selector(Reader(issues, PlanLimits()), selector, "/select")
+    issues.raise_if_any()
+    if sel is None:  # pragma: no cover - an issue was recorded
+        raise PlanError("INVALID_VALUE", "invalid selector", "/select")
+    for k, ref in enumerate(sel.refs):
+        if isinstance(ref, SymbolRef):
+            raise PlanError(
+                "INVALID_REFERENCE",
+                f"{ref.text!r}: plan symbols exist only inside a plan",
+                f"/select/refs/{k}",
+                hint="name objects by id or name here",
+            )
+    run = _Run(
+        scene,
+        parse_plan({"format": "aether3d.scene-plan", "version": 1}),
+        mode="validate",
+        limits=PlanLimits(),
+        base_dir=None,
+        trusted_paths=False,
+        progress=None,
+        cancel=None,
+        timeout=None,
+        start=time.perf_counter(),
+    )
+    return run.select(sel, "/select")
+
+
 def _static_validation(plan: Any, limits: PlanLimits) -> PlanResult:
     """Check a plan without a scene: its structure, and how many objects it makes."""
     start = time.perf_counter()

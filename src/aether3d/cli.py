@@ -1803,6 +1803,87 @@ def cmd_plan_schema(args: argparse.Namespace) -> CommandOutput:
     return {"schema": schema}, json.dumps(schema, indent=2), EXIT_OK
 
 
+# --------------------------------------------------------------------------- #
+# MCP server
+# --------------------------------------------------------------------------- #
+
+
+def cmd_mcp_serve(args: argparse.Namespace) -> CommandOutput:
+    """Serve MCP over stdio until the client disconnects (writes nothing to stdout)."""
+    import logging
+
+    from .plans import PlanLimits
+
+    try:
+        from .mcp import ServerConfig, serve
+    except ImportError as exc:
+        raise CommandError("ImportError", str(exc)) from None
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=getattr(logging, args.log_level.upper()),
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
+    workspace = Path(args.workspace or ".").expanduser()
+    if not workspace.is_dir():
+        raise CommandError("FileNotFoundError", f"workspace {workspace} is not a directory")
+    limits = {} if args.max_objects is None else {"max_objects": args.max_objects}
+    config = ServerConfig(
+        workspace=workspace,
+        read_only=args.read_only,
+        project=args.project,
+        plan_limits=PlanLimits(**limits),
+        tool_timeout=args.timeout,
+        allow_path_tracing=not args.no_path_tracing,
+        gpu_adapter=args.gpu_adapter,
+    )
+    logging.getLogger("aether3d.mcp").info(
+        "aether3d %s MCP server, workspace %s%s",
+        __version__,
+        workspace.resolve(),
+        " (read-only)" if args.read_only else "",
+    )
+    serve(config)
+    return {}, "", EXIT_OK
+
+
+def _add_mcp_parsers(sub) -> None:
+    p_mcp = sub.add_parser("mcp", help="Model Context Protocol server for AI agents")
+    mcp = p_mcp.add_subparsers(dest="subcommand", required=True, metavar="SUBCOMMAND")
+    p = mcp.add_parser(
+        "serve",
+        help="serve MCP over stdio (for Claude Code and other MCP clients)",
+        description="Serve Aether3D's MCP tools, resources and prompts over stdin/stdout "
+        "(docs/MCP.md). Every file the tools read or write stays inside the workspace. "
+        "Logs go to stderr; stdout carries protocol messages only.",
+    )
+    p.add_argument("--workspace", metavar="DIR", help="the only folder tools may use (default .)")
+    p.add_argument("--project", metavar="PATH", help="open this project (in the workspace) first")
+    p.add_argument("--read-only", action="store_true", help="never write files")
+    p.add_argument(
+        "--max-objects", type=int, metavar="N", help="objects one plan may create (default 100000)"
+    )
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=300.0,
+        metavar="S",
+        help="seconds a tool may run before it rolls back or stops (default 300)",
+    )
+    p.add_argument("--no-path-tracing", action="store_true", help="refuse path-traced renders")
+    p.add_argument(
+        "--gpu-adapter",
+        metavar="SPEC",
+        help="GPU adapter for GPU renders: an index, part of a name, discrete, vulkan, ...",
+    )
+    p.add_argument(
+        "--log-level",
+        default="warning",
+        choices=["debug", "info", "warning", "error"],
+        help="what to log on stderr (default warning)",
+    )
+    p.set_defaults(handler=cmd_mcp_serve, json=False)
+
+
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--json", action="store_true", help="emit machine-readable JSON")
@@ -1942,6 +2023,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_material_parsers(sub, common, lossy, writing)
     _add_plan_parsers(sub, common, writing)
+    _add_mcp_parsers(sub)
     return parser
 
 
@@ -2373,6 +2455,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             for line in _diagnostic_lines(exc.details.get("diagnostics", [])):
                 print(line, file=sys.stderr)
         return EXIT_FAILURE
+    if command == "mcp serve":
+        return code  # the protocol owned stdout
     if _history_report and "history" not in result:
         result = {**result, "history": dict(_history_report)}
         note = _history_report["note"]

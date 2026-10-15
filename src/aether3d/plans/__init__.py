@@ -16,7 +16,7 @@ See ``docs/SCENE_PLANS.md``.
 
 from __future__ import annotations
 
-from .executor import ID_NAMESPACE, PlanResult, execute_plan, validate_plan
+from .executor import ID_NAMESPACE, PlanResult, execute_plan, select_objects, validate_plan
 from .limits import PlanLimits
 from .model import FORMAT_ID, VERSION, parse_plan
 from .schema import plan_schema
@@ -30,5 +30,6 @@ __all__ = [
     "execute_plan",
     "parse_plan",
     "plan_schema",
+    "select_objects",
     "validate_plan",
 ]

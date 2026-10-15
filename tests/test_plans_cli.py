@@ -151,3 +151,22 @@ def test_plan_schema(capsys):
     assert code == 0 and out["schema"]["$id"] == "urn:aether3d:schema:scene-plan:1"
     code = main(["plan", "schema"])
     assert json.loads(capsys.readouterr().out)["title"] == "Aether3D scene plan"
+
+
+def test_importing_aether3d_does_not_load_the_mcp_sdk():
+    import subprocess
+    import sys
+
+    code = "import aether3d, sys; print(sorted(m for m in sys.modules if m.split('.')[0] == 'mcp'))"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "[]"
+
+
+@pytest.mark.skipif(
+    __import__("importlib.util").util.find_spec("mcp") is not None,
+    reason="the MCP SDK is installed here (the job without optional dependencies runs this)",
+)
+def test_the_mcp_server_explains_how_to_install_its_sdk(capsys, tmp_path):
+    code = main(["mcp", "serve", "--workspace", str(tmp_path)])
+    assert code == 1
+    assert 'pip install "aether3d[mcp]"' in capsys.readouterr().err
