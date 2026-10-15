@@ -91,9 +91,9 @@ def _command_error(exc: BaseException, path: Path) -> CommandError:
 
     if isinstance(exc, ProceduralError):
         return CommandError("ProceduralError", exc.message, exc.location, _procedural_details(exc))
-    from .errors import MaterialError, RenderError
+    from .errors import MaterialError, QueryError, RenderError
 
-    if isinstance(exc, (MaterialError, RenderError)):
+    if isinstance(exc, (MaterialError, QueryError, RenderError)):
         return CommandError(type(exc).__name__, exc.message, exc.location, _procedural_details(exc))
     if isinstance(exc, AetherError):
         return CommandError(type(exc).__name__, str(exc))
@@ -1551,6 +1551,119 @@ def cmd_history_verify(args: argparse.Namespace) -> CommandOutput:
 
 
 # --------------------------------------------------------------------------- #
+# Spatial queries
+# --------------------------------------------------------------------------- #
+
+
+def cmd_query(args: argparse.Namespace) -> CommandOutput:
+    from .spatial.request import request_from_arguments, run_query
+
+    path = Path(args.path)
+    if args.query == "run":
+        if args.arguments:
+            raise CommandError(
+                "QueryError", "query run takes a request file, not KEY=VALUE arguments"
+            )
+        if not args.request:
+            raise CommandError("QueryError", "query run needs --request FILE (or - for stdin)")
+        source = args.request
+        try:
+            text = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise _command_error(exc, Path(source)) from None
+        try:
+            requests = json.loads(text)
+        except ValueError as exc:
+            raise CommandError("QueryError", f"the request is not valid JSON: {exc}") from None
+        batch = isinstance(requests, list)
+        requests = requests if batch else [requests]
+    else:
+        if args.request:
+            raise CommandError("QueryError", "--request goes with 'query run'")
+        try:
+            requests = [request_from_arguments(args.query, args.arguments)]
+        except AetherError as exc:
+            raise _command_error(exc, path) from None
+        batch = False
+    scene, info = _load_scene(path, getattr(args, "allow_lossy", False))
+    answers = []
+    for k, request in enumerate(requests):
+        try:
+            answers.append(run_query(scene, request))
+        except AetherError as exc:
+            error = _command_error(exc, path)
+            if batch:
+                error.location = f"requests[{k}]" + (f".{error.location}" if error.location else "")
+            raise error from None
+    if batch:
+        data = {"path": str(path), **info, "results": answers}
+        text = "\n".join(_query_text(a["query"], a["result"]) for a in answers)
+    else:
+        data = {"path": str(path), **info, **answers[0]}
+        text = _query_text(answers[0]["query"], answers[0]["result"])
+    return data, text, EXIT_OK
+
+
+def _hit_text(hit: dict[str, Any] | None) -> str:
+    if hit is None:
+        return "nothing"
+    return (
+        f"{hit['object']['name']} at {_fmt_vec(hit['position'])}, distance "
+        f"{hit['distance']:.6g} (triangle {hit['triangle']})"
+    )
+
+
+def _query_text(name: str, result: Any) -> str:
+    """A short human-readable rendering of a query result (``--json`` gives everything)."""
+    if name in ("raycast", "closest_point", "pick"):
+        return f"{name}: {_hit_text(result)}"
+    if name in ("raycast_all", "nearest"):
+        lines = [f"{name}: {len(result)} result(s)"]
+        lines += [f"  {_hit_text(h)}" for h in result]
+        return "\n".join(lines)
+    if name == "find":
+        lines = [f"find: {len(result)} object(s)"]
+        lines += [f"  {o['name']} ({o['kind']})" for o in result]
+        return "\n".join(lines)
+    if name in ("region", "in_view"):
+        key = "relation" if name == "region" else "visibility"
+        lines = [f"{name}: {len(result)} object(s)"]
+        lines += [f"  {m['object']['name']}: {m[key]}" for m in result]
+        return "\n".join(lines)
+    if name == "overlaps":
+        lines = [f"overlaps: {len(result)} pair(s)"]
+        for o in result:
+            how = (
+                "bounds only"
+                if not o["exact"]
+                else ("intersecting" if o["intersecting"] else o["contained"])
+            )
+            lines.append(f"  {o['a']['name']} / {o['b']['name']}: {how}")
+        return "\n".join(lines)
+    if name == "contains":
+        return f"contains: {result['state']} (winding {result['winding']:.6g})"
+    if name == "distance":
+        return f"distance: {result['distance']:.6g}" + (
+            " (intersecting)" if result["intersecting"] else ""
+        )
+    if name == "bounds":
+        if result is None:
+            return "bounds: no geometry"
+        box = result["aabb"]
+        return f"bounds ({result['space']}): {_fmt_vec(box['min'])} .. {_fmt_vec(box['max'])}"
+    if name == "line_of_sight":
+        if result["clear"]:
+            return "line of sight: clear"
+        return f"line of sight: blocked by {_hit_text(result['blocker'])}"
+    if name == "visible_from":
+        return (
+            f"visible_from: {result['visible']}/{result['samples']} samples of "
+            f"{result['target']['name']} visible"
+        )
+    return f"{name}:\n" + json.dumps(result, indent=2)
+
+
+# --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
 
@@ -1998,6 +2111,24 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p.add_argument("source", help="a .aether project or a .glb/.gltf file")
     p.add_argument("--parent", help="object (id or name) to place the copies under")
     p.set_defaults(handler=cmd_scene_merge)
+
+    from .spatial.request import QUERIES
+
+    p_query = sub.add_parser(
+        "query",
+        parents=[common, lossy],
+        help="spatial queries: rays, distances, regions, picking, ... (read-only)",
+        description="Answer a spatial query on a project without changing it. Arguments are "
+        "KEY=VALUE pairs named as in the Python API (values: JSON, comma-separated numbers or "
+        "plain text), e.g. 'aether3d query raycast scene.aether origin=0,0,10 "
+        "direction=0,0,-1'. 'query run PATH --request FILE' answers a JSON request (or a "
+        "list of them). Queries: " + "; ".join(f"{k} ({q.summary})" for k, q in QUERIES.items()),
+    )
+    p_query.add_argument("query", choices=[*QUERIES, "run"], metavar="QUERY", help="query name")
+    p_query.add_argument("path", help="a .aether project (or .glb/.gltf)")
+    p_query.add_argument("arguments", nargs="*", metavar="KEY=VALUE", help="query arguments")
+    p_query.add_argument("--request", metavar="FILE", help="JSON request file (- for stdin)")
+    p_query.set_defaults(handler=cmd_query)
 
     p_history = sub.add_parser(
         "history", help="undo and redo changes to a project (its saved history)"

@@ -54,6 +54,20 @@ if TYPE_CHECKING:
     from .procedural import ProceduralGeometry, ProceduralSystem
     from .rendering import RenderResult
     from .rendering.framing import Framing
+    from .spatial import (
+        CameraRay,
+        Containment,
+        LineOfSight,
+        ObjectBounds,
+        ObjectDistance,
+        Overlap,
+        RegionMatch,
+        Relation,
+        ScreenPoint,
+        SurfaceHit,
+        ViewMatch,
+        Visibility,
+    )
 
 ObjectRef = Union["SceneObject", str]
 """A scene object, or its identifier."""
@@ -604,6 +618,22 @@ class SceneObject:
     def world_scale(self) -> Vec3:
         """World-space scale (see ``math3d.decompose_matrix`` for caveats)."""
         return decompose_matrix(self.world_matrix)[2]
+
+    def bounds(
+        self, *, space: str = "world", children: bool = False, include_hidden: bool = False
+    ) -> ObjectBounds | None:
+        """Bounding box, oriented box and sphere of the object's geometry -- with
+        ``children``, also its descendants' -- in ``"world"`` or ``"local"`` space (``None``
+        without geometry; see :func:`aether3d.spatial.bounds`)."""
+        from .spatial import queries
+
+        return queries.bounds(
+            self._require_scene(),
+            self,
+            space=space,
+            children=children,
+            include_hidden=include_hidden,
+        )
 
     @property
     def world_forward(self) -> Vec3:
@@ -1575,6 +1605,372 @@ class Scene:
         from .inspection import inspect_scene
 
         return inspect_scene(self)
+
+    # -- spatial queries (aether3d.spatial; read-only: no history step) --------
+
+    def bounds(
+        self,
+        obj: ObjectRef | None = None,
+        *,
+        space: str = "world",
+        children: bool = False,
+        include_hidden: bool = False,
+    ) -> ObjectBounds | None:
+        """Bounding box, oriented box and sphere of an object's geometry (with ``children``,
+        also its descendants'), or of the whole scene (see :func:`aether3d.spatial.bounds`)."""
+        from .spatial import queries
+
+        return queries.bounds(
+            self, obj, space=space, children=children, include_hidden=include_hidden
+        )
+
+    def find_objects(self, **filters: Any) -> list[SceneObject]:
+        """Objects matching filters -- ``name`` (glob), ``kind``, ``tags``, ``any_tags``,
+        ``metadata``, ``metadata_keys``, ``parent``, ``ancestor``, ``visible``,
+        ``material``, ``region`` (see :func:`aether3d.spatial.find_objects`)."""
+        from .spatial import queries
+
+        return queries.find_objects(self, **filters)
+
+    def raycast(
+        self,
+        origin: Iterable[float],
+        direction: Iterable[float],
+        *,
+        max_distance: float = math.inf,
+        min_distance: float = 0.0,
+        objects: Any = None,
+        exclude: Any = None,
+        include_hidden: bool = False,
+        surfaces: str = "geometry",
+    ) -> SurfaceHit | None:
+        """The first surface along a ray, or ``None`` (see :func:`aether3d.spatial.raycast`)."""
+        from .spatial import queries
+
+        return queries.raycast(
+            self,
+            origin,
+            direction,
+            max_distance=max_distance,
+            min_distance=min_distance,
+            objects=objects,
+            exclude=exclude,
+            include_hidden=include_hidden,
+            surfaces=surfaces,
+        )
+
+    def raycast_all(
+        self,
+        origin: Iterable[float],
+        direction: Iterable[float],
+        *,
+        max_distance: float = math.inf,
+        min_distance: float = 0.0,
+        objects: Any = None,
+        exclude: Any = None,
+        include_hidden: bool = False,
+        surfaces: str = "geometry",
+        limit: int | None = None,
+    ) -> list[SurfaceHit]:
+        """Every surface along a ray, nearest first (see :func:`aether3d.spatial.raycast_all`)."""
+        from .spatial import queries
+
+        return queries.raycast_all(
+            self,
+            origin,
+            direction,
+            max_distance=max_distance,
+            min_distance=min_distance,
+            objects=objects,
+            exclude=exclude,
+            include_hidden=include_hidden,
+            surfaces=surfaces,
+            limit=limit,
+        )
+
+    def closest_point(
+        self,
+        point: Iterable[float],
+        *,
+        max_distance: float = math.inf,
+        objects: Any = None,
+        exclude: Any = None,
+        include_hidden: bool = False,
+    ) -> SurfaceHit | None:
+        """The surface point nearest to ``point`` and its distance, or ``None`` (see
+        :func:`aether3d.spatial.closest_point`)."""
+        from .spatial import queries
+
+        return queries.closest_point(
+            self,
+            point,
+            max_distance=max_distance,
+            objects=objects,
+            exclude=exclude,
+            include_hidden=include_hidden,
+        )
+
+    def nearest_objects(
+        self,
+        point: Iterable[float],
+        *,
+        count: int | None = None,
+        max_distance: float = math.inf,
+        objects: Any = None,
+        exclude: Any = None,
+        include_hidden: bool = False,
+    ) -> list[SurfaceHit]:
+        """Objects by the distance of their surface from ``point``, nearest first (see
+        :func:`aether3d.spatial.nearest_objects`)."""
+        from .spatial import queries
+
+        return queries.nearest_objects(
+            self,
+            point,
+            count=count,
+            max_distance=max_distance,
+            objects=objects,
+            exclude=exclude,
+            include_hidden=include_hidden,
+        )
+
+    def contains_point(
+        self, obj: ObjectRef, point: Iterable[float], *, tolerance: float = 1e-6
+    ) -> Containment:
+        """Whether ``point`` is inside ``obj``'s closed solid: inside, outside, surface or
+        undefined (see :func:`aether3d.spatial.contains_point`)."""
+        from .spatial import queries
+
+        return queries.contains_point(self, obj, point, tolerance=tolerance)
+
+    def distance(self, a: ObjectRef, b: ObjectRef) -> ObjectDistance:
+        """The shortest distance between two objects' surfaces (see
+        :func:`aether3d.spatial.distance`)."""
+        from .spatial import queries
+
+        return queries.distance(self, a, b)
+
+    def overlaps(
+        self,
+        objects: Any = None,
+        *,
+        against: Any = None,
+        exclude: Any = None,
+        include_hidden: bool = False,
+        exact: bool = True,
+        tolerance: float = 0.0,
+    ) -> list[Overlap]:
+        """Pairs of objects whose geometry intersects or nests (``exact=False``: whose
+        bounds overlap) (see :func:`aether3d.spatial.overlaps`)."""
+        from .spatial import queries
+
+        return queries.overlaps(
+            self,
+            objects,
+            against=against,
+            exclude=exclude,
+            include_hidden=include_hidden,
+            exact=exact,
+            tolerance=tolerance,
+        )
+
+    def query_region(
+        self,
+        region: Any,
+        *,
+        mode: str = "intersects",
+        objects: Any = None,
+        exclude: Any = None,
+        include_hidden: bool = False,
+    ) -> list[RegionMatch]:
+        """Objects in a :class:`~aether3d.spatial.Box` or :class:`~aether3d.spatial.Sphere`
+        (see :func:`aether3d.spatial.query_region`)."""
+        from .spatial import queries
+
+        return queries.query_region(
+            self,
+            region,
+            mode=mode,
+            objects=objects,
+            exclude=exclude,
+            include_hidden=include_hidden,
+        )
+
+    def camera_ray(
+        self,
+        x: float,
+        y: float,
+        *,
+        camera: ObjectRef | None = None,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> CameraRay:
+        """The ray a camera sees through image point ``(x, y)`` in pixels (see
+        :func:`aether3d.spatial.camera_ray`)."""
+        from .spatial import queries
+
+        return queries.camera_ray(self, x, y, camera=camera, width=width, height=height)
+
+    def pick(
+        self,
+        x: float,
+        y: float,
+        *,
+        camera: ObjectRef | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        objects: Any = None,
+        exclude: Any = None,
+        surfaces: str = "rendered",
+        cull: str | None = None,
+    ) -> SurfaceHit | None:
+        """The surface a camera shows at image point ``(x, y)`` (see
+        :func:`aether3d.spatial.pick`)."""
+        from .spatial import queries
+
+        return queries.pick(
+            self,
+            x,
+            y,
+            camera=camera,
+            width=width,
+            height=height,
+            objects=objects,
+            exclude=exclude,
+            surfaces=surfaces,
+            cull=cull,
+        )
+
+    def project(
+        self,
+        points: Any,
+        *,
+        camera: ObjectRef | None = None,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> ScreenPoint | list[ScreenPoint]:
+        """Where world points appear in a camera's image (see
+        :func:`aether3d.spatial.project`)."""
+        from .spatial import queries
+
+        return queries.project(self, points, camera=camera, width=width, height=height)
+
+    def objects_in_view(
+        self,
+        *,
+        camera: ObjectRef | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        objects: Any = None,
+        exclude: Any = None,
+        include_hidden: bool = False,
+        exact: bool = True,
+    ) -> list[ViewMatch]:
+        """Objects in a camera's view volume, ignoring occlusion (see
+        :func:`aether3d.spatial.objects_in_view`)."""
+        from .spatial import queries
+
+        return queries.objects_in_view(
+            self,
+            camera=camera,
+            width=width,
+            height=height,
+            objects=objects,
+            exclude=exclude,
+            include_hidden=include_hidden,
+            exact=exact,
+        )
+
+    def line_of_sight(
+        self,
+        start: Any,
+        end: Any,
+        *,
+        objects: Any = None,
+        exclude: Any = None,
+        include_hidden: bool = False,
+        surfaces: str = "geometry",
+        margin: float = 1e-6,
+    ) -> LineOfSight:
+        """Whether nothing lies between two points (or objects' positions) (see
+        :func:`aether3d.spatial.line_of_sight`)."""
+        from .spatial import queries
+
+        return queries.line_of_sight(
+            self,
+            start,
+            end,
+            objects=objects,
+            exclude=exclude,
+            include_hidden=include_hidden,
+            surfaces=surfaces,
+            margin=margin,
+        )
+
+    def visible_from(
+        self,
+        target: ObjectRef,
+        observer: Any,
+        *,
+        samples: int = 64,
+        objects: Any = None,
+        exclude: Any = None,
+        include_hidden: bool = False,
+        surfaces: str = "geometry",
+        margin: float = 1e-6,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> Visibility:
+        """How much of ``target``'s surface an observer (a point, an object or a camera)
+        sees (see :func:`aether3d.spatial.visible_from`)."""
+        from .spatial import queries
+
+        return queries.visible_from(
+            self,
+            target,
+            observer,
+            samples=samples,
+            objects=objects,
+            exclude=exclude,
+            include_hidden=include_hidden,
+            surfaces=surfaces,
+            margin=margin,
+            width=width,
+            height=height,
+        )
+
+    def relation(
+        self,
+        a: ObjectRef,
+        b: ObjectRef,
+        *,
+        near_distance: float | None = None,
+        tolerance: float = 1e-6,
+        viewer: Any = None,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> Relation:
+        """Spatial relations of ``a`` to ``b``: distance, intersecting, near, above, below,
+        inside, contains, in front of, behind (see :func:`aether3d.spatial.relation`)."""
+        from .spatial import queries
+
+        return queries.relation(
+            self,
+            a,
+            b,
+            near_distance=near_distance,
+            tolerance=tolerance,
+            viewer=viewer,
+            width=width,
+            height=height,
+        )
+
+    def describe(self, *, include_hidden: bool = True) -> dict[str, Any]:
+        """A compact JSON summary of the scene's objects and their placement (see
+        :func:`aether3d.spatial.describe`)."""
+        from .spatial import queries
+
+        return queries.describe(self, include_hidden=include_hidden)
 
     # -- internals ---------------------------------------------------------
 

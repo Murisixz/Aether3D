@@ -957,6 +957,12 @@ class History:
         return self._revision
 
     @property
+    def in_progress(self) -> bool:
+        """Whether an operation or transaction is open: its changes are not counted in
+        :attr:`revision` until it ends (spatial-query caches rebuild meanwhile)."""
+        return bool(self._frames)
+
+    @property
     def can_undo(self) -> bool:
         self._settle()
         return bool(self._undo)
