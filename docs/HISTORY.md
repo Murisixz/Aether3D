@@ -193,6 +193,9 @@ nothing older can be undone either.
 - Adding a cube takes 184 µs, against 163 µs before 0.9.0.
 - Building the textured castle of the path tracing examples (108 steps) takes the
   same 0.31 s, and its history holds 0.9 MiB.
+- On the command line, changing that castle saved as a project (229 KiB, with
+  a history file of 19 steps, 9 KiB) takes 0.21 s instead of 0.18 s. Loading
+  and checking the history is the difference.
 
 ## Identity, references and caches
 
