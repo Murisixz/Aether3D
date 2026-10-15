@@ -1,6 +1,6 @@
 # The `.aether` project format
 
-**Current version: 4** (Aether3D 0.7.0; version 1–3 files are upgraded on load)
+**Current version: 6** (Aether3D 0.10.0; version 1–5 files are upgraded on load)
 
 An `.aether` file stores one scene:
 
@@ -12,7 +12,8 @@ An `.aether` file stores one scene:
   settings (see [RENDERING.md](RENDERING.md));
 - its materials and textures, and which objects and face groups use them
   (see [MATERIALS.md](MATERIALS.md)). Image textures are stored as paths
-  relative to the project, or embedded.
+  relative to the project, or embedded;
+- its objects' tags and metadata (see [SPATIAL.md](SPATIAL.md#tags-and-metadata)).
 
 It is a UTF-8 encoded JSON document (RFC 8259), designed to be readable,
 diffable, and safely editable by people, scripts, and AI agents.
@@ -22,8 +23,8 @@ diffable, and safely editable by people, scripts, and AI agents.
 ```json
 {
   "format": "aether3d.project",
-  "format_version": 5,
-  "generator": "aether3d 0.8.0",
+  "format_version": 6,
+  "generator": "aether3d 0.10.0",
   "scene": {
     "name": "First Scene",
     "active_camera": "5b0f1c2e-…",
@@ -62,6 +63,8 @@ diffable, and safely editable by people, scripts, and AI agents.
       {
         "id": "c1181286-0e18-46b7-991d-99bac53d479b",
         "name": "Pivot",
+        "tags": [],
+        "metadata": {},
         "parent": null,
         "transform": {
           "position": [3.0, 0.0, 1.0],
@@ -80,6 +83,8 @@ diffable, and safely editable by people, scripts, and AI agents.
       {
         "id": "8122a0f9-511d-4611-88f4-b44f02b96274",
         "name": "Moon",
+        "tags": ["landmark", "orbiting"],
+        "metadata": {"period_days": 27.3, "discovered_by": null},
         "parent": "c1181286-0e18-46b7-991d-99bac53d479b",
         "transform": {
           "position": [2.0, 0.0, 0.0],
@@ -98,6 +103,8 @@ diffable, and safely editable by people, scripts, and AI agents.
       {
         "id": "5b0f1c2e-…",
         "name": "Camera",
+        "tags": [],
+        "metadata": {},
         "parent": null,
         "transform": {"position": [8.0, -12.0, 6.0], "rotation": […], "scale": [1.0, 1.0, 1.0]},
         "mesh": null,
@@ -158,6 +165,8 @@ a parent (or that are all roots) defines their child order.
 | --- | --- | --- |
 | `id` | non-empty string | Stable unique identifier. Aether3D generates UUID4 strings, but any unique string is accepted. Unique within the file. |
 | `name` | non-empty string | Human-readable name. Unique within the file. |
+| `tags` | array of strings | The object's tags: sorted, unique, each 1–64 characters without surrounding whitespace, at most 64. Since version 6. |
+| `metadata` | object | Free-form JSON data (string keys; strings, finite numbers, booleans, `null`, arrays, objects), at most 16 KiB as compact JSON. Since version 6. |
 | `parent` | string or `null` | `id` of the parent object, or `null` for a root object. Must not form a cycle. |
 | `transform` | object | Local transform relative to the parent (see below). |
 | `mesh` | integer or `null` | Index into the top-level `meshes` array, or `null` for an object without a static mesh. Several objects may share one mesh. |
@@ -170,10 +179,12 @@ a parent (or that are all roots) defines their child order.
 | `group_materials` | object | Materials of individual face groups: `{"1": material id, ...}` (keys are group numbers 0–65535 written as strings). Groups without an entry use `material`. Since version 4. |
 
 An object holds at most one of `mesh`, `geometry`, `camera` and `light`.
-Cameras and lights cannot have materials. Writers always emit `camera`,
-`light`, `appearance`, `visible`, `material` and `group_materials`. Readers
-treat them as optional, with the defaults `null`, `null`, `null`, `true`,
-`null` and `{}`. An object keeps its `appearance` while it uses a material;
+Cameras and lights cannot have materials. Writers always emit `tags`,
+`metadata` (right after `name`), `camera`, `light`, `appearance`, `visible`,
+`material` and `group_materials`. Readers treat them as optional, with the
+defaults `[]`, `{}`, `null`, `null`, `null`, `true`, `null` and `{}`. Invalid
+tags or metadata are a `ProjectFormatError` with their location
+(`scene.objects[2].tags`). An object keeps its `appearance` while it uses a material;
 it renders with it again when the material is unassigned.
 
 ### `transform`
@@ -406,7 +417,8 @@ The history file is a JSON document, `"format": "aether3d.history"`,
 A change is `{"aspect", "target", "before", "after"}`:
 - `aspect` is the part of the scene it changed: `object.name`,
   `object.transform`, `object.visible`, `object.appearance`, `object.camera`,
-  `object.light`, `object.geometry`, `object.material`, `object.parent`,
+  `object.light`, `object.geometry`, `object.material`, `object.annotations`
+  (tags and metadata, since 0.10.0), `object.parent`,
   `object.children`, `object.alive`, `scene.name`, `scene.roots`,
   `scene.active_camera`, `scene.world`, `scene.render`, `library.materials`,
   `library.textures`, `material`, `texture` or `procedural`.
@@ -442,10 +454,12 @@ copy comes back to the same document.
 | 3 | 0.5.0 | Rendering: `scene.active_camera`, `scene.world`, `scene.render`, and `camera`, `light`, `appearance` and `visible` on every object. The migration from 2 adds `null`, the default world and the default render settings, and `null`, `null`, `null` and `true` on objects. |
 | 4 | 0.7.0 | Materials: `scene.materials`, `scene.textures`, `material` and `group_materials` on every object, and optional per-triangle `groups` on meshes. The migration from 3 adds empty lists, and `null` and `{}` on objects, so every object keeps rendering with its color. |
 | 5 | 0.8.0 | Path tracing: `scene.world.environment` and the light sizes `radius` and `angle`. The migration from 4 adds the `"ambient"` environment (the path tracer then lights with the ambient light, as the rasterizers do) and sizes of 0 (point lights and parallel directional lights), so every project renders unchanged on the rasterizers. |
+| 6 | 0.10.0 | Object tags and metadata: `tags` and `metadata` on every object. The migration from 5 changes nothing: their defaults are empty. |
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged, and Aether3D
 0.6.0 reads and writes version 3 unchanged (GPU rendering added render
 options, not scene content). Aether3D 0.8.1 and 0.9.0 read and write version 5
 unchanged: 0.9.0 keeps the undo history in a separate file
-([History files](#history-files)). glTF interchange is a separate format (see
+([History files](#history-files)). History files of 0.9.0 still load in
+0.10.0: their removed objects simply have no tags or metadata. glTF interchange is a separate format (see
 [GLTF.md](GLTF.md)); it did not require a project format change.

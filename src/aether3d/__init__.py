@@ -21,6 +21,10 @@ Quick start::
     # Materials and textures (docs/MATERIALS.md)
     tower.material = scene.create_material("Stone", preset="stone")
 
+    # Spatial queries (docs/SPATIAL.md): read-only, exact, in world space
+    hit = scene.raycast((0, 0, 10), (0, 0, -1))  # -> hit.object.name, hit.position
+    near = scene.nearest_objects((3, 0, 0), count=2)
+
 Everything listed in ``__all__`` is the supported public API.
 """
 
@@ -46,6 +50,7 @@ from .errors import (
     NameConflictError,
     ObjectNotFoundError,
     ProjectFormatError,
+    QueryError,
     RenderError,
     ResourceLimitError,
     UnsupportedFeatureError,
@@ -93,6 +98,7 @@ from .rendering import (
 from .rendering.script import run_scene_script
 from .scene import Scene, SceneObject
 from .serialization import FORMAT_VERSION, load_scene, save_scene
+from .spatial import run_query
 from .transform import Transform
 
 __all__ = [
@@ -135,6 +141,7 @@ __all__ = [
     "ProceduralSystem",
     "ProceduralTexture",
     "ProjectFormatError",
+    "QueryError",
     "RenderError",
     "RenderLimits",
     "RenderResult",
@@ -169,6 +176,7 @@ __all__ = [
     "render",
     "run_edit_script",
     "run_procedural_script",
+    "run_query",
     "run_scene_script",
     "save_scene",
 ]

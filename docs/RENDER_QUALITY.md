@@ -214,7 +214,13 @@ one node per ray: at an inner node both children's boxes are tested (slab
 test), the nearer hit child is visited next and the other pushed on the ray's
 stack; at a leaf the triangles are tested and the stack popped. Entries
 farther than the closest hit found so far are skipped. Shadow and AO rays
-use the same loop and stop at the first hit.
+use the same loop and stop at the first hit. Boxes are closed: every node and
+instance box is grown by one ulp when the structure is built, so a ray with a
+zero direction component lying exactly in the plane of a box face (an
+axis-aligned ray along a mesh's side, an orthographic camera ray landing on a
+bound) is inside that axis's slab rather than rejected by `0 x 1/0` on one
+side (0.10.0). The spatial queries ([SPATIAL.md](SPATIAL.md)) walk the same
+structure.
 
 **Triangles** use the watertight test of Woop, Benthin and Wald (JCGT 2013):
 the ray is mapped onto the +z axis by an axis permutation and shear, and the

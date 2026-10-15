@@ -65,6 +65,7 @@ ASPECTS: dict[str, h.Aspect] = {
     "object.parent": h.PARENT,
     "object.children": h.CHILDREN,
     "object.alive": h.ALIVE,
+    "object.annotations": h.ANNOTATIONS,
     "scene.name": h.SCENE_NAME,
     "scene.roots": h.ROOTS,
     "scene.active_camera": h.ACTIVE_CAMERA,
@@ -181,6 +182,8 @@ class _Writer:
             return [self.obj(o) for o in s]
         if key == "object.alive":
             return s
+        if key == "object.annotations":
+            return {"tags": list(s[0]), "metadata": json.loads(s[1])}
         if key == "scene.world":
             return _world_to_dict(s)
         if key == "library.materials":
@@ -283,6 +286,7 @@ class _Writer:
             "object.material",
             "object.parent",
             "object.children",
+            "object.annotations",
         ):
             aspect = ASPECTS[key]
             record[key.split(".", 1)[1]] = self.state(key, aspect.capture(obj))
@@ -523,7 +527,9 @@ class _Reader:
         records = []
         for i, raw in enumerate(_list(doc["objects"], "objects")):
             loc = f"objects[{i}]"
-            raw = _record(raw, loc, ("id", *_OBJECT_KEYS))
+            # "annotations" (tags and metadata, 0.10.0) is optional: 0.9.0 files have none.
+            raw = _record(raw, loc, ("id", *_OBJECT_KEYS), ("annotations",))
+            raw = {"annotations": {"tags": [], "metadata": {}}, **raw}
             oid = _string(raw["id"], f"{loc}.id")
             if oid in self.objects:
                 raise _bad(f"object {oid!r} is both in the project and detached", loc)
@@ -534,10 +540,11 @@ class _Reader:
             obj._appearance = h._appearance()
             obj._camera = obj._light = None
             obj._parent, obj._children = None, []
+            obj._tags, obj._metadata = (), "{}"
             self.objects[oid] = obj
             records.append((obj, raw, loc))
         for obj, raw, loc in records:  # every object exists now: link them
-            for key in _OBJECT_KEYS:
+            for key in (*_OBJECT_KEYS, "annotations"):
                 full = f"object.{key}"
                 ASPECTS[full].apply(obj, self.state(full, raw[key], f"{loc}.{key}"))
             for aspect in (h.APPEARANCE, h.CAMERA, h.LIGHT):
@@ -611,6 +618,14 @@ class _Reader:
             if not isinstance(data, str) or not data.strip():
                 raise _bad("expected a name (a non-empty string)", loc)
             return data
+        if key == "object.annotations":
+            from .scene import _check_metadata, _check_tags
+
+            data = _record(data, loc, ("tags", "metadata"))
+            try:
+                return (_check_tags(data["tags"]), _check_metadata(data["metadata"]))
+            except AetherError as exc:
+                raise _bad(str(exc), loc) from None
         if key in ("object.visible", "object.alive"):
             if not isinstance(data, bool):
                 raise _bad("expected true or false", loc)

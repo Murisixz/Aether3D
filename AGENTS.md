@@ -23,6 +23,8 @@ apply to agents too.
   formulas, slots, images, coordinates, node graphs, presets, face groups, CLI, security).
 - Undo, redo and transactions: [docs/HISTORY.md](docs/HISTORY.md) (what is recorded, design,
   history files, CLI).
+- Spatial queries, tags and metadata: [docs/SPATIAL.md](docs/SPATIAL.md) (conventions,
+  semantics of every query, caching, JSON and CLI, errors, limitations).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 
 ## Conventions to preserve
@@ -130,6 +132,22 @@ apply to agents too.
     `_history_file.py`) rather than ad-hoc rollback code. Loaders build scenes with
     recording suspended (`history._suspended()`).
 
+- Spatial queries (`spatial/`):
+  - **Read-only.** Queries never change a scene, record history or bump `scene.revision`
+    (`test_queries_are_deterministic_and_change_nothing` runs every query). The index is a
+    weak cache keyed by the scene and its revision; do not add invalidation hooks, add
+    state to the history instead.
+  - **Exact or labeled.** Report facts decided on triangles; anything that rests on boxes
+    or sampling must say so (`exact=False`, `"bounds"`, `visible_from`'s samples). Never
+    call a box overlap a collision.
+  - **One ray core.** Rays go through `rendering/raytrace` (`SceneAccel`, the watertight
+    test); rendered surfaces through `PathScene.trace`. Use the renderers' world matrices
+    (`index.worlds`), so queries, picks and renders agree.
+  - **Verify against references.** Check kernels with `tests/test_spatial_kernels.py`
+    (independent references in `tests/spatial_helpers.py`) and queries with the brute-force
+    tests in `tests/test_spatial_queries.py`; a new query also needs a JSON request
+    (`spatial/request.py`), a case in `tests/test_spatial_cli.py` and docs.
+
 ## Using Aether3D from an agent
 
 - Prefer ids (`obj.id`) over names for durable references.
@@ -138,6 +156,12 @@ apply to agents too.
   `goto(name)` to try something and come back. On the command line, `aether3d history
   start PROJECT` makes a project keep a history file, then `aether3d history undo
   PROJECT` and `show`, `redo`, `checkpoint`, `goto` and `verify` work across commands.
+- Ask where things are instead of guessing from transforms: `scene.raycast`,
+  `closest_point`, `nearest_objects`, `contains_point`, `overlaps`, `query_region`,
+  `pick`, `line_of_sight`, `relation`, or `aether3d query QUERY PROJECT KEY=VALUE --json`
+  (`aether3d query describe PROJECT --json` gives a compact summary of every object).
+  Tag objects (`--add-tag`, `obj.tags`) and find them with `find_objects` / `query find`.
+  Match on `QueryError.code`; `contains_point` says `"undefined"` for open meshes.
 - Use `aether3d inspect PATH --json` to read a project's structure and
   `aether3d validate PATH --json` after editing a `.aether` file by hand.
   Error responses include a `location` such as `scene.objects[2].transform`.
