@@ -240,6 +240,7 @@ class SceneAccel:
     root_lo: np.ndarray  # (3,) world bounds of the scene
     root_hi: np.ndarray
     stack_size: int  # traversal stack entries per ray (see build)
+    top_nodes: int = 0  # nodes 0 .. top_nodes - 1 are the top level (world space)
     traced: TraversalStats = field(default_factory=TraversalStats)
     info: dict = field(default_factory=dict)
     blas: tuple[MeshBLAS, ...] = ()
@@ -333,6 +334,7 @@ class SceneAccel:
             # Descending one level pops one entry and pushes at most two; a top-level
             # leaf pushes up to LEAF_SIZE instance roots.
             stack_size=top.depth + LEAF_SIZE + max([b.bvh.depth for b in mesh_blas], default=0) + 2,
+            top_nodes=top.node_count,
             blas=tuple(mesh_blas),
         )
         skipped = sum(b.skipped for b in mesh_blas)

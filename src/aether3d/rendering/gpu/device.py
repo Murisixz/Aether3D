@@ -41,6 +41,7 @@ from collections import deque
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from ...errors import RenderError
@@ -54,6 +55,8 @@ INSTALL_HINT = (
 ADAPTER_ENV = "AETHER3D_GPU_ADAPTER"
 DEBUG_ENV = "AETHER3D_GPU_DEBUG"
 BACKENDS_ENV = "AETHER3D_GPU_BACKENDS"
+DXC_ENV = "AETHER3D_GPU_DXC"
+"""Path of ``dxcompiler.dll``: Direct3D 12 then compiles shaders with DXC instead of FXC."""
 
 WANTED_FEATURES = ("texture-adapter-specific-format-features", "timestamp-query")
 """Optional features requested when the adapter has them (more MSAA counts; GPU timings)."""
@@ -61,8 +64,10 @@ RAISED_LIMITS = (
     "max-texture-dimension-2d",
     "max-storage-buffer-binding-size",
     "max-buffer-size",
+    "max-storage-buffers-per-shader-stage",
 )
-"""Limits requested at the adapter's maximum (larger images, meshes and buffers)."""
+"""Limits requested at the adapter's maximum (larger images, meshes and buffers; the path
+tracer's kernel reads 11 storage buffers, WebGPU's default allows 8)."""
 REPORTED_LIMITS = (
     "max-texture-dimension-2d",
     "max-texture-array-layers",
@@ -111,6 +116,7 @@ _SOFTWARE_NAMES = (
 _NATIVE_API = {"linux": "vulkan", "darwin": "metal", "win32": "d3d12"}
 
 _lock = threading.RLock()
+_dxc_path: str | None = None  # the dxcompiler.dll Direct3D 12 compiles with (None: FXC)
 _wgpu: Any = None
 _instance_notes: list[str] = []
 _adapters: list[tuple[AdapterInfo, Any]] | None = None
@@ -179,7 +185,7 @@ def load_wgpu() -> Any:
 
 
 def _configure_instance() -> None:
-    """Apply AETHER3D_GPU_DEBUG / AETHER3D_GPU_BACKENDS (must run before the first enumeration)."""
+    """Apply AETHER3D_GPU_DEBUG / _BACKENDS / _DXC (must run before the first enumeration)."""
     flags: list[str] = []
     backends: list[str] = []
     if os.environ.get(DEBUG_ENV, "").strip().lower() not in ("", "0", "false", "no", "off"):
@@ -197,15 +203,34 @@ def _configure_instance() -> None:
                     hint="use a comma-separated list of vulkan, metal, d3d12, opengl",
                 )
             backends.append(names[api])
-    if not flags and not backends:
+    compiler: dict[str, Any] = {}
+    dxc = os.environ.get(DXC_ENV, "").strip()
+    if dxc:
+        path = Path(dxc)
+        if path.is_dir():
+            path = path / "dxcompiler.dll"
+        if not path.is_file():
+            raise RenderError(
+                "GPU_UNAVAILABLE",
+                f"{DXC_ENV} names no file: {str(path)!r}",
+                DXC_ENV,
+                hint="give the path of dxcompiler.dll (Windows SDK, or a DirectX Shader "
+                "Compiler release), or unset it to compile with FXC",
+            )
+        compiler = {"dx12_compiler": "dxc", "dxc_path": str(path.absolute())}
+    if not flags and not backends and not compiler:
         return
     try:
         from wgpu.backends.wgpu_native.extras import set_instance_extras
 
-        set_instance_extras(backends=backends or ["All"], flags=flags or ["Default"])
+        set_instance_extras(backends=backends or ["All"], flags=flags or ["Default"], **compiler)
     except Exception as exc:  # the instance already exists (wgpu used before Aether3D)
-        _instance_notes.append(f"{DEBUG_ENV}/{BACKENDS_ENV} not applied: {exc}")
+        _instance_notes.append(f"{DEBUG_ENV}/{BACKENDS_ENV}/{DXC_ENV} not applied: {exc}")
         return
+    if compiler:
+        global _dxc_path
+        _dxc_path = compiler["dxc_path"]
+        _instance_notes.append(f"Direct3D 12 compiles shaders with DXC ({_dxc_path})")
     if flags:
         _instance_notes.append("GPU validation enabled (wgpu validation and debug layers)")
     if backends:
@@ -451,6 +476,32 @@ def ranked(adapters: list[tuple[AdapterInfo, Any]], query: AdapterQuery) -> list
     return sorted((a for a in adapters if query.matches(a[0])), key=lambda a: _rank(a[0]))
 
 
+def pathtrace_support(info: AdapterInfo) -> str | None:
+    """Why the GPU path tracer cannot run on an adapter (``None``: it can).
+
+    Direct3D 12 is the exception, measured on GitHub's Windows runners (Microsoft WARP,
+    Direct3D 12 in software; see docs/RENDER_QUALITY.md). FXC, its default shader
+    compiler, needed about 13 minutes for the path tracing kernel, and the code it made
+    crashed WARP (heap corruption) at the first dispatch. With DXC (``AETHER3D_GPU_DXC``)
+    the kernel compiled in seconds and ran, but WARP did not finish a 24x24 test render
+    in 36 minutes. So the path tracer needs DXC on Direct3D 12, and never runs on WARP.
+    """
+    if info.backend != "d3d12":
+        return None
+    if info.software:
+        return (
+            "Microsoft WARP (Direct3D 12 in software) cannot run the GPU path tracer: "
+            "compiled with FXC its kernel crashed WARP, and compiled with DXC a 24x24 test "
+            "render did not finish in 36 minutes"
+        )
+    if _dxc_path is None:
+        return (
+            "on Direct3D 12 the GPU path tracer needs the DXC shader compiler: FXC, the "
+            "default, needs about 13 minutes for its kernel, and FXC's code crashed WARP"
+        )
+    return None
+
+
 def recommended(adapters: list[tuple[AdapterInfo, Any]]) -> AdapterInfo | None:
     """The adapter ``"auto"`` tries first."""
     order = ranked(adapters, AdapterQuery())
@@ -618,11 +669,16 @@ def _create_context(wgpu: Any, info: AdapterInfo, adapter: Any) -> GPUContext:
     return context
 
 
-def get_context(adapter: Any = None) -> tuple[GPUContext, list[dict[str, Any]]]:
+def get_context(
+    adapter: Any = None, *, path_tracer: bool = False
+) -> tuple[GPUContext, list[dict[str, Any]]]:
     """The context for an adapter selection, creating its device on first use.
 
     Returns the context and the adapters that were tried and failed before it
-    (as dicts with ``adapter``, ``code`` and ``message``).
+    (as dicts with ``adapter``, ``code`` and ``message``). With ``path_tracer`` only
+    adapters that can run the GPU path tracer are considered (see
+    :func:`pathtrace_support`): on a Windows machine with a GPU, ``"auto"`` then
+    picks the GPU's Vulkan adapter rather than its Direct3D 12 one.
     """
     wgpu = load_wgpu()
     query = parse_adapter_query(adapter)
@@ -646,6 +702,25 @@ def get_context(adapter: Any = None) -> tuple[GPUContext, list[dict[str, Any]]]:
                 hint="`aether3d gpu info` lists the adapters and how to select them",
                 details={"adapters": [i.to_dict(features=False) for i, _ in adapters]},
             )
+        if path_tracer:
+            reasons = [(info, pathtrace_support(info)) for info, _ in candidates]
+            usable = [c for c, (_, why) in zip(candidates, reasons, strict=True) if why is None]
+            if not usable:
+                info, why = reasons[0]
+                hint = (
+                    "use a hardware adapter, or backend='path' (the CPU path tracer)"
+                    if info.software
+                    else f"set {DXC_ENV} to the path of dxcompiler.dll, select a Vulkan adapter "
+                    "(adapter='vulkan'), or use backend='path' (the CPU path tracer)"
+                )
+                raise RenderError(
+                    "GPU_FEATURE_UNSUPPORTED",
+                    f"{info.label}: {why}",
+                    "adapter",
+                    hint=hint,
+                    details={"adapters": [{"adapter": i.label, "reason": w} for i, w in reasons]},
+                )
+            candidates = usable
         failures: list[dict[str, Any]] = []
         for info, raw in candidates:
             context = _contexts.get(info.key)

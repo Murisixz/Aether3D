@@ -760,7 +760,7 @@ def _path_options(args: argparse.Namespace) -> tuple[dict | None, Any]:
     ao_given = {key: getattr(args, flag) for flag, key in _AO_FLAGS.items()}
     ao_given = {k: v for k, v in ao_given.items() if v is not None}
     ao: Any = ao_given or (True if (args.ao or args.ao_only) else None)
-    if args.backend != "path":
+    if args.backend not in ("path", "gpu_path"):
         given = [f"--{f.replace('_', '-')}" for f in _PATH_FLAGS if getattr(args, f) is not None]
         given += [f"--{f.replace('_', '-')}" for f in _AO_FLAGS if getattr(args, f) is not None]
         given += [
@@ -771,9 +771,16 @@ def _path_options(args: argparse.Namespace) -> tuple[dict | None, Any]:
         if given:
             verb = "applies" if len(given) == 1 else "apply"
             raise CommandError(
-                "UsageError", f"{', '.join(given)} {verb} to the path tracer: add --backend path"
+                "UsageError",
+                f"{', '.join(given)} {verb} to the path tracer: add --backend path (CPU) or "
+                "--backend gpu_path (GPU)",
             )
         return None, None
+    if args.backend == "gpu_path" and args.workers is not None:
+        raise CommandError(
+            "UsageError",
+            "--workers sets the CPU path tracer's processes; --backend gpu_path runs on the GPU",
+        )
     if args.samples is not None:
         raise CommandError(
             "UsageError",
@@ -799,10 +806,15 @@ def _write_passes(result: Any, directory: Path, force: bool) -> list[str]:
 def _render_summary(result: Any, path: Path, written: Path) -> str:
     stats = result.stats
     backend = result.backend
-    if backend["name"] == "path":
+    if backend["name"] in ("path", "gpu_path"):
         what = "AO preview" if backend["integrator"] == "ao" else f"{backend['bounces']} bounces"
+        where = (
+            "on the CPU"
+            if backend["name"] == "path"
+            else f"on the GPU ({backend['adapter']['name']})"
+        )
         how = (
-            f"path tracer on the CPU: {backend['samples_rendered']} samples per pixel, {what}, "
+            f"path tracer {where}: {backend['samples_rendered']} samples per pixel, {what}, "
             f"seed {backend['seed']}, {stats['rays']:,} rays "
             f"({stats['rays_per_second'] / 1e6:.2f} M rays/s)"
         )
@@ -1442,10 +1454,11 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p_render.add_argument("--force", action="store_true", help="overwrite an existing image")
     p_render.add_argument(
         "--backend",
-        choices=["cpu", "gpu", "auto", "path"],
+        choices=["cpu", "gpu", "auto", "path", "gpu_path"],
         default="cpu",
-        help="cpu (default), gpu (fails if no usable GPU), auto (GPU if available, else CPU) "
-        "or path (the path tracer: global illumination on the CPU, much slower)",
+        help="cpu (default), gpu (fails if no usable GPU), auto (GPU if available, else CPU), "
+        "path (the path tracer: global illumination on the CPU, much slower) or gpu_path "
+        "(the same path tracer on the GPU; fails if no usable GPU)",
     )
     p_render.add_argument(
         "--tonemap",

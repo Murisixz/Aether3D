@@ -15,7 +15,7 @@ from .._version import __version__
 from ..diagnostics import INFO, WARNING, Diagnostic, worst_severity
 from ..errors import RenderError
 from . import cpu
-from .backends import Antialiasing, antialiasing_plan, check_backend
+from .backends import PATH_BACKENDS, Antialiasing, antialiasing_plan, check_backend
 from .camera import Camera, CameraFrame, frame_from_matrix
 from .framing import AUTO_VIEW_DIRECTION, compute_framing, orientation_frame, target_points
 from .png import encode_png
@@ -118,6 +118,14 @@ class RenderResult:
             b = self.backend
             text["Source"] = (
                 f"Aether3D path tracer on the CPU (NumPy), {b.get('samples')} samples per pixel, "
+                f"{b.get('bounces')} bounces, seed {b.get('seed')}"
+            )
+        elif self.backend.get("name") == "gpu_path":
+            b = self.backend
+            adapter = b.get("adapter", {})
+            text["Source"] = (
+                f"Aether3D path tracer on the GPU (wgpu compute, {adapter.get('backend')}) on "
+                f"{adapter.get('name')}, {b.get('samples')} samples per pixel, "
                 f"{b.get('bounces')} bounces, seed {b.get('seed')}"
             )
         return encode_png(self.image, text=text)
@@ -273,33 +281,34 @@ def render(
     requested = check_backend(backend)
     tonemap = check_tonemap(tonemap)
     shadow_settings = ShadowSettings.coerce(shadows)
-    if requested != "path":
+    if requested not in PATH_BACKENDS:
         for name, value in (("path", path), ("ao", ao), ("progress", progress)):
             if value is not None:
                 raise RenderError(
                     "INVALID_SETTINGS",
-                    f"{name} applies to the path tracer (backend='path'), not to "
+                    f"{name} applies to the path tracer (backend='path' or 'gpu_path'), not to "
                     f"backend={requested!r}",
                     name,
-                    hint="use backend='path', or remove the option",
+                    hint="use backend='path' or 'gpu_path', or remove the option",
                 )
     path_settings = ao_settings = None
-    if requested == "path":
-        for name, value in (
-            ("msaa", msaa),
-            ("supersample", supersample),
-            ("adapter", adapter),
-            ("samples", samples),
-        ):
+    if requested in PATH_BACKENDS:
+        ignored = [("msaa", msaa), ("supersample", supersample), ("samples", samples)]
+        if requested == "path":
+            ignored.append(("adapter", adapter))
+        for name, value in ignored:
             if value is not None:
                 hint = (
                     "set the path tracer's samples per pixel with path={'samples': N}"
                     if name == "samples"
-                    else "remove the option (the path tracer runs on the CPU)"
+                    else "remove the option (the path tracer runs on the CPU; "
+                    "backend='gpu_path' runs it on a GPU adapter)"
+                    if name == "adapter"
+                    else "remove the option (the path tracer antialiases with its samples)"
                 )
                 raise RenderError(
                     "INVALID_SETTINGS",
-                    f"{name} does not apply to the path tracer (backend='path')",
+                    f"{name} does not apply to the path tracer (backend={requested!r})",
                     name,
                     hint=hint,
                 )
@@ -312,6 +321,13 @@ def render(
                 hint="remove shadows=, or use backend='gpu'",
             )
         path_settings = PathSettings.coerce(path)
+        if requested == "gpu_path" and path_settings.workers != 0:
+            raise RenderError(
+                "INVALID_SETTINGS",
+                "workers sets the CPU path tracer's processes; backend='gpu_path' runs on the GPU",
+                "path.workers",
+                hint="remove workers, or use backend='path'",
+            )
         ao_settings = AOSettings.coerce(ao)
         if path_settings.integrator == "ao" and ao_settings is None:
             ao_settings = AOSettings()  # the AO preview needs AO settings: the defaults
@@ -405,7 +421,7 @@ def render(
     diagnostics += list(rs.diagnostics)
     plan = None if shadow_settings is None else plan_shadows(rs, shadow_settings, aspect)
 
-    if requested == "path":
+    if requested in PATH_BACKENDS:
         return _finish_path(
             rs,
             settings,
@@ -418,6 +434,8 @@ def render(
             t_start,
             tonemap,
             progress,
+            requested,
+            adapter,
         )
     if requested in ("gpu", "auto"):
         try:
@@ -668,19 +686,75 @@ def _finish_path(
     t_start: float,
     tonemap: str,
     progress: Any,
+    backend: str = "path",
+    adapter: Any = None,
 ) -> RenderResult:
-    from . import pathtrace
+    gpu_info: dict[str, Any] = {}
+    if backend == "gpu_path":
+        from .gpu import device as gpu_device
+        from .gpu import pathtrace as gpu_pathtrace
 
-    data = pathtrace.render_scene(
-        rs,
-        settings.width,
-        settings.height,
-        path,
-        ao,
-        cull=settings.cull,
-        limits=limits,
-        progress=progress,
-    )
+        t0 = time.perf_counter()
+        context, failures = gpu_device.get_context(adapter, path_tracer=True)
+        t_init = time.perf_counter() - t0
+        fresh = context.renders == 0
+        data = gpu_pathtrace.render_scene(
+            context,
+            rs,
+            settings.width,
+            settings.height,
+            path,
+            ao,
+            cull=settings.cull,
+            limits=limits,
+            progress=progress,
+        )
+        context.renders += 1
+        info = context.info
+        for failure in failures:
+            diagnostics.append(
+                Diagnostic(
+                    "ADAPTER_FALLBACK",
+                    WARNING,
+                    f"{failure['adapter']} could not be used ([{failure['code']}] "
+                    f"{failure['message']}); rendered on {info.label} instead",
+                    "adapter",
+                )
+            )
+        if info.software:
+            diagnostics.append(
+                Diagnostic(
+                    "SOFTWARE_ADAPTER",
+                    INFO,
+                    f"{info.name} is a software implementation of {info.backend}: the GPU "
+                    "path tracer ran on the CPU, not on graphics hardware",
+                    "adapter",
+                )
+            )
+        data.timings["init"] = t_init
+        gpu_info = {
+            "api": "wgpu",
+            "versions": gpu_device.wgpu_versions(),
+            "adapter": info.to_dict(features=False),
+            "hardware_ray_tracing": False,
+            "device_created": fresh,
+            "device_init_seconds": context.init_seconds if fresh else 0.0,
+            "dispatch": data.info["dispatch"],
+            "gpu_bytes": data.info["gpu_bytes"],
+        }
+    else:
+        from . import pathtrace
+
+        data = pathtrace.render_scene(
+            rs,
+            settings.width,
+            settings.height,
+            path,
+            ao,
+            cull=settings.cull,
+            limits=limits,
+            progress=progress,
+        )
     diagnostics += data.diagnostics
     t0 = time.perf_counter()
     linear = data.linear
@@ -704,29 +778,46 @@ def _finish_path(
         **counts,
         "rays": rays + counts.get("center_rays", 0),
         "rays_per_second": rays / max(timings.get("trace", 0.0), 1e-9),
-        "cpu_seconds": data.info["cpu_seconds"],
         "pixels_covered": int(np.count_nonzero(data.coverage > 0)),
         "noise": data.info["noise"],
         "timings": timings,
     }
     cam_info = rs.camera.to_dict(aspect)
     cam_info["temporary"] = frame
-    backend_info = {
-        "name": "path",
-        "requested": "path",
-        "device": "cpu",
-        "implementation": "Aether3D path tracer (NumPy)",
-        "gpu": False,
-        "processes": data.info["workers"],
-        "parallel": data.info["parallel"],
-        **path.to_dict(),
-        "samples_rendered": counts["samples_per_pixel"],
-        "ao": None if ao is None else ao.to_dict(),
-        "environment": data.info["environment"],
-        "lights": data.info["lights"],
-        "bvh": data.info["bvh"],
-        "work_estimate": data.info["work_estimate"],
-    }
+    if backend == "gpu_path":
+        path_info = path.to_dict()
+        path_info.pop("workers")
+        backend_info = {
+            "name": "gpu_path",
+            "requested": "gpu_path",
+            "device": "gpu",
+            "implementation": "Aether3D GPU path tracer (wgpu compute; software BVH traversal)",
+            "gpu": True,
+            **gpu_info,
+            **path_info,
+        }
+    else:
+        stats["cpu_seconds"] = data.info["cpu_seconds"]
+        backend_info = {
+            "name": "path",
+            "requested": "path",
+            "device": "cpu",
+            "implementation": "Aether3D path tracer (NumPy)",
+            "gpu": False,
+            "processes": data.info["workers"],
+            "parallel": data.info["parallel"],
+            **path.to_dict(),
+        }
+    backend_info.update(
+        {
+            "samples_rendered": counts["samples_per_pixel"],
+            "ao": None if ao is None else ao.to_dict(),
+            "environment": data.info["environment"],
+            "lights": data.info["lights"],
+            "bvh": data.info["bvh"],
+            "work_estimate": data.info["work_estimate"],
+        }
+    )
     if settings.cull != "none":
         diagnostics.append(
             Diagnostic(

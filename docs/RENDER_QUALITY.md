@@ -7,11 +7,14 @@ emissive surfaces light their surroundings; shadows come from real visibility
 and soften with the size of the light. Ambient occlusion is available as a
 separate pass and a fast preview.
 
-It runs **on the CPU**, in NumPy, in one process or in several forked worker
-processes (Linux). It does not use the GPU: renders made with it say so in
-their report (`result.backend["device"] == "cpu"`) and in the PNG's `Source`
-text chunk. The rasterizers (`"cpu"`, `"gpu"`, `"auto"`) are unchanged and
-much faster. At 640x360 with 16 samples per pixel and 4 bounces, the
+It runs **on the CPU** (`backend="path"`), in NumPy, in one process or in
+several forked worker processes (Linux). Since 0.8.1 the same path tracer also
+runs **on the GPU** (`backend="gpu_path"`): a wgpu compute kernel traces the
+CPU path tracer's paths -- same estimator, same random numbers -- much faster
+([On the GPU](#on-the-gpu-backendgpu_path)). Every render says where it ran,
+in its report (`result.backend["device"]` is `"cpu"` or `"gpu"`) and in the
+PNG's `Source` text chunk. The rasterizers (`"cpu"`, `"gpu"`, `"auto"`) are
+unchanged and much faster still. At 640x360 with 16 samples per pixel and 4 bounces, the
 textured castle takes 15.5 s on 8 processes, against 1.4 s on the CPU
 rasterizer and 0.03 s on the GPU ([Performance](#performance)). The
 rasterizers stay the tools for previews and interactive work; the path
@@ -37,6 +40,7 @@ white surfaces.*
 - [Color management and output](#color-management-and-output)
 - [Passes, statistics and diagnostics](#passes-statistics-and-diagnostics)
 - [Python and CLI reference](#python-and-cli-reference)
+- [On the GPU: `backend="gpu_path"`](#on-the-gpu-backendgpu_path)
 - [Performance](#performance)
 - [Showcase examples](#showcase-examples)
 - [How path-traced images differ from raster images](#how-path-traced-images-differ-from-raster-images)
@@ -149,12 +153,11 @@ scene.render(backend="path")  -> rendering/renderer.py
 
 ### Decisions and alternatives
 
-- **CPU first, in NumPy.** A GPU path tracer (wgpu compute shaders) would
-  be much faster on the same machine. It would also need a second
-  implementation of traversal, materials (including the procedural graph
-  interpreter), light sampling and MIS, each independently verified. Stage 8
-  delivers one verified CPU implementation and documents GPU path tracing as
-  future work; it does not claim a GPU path tracer exists.
+- **CPU first, then the GPU.** Stage 8 delivered one verified CPU
+  implementation. The GPU path tracer (0.8.1) is a port of it, not a second
+  design: the same estimator, constants, random numbers and scene data, with
+  the GPU rasterizer's material code. Every GPU image can therefore be
+  checked against the CPU's, path for path.
 - **Native acceleration was considered, not added.** Profiles show
   traversal taking 58–67% of render time (the three benchmark scenes, one
   process). Compiled kernels (for example with numba, BSD-licensed) could
@@ -598,6 +601,139 @@ host memory:
 Oversized requests fail with `RESOURCE_LIMIT` before any work is done.
 `max_dimension` and `max_triangles` apply as on the rasterizers.
 
+## On the GPU: `backend="gpu_path"`
+
+Since 0.8.1 the path tracer also runs on a GPU adapter:
+
+```python
+result = scene.render(backend="gpu_path", path={"samples": 1024, "bounces": 6})
+result.backend["device"], result.backend["adapter"]["name"]  # "gpu", "NVIDIA GeForce ..."
+```
+
+```console
+$ aether3d render castle.aether -o castle.png --backend gpu_path --spp 512 --bounces 4
+```
+
+It takes the same `path`, `ao`, `progress`, `tonemap` and `limits` options as
+`backend="path"` (except `workers`), and `adapter` selects the GPU as for
+`backend="gpu"` ([GPU.md](GPU.md)). Without a usable adapter it fails with
+a `GPU_*` error; it never falls back to the CPU silently. `backend="path"`
+is the fallback you choose.
+
+**What runs where.**
+- **On the CPU, as for `backend="path"`:** the scene preparation
+  (`PathScene`: the two-level BVH with its BLAS cache, the emitter table,
+  the environment model) and the GPU rasterizer's material packing and texel
+  pool.
+- **In one compute kernel:** everything per path
+  (`rendering/gpu/wgsl/pathtrace.wgsl`):
+  - camera rays with differentials;
+  - BVH traversal and watertight ray/triangle tests;
+  - materials (`material.wgsl`'s `evaluate_surface`, the GPU rasterizer's
+    own code: textures, procedural graphs, normal maps, triplanar mapping,
+    face groups, cut-outs);
+  - the BSDF and its sampling;
+  - next-event estimation of lights and emitters with MIS;
+  - sized lights, the environment, Russian roulette, the clamp;
+  - AO and the pixel-center pass.
+
+  Each invocation traces whole paths for one pixel and adds them to that
+  pixel's float32 sums. The sums are read back once, and the passes and
+  statistics are computed as on the CPU.
+- **On the RTX 4060 of the development machine,** the kernel runs on the
+  shader cores through Vulkan. Traversal is software; the RT cores are not
+  used.
+
+**The same paths as the CPU.** The kernel draws exactly the CPU path
+tracer's random numbers: SplitMix64 computed in pairs of 32-bit integers,
+with the same slots per decision. A test checks every bit a float32 keeps.
+With the same scene, settings and seed, both backends therefore trace the
+same paths, and their images differ by float32 rounding:
+- **Most pixels** agree to about 1e-5 (the Cornell box: median relative
+  difference 7e-6).
+- **A few paths change** when rounding flips a discrete decision: a ray
+  grazing an edge, a Russian-roulette draw within 2^-24 of its threshold, a
+  texel at the alpha cutoff. That pixel then differs like a different
+  sample.
+- **Procedural textures** evaluate in float32 on the GPU and in float64 on
+  the CPU, so textured scenes differ a little more (the castle: median 6e-4,
+  image means equal to 0.02%).
+
+`gpu_path_vs_cpu.png` below shows one such comparison.
+
+Feature parity with `backend="path"`:
+
+| | GPU path tracer |
+|---|---|
+| Estimator, BSDF, lights, MIS, sized lights, emitters, environment, RR, clamp | the CPU's, step for step |
+| Materials and textures | the same data, evaluated by the GPU rasterizer's code (float32) |
+| Passes, statistics, noise estimate, `progress` and stopping | the same |
+| AO pass and AO preview | the same |
+| Reproducibility | bit for bit on one device and driver, however the image is tiled |
+| `workers` | not applicable (rejected) |
+| Float32 margins | rays leave surfaces 256 float steps off them (CPU: 1e-9 relative); shadow rays stop 1e-4 short of a point on an emitter (CPU: 1e-7); a normal counts as horizontal for the sampling frame when its z is within 1e-5 (CPU: 1e-12) |
+
+**Limits.**
+- **GPU memory:** the kernel keeps 22 float32 sums per pixel (1920x1080:
+  183 MB), plus a copy to read them back. `RenderLimits.max_gpu_memory`
+  bounds the total, and each buffer must fit the device's binding limit:
+  2 GiB on the RTX 4060, 128 MiB on lavapipe (about 1.5 megapixels).
+- **BVH depth:** traversal keeps 64 entries per ray; scenes whose BVH
+  needs more fail with `GPU_LIMIT_EXCEEDED` (use `backend="path"`).
+- **Work per dispatch:** samples are dispatched in tiles of at most 512x512
+  pixels and about a million pixel-samples, which keeps every dispatch short.
+- **Graphics APIs:** tested on Vulkan (the RTX 4060 and lavapipe, locally and
+  in CI) and Metal (the paravirtual device of GitHub's macOS runners).
+- **Direct3D 12 needs DXC, and WARP is refused.** This is what was measured on
+  GitHub's Windows runners, with Microsoft WARP (Direct3D 12 in software):
+  - FXC, Direct3D 12's default shader compiler, took about 13 minutes
+    (725-772 s) to compile the kernel. FXC took 51 s without BVH traversal and
+    102 s without material evaluation, so the time comes from the two together.
+  - FXC's code crashed WARP (heap corruption) at the first dispatch.
+  - With DXC the kernel compiled in 12 s and ran: the random-number test
+    passed. But WARP did not finish the next test, a 24x24 Cornell box, in 36
+    minutes.
+
+  So the path tracer needs DXC on Direct3D 12 (`AETHER3D_GPU_DXC`: the path of
+  `dxcompiler.dll`, from the Windows SDK or a DirectX Shader Compiler release),
+  and refuses WARP. A refused adapter fails at once with
+  `GPU_FEATURE_UNSUPPORTED` and the reason. With `adapter="auto"`, only
+  adapters that can run the path tracer are considered: a Windows GPU is then
+  used through Vulkan, while the rasterizers keep Direct3D 12. Direct3D 12 on
+  hardware, with DXC, has not been tested.
+- **Compiling the kernel:** once per process and device. Vulkan and Metal take
+  about a second, DXC 12 s. A compile over a minute is reported as
+  `SLOW_SHADER_COMPILE`.
+
+**Performance.** These measurements are one run each, on the RTX 4060
+Laptop GPU, with the device already created:
+
+| Scene (showcase settings) | Size | spp | Bounces | GPU | CPU, 8 processes | Speed-up | Rays | GPU M rays/s |
+|---|---|---|---|---|---|---|---|---|
+| Cornell | 640x640 | 256 | 8 | 9.7 s | 9.5 min | 58x | 616 M | 64 |
+| Metals | 960x540 | 128 | 4 | 3.0 s | 3.3 min | 65x | 191 M | 66 |
+| Window room | 960x640 | 512 | 6 | 43.3 s | 40.0 min | 56x | 1,905 M | 44 |
+| Castle | 1920x1080 | 64 | 4 | 18.2 s | 15.6 min | 51x | 580 M | 33 |
+| Hero | 1280x720 | 64 | 4 | 2.6 s | 2.4 min | 55x | 159 M | 67 |
+
+Both columns trace the same paths: the GPU's ray counts equal the CPU's to
+within 0.001% (the few paths float32 rounding changes). The CPU times are
+those of the showcase renders below
+(their JSON records); `benchmarks/bench_gpu_pathtrace.py` re-renders only on
+the GPU.
+
+- **51 to 65 times the CPU's eight processes** on these scenes.
+- **Traversal is fast and shading dominates:**
+  - camera and AO rays alone (the castle, AO preview) run at
+    228 M rays/s;
+  - full paths run at 33-67 M rays/s;
+  - the textured castle is the slowest, because its procedural materials
+    (noise, fbm and voronoi for several texture slots and projections) are
+    evaluated at every hit, as on the rasterizer.
+- **Where it could go faster:** a wavefront design (one kernel per stage,
+  sorting by material) would trade the single state-machine kernel's
+  divergence and register pressure for more passes. It is not implemented.
+
 ## Performance
 
 Measured with [`benchmarks/bench_pathtrace.py`](../benchmarks/bench_pathtrace.py)
@@ -758,6 +894,41 @@ background color) and path traced with 4 bounces (indirect light clamped at
 3). In the path-traced image the sky lights the shaded sides, and the
 polished hilt reflects the grass and the sky.*
 
+### On the GPU
+
+[`examples/gpu_path_showcase.py`](../examples/gpu_path_showcase.py) renders
+the same scenes with `backend="gpu_path"` on the RTX 4060 Laptop GPU, with
+8 to 16 times the samples (one run each, from `gpu_path_showcase.json`):
+
+| Image | Size | spp | Bounces | Rays | M rays/s | Noise | Time |
+|---|---|---|---|---|---|---|---|
+| gpu_path_cornell.png | 640x640 | 4096 | 8 | 9.9 G | 64 | 1.1% | 2.6 min |
+| gpu_path_metals.png | 960x540 | 2048 | 4, clamp 3 | 3.1 G | 67 | 0.5% | 46 s |
+| gpu_path_window.png | 960x640 | 4096 | 6 | 15.2 G | 45 | 4.5% | 5.7 min |
+| gpu_path_castle.png | 1920x1080 | 512 | 4 | 4.6 G | 32 | 2.1% | 2.4 min |
+| gpu_path_hero.png | 1280x720 | 1024 | 4, clamp 3 | 2.5 G | 63 | 0.4% | 40 s |
+
+![The Cornell box at 160x160, 16 samples: CPU path tracer | GPU path tracer | difference x 50](../examples/output/gpu_path_vs_cpu.png)
+
+*The check behind these images: the Cornell box at 160x160, 16 samples and
+8 bounces, path traced by the CPU and by the GPU with the same seed. The
+images share their noise pattern, sample for sample, because they trace the
+same paths; the difference (times 50) is black but for a few paths float32
+rounding changed (median relative difference 1e-5; 0.15% of values differ by
+more than 1%).*
+
+![The castle path traced on the GPU: 1920x1080, 512 samples per pixel](../examples/output/gpu_path_castle.png)
+
+*The textured castle at golden hour, 512 samples per pixel on the GPU (2.4
+minutes; the CPU's 64-sample render took 15.6 minutes).*
+
+| | |
+|---|---|
+| ![Cornell box](../examples/output/gpu_path_cornell.png) | ![Window room](../examples/output/gpu_path_window.png) |
+| *The Cornell box, 4096 samples, 8 bounces.* | *The window room, 4096 samples, 6 bounces: lit almost entirely by bounces (4.5% noise, against 10% at the CPU's 512 samples).* |
+| ![Metal spheres](../examples/output/gpu_path_metals.png) | ![The hero](../examples/output/gpu_path_hero.png) |
+| *The metal spheres, 2048 samples (indirect light clamped at 3, as on the CPU).* | *The blocky hero, 1024 samples.* |
+
 ## How path-traced images differ from raster images
 
 Same scene, same camera, same materials — the differences are what the path
@@ -884,8 +1055,10 @@ added: the path tracer needs only NumPy.
 
 ## Limitations and future work
 
-- **CPU only.** The path tracer does not use the GPU, and there is no
-  hardware ray tracing. A GPU path tracer (wgpu compute) is future work.
+- **No hardware ray tracing.** `gpu_path` traverses the BVH in its compute
+  kernel, on the GPU's shader cores; it does not use ray tracing units (RT
+  cores), which wgpu does not expose to Aether3D. The CPU path tracer remains
+  the reference, and the fallback where no GPU works.
 - **Speed.** NumPy keeps it portable but slow: preview-quality renders take
   seconds, final images minutes. Parallel tracing needs `fork()` and runs on
   Linux only; macOS and Windows trace in one process. Compiled traversal

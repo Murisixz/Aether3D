@@ -124,10 +124,12 @@ details, hybrid-laptop notes and troubleshooting. Without wgpu or a driver,
 
 ## Path tracing
 
-The path tracer (`render(backend="path")`, see
+The CPU path tracer (`render(backend="path")`, see
 [RENDER_QUALITY.md](RENDER_QUALITY.md)) needs nothing beyond the base
 install: it is written in NumPy and runs on every platform Aether3D
-supports. It does not use the GPU, so the `gpu` extra does not affect it.
+supports, without a GPU. The GPU path tracer (`backend="gpu_path"`) needs
+the `gpu` extra and a working adapter, like `backend="gpu"` (see GPU support
+above).
 
 On Linux it can trace with several CPU cores: it forks worker processes
 (`path={"workers": 0}`, the default, picks one per CPU, up to 8, for renders

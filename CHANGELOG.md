@@ -4,6 +4,94 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.8.1: GPU path tracing
+
+### Added
+
+- **The path tracer on the GPU: `render(backend="gpu_path")`**
+  ([docs/RENDER_QUALITY.md](docs/RENDER_QUALITY.md#on-the-gpu-backendgpu_path)).
+  A wgpu compute kernel runs the CPU path tracer's estimator on a GPU
+  adapter: on the development machine's RTX 4060, on its shader cores
+  through Vulkan.
+  - **The same paths as `backend="path"`.** The kernel draws exactly the
+    CPU path tracer's random numbers (SplitMix64 in 32-bit integer pairs),
+    so with the same settings both backends trace the same paths, and their
+    images agree to float32 rounding (the Cornell box: median relative
+    difference 7e-6, the same bounce-ray count).
+  - **The same scene data.** It uses the CPU path tracer's two-level BVH
+    (with its BLAS cache), emitter table and environment, and the GPU
+    rasterizer's materials, textures and procedural graphs.
+  - **Every feature of the CPU path tracer:**
+    - global illumination and metallic reflections;
+    - emissive area lights with MIS, sized lights, sky environments;
+    - alpha cut-outs and single-sided surfaces;
+    - AO and the AO preview;
+    - every pass and statistic, `progress` and stopping.
+  - **Reproducible:** bit for bit on one device, however the image is
+    tiled.
+  - **Fast:** on the Stage 8 showcase scenes at their CPU settings, the RTX
+    4060 is 51 to 65 times faster than the CPU path tracer with 8 processes
+    on the i9-12900H. The castle at 1920x1080, 64 samples, 4 bounces takes
+    18 s against 15.6 minutes.
+  - **Software traversal:** the BVH is traversed in the kernel; no hardware
+    ray tracing (RT cores) is used.
+- **CLI:** `aether3d render --backend gpu_path` with the path tracer's options
+  and `--adapter`.
+- **Graphics APIs:** tested on Vulkan (the RTX 4060 and lavapipe) and Metal
+  (GitHub's macOS runners).
+- **`AETHER3D_GPU_DXC`:** the path of `dxcompiler.dll` makes Direct3D 12
+  compile shaders with DXC instead of FXC, and the GPU path tracer needs it
+  there. Measured on GitHub's Windows runners (Microsoft WARP):
+  - FXC needed about 13 minutes for the kernel, and its code crashed WARP;
+  - DXC compiled it in 12 s, but WARP did not finish a 24x24 test render in
+    36 minutes.
+
+  So WARP is refused (`GPU_FEATURE_UNSUPPORTED`, with the reason). With
+  `adapter="auto"` the path tracer uses only adapters that can run it: a
+  Windows GPU through Vulkan. Direct3D 12 on hardware is untested. A compile
+  over a minute is reported as `SLOW_SHADER_COMPILE`.
+- **Examples:** `examples/gpu_path_showcase.py` renders the Stage 8 showcases on
+  the GPU with many more samples, and compares the CPU and GPU tracing the
+  same paths.
+- **Benchmark:** `benchmarks/bench_gpu_pathtrace.py` renders the showcase scenes
+  at their CPU settings on the GPU and compares with the recorded CPU times.
+- **Tests:** `tests/test_gpu_pathtrace.py` (29 tests):
+  - the GPU's random numbers equal the CPU's;
+  - per-pixel agreement with the CPU path tracer on every feature;
+  - an exact white furnace and the inverse-square law on the GPU;
+  - determinism across tilings, `progress` and stopping;
+  - honest reports, limits and errors, the CLI;
+  - the slow-compile report, the DXC setting, and the adapters that refuse the
+    path tracer.
+
+  The GPU CI jobs run them: lavapipe on Linux, with a quick GPU showcase run,
+  and Metal on macOS. On Windows, WARP refuses the path tracer, and the job
+  checks that refusal. The rasterizer tests run there twice, with FXC (the
+  default) and with the Windows SDK's DXC.
+
+### Changed
+
+- **Device limits:** GPU devices are created with the adapter's maximum
+  `max-storage-buffers-per-shader-stage` (the path tracer's kernel binds 11
+  storage buffers; WebGPU's default is 8). Rasterizer renders are unchanged.
+- **`SceneAccel`** records how many of its nodes form the top level
+  (`top_nodes`).
+- **`examples/showcase.py`** records GPU path-traced renders (the adapter
+  instead of the CPU processes).
+- **`backends.BACKENDS`** includes `"gpu_path"`.
+
+### Compatibility
+
+- **Unchanged images:**
+  - the CPU and GPU rasterizers and the CPU path tracer render as in 0.8.0;
+  - the render goldens and the path-traced golden image pass;
+  - `examples/gpu_render.py` reproduces its committed images pixel for
+    pixel.
+- **No format change and no new dependency** (wgpu is the existing optional
+  `gpu` extra).
+- **Changed test:** `test_gpu_selection::test_backend_names` pinned
+  `BACKENDS`, which gained `"gpu_path"`.
+
 ## 0.8.0: Render quality foundation (path tracing)
 
 ### Added

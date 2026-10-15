@@ -83,10 +83,14 @@ def record(name: str, result, seconds: float, output: Path | None = None) -> dic
         "backend": backend["name"],
         "seconds": round(seconds, 2),
     }
-    if backend["name"] == "path":
+    if backend["name"] in ("path", "gpu_path"):
+        entry["device"] = backend["device"]
+        if backend["name"] == "path":
+            entry["processes"] = backend["processes"]
+        else:
+            entry["adapter"] = backend["adapter"]["name"]
+            entry["api"] = backend["adapter"]["backend"]
         entry.update(
-            device=backend["device"],
-            processes=backend["processes"],
             samples=backend["samples_rendered"],
             bounces=backend["bounces"] if backend["integrator"] == "path" else None,
             seed=backend["seed"],
@@ -102,11 +106,16 @@ def record(name: str, result, seconds: float, output: Path | None = None) -> dic
     entry["exposure"] = result.color["exposure"]
     REPORT.append(entry)
     extra = ""
-    if backend["name"] == "path":
+    if backend["name"] in ("path", "gpu_path"):
         what = f"{entry['bounces']} bounces" if entry["bounces"] is not None else "AO only"
+        where = (
+            f"{entry['processes']} processes"
+            if backend["name"] == "path"
+            else f"on {entry['adapter']}"
+        )
         extra = (
-            f", {entry['samples']} spp, {what}, {entry['processes']} "
-            f"processes, {entry['rays']:,} rays ({entry['mrays_per_second']} M rays/s)"
+            f", {entry['samples']} spp, {what}, {where}, {entry['rays']:,} rays "
+            f"({entry['mrays_per_second']} M rays/s)"
         )
     elif backend["name"] == "gpu":
         extra = f", {entry['adapter']}"

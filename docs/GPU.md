@@ -689,7 +689,14 @@ Other environment variables:
 - `AETHER3D_GPU_BACKENDS=vulkan,metal,d3d12,opengl` limits which APIs wgpu
   tries;
 - `AETHER3D_GPU_ADAPTER` sets the default adapter;
-- `AETHER3D_GPU_CACHE_MB` sets the mesh cache budget.
+- `AETHER3D_GPU_CACHE_MB` sets the mesh cache budget;
+- `AETHER3D_GPU_DXC=C:\path\to\dxcompiler.dll` makes Direct3D 12 compile
+  shaders with DXC instead of FXC. The GPU path tracer needs it on Direct3D 12.
+  The DLL comes with the Windows SDK
+  (`C:\Program Files (x86)\Windows Kits\10\bin\<version>\x64`) and with
+  DirectX Shader Compiler releases. A path that does not exist is a
+  `GPU_UNAVAILABLE` error, and `aether3d gpu info` notes the compiler in use.
+  CI runs the GPU rasterizer tests with it on Windows.
 
 ## Testing and CI
 
@@ -785,7 +792,10 @@ Verified on the development machine:
   first render that needs another pipeline variant (an MSAA count, culling
   mode or masked shadows) took about 9 s more. This happens once per process:
   pipelines are cached for the device. Vulkan and Metal compile them in a
-  fraction of a second.
+  fraction of a second. FXC is much slower on the GPU path tracer's kernel:
+  about 13 minutes on that runner, against 12 s with DXC
+  (`AETHER3D_GPU_DXC`, below). The path tracer therefore needs DXC on
+  Direct3D 12, and refuses WARP (see RENDER_QUALITY.md).
 - **Readback cost.** Every GPU render reads back all auxiliary maps (depth,
   object index, coverage, linear color). That keeps results identical in
   shape to the CPU's, but costs readback time at very large sizes.
@@ -829,8 +839,10 @@ Verified on the development machine:
   - Better filtering replaces the PCF loop in `shadow_visibility()`.
   - Post-processing slots in between the scene and finalize passes, where
     linear HDR color is available.
-- **GPU path tracing (future).** wgpu exposes compute shaders, ray queries
-  (where hardware supports them) and timestamp queries. A GPU path tracer can
-  reuse the device, caches and `RenderScene`, the flat BVH layout of
-  `rendering/raytrace/` and the counter-based sampling of the CPU path tracer,
-  which gives it a verified reference.
+- **GPU path tracing (0.8.1): `backend="gpu_path"`.** The path tracer's
+  compute kernel (`gpu/pathtrace.py`, `wgsl/pathtrace.wgsl`) runs on the
+  same devices, with the same adapter selection, errors and material data as
+  the rasterizer. It reuses the flat BVH of `rendering/raytrace/` and the
+  CPU path tracer's counter-based sampling, which makes the CPU path tracer
+  its verified reference. Traversal is software: wgpu's ray queries are not
+  used. See [RENDER_QUALITY.md](RENDER_QUALITY.md#on-the-gpu-backendgpu_path).
