@@ -151,10 +151,6 @@ class Entry:
             self._tri_box = (np.minimum(np.minimum(a, b), c), np.maximum(np.maximum(a, b), c))
         return self._tri_box
 
-    def to_object(self, points: np.ndarray) -> np.ndarray:
-        """World points carried into the mesh's own coordinates."""
-        return np.linalg.solve(self.linear, (points - self.world[:3, 3]).T).T
-
 
 class _Instance:
     __slots__ = ("mesh", "world")
@@ -189,6 +185,9 @@ class SpatialIndex:
         self._render_scene: Any = None
         self._users: dict[int, list[Entry]] | None = None
         self._representatives: dict[int, np.ndarray] = {}
+        # Objects whose procedural geometry fails to evaluate: an error for the queries
+        # they take part in (as renders fail only for the objects they draw).
+        self.failed: dict[str, QueryError] = {}
         for k, obj in enumerate(scene):
             self.order[obj.id] = k
             if obj._mesh is None and obj._geometry is None:
@@ -197,13 +196,15 @@ class SpatialIndex:
                 mesh = obj.mesh  # procedural objects: the current evaluation (cached)
             except AetherError as exc:
                 code = getattr(exc, "code", type(exc).__name__)
-                raise QueryError(
+                self.failed[obj.id] = QueryError(
                     "GEOMETRY_EVALUATION_FAILED",
                     f"the geometry of {obj.name!r} could not be evaluated: [{code}] "
                     + getattr(exc, "message", str(exc)),
                     f"objects[{obj.name}]",
-                    hint="fix the procedural definition, or remove the object",
-                ) from None
+                    hint="fix the procedural definition, hide the object, or leave it out "
+                    "(exclude=...)",
+                )
+                continue
             if mesh is None or mesh.triangle_count == 0:
                 continue
             world = worlds[obj.id]
@@ -224,13 +225,18 @@ class SpatialIndex:
     ) -> list[Entry]:
         """The entries of ``objects`` (default: all), minus ``exclude``, visible only unless
         ``include_hidden``; in scene order."""
-        if objects is None:
-            chosen = self.entries
-        else:
-            ids = {self.resolve(o, "objects").id for o in _as_list(objects)}
-            chosen = [e for e in self.entries if e.obj.id in ids]
-        if exclude is not None:
-            drop = {self.resolve(o, "exclude").id for o in _as_list(exclude)}
+        ids = (
+            None if objects is None else {self.resolve(o, "objects").id for o in _as_list(objects)}
+        )
+        drop = (
+            set() if exclude is None else {self.resolve(o, "exclude").id for o in _as_list(exclude)}
+        )
+        for oid, error in self.failed.items():
+            obj = self.scene._objects[oid]
+            if (ids is None or oid in ids) and oid not in drop and (include_hidden or obj.visible):
+                raise error
+        chosen = self.entries if ids is None else [e for e in self.entries if e.obj.id in ids]
+        if drop:
             chosen = [e for e in chosen if e.obj.id not in drop]
         if not include_hidden:
             chosen = [e for e in chosen if e.visible]
@@ -261,6 +267,8 @@ class SpatialIndex:
     def entry(self, ref: Any, location: str = "object") -> Entry:
         """The entry of an object with geometry (``QueryError("NO_GEOMETRY")`` otherwise)."""
         obj = self.resolve(ref, location)
+        if obj.id in self.failed:
+            raise self.failed[obj.id]
         found = self.by_id.get(obj.id)
         if found is None:
             raise QueryError(

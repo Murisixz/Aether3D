@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from ..errors import QueryError, RenderError
 from ..rendering.raytrace.accel import (
     KIND_INNER,
     KIND_INSTANCES,
@@ -204,7 +205,10 @@ def rendered_scene(index: SpatialIndex, entries: list[Entry]):
     if index._render_scene is None:
         frame, _ = frame_from_matrix(np.eye(4))
         camera = RenderCamera(None, "spatial query", Camera(), frame)
-        index._render_scene = extract_render_scene(index.scene, camera, default_lights=False)
+        try:
+            index._render_scene = extract_render_scene(index.scene, camera, default_lights=False)
+        except RenderError as exc:  # e.g. a non-finite world matrix, which renders refuse too
+            raise QueryError(exc.code, exc.message, exc.location, hint=exc.hint) from None
     rs = index._render_scene
     ids = {e.obj.id: e for e in entries}
     instances = tuple(i for i in rs.instances if i.object_id in ids)
@@ -214,12 +218,6 @@ def rendered_scene(index: SpatialIndex, entries: list[Entry]):
         index._rendered.pop(next(iter(index._rendered)))
     index._rendered[key] = found
     return found
-
-
-def rendered_closest(ps, o, d, tmin, tmax, cull: str = "none"):
-    """Closest hits on rendered surfaces (``Hits`` of the path tracer's ``trace``)."""
-    hits, _ = ps.trace(o, d, tmin, tmax, cull=cull)
-    return hits
 
 
 def rendered_filter(ps, hits: RayHits, o: np.ndarray, d: np.ndarray, cull: str = "none"):

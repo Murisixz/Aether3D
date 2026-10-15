@@ -349,7 +349,9 @@ compact JSON summary for tools and agents:
 ```
 
 `visible` appears only when false, `tags`, `metadata` and `material` only when
-present; `bounds`, `triangles` and `closed` only for objects with geometry.
+present; `bounds`, `triangles` and `closed` only for objects with geometry. An
+object whose procedural geometry fails to evaluate has an `error` (the
+`QueryError` as JSON) instead.
 
 ## Caching, history and determinism
 
@@ -438,7 +440,7 @@ as `location`, and often a `hint`:
 | `NO_CAMERA`, `NOT_A_CAMERA`, `INVALID_CAMERA_TRANSFORM` | camera queries without a usable camera |
 | `MATERIAL_NOT_FOUND` | `find_objects(material=...)` names no material |
 | `SINGULAR_TRANSFORM` | local bounds of a hierarchy under a zero-scale object |
-| `GEOMETRY_EVALUATION_FAILED` | a procedural object's geometry fails to evaluate (`location`: `objects[NAME]`) |
+| `GEOMETRY_EVALUATION_FAILED` | a procedural object taking part in the query fails to evaluate (`location`: `objects[NAME]`). As with renders, other queries are unaffected: hide the object or leave it out (`exclude=`) |
 
 ## Design
 

@@ -178,7 +178,7 @@ def _entries(
 def _point_objects(index: SpatialIndex, objects: Any, exclude: Any, include_hidden: bool):
     """Objects without geometry (cameras, lights, empties): points at their world origin."""
     scene = index.scene
-    chosen = [o for o in scene if o.id not in index.by_id]
+    chosen = [o for o in scene if o.id not in index.by_id and o.id not in index.failed]
     if objects is not None:
         ids = {index.resolve(o, "objects").id for o in _as_list(objects)}
         chosen = [o for o in chosen if o.id in ids]
@@ -1686,6 +1686,8 @@ def describe(scene: Scene, *, include_hidden: bool = True) -> dict[str, Any]:
         if metadata:
             record["metadata"] = metadata
         record["position"] = [float(v) for v in worlds[obj.id][:3, 3]]
+        if obj.id in index.failed:
+            record["error"] = index.failed[obj.id].to_dict()
         entry = index.by_id.get(obj.id)
         if entry is not None:
             lo, hi = entry.box
@@ -1696,7 +1698,14 @@ def describe(scene: Scene, *, include_hidden: bool = True) -> dict[str, Any]:
             if material is not None:
                 record["material"] = material.name
         objects.append(record)
-    whole = bounds(scene, include_hidden=include_hidden)
+    entries = [
+        e for e in index.entries if include_hidden or e.visible
+    ]  # (objects that failed to evaluate are reported above, not bounded)
+    if entries:
+        pts = np.concatenate([e.points for e in entries])
+        whole = {"min": pts.min(axis=0).tolist(), "max": pts.max(axis=0).tolist()}
+    else:
+        whole = None
     active = scene.active_camera
     return {
         "format": DESCRIBE_FORMAT,
@@ -1710,8 +1719,6 @@ def describe(scene: Scene, *, include_hidden: bool = True) -> dict[str, Any]:
             "units": "scene units (meters by convention)",
         },
         "active_camera": None if active is None else active.id,
-        "bounds": None
-        if whole is None
-        else {"min": list(whole.aabb.min), "max": list(whole.aabb.max)},
+        "bounds": whole,
         "objects": objects,
     }

@@ -675,10 +675,22 @@ def test_failing_procedural_geometry_is_a_query_error():
     original = type(MODIFIER_TYPES["mirror"]).apply
     bad.add_modifier("mirror")
     s.procedural.clear_cache()
+    s.add_cube(name="Good", size=1, position=(3, 0, 0))
     try:
         type(MODIFIER_TYPES["mirror"]).apply = lambda *a: (_ for _ in ()).throw(RuntimeError("x"))
         with pytest.raises(QueryError) as exc:
             s.raycast((0, 0, 5), (0, 0, -1))
+        # Like renders, a broken object only matters where it takes part.
+        assert s.raycast((3, 0, 5), (0, 0, -1), exclude="Bad").object.name == "Good"
+        assert s.raycast((3, 0, 5), (0, 0, -1), objects="Good").distance == 4.5
+        assert s.describe()["objects"][0]["error"]["code"] == "GEOMETRY_EVALUATION_FAILED"
+        with pytest.raises(QueryError):
+            s.contains_point("Bad", (0, 0, 0))
+        s.get_by_name("Bad").visible = False
+        assert s.raycast((0, 0, 5), (0, 0, -1)) is None
+        assert s.bounds().objects == 1
+        with pytest.raises(QueryError):
+            s.raycast((0, 0, 5), (0, 0, -1), include_hidden=True)
     finally:
         type(MODIFIER_TYPES["mirror"]).apply = original
     assert exc.value.code == "GEOMETRY_EVALUATION_FAILED" and exc.value.location == "objects[Bad]"
