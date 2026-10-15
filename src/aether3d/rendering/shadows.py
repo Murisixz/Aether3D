@@ -197,8 +197,8 @@ def instance_corners(rs: RenderScene, bounds: np.ndarray | None = None) -> np.nd
         return np.zeros((0, 8, 3), dtype=np.float64)
     if bounds is None:
         bounds = mesh_bounds(rs)
-    mesh = np.fromiter((inst.mesh for inst in rs.instances), dtype=np.int64, count=n)
-    world = np.stack([inst.world for inst in rs.instances])
+    arrays = rs.instance_arrays
+    mesh, world = arrays.mesh, arrays.world
     boxes = np.where(_CORNERS[None], bounds[mesh, 1][:, None, :], bounds[mesh, 0][:, None, :])
     return np.einsum("nij,nkj->nki", world[:, :3, :3], boxes) + world[:, None, :3, 3]
 

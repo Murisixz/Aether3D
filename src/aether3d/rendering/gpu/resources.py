@@ -573,22 +573,24 @@ def draw_order(
     into alpha-tested and depth-only ranges (:func:`shadow_draws`).
     """
 
-    def winding(i: int) -> bool:
-        return rs.instances[i].mirrored if cull != "none" else False
-
-    def alpha(i: int) -> bool:
-        return bool(masked[i]) if masked is not None else False
-
-    indices = [i for i in range(len(rs.instances)) if keep is None or keep[i]]
-    keyed = sorted(indices, key=lambda i: (rs.instances[i].mesh, winding(i), alpha(i), i))
+    arrays = rs.instance_arrays
+    n = len(rs.instances)
+    mesh = arrays.mesh
+    winding = arrays.mirrored if cull != "none" else np.zeros(n, dtype=bool)
+    alpha = np.zeros(n, dtype=bool) if masked is None else np.asarray(masked, dtype=bool)
+    indices = np.arange(n, dtype=np.int64) if keep is None else np.flatnonzero(keep)
+    # Sorted by (mesh, winding, alpha, index): lexsort's last key is the primary one.
+    order = indices[np.lexsort((indices, alpha[indices], winding[indices], mesh[indices]))]
     draws: list[tuple[int, bool, int, int]] = []
-    for position, index in enumerate(keyed):
-        mesh, mirrored = rs.instances[index].mesh, winding(index)
-        if draws and draws[-1][0] == mesh and draws[-1][1] == mirrored:
-            draws[-1] = (mesh, mirrored, draws[-1][2], draws[-1][3] + 1)
-        else:
-            draws.append((mesh, mirrored, position, 1))
-    return np.array(keyed, dtype=np.int64), draws
+    if order.size:
+        m, w = mesh[order], winding[order]
+        starts = np.flatnonzero(np.concatenate(([True], (m[1:] != m[:-1]) | (w[1:] != w[:-1]))))
+        counts = np.diff(np.append(starts, order.size))
+        draws = [
+            (int(m[a]), bool(w[a]), int(a), int(c))
+            for a, c in zip(starts.tolist(), counts.tolist(), strict=True)
+        ]
+    return order.astype(np.int64, copy=False), draws
 
 
 def shadow_draws(
@@ -625,22 +627,21 @@ def pack_instances(rs: RenderScene, order: np.ndarray, eye: np.ndarray) -> np.nd
     if n == 0:
         return data
     words = data.view(np.uint32)
-    instances = [rs.instances[i] for i in order]
-    world = np.stack([inst.world for inst in instances])
-    model = world[:, :3, :4].copy()
+    arrays = rs.instance_arrays
+    model = arrays.world[order, :3, :4]
     model[:, :, 3] -= eye  # camera-relative, in float64 before rounding to float32
     data[:, 0:12] = model.reshape(n, 12)
-    normal = np.stack([inst.normal_matrix for inst in instances])
+    normal = arrays.normal_matrix[order]
     for row in range(3):
         data[:, 4 * (3 + row) : 4 * (3 + row) + 3] = normal[:, row]
-    data[:, 24:27] = np.stack([inst.base_color for inst in instances])
-    data[:, 27] = [inst.specular for inst in instances]
-    data[:, 28] = [inst.shininess for inst in instances]
+    data[:, 24:27] = arrays.base_color[order]
+    data[:, 27] = arrays.specular[order]
+    data[:, 28] = arrays.shininess[order]
     has_normals = np.array([m.normals is not None for m in rs.meshes], dtype=bool)
     has_uvs = np.array([m.uvs is not None for m in rs.meshes], dtype=bool)
     has_groups = np.array([m.groups is not None for m in rs.meshes], dtype=bool)
-    mesh = np.fromiter((inst.mesh for inst in instances), dtype=np.int64, count=n)
-    mirrored = np.fromiter((inst.mirrored for inst in instances), dtype=bool, count=n)
+    mesh = arrays.mesh[order]
+    mirrored = arrays.mirrored[order]
     words[:n, 29] = (
         np.where(mirrored, MIRRORED, 0)
         | np.where(has_normals[mesh], HAS_NORMALS, 0)

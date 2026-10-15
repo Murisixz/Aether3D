@@ -212,9 +212,11 @@ def pack_material_data(
     # Per-instance tables in draw order, and the face-group tables they point to.
     instance_table = np.zeros((max(len(order), 1), INSTANCE_WORDS), dtype=np.uint32)
     groups: list[int] = []
-    for row, index in enumerate(order):
-        inst = rs.instances[int(index)]
-        instance_table[row, 0] = inst.material
+    order = np.asarray(order, dtype=np.int64)
+    arrays = rs.instance_arrays
+    instance_table[: len(order), 0] = arrays.material[order]
+    for row in np.flatnonzero(arrays.has_groups[order]).tolist():
+        inst = rs.instances[int(order[row])]
         if inst.group_materials:
             count = max(g for g, _ in inst.group_materials) + 1
             table = [inst.material] * count

@@ -114,6 +114,40 @@ class RenderCamera:
 
 
 @dataclass(frozen=True)
+class InstanceArrays:
+    """The fields of every instance as arrays: row ``k`` holds ``RenderScene.instances[k]``'s
+    values, exactly. Backends pack these instead of visiting instances one by one."""
+
+    world: np.ndarray  # (n, 4, 4) float64
+    normal_matrix: np.ndarray  # (n, 3, 3) float64
+    mirrored: np.ndarray  # (n,) bool
+    mesh: np.ndarray  # (n,) int64
+    base_color: np.ndarray  # (n, 3) float64
+    specular: np.ndarray  # (n,) float64
+    shininess: np.ndarray  # (n,) float64
+    material: np.ndarray  # (n,) int64
+    has_groups: np.ndarray  # (n,) bool: the instance has face-group materials
+
+    @classmethod
+    def gather(cls, instances: tuple[RenderInstance, ...]) -> InstanceArrays:
+        """The arrays of ``instances`` (render scenes built without them)."""
+        n = len(instances)
+        return cls(
+            world=np.array([i.world for i in instances], dtype=np.float64).reshape(n, 4, 4),
+            normal_matrix=np.array([i.normal_matrix for i in instances], dtype=np.float64).reshape(
+                n, 3, 3
+            ),
+            mirrored=np.fromiter((i.mirrored for i in instances), dtype=bool, count=n),
+            mesh=np.fromiter((i.mesh for i in instances), dtype=np.int64, count=n),
+            base_color=np.array([i.base_color for i in instances], dtype=np.float64).reshape(n, 3),
+            specular=np.fromiter((i.specular for i in instances), dtype=np.float64, count=n),
+            shininess=np.fromiter((i.shininess for i in instances), dtype=np.float64, count=n),
+            material=np.fromiter((i.material for i in instances), dtype=np.int64, count=n),
+            has_groups=np.fromiter((bool(i.group_materials) for i in instances), bool, count=n),
+        )
+
+
+@dataclass(frozen=True)
 class RenderScene:
     meshes: tuple[RenderMesh, ...]
     instances: tuple[RenderInstance, ...]
@@ -125,11 +159,24 @@ class RenderScene:
     timings: dict[str, float] = field(default_factory=dict)
     materials: tuple[RenderMaterial, ...] = ()
     environment: Environment | None = None  # scene.world.environment (path tracer)
+    arrays: InstanceArrays | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def instance_arrays(self) -> InstanceArrays:
+        """The instances' fields as arrays (:class:`InstanceArrays`)."""
+        if self.arrays is not None:
+            return self.arrays
+        arrays = InstanceArrays.gather(self.instances)
+        object.__setattr__(self, "arrays", arrays)
+        return arrays
 
     @property
     def triangle_count(self) -> int:
         """Triangles to render, counting every instance."""
-        return sum(int(self.meshes[i.mesh].triangles.shape[0]) for i in self.instances)
+        if not self.instances:
+            return 0
+        per_mesh = np.array([m.triangles.shape[0] for m in self.meshes], dtype=np.int64)
+        return int(per_mesh[self.instance_arrays.mesh].sum())
 
 
 def _mat4_mul(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -427,7 +474,8 @@ def extract_render_scene(
         candidates.append((obj, mesh, world, position))
 
     # Normal matrices, determinants and colors of all mesh objects at once.
-    linear = np.array([c[2][:3, :3] for c in candidates], dtype=np.float64).reshape(-1, 3, 3)
+    candidate_worlds = stack[[c[3] for c in candidates]].reshape(-1, 4, 4)
+    linear = np.ascontiguousarray(candidate_worlds[:, :3, :3])
     normal, valid, det = normal_matrices(linear)
     material_table, object_materials = resolve_materials(
         scene,
@@ -442,6 +490,7 @@ def extract_render_scene(
     material_iter = iter(object_materials)
     colors: dict[tuple, np.ndarray] = {}
     instances: list[RenderInstance] = []
+    columns: tuple[list, list, list, list, list, list] = ([], [], [], [], [], [])
     for k, (obj, mesh, world, position) in enumerate(candidates):
         if not valid[k]:
             ordered.append(
@@ -466,22 +515,47 @@ def extract_render_scene(
         if base is None:
             base = colors[appearance.color] = to_linear(appearance.color)
         default_material, group_materials = next(material_iter)
-        instances.append(
-            RenderInstance(
-                obj.id,
-                obj.name,
-                mesh_index[key],
-                world,
-                normal[k],
-                bool(det[k] < 0.0),
-                base.copy(),
-                appearance.specular,
-                appearance.shininess,
-                default_material,
-                tuple(sorted(group_materials.items())),
-            )
+        instance = RenderInstance(
+            obj.id,
+            obj.name,
+            mesh_index[key],
+            world,
+            normal[k],
+            bool(det[k] < 0.0),
+            base.copy(),
+            appearance.specular,
+            appearance.shininess,
+            default_material,
+            tuple(sorted(group_materials.items())),
         )
+        instances.append(instance)
+        for column, value in zip(
+            columns,
+            (
+                k,
+                instance.mesh,
+                instance.base_color,
+                instance.specular,
+                instance.shininess,
+                instance.material,
+            ),
+            strict=True,
+        ):
+            column.append(value)
     diagnostics += [d for _, d in sorted(ordered, key=lambda item: item[0])]
+    rows, mesh_of, base_colors, speculars, shininesses, defaults = columns
+    count = len(rows)
+    arrays = InstanceArrays(
+        world=candidate_worlds[rows].reshape(count, 4, 4),
+        normal_matrix=normal[rows].reshape(count, 3, 3),
+        mirrored=(det[rows] < 0.0).reshape(count),
+        mesh=np.array(mesh_of, dtype=np.int64),
+        base_color=np.array(base_colors, dtype=np.float64).reshape(count, 3),
+        specular=np.array(speculars, dtype=np.float64),
+        shininess=np.array(shininesses, dtype=np.float64),
+        material=np.array(defaults, dtype=np.int64),
+        has_groups=np.array([bool(i.group_materials) for i in instances], dtype=bool),
+    )
 
     if not lights and default_lights:
         lights.append(default_light(render_camera.frame))
@@ -526,6 +600,7 @@ def extract_render_scene(
         },
         materials=tuple(material_table.materials),
         environment=world_settings.environment.copy(),
+        arrays=arrays,
     )
 
 
