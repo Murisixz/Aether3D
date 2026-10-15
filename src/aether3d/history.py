@@ -785,7 +785,7 @@ class History:
                         hint="the scene was changed outside its history (private attributes?)",
                     )
                 by_name[obj._name] = obj
-            scene._by_name = by_name
+            scene._set_name_index(by_name)
         if _LIBRARY in flags:
             library = scene._materials
             library._material_names = {m._name: m for m in library._materials.values()}
