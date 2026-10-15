@@ -26,6 +26,7 @@ import numpy as np
 
 from ..diagnostics import INFO, Diagnostic
 from ..errors import RenderError
+from ..history import recording
 
 PROJECTIONS = ("perspective", "orthographic")
 FOV_AXES = ("vertical", "horizontal", "auto")
@@ -67,7 +68,7 @@ class Camera:
     :meth:`configure` (e.g. ``camera.configure(near=500, far=5000)``).
     """
 
-    __slots__ = tuple(f"_{name}" for name in _FIELDS)
+    __slots__ = (*(f"_{name}" for name in _FIELDS), "_owner")
 
     def __init__(
         self,
@@ -93,6 +94,7 @@ class Camera:
         )
         for name in _FIELDS:
             setattr(self, f"_{name}", values[name])
+        self._owner = None  # the object this belongs to (records its changes)
 
     # -- parameters --------------------------------------------------------
 
@@ -107,8 +109,9 @@ class Camera:
                 hint=f"parameters: {', '.join(_FIELDS)}",
             )
         values = _validate({**self.to_dict(), **changes}, "camera")
-        for name in _FIELDS:
-            setattr(self, f"_{name}", values[name])
+        with recording(self, changes):
+            for name in _FIELDS:
+                setattr(self, f"_{name}", values[name])
         return self
 
     projection = property(

@@ -273,10 +273,11 @@ class Texture:
     """Base class of :class:`ImageTexture` and :class:`ProceduralTexture`."""
 
     kind = ""
-    __slots__ = ("_library", "_id", "_name")
+    __slots__ = ("_library", "_home", "_id", "_name")
 
     def __init__(self, library: MaterialLibrary, texture_id: str, name: str) -> None:
         self._library: MaterialLibrary | None = library
+        self._home = library  # the library whose scene history records this texture
         self._id = texture_id
         self._name = name
 
@@ -304,6 +305,12 @@ class Texture:
     def _touch(self) -> None:
         if self._library is not None:
             self._library._changed()
+
+    def _edit(self, label: str) -> Any:
+        """An operation changing this texture, recorded in its scene's history."""
+        from ..history import TEXTURE
+
+        return self._home._scene._history._op(label, TEXTURE, self)
 
     def to_dict(self) -> dict[str, Any]:  # pragma: no cover - abstract
         raise NotImplementedError
@@ -399,8 +406,9 @@ class ImageTexture(Texture):
                 self.location,
             )
         assert loaded.image is not None
-        self._data = data
-        self._touch()
+        with self._edit(f"Embed texture {self._name!r}"):
+            self._data = data
+            self._touch()
 
     def extract(self, path: str | os.PathLike[str]) -> Path:
         """Write an embedded image to ``path`` (atomically) and reference that file instead."""
@@ -418,10 +426,11 @@ class ImageTexture(Texture):
                 "path",
             )
         write_atomic(target, self._data)
-        self._data = None
-        self._file = target
-        self._root = None
-        self._touch()
+        with self._edit(f"Extract texture {self._name!r}"):
+            self._data = None
+            self._file = target
+            self._root = None
+            self._touch()
         return target
 
     def _read_bytes(self) -> bytes:
@@ -523,9 +532,10 @@ class ImageTexture(Texture):
                 self.location,
                 hint="settings: wrap, wrap_u, wrap_v, filter, mipmaps, color_space",
             )
-        self._wrap, self._filter = values["wrap"], values["filter"]
-        self._mipmaps, self._color_space = values["mipmaps"], values["color_space"]
-        self._touch()
+        with self._edit(f"Set sampler of texture {self._name!r}"):
+            self._wrap, self._filter = values["wrap"], values["filter"]
+            self._mipmaps, self._color_space = values["mipmaps"], values["color_space"]
+            self._touch()
         return self
 
     def mode_for(self, slot_mode: str) -> str:
@@ -633,8 +643,9 @@ class ProceduralTexture(Texture):
         library = self._require_library()
         new = TextureGraph.from_dict(graph, self.location)
         library._check_graph(new, self.location)
-        self._graph = new
-        self._touch()
+        with self._edit(f"Set graph of texture {self._name!r}"):
+            self._graph = new
+            self._touch()
 
     def set_params(self, node: str | None = None, **params: Any) -> None:
         """Change parameters of one node (the output node by default)."""

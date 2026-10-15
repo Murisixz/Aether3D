@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import weakref
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,7 @@ from ._version import __version__
 from .errors import (
     AetherError,
     AssetFormatError,
+    HistoryError,
     ProjectFormatError,
     UnsupportedFeatureError,
 )
@@ -109,8 +111,38 @@ def _procedural_details(exc: Any) -> dict[str, Any]:
     return details
 
 
-def _read_project(path: Path) -> tuple[Scene, int]:
-    """Load a ``.aether`` project, returning the scene and its on-disk format version."""
+# Scenes of writing commands whose history is kept in a history file, and what happened
+# to it (reported with the command's result).
+_HISTORY: weakref.WeakKeyDictionary[Scene, dict[str, Any]] = weakref.WeakKeyDictionary()
+_history_report: dict[str, Any] = {}
+
+
+def _attach_history(scene: Scene, path: Path) -> None:
+    """Give a project loaded to be changed its saved history, if it has one.
+
+    Changes are then recorded on top of it and saved with it. A history that no longer
+    matches the project is set aside (reported); a new one starts from this state.
+    """
+    from ._history_file import history_path
+
+    file = history_path(path)
+    if not file.exists():
+        return
+    info: dict[str, Any] = {"file": str(file), "note": None}
+    try:
+        scene.history.load(file, project_dir=path.absolute().parent)
+    except HistoryError as exc:
+        info["note"] = (
+            f"the saved history was not used ([{exc.code}] {exc.message}); a new one starts"
+        )
+    _HISTORY[scene] = info
+
+
+def _read_project(path: Path, history: bool = False) -> tuple[Scene, int]:
+    """Load a ``.aether`` project, returning the scene and its on-disk format version.
+
+    With ``history`` (commands that change the project) its saved history comes too.
+    """
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
@@ -120,12 +152,17 @@ def _read_project(path: Path) -> tuple[Scene, int]:
     try:
         document = loads(text)
         version = document.get("format_version") if isinstance(document, dict) else None
-        return scene_from_dict(document, path.absolute().parent), version
+        scene = scene_from_dict(document, path.absolute().parent)
     except ProjectFormatError as exc:
         raise _command_error(exc, path) from None
+    if history:
+        _attach_history(scene, path)
+    return scene, version
 
 
-def _load_scene(path: Path, allow_lossy: bool = False) -> tuple[Scene, dict[str, Any]]:
+def _load_scene(
+    path: Path, allow_lossy: bool = False, history: bool = False
+) -> tuple[Scene, dict[str, Any]]:
     """Load a scene from a ``.aether`` project or a ``.glb``/``.gltf`` asset.
 
     Returns the scene and a dict describing the source (format, version or
@@ -143,7 +180,7 @@ def _load_scene(path: Path, allow_lossy: bool = False) -> tuple[Scene, dict[str,
             "import_diagnostics": [d.to_dict() for d in result.diagnostics],
         }
         return result.scene, info
-    scene, version = _read_project(path)
+    scene, version = _read_project(path, history)
     return scene, {"source_format": "aether", "format_version": version}
 
 
@@ -487,9 +524,33 @@ def _write_or_dry_run(scene: Scene, path: Path, args: argparse.Namespace) -> str
         return None
     output = Path(args.output) if args.output else path
     try:
-        return str(save_scene(scene, output))
+        written = str(save_scene(scene, output))
     except (AetherError, OSError) as exc:
         raise _command_error(exc, output) from None
+    _save_history(scene, output, args)
+    return written
+
+
+def _save_history(scene: Scene, output: Path, args: argparse.Namespace) -> None:
+    """Save the history next to the written project, if it has one or --history asks."""
+    info = _HISTORY.get(scene)
+    if info is None and not getattr(args, "history", False):
+        return
+    from ._history_file import history_path
+
+    file = history_path(output)
+    try:
+        scene.history.save(file, project_dir=output.absolute().parent)
+    except (AetherError, OSError) as exc:
+        raise _command_error(exc, file) from None
+    _history_report.update(
+        {
+            "file": str(file),
+            "steps": len(scene.history),
+            "undone": len(scene.history.redo_entries),
+            "note": None if info is None else info["note"],
+        }
+    )
 
 
 def _project_only(path: Path, command: str) -> None:
@@ -507,10 +568,10 @@ def cmd_edit(args: argparse.Namespace) -> CommandOutput:
         raise CommandError(
             "ValidationError", "edit works on .aether projects; import the glTF file first"
         )
-    scene, info = _load_scene(path)
+    scene, info = _load_scene(path, history=True)
     script = _read_script(args.script)
     try:
-        result = run_edit_script(scene, script)
+        result = run_edit_script(scene, script, label=_script_label(script, "edit", args))
     except ScriptError as exc:
         details = {k: v for k, v in exc.to_dict().items() if k not in ("message", "location")}
         raise CommandError("ScriptError", exc.message, exc.location, details) from None
@@ -521,6 +582,7 @@ def cmd_edit(args: argparse.Namespace) -> CommandOutput:
             written = str(save_scene(scene, output))
         except (AetherError, OSError) as exc:
             raise _command_error(exc, output) from None
+        _save_history(scene, output, args)
     data = {
         "path": str(path),
         "output": None if args.dry_run else str(output),
@@ -625,12 +687,21 @@ def cmd_procedural_validate(args: argparse.Namespace) -> CommandOutput:
     return {"path": str(path), **report}, "\n".join(lines), code
 
 
-def _run_procedural(scene: Scene, script: Any) -> dict[str, Any]:
+def _script_label(script: Any, command: str, args: argparse.Namespace) -> str:
+    """The history label of a script run: its own ``"label"``, else the command."""
+    own = script.get("label") if isinstance(script, dict) else None
+    if isinstance(own, str) and own.strip():
+        return own
+    name = "stdin" if args.script == "-" else Path(args.script).name
+    return f"aether3d {command} {name}"
+
+
+def _run_procedural(scene: Scene, script: Any, label: str | None = None) -> dict[str, Any]:
     from .editing.script import ScriptError
     from .procedural.script import run_procedural_script
 
     try:
-        return run_procedural_script(scene, script)
+        return run_procedural_script(scene, script, label=label)
     except ScriptError as exc:
         details = {k: v for k, v in exc.to_dict().items() if k not in ("message", "location")}
         raise CommandError("ScriptError", exc.message, exc.location, details) from None
@@ -639,9 +710,9 @@ def _run_procedural(scene: Scene, script: Any) -> dict[str, Any]:
 def cmd_procedural_run(args: argparse.Namespace) -> CommandOutput:
     path = Path(args.path)
     _project_only(path, "procedural run")
-    scene, _ = _load_scene(path)
+    scene, _ = _load_scene(path, history=True)
     script = _read_script(args.script)
-    result = _run_procedural(scene, script)
+    result = _run_procedural(scene, script, _script_label(script, "procedural run", args))
     written = _write_or_dry_run(scene, path, args)
     data = {"path": str(path), "output": written, "dry_run": args.dry_run, **result}
     lines = [f"{len(result['operations'])} operations applied"]
@@ -663,7 +734,7 @@ def _parse_assignment(text: str) -> tuple[str, Any]:
 def cmd_procedural_set(args: argparse.Namespace) -> CommandOutput:
     path = Path(args.path)
     _project_only(path, "procedural set")
-    scene, _ = _load_scene(path)
+    scene, _ = _load_scene(path, history=True)
     operations = []
     for assignment in args.assignments:
         name, value = _parse_assignment(assignment)
@@ -672,10 +743,11 @@ def cmd_procedural_set(args: argparse.Namespace) -> CommandOutput:
             op["geometry"] = args.geometry
         operations.append(op)
     script = {"format": "aether3d.procedural-script", "version": 1, "operations": operations}
-    result = _run_procedural(scene, script)
+    names = ", ".join(a.partition("=")[0] for a in args.assignments)
+    result = _run_procedural(scene, script, f"aether3d procedural set {names}")
     written = _write_or_dry_run(scene, path, args)
     data = {"path": str(path), "output": written, "dry_run": args.dry_run, **result}
-    lines = [f"set {', '.join(a.partition('=')[0] for a in args.assignments)}"]
+    lines = [f"set {names}"]
     lines.append("dry run: nothing written" if args.dry_run else f"saved {written}")
     return data, "\n".join(lines), EXIT_OK
 
@@ -683,7 +755,7 @@ def cmd_procedural_set(args: argparse.Namespace) -> CommandOutput:
 def cmd_procedural_bake(args: argparse.Namespace) -> CommandOutput:
     path = Path(args.path)
     _project_only(path, "procedural bake")
-    scene, _ = _load_scene(path)
+    scene, _ = _load_scene(path, history=True)
     if args.all:
         targets = [o.id for o in scene if o.is_procedural]
     elif args.object:
@@ -693,7 +765,7 @@ def cmd_procedural_bake(args: argparse.Namespace) -> CommandOutput:
     operations = [{"op": "bake", "object": oid} for oid in targets]
     if operations:
         script = {"format": "aether3d.procedural-script", "version": 1, "operations": operations}
-        _run_procedural(scene, script)
+        _run_procedural(scene, script, "aether3d procedural bake")
     written = _write_or_dry_run(scene, path, args)
     baked = [{"id": oid, "name": scene.get(oid).name} for oid in targets]
     data = {"path": str(path), "output": written, "dry_run": args.dry_run, "baked": baked}
@@ -955,11 +1027,15 @@ def _run_scene(
 
     path = Path(args.path)
     _project_only(path, command)
-    scene, _ = _load_scene(path)
+    scene, _ = _load_scene(path, history=True)
     script = {"format": "aether3d.scene-script", "version": 1, "operations": operations}
     try:
         result = run_scene_script(
-            scene, script, base_dir=path.absolute().parent, trusted_paths=trusted_paths
+            scene,
+            script,
+            base_dir=path.absolute().parent,
+            trusted_paths=trusted_paths,
+            label=f"aether3d {command}",
         )
     except ScriptError as exc:
         details = {k: v for k, v in exc.to_dict().items() if k not in ("message", "location")}
@@ -1265,10 +1341,15 @@ def cmd_scene_run(args: argparse.Namespace) -> CommandOutput:
 
     path = Path(args.path)
     _project_only(path, "scene run")
-    scene, _ = _load_scene(path)
+    scene, _ = _load_scene(path, history=True)
     script = _read_script(args.script)
     try:  # image paths in a script stay inside the project's directory
-        result = run_scene_script(scene, script, base_dir=path.absolute().parent)
+        result = run_scene_script(
+            scene,
+            script,
+            base_dir=path.absolute().parent,
+            label=_script_label(script, "scene run", args),
+        )
     except ScriptError as exc:
         details = {k: v for k, v in exc.to_dict().items() if k not in ("message", "location")}
         raise CommandError("ScriptError", exc.message, exc.location, details) from None
@@ -1276,6 +1357,189 @@ def cmd_scene_run(args: argparse.Namespace) -> CommandOutput:
     data = {"path": str(path), "output": written, "dry_run": args.dry_run, **result}
     lines = [f"{len(result['operations'])} operations applied", _saved(data)]
     return data, "\n".join(lines), EXIT_OK
+
+
+def cmd_scene_merge(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    _project_only(path, "scene merge")
+    scene, _ = _load_scene(path, history=True)
+    source = Path(args.source)
+    try:
+        with scene.transaction(f"aether3d scene merge {source.name}"):
+            copies = scene.merge(source, parent=args.parent, allow_lossy=args.allow_lossy)
+    except (AetherError, OSError) as exc:
+        raise _command_error(exc, source) from None
+    written = _write_or_dry_run(scene, path, args)
+    data = {
+        "path": str(path),
+        "source": str(source),
+        "output": written,
+        "dry_run": args.dry_run,
+        "objects": [{"id": o.id, "name": o.name} for o in copies],
+    }
+    names = ", ".join(o.name for o in copies)
+    return data, f"Merged {source.name}: {names}\n{_saved(data)}", EXIT_OK
+
+
+# --------------------------------------------------------------------------- #
+# history
+# --------------------------------------------------------------------------- #
+
+
+def _history_scene(args: argparse.Namespace) -> tuple[Scene, Path, Path]:
+    """The project of a history command and its (verified) saved history."""
+    from ._history_file import history_path
+
+    path = Path(args.path)
+    _project_only(path, f"history {args.subcommand}")
+    scene, _ = _read_project(path)
+    file = history_path(path)
+    try:
+        scene.history.load(file, project_dir=path.absolute().parent)
+    except HistoryError as exc:
+        details = {"code": exc.code}
+        if exc.code == "NO_HISTORY":
+            details["hint"] = (
+                f"start one with `aether3d history start {path}`, or pass --history to a "
+                "command that changes the project"
+            )
+        elif exc.hint:
+            details["hint"] = exc.hint
+        raise CommandError("HistoryError", exc.message, exc.location, details) from None
+    return scene, path, file
+
+
+def _history_summary(scene: Scene, path: Path, file: Path) -> dict[str, Any]:
+    return {"path": str(path), "file": str(file), **scene.history.to_dict()}
+
+
+def _entry_lines(history_data: dict[str, Any]) -> list[str]:
+    lines = []
+    marks = {v: k for k, v in history_data["checkpoints"].items()}
+    for e in history_data["entries"]:
+        mark = f"  [checkpoint {marks[e['index']]!r}]" if e["index"] in marks else ""
+        lines.append(f"  {e['index']:4d}  {e['label']}{mark}")
+    lines.append("  ----  (current state)")
+    for e in history_data["redo"]:
+        lines.append(f"  {e['index']:4d}  {e['label']}  (undone)")
+    return lines
+
+
+def _write_history_command(
+    scene: Scene, path: Path, file: Path, args: argparse.Namespace, project: bool
+) -> None:
+    if getattr(args, "dry_run", False):
+        return
+    try:
+        if project:
+            save_scene(scene, path)
+        scene.history.save(file, project_dir=path.absolute().parent)
+    except (AetherError, OSError) as exc:
+        raise _command_error(exc, path) from None
+
+
+def cmd_history_show(args: argparse.Namespace) -> CommandOutput:
+    scene, path, file = _history_scene(args)
+    data = _history_summary(scene, path, file)
+    text = [
+        f"History of {path}: {len(data['entries'])} step(s) to undo, {len(data['redo'])} to "
+        f"redo, {data['bytes'] / 2**20:.1f} MiB",
+        *_entry_lines(data),
+    ]
+    return data, "\n".join(text), EXIT_OK
+
+
+def cmd_history_start(args: argparse.Namespace) -> CommandOutput:
+    from ._history_file import history_path
+
+    path = Path(args.path)
+    _project_only(path, "history start")
+    file = history_path(path)
+    if file.exists() and not args.force:
+        raise CommandError(
+            "FileExistsError",
+            f"{file} already exists",
+            details={"hint": "use `aether3d history clear` to empty it, or --force to replace it"},
+        )
+    scene, _ = _read_project(path)
+    _write_history_command(scene, path, file, args, project=False)
+    data = {"path": str(path), "file": str(file)}
+    return data, f"Started a history for {path} ({file.name})", EXIT_OK
+
+
+def _history_move(args: argparse.Namespace, forward: bool) -> CommandOutput:
+    scene, path, file = _history_scene(args)
+    history = scene.history
+    try:
+        moved = history.redo(args.steps) if forward else history.undo(args.steps)
+    except HistoryError as exc:
+        raise CommandError("HistoryError", exc.message, exc.location, {"code": exc.code}) from None
+    _write_history_command(scene, path, file, args, project=True)
+    verb = "Redid" if forward else "Undid"
+    data = {
+        **_history_summary(scene, path, file),
+        "undone" if not forward else "redone": [e.to_dict() for e in moved],
+        "dry_run": args.dry_run,
+    }
+    text = [f"{verb} {len(moved)} step(s):", *(f"  {e.index:4d}  {e.label}" for e in moved)]
+    text.append("dry run: nothing written" if args.dry_run else f"saved {path} and {file.name}")
+    return data, "\n".join(text), EXIT_OK
+
+
+def cmd_history_undo(args: argparse.Namespace) -> CommandOutput:
+    return _history_move(args, forward=False)
+
+
+def cmd_history_redo(args: argparse.Namespace) -> CommandOutput:
+    return _history_move(args, forward=True)
+
+
+def cmd_history_checkpoint(args: argparse.Namespace) -> CommandOutput:
+    scene, path, file = _history_scene(args)
+    try:
+        scene.history.checkpoint(args.name)
+    except HistoryError as exc:
+        raise CommandError("HistoryError", exc.message, exc.location, {"code": exc.code}) from None
+    _write_history_command(scene, path, file, args, project=False)
+    data = _history_summary(scene, path, file)
+    return data, f"Checkpoint {args.name!r} at step {scene.history.checkpoints[args.name]}", EXIT_OK
+
+
+def cmd_history_goto(args: argparse.Namespace) -> CommandOutput:
+    scene, path, file = _history_scene(args)
+    try:
+        moved = scene.history.goto(args.name)
+    except HistoryError as exc:
+        details = {"code": exc.code, **({"hint": exc.hint} if exc.hint else {})}
+        raise CommandError("HistoryError", exc.message, exc.location, details) from None
+    _write_history_command(scene, path, file, args, project=True)
+    data = {**_history_summary(scene, path, file), "moved": [e.to_dict() for e in moved]}
+    text = f"At checkpoint {args.name!r} ({len(moved)} step(s) undone or redone)"
+    return data, text, EXIT_OK
+
+
+def cmd_history_clear(args: argparse.Namespace) -> CommandOutput:
+    scene, path, file = _history_scene(args)
+    count = len(scene.history) + len(scene.history.redo_entries)
+    scene.history.clear()
+    _write_history_command(scene, path, file, args, project=False)
+    return (
+        {"path": str(path), "file": str(file), "cleared": count},
+        (f"Cleared {count} step(s) from {file.name}"),
+        EXIT_OK,
+    )
+
+
+def cmd_history_verify(args: argparse.Namespace) -> CommandOutput:
+    scene, path, file = _history_scene(args)  # loading replays it on a copy already
+    report = scene.history.verify()
+    data = {"path": str(path), "file": str(file), **report}
+    text = (
+        f"{report['steps']} step(s) undone and redone: the project comes back exactly"
+        if report["ok"]
+        else "replaying the history does not restore the project"
+    )
+    return data, text, EXIT_OK if report["ok"] else EXIT_FAILURE
 
 
 # --------------------------------------------------------------------------- #
@@ -1373,6 +1637,12 @@ def build_parser() -> argparse.ArgumentParser:
     writing = argparse.ArgumentParser(add_help=False)
     writing.add_argument("--output", help="write the result here instead of updating PATH")
     writing.add_argument("--dry-run", action="store_true", help="run and report, but write nothing")
+    writing.add_argument(
+        "--history",
+        action="store_true",
+        help="record the change in the project's history file (<project>.history), starting "
+        "one if needed; projects that have one always record",
+    )
 
     p_types = proc.add_parser("types", parents=[common], help="primitive and modifier schemas")
     p_types.set_defaults(handler=cmd_procedural_types)
@@ -1702,6 +1972,55 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p.add_argument("path", help="the .aether project")
     p.add_argument("script", help="scene script (.json), or - to read it from stdin")
     p.set_defaults(handler=cmd_scene_run)
+    p = scenes.add_parser(
+        "merge",
+        parents=[common, writing, lossy],
+        help="copy the objects of another project or a glTF file into the project",
+    )
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("source", help="a .aether project or a .glb/.gltf file")
+    p.add_argument("--parent", help="object (id or name) to place the copies under")
+    p.set_defaults(handler=cmd_scene_merge)
+
+    p_history = sub.add_parser(
+        "history", help="undo and redo changes to a project (its saved history)"
+    )
+    hist = p_history.add_subparsers(dest="subcommand", required=True, metavar="SUBCOMMAND")
+    p = hist.add_parser("show", parents=[common], help="list the steps and checkpoints")
+    p.add_argument("path", help="the .aether project")
+    p.set_defaults(handler=cmd_history_show)
+    p = hist.add_parser(
+        "start", parents=[common], help="start recording changes of a project (a history file)"
+    )
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--force", action="store_true", help="replace an existing history file")
+    p.set_defaults(handler=cmd_history_start, dry_run=False)
+    for name, handler, what in (
+        ("undo", cmd_history_undo, "undo the last change(s)"),
+        ("redo", cmd_history_redo, "redo the last undone change(s)"),
+    ):
+        p = hist.add_parser(name, parents=[common], help=what)
+        p.add_argument("path", help="the .aether project")
+        p.add_argument("-n", "--steps", type=int, default=1, help="how many steps (default 1)")
+        p.add_argument("--dry-run", action="store_true", help="report, but write nothing")
+        p.set_defaults(handler=handler)
+    p = hist.add_parser("checkpoint", parents=[common], help="name the current state")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("name", help="checkpoint name")
+    p.set_defaults(handler=cmd_history_checkpoint, dry_run=False)
+    p = hist.add_parser("goto", parents=[common], help="undo or redo to a checkpoint")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("name", help="checkpoint name")
+    p.add_argument("--dry-run", action="store_true", help="report, but write nothing")
+    p.set_defaults(handler=cmd_history_goto)
+    p = hist.add_parser("clear", parents=[common], help="forget every step (keeps recording)")
+    p.add_argument("path", help="the .aether project")
+    p.set_defaults(handler=cmd_history_clear, dry_run=False)
+    p = hist.add_parser(
+        "verify", parents=[common], help="replay the history on a copy and check it is exact"
+    )
+    p.add_argument("path", help="the .aether project")
+    p.set_defaults(handler=cmd_history_verify)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1714,6 +2033,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
+    _history_report.clear()
     try:
         try:
             result, text, code = args.handler(args)
@@ -1732,6 +2052,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             for line in _diagnostic_lines(exc.details.get("diagnostics", [])):
                 print(line, file=sys.stderr)
         return EXIT_FAILURE
+    if _history_report and "history" not in result:
+        result = {**result, "history": dict(_history_report)}
+        note = _history_report["note"]
+        text += f"\nhistory: {_history_report['steps']} step(s) in {_history_report['file']}"
+        if note:
+            text += f" ({note})"
     if args.json:
         print(json.dumps({"ok": True, "command": command, **result}, indent=2))
     else:
