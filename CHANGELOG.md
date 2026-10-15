@@ -68,7 +68,7 @@ features; breaking changes are called out explicitly).
   `examples/hero_picking.py` picks and probes the blocky hero (clicks, an id
   map, dropping a crate onto the ground, contacts). Both draw cheap diagnostic
   images (`examples/output/castle_spatial_*.png`, `hero_picking.png`).
-- **Tests:** about 100 new tests. Geometric kernels are compared with
+- **Tests:** 84 new tests. Geometric kernels are compared with
   independent references (Moller's interval test for triangle pairs, polygon
   clipping for triangle-box tests, closest points and segment distances).
   Queries are compared with brute force and analytic answers through every
