@@ -382,6 +382,45 @@ Readers are strict, so mistakes are reported instead of silently ignored:
 Every error names the offending element with a dotted path, such as
 `scene.objects[1].transform.scale` or `meshes[0].triangles[12]`.
 
+## History files
+
+`scene.save(path, history=True)` (and the command line, for projects that keep a
+history) writes the scene's undo history next to the project, in
+`<project>.history` (`castle.aether.history`). The project format does not
+change: a project loads the same with or without its history file, and other
+programs can ignore it. See [HISTORY.md](HISTORY.md).
+
+The history file is a JSON document, `"format": "aether3d.history"`,
+`"format_version": 1`:
+
+| Key | |
+| --- | --- |
+| `project` | SHA-256 of the project document it belongs to (canonical JSON, without `generator`). A history is applied only to the exact project it was saved with |
+| `position`, `serial` | Index of the step that produced the current state (0: none), and the last index used |
+| `undo`, `redo` | Steps: `{"index", "parent", "label", "changes"}`, the undone ones in `redo` (the next to redo last) |
+| `checkpoints` | Names and the index of the step behind their state |
+| `max_entries`, `max_bytes`, `dropped` | The limits and how many steps were dropped |
+| `objects`, `materials`, `textures` | Full records of entities the steps refer to that are not in the project (removed ones, which undo can bring back) |
+| `meshes`, `blobs` | Meshes (as in the project's `meshes`) and embedded image bytes (base64) the states refer to by index |
+
+A change is `{"aspect", "target", "before", "after"}`:
+- `aspect` is the part of the scene it changed: `object.name`,
+  `object.transform`, `object.visible`, `object.appearance`, `object.camera`,
+  `object.light`, `object.geometry`, `object.material`, `object.parent`,
+  `object.children`, `object.alive`, `scene.name`, `scene.roots`,
+  `scene.active_camera`, `scene.world`, `scene.render`, `library.materials`,
+  `library.textures`, `material`, `texture` or `procedural`.
+- `target` is the id of the object, material or texture (`null` for the others).
+- The states use the project's encodings (transforms as position, rotation and
+  scale arrays; cameras, lights, appearances, world and render settings as in
+  `scene.objects[]` and `scene`; materials and procedural definitions as in
+  `scene.materials` and `scene.geometry`), and object, material and texture ids.
+
+Readers check a history file before using it. It must match the project's
+fingerprint (`HISTORY_MISMATCH` otherwise), and it is replayed on a copy of the
+scene (every step undone and redone) and refused (`INVALID_HISTORY`) unless the
+copy comes back to the same document.
+
 ## Versioning and evolution
 
 - `format_version` is a single integer, incremented for every change to this
@@ -406,5 +445,7 @@ Every error names the offending element with a dotted path, such as
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged, and Aether3D
 0.6.0 reads and writes version 3 unchanged (GPU rendering added render
-options, not scene content). glTF interchange is a separate format (see
+options, not scene content). Aether3D 0.8.1 and 0.9.0 read and write version 5
+unchanged: 0.9.0 keeps the undo history in a separate file
+([History files](#history-files)). glTF interchange is a separate format (see
 [GLTF.md](GLTF.md)); it did not require a project format change.

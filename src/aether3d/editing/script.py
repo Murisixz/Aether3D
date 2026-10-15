@@ -151,10 +151,23 @@ def _find_object(scene: Scene, ref: Any, loc: str):
         return None
 
 
-def run_edit_script(scene: Scene, script: dict[str, Any]) -> ScriptResult:
-    """Apply an edit script to ``scene`` (all edits or none); see the module docs."""
+def run_edit_script(
+    scene: Scene, script: dict[str, Any], *, label: str | None = None
+) -> ScriptResult:
+    """Apply an edit script to ``scene`` (all edits or none); see the module docs.
+
+    The script is one step of ``scene.history``, named ``label`` (default: the
+    script's own ``"label"``, else a description).
+    """
     script = _object(script, "script")
-    _check_keys(script, {"format", "version", "edits"}, "script", {"format", "version", "edits"})
+    _check_keys(
+        script,
+        {"format", "version", "edits", "label"},
+        "script",
+        {"format", "version", "edits"},
+    )
+    if "label" in script and (not isinstance(script["label"], str) or not script["label"].strip()):
+        raise ScriptError("label must be a non-empty string", "script.label")
     if script["format"] != FORMAT_ID:
         raise ScriptError(f"format must be {FORMAT_ID!r}", "script.format")
     if script["version"] != VERSION:
@@ -169,20 +182,16 @@ def run_edit_script(scene: Scene, script: dict[str, Any]) -> ScriptResult:
     if total > MAX_OPERATIONS:
         raise ScriptError(f"too many operations ({total} > {MAX_OPERATIONS})", "script.edits")
 
-    original_meshes = {obj.id: obj.mesh for obj in scene}
     created: list[str] = []
     result = ScriptResult()
-    try:
+    # One step of the scene's history, all or nothing: if an edit fails, the
+    # transaction restores every mesh and removes the objects created before it.
+    label = (
+        label or script.get("label") or f"Edit script ({len(edits)} edit{'s' * (len(edits) != 1)})"
+    )
+    with scene.history.transaction(label):
         for i, edit in enumerate(edits):
             result.edits.append(_run_edit(scene, edit, f"edits[{i}]", created))
-    except BaseException:
-        for obj in scene:
-            if obj.id in original_meshes:
-                obj.mesh = original_meshes[obj.id]
-        for object_id in reversed(created):
-            if object_id in scene:
-                scene.remove(object_id)
-        raise
     return result
 
 

@@ -1,0 +1,137 @@
+{
+  "aether3d": "0.9.0",
+  "steps": [
+    {
+      "index": 1,
+      "label": "Set position of 'Crate'",
+      "changes": 1,
+      "paths": [
+        "objects[50591ac7-110f-49b7-843a-b6e560d39a60].transform"
+      ],
+      "bytes": 384
+    },
+    {
+      "index": 2,
+      "label": "Set appearance color of 'Crate'",
+      "changes": 1,
+      "paths": [
+        "objects[50591ac7-110f-49b7-843a-b6e560d39a60].appearance"
+      ],
+      "bytes": 384
+    },
+    {
+      "index": 3,
+      "label": "Set source of geometry 'Tower'",
+      "changes": 1,
+      "paths": [
+        "procedural"
+      ],
+      "bytes": 2192
+    },
+    {
+      "index": 4,
+      "label": "Set roughness of material 'Stone'",
+      "changes": 1,
+      "paths": [
+        "materials[8edbfd58-37ca-4224-8f73-fe0bf1e71bf9]"
+      ],
+      "bytes": 1984
+    },
+    {
+      "index": 5,
+      "label": "Edit mesh of 'Wall'",
+      "changes": 1,
+      "paths": [
+        "objects[c67b8a87-9dd6-43ce-b1e4-1cc2e2703e0b].geometry"
+      ],
+      "bytes": 2752
+    },
+    {
+      "index": 6,
+      "label": "Duplicate 'Crate'",
+      "changes": 2,
+      "paths": [
+        "objects[522fa13a-c987-473b-9c4b-6f260f112090]",
+        "scene.roots"
+      ],
+      "bytes": 664
+    },
+    {
+      "index": 7,
+      "label": "Set position of 'Crate 2'",
+      "changes": 1,
+      "paths": [
+        "objects[522fa13a-c987-473b-9c4b-6f260f112090].transform"
+      ],
+      "bytes": 384
+    },
+    {
+      "index": 8,
+      "label": "Build the gate",
+      "changes": 7,
+      "paths": [
+        "objects[7b6f7d72-9f0a-4bef-bae8-4e7b88bd7c5d]",
+        "scene.roots",
+        "objects[7b6f7d72-9f0a-4bef-bae8-4e7b88bd7c5d].transform",
+        "objects[dc649c1d-df4e-4ea6-b47c-f1e219b31e06]",
+        "objects[dc649c1d-df4e-4ea6-b47c-f1e219b31e06].transform",
+        "objects[50fa707d-e47e-4332-b8db-a7cbd5d4c101]",
+        "objects[50fa707d-e47e-4332-b8db-a7cbd5d4c101].transform"
+      ],
+      "bytes": 2136
+    },
+    {
+      "index": 9,
+      "label": "Set light intensity of 'Sun'",
+      "changes": 1,
+      "paths": [
+        "objects[c128c361-92cb-472c-8d5d-a1f10376decb].light"
+      ],
+      "bytes": 384
+    },
+    {
+      "index": 10,
+      "label": "Set world background",
+      "changes": 1,
+      "paths": [
+        "world"
+      ],
+      "bytes": 384
+    },
+    {
+      "index": 11,
+      "label": "Merge 'Props' (2 objects)",
+      "changes": 3,
+      "paths": [
+        "objects[f336502b-8915-4b2f-9985-14b98e77e96d]",
+        "scene.roots",
+        "objects[c6be77d0-f8be-4ba6-b7ed-e4dc2c3fdb43]"
+      ],
+      "bytes": 1024
+    },
+    {
+      "index": 12,
+      "label": "Set position of 'Barrel'",
+      "changes": 1,
+      "paths": [
+        "objects[f336502b-8915-4b2f-9985-14b98e77e96d].transform"
+      ],
+      "bytes": 384
+    },
+    {
+      "index": 13,
+      "label": "Set position of 'Post'",
+      "changes": 1,
+      "paths": [
+        "objects[c6be77d0-f8be-4ba6-b7ed-e4dc2c3fdb43].transform"
+      ],
+      "bytes": 384
+    }
+  ],
+  "checkpoints": {
+    "gate": 8
+  },
+  "history_bytes_in_memory": 11984,
+  "history_file_bytes": 20511,
+  "problems": []
+}

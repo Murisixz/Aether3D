@@ -272,6 +272,27 @@ def test_procedural_changes_render_immediately_and_nothing_is_modified(gpu):
     assert json.dumps(scene.to_dict(), sort_keys=True) == document
 
 
+def test_undo_and_redo_render_exactly_on_the_gpu_with_warm_caches(gpu):
+    scene = Scene()
+    scene.procedural.add_parameter("count", 2, min=1, max=6)
+    row = scene.add_geometry("Row", "box", width=0.8, depth=0.8, height=0.8)
+    row.add_modifier("array", count=Expr("count"), relative_offset=(1.5, 0, 0))
+    scene.add_object("Row", geometry=row)
+    scene.add_sphere(name="Ball", position=(1, -2, 1))
+    scene.add_camera("Cam", position=(3, -10, 4), look_at=(3, 0, 0), fov=50)
+    two = gpu.render(scene, width=96, height=48, samples=1)
+    scene.procedural.set_parameter("count", 5)
+    scene.get_by_name("Ball").mesh = create_cube(1.5)
+    scene.get_by_name("Ball").color = "#ff2020"
+    five = gpu.render(scene, width=96, height=48, samples=1)
+    scene.history.undo(3)
+    again = gpu.render(scene, width=96, height=48, samples=1)
+    assert np.array_equal(again.image, two.image)
+    assert again.backend["resources"]["mesh_uploads"] == 0  # the old meshes are still cached
+    scene.history.redo(3)
+    assert np.array_equal(gpu.render(scene, width=96, height=48, samples=1).image, five.image)
+
+
 def test_meshes_are_uploaded_once_and_shared_by_instances(gpu):
     scene = Scene()
     mesh = create_sphere(0.4, 16, 8)
@@ -302,10 +323,16 @@ def test_freed_meshes_leave_the_gpu_cache(gpu):
     serials = {serial for refs, _, serial in entries if refs[0]() is positions}
     assert len(serials) == 1  # the sphere is resident
     del positions
-    obj.mesh = create_cube(1.0)  # the sphere is no longer referenced anywhere
+    obj.mesh = create_cube(1.0)  # the scene no longer uses the sphere...
     gc.collect()
     result = gpu.render(scene, width=32, height=32, samples=1)
     assert result.backend["resources"]["mesh_uploads"] == 1  # the cube
+    # ... but its history does (undo brings the sphere back), so the sphere stays cached.
+    assert serials & {serial for _, _, serial in context.meshes._entries.values()}
+    scene.history.clear()  # now nothing refers to the sphere
+    gc.collect()
+    result = gpu.render(scene, width=32, height=32, samples=1)
+    assert result.backend["resources"]["mesh_uploads"] == 0
     assert not serials & {serial for _, _, serial in context.meshes._entries.values()}
 
 

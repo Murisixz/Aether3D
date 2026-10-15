@@ -55,6 +55,12 @@ MAX_GROUP = 2**16 - 1
 """Largest face group index (groups are stored per triangle)."""
 
 
+def _history_aspects():
+    from .. import history
+
+    return history
+
+
 def _err(code: str, message: str, location: str | None = None, **kw) -> MaterialError:
     return MaterialError(code, message, location, **kw)
 
@@ -168,7 +174,8 @@ class MaterialLibrary:
         if preset is not None:
             from .presets import build_preset
 
-            with self.transaction():
+            label = "Create material" if name is None else f"Create material {name!r}"
+            with self.transaction(label):
                 return build_preset(self, preset, name, material_id=material_id, **params)
         if model not in MODELS:
             raise _err(
@@ -200,9 +207,11 @@ class MaterialLibrary:
         if len(self._materials) >= MAX_MATERIALS:
             raise _err("RESOURCE_LIMIT", f"a scene has at most {MAX_MATERIALS} materials")
         material = Material(self, material_id, name, model, values)
-        self._materials[material_id] = material
-        self._material_names[name] = material
-        self._changed()
+        h = _history_aspects()
+        with self._op(f"Create material {name!r}", h.LIBRARY_MATERIALS, self):
+            self._materials[material_id] = material
+            self._material_names[name] = material
+            self._changed()
         return material
 
     def add_image_texture(
@@ -259,9 +268,11 @@ class MaterialLibrary:
         texture.load()  # validate now: missing or broken images are not added
         if embed:
             texture.embed()
-        self._textures[texture_id] = texture
-        self._texture_names[name] = texture
-        self._changed()
+        h = _history_aspects()
+        with self._op(f"Add texture {name!r}", h.LIBRARY_TEXTURES, self):
+            self._textures[texture_id] = texture
+            self._texture_names[name] = texture
+            self._changed()
         return texture
 
     def add_procedural_texture(
@@ -286,9 +297,11 @@ class MaterialLibrary:
         if len(self._textures) >= MAX_TEXTURES:
             raise _err("RESOURCE_LIMIT", f"a scene has at most {MAX_TEXTURES} textures")
         texture = ProceduralTexture(self, texture_id, name, parsed)
-        self._textures[texture_id] = texture
-        self._texture_names[name] = texture
-        self._changed()
+        h = _history_aspects()
+        with self._op(f"Add texture {name!r}", h.LIBRARY_TEXTURES, self):
+            self._textures[texture_id] = texture
+            self._texture_names[name] = texture
+            self._changed()
         return texture
 
     # -- removing -------------------------------------------------------------------
@@ -309,16 +322,19 @@ class MaterialLibrary:
                 hint="assign other materials first, or pass force=True to unassign it",
             )
         touched = []
-        for obj, group in users:
-            if group is None:
-                obj._material = None
-            else:
-                del obj._group_materials[group]
-            touched.append(obj.id)
-        del self._materials[material.id]
-        del self._material_names[material.name]
-        material._library = None
-        self._changed()
+        h = _history_aspects()
+        with self._op(f"Remove material {material.name!r}", h.LIBRARY_MATERIALS, self):
+            for obj, group in users:
+                self._touch(h.MATERIALS, obj)
+                if group is None:
+                    obj._material = None
+                else:
+                    del obj._group_materials[group]
+                touched.append(obj.id)
+            del self._materials[material.id]
+            del self._material_names[material.name]
+            material._library = None
+            self._changed()
         return sorted(set(touched))
 
     def remove_texture(self, ref: Any, *, force: bool = False) -> list[str]:
@@ -354,13 +370,85 @@ class MaterialLibrary:
                 texture.location,
                 hint="clear those slots first, or pass force=True to remove the bindings",
             )
-        for material, slot in bound:
-            del material._textures[slot]
-        del self._textures[texture.id]
-        del self._texture_names[texture.name]
-        texture._library = None
-        self._changed()
+        h = _history_aspects()
+        with self._op(f"Remove texture {texture.name!r}", h.LIBRARY_TEXTURES, self):
+            for material, slot in bound:
+                self._touch(h.MATERIAL, material)
+                del material._textures[slot]
+            del self._textures[texture.id]
+            del self._texture_names[texture.name]
+            texture._library = None
+            self._changed()
         return sorted({m.id for m, _ in bound})
+
+    # -- copying from another scene ------------------------------------------------
+
+    def _copy_from(self, other: MaterialLibrary) -> dict[str | None, str | None]:
+        """Copy every material and texture of ``other`` (new ids, free names); returns the
+        new id of each copied material by its old id (``None`` maps to ``None``)."""
+        import dataclasses
+
+        if len(self._materials) + len(other._materials) > MAX_MATERIALS:
+            raise _err("RESOURCE_LIMIT", f"a scene has at most {MAX_MATERIALS} materials")
+        if len(self._textures) + len(other._textures) > MAX_TEXTURES:
+            raise _err("RESOURCE_LIMIT", f"a scene has at most {MAX_TEXTURES} textures")
+        h = _history_aspects()
+        renamed: dict[str, str] = {}  # old id or name -> new id or name (graph references)
+        textures: dict[str, Texture] = {}
+        taken = set(self._texture_names)
+        for t in other._textures.values():
+            name = _unique(t._name, dict.fromkeys(taken))
+            taken.add(name)
+            if isinstance(t, ImageTexture):
+                copy: Texture = ImageTexture(
+                    self,
+                    new_id(),
+                    name,
+                    file=t._file,
+                    root=t._root,
+                    data=t._data,
+                    wrap=t._wrap,
+                    filter=t._filter,
+                    mipmaps=t._mipmaps,
+                    color_space=t._color_space,
+                )
+            else:
+                copy = ProceduralTexture(self, new_id(), name, t._graph)
+            textures[t._id] = copy
+            renamed[t._id], renamed[t._name] = copy._id, name
+        for copy in textures.values():  # image nodes sample textures by id or name
+            if isinstance(copy, ProceduralTexture) and copy._graph.image_references():
+                data = copy._graph.to_dict()
+                for node in data["nodes"].values():
+                    if node.get("type") == "image":
+                        node["texture"] = renamed.get(node["texture"], node["texture"])
+                copy._graph = TextureGraph.from_dict(data, copy.location)
+        materials: dict[str | None, str | None] = {None: None}
+        copies = []
+        taken = set(self._material_names)
+        for m in other._materials.values():
+            name = _unique(m._name, dict.fromkeys(taken))
+            taken.add(name)
+            bindings = {
+                slot: dataclasses.replace(b, texture=textures[b.texture]._id)
+                for slot, b in m._textures.items()
+            }
+            copy = Material(self, new_id(), name, m._model, dict(m._values), bindings)
+            materials[m._id] = copy._id
+            copies.append(copy)
+        if textures:
+            self._touch(h.LIBRARY_TEXTURES, self)
+            for t in textures.values():
+                self._textures[t._id] = t
+                self._texture_names[t._name] = t
+        if copies:
+            self._touch(h.LIBRARY_MATERIALS, self)
+            for m in copies:
+                self._materials[m._id] = m
+                self._material_names[m._name] = m
+        if textures or copies:
+            self._changed()
+        return materials
 
     # -- assignment -----------------------------------------------------------------
 
@@ -393,14 +481,19 @@ class MaterialLibrary:
                     f"object {obj.name!r} is a {obj.kind}; only mesh objects have materials",
                     f"objects[{obj.name}]",
                 )
-        for obj in targets:
-            if group is None:
-                obj._material = None if mat is None else mat.id
-            elif mat is None:
-                obj._group_materials.pop(int(group), None)
-            else:
-                obj._group_materials[int(group)] = mat.id
-        self._changed()
+        h = _history_aspects()
+        what = "Unassign material" if mat is None else f"Assign material {mat.name!r}"
+        where = targets[0].name if len(targets) == 1 else f"{len(targets)} objects"
+        with self._op(f"{what} ({where!r})" if len(targets) == 1 else f"{what} ({where})"):
+            for obj in targets:
+                self._touch(h.MATERIALS, obj)
+                if group is None:
+                    obj._material = None if mat is None else mat.id
+                elif mat is None:
+                    obj._group_materials.pop(int(group), None)
+                else:
+                    obj._group_materials[int(group)] = mat.id
+            self._changed()
         return targets
 
     def users(self, material: Any) -> list[tuple[SceneObject, int | None]]:
@@ -437,7 +530,8 @@ class MaterialLibrary:
             o for o in targets if o._material is None and o.camera is None and o.light is None
         ]
         created: list[Material] = []
-        with self.transaction():
+        h = _history_aspects()
+        with self._op("Convert colors to materials"):
             shared: dict[tuple, Material] = {}
             for obj in targets:
                 look = obj.appearance.to_dict()
@@ -462,8 +556,9 @@ class MaterialLibrary:
                     )
                     created.append(material)
                     shared[key] = material
+                self._touch(h.MATERIALS, obj)
                 obj._material = material.id
-        self._changed()
+            self._changed()
         return created
 
     # -- validation and inspection --------------------------------------------------
@@ -821,6 +916,20 @@ class MaterialLibrary:
         }
 
     def restore(self, snap: dict[str, Any]) -> None:
+        """Put back the state of :meth:`snapshot` (recorded as one history step)."""
+        h = _history_aspects()
+        with self._op("Restore materials"):
+            self._touch(h.LIBRARY_MATERIALS, self)
+            self._touch(h.LIBRARY_TEXTURES, self)
+            for m in (*self._materials.values(), *(m for m, *_ in snap["materials"])):
+                self._touch(h.MATERIAL, m)
+            for t in (*self._textures.values(), *(t for t, *_ in snap["textures"])):
+                self._touch(h.TEXTURE, t)
+            for obj, *_ in snap["objects"]:
+                self._touch(h.MATERIALS, obj)
+            self._restore(snap)
+
+    def _restore(self, snap: dict[str, Any]) -> None:
         kept_materials = {id(m) for m, *_ in snap["materials"]}
         for m in self._materials.values():
             if id(m) not in kept_materials:
@@ -853,16 +962,22 @@ class MaterialLibrary:
         self._changed()
 
     @contextlib.contextmanager
-    def transaction(self) -> Iterator[MaterialLibrary]:
-        """All-or-nothing changes: if the block raises, everything is restored."""
-        snap = self.snapshot()
-        try:
+    def transaction(self, label: str = "Change materials") -> Iterator[MaterialLibrary]:
+        """All-or-nothing changes: if the block raises, everything is restored.
+
+        This is a transaction of the scene's history (one undo step): it covers
+        every change made in the block, not only those of materials.
+        """
+        with self._scene._history.transaction(label):
             yield self
-        except BaseException:
-            self.restore(snap)
-            raise
 
     _transaction = transaction
+
+    def _op(self, label: str | None, aspect: Any = None, target: Any = None) -> Any:
+        return self._scene._history._op(label, aspect, target)
+
+    def _touch(self, aspect: Any, target: Any) -> None:
+        self._scene._history._touch(aspect, target)
 
     # -- internals ------------------------------------------------------------------
 
@@ -892,10 +1007,12 @@ class MaterialLibrary:
             raise _err(
                 "NAME_CONFLICT", f"a material named {name!r} already exists", f"materials[{name}]"
             )
-        del self._material_names[material._name]
-        material._name = name
-        self._material_names[name] = material
-        self._changed()
+        h = _history_aspects()
+        with self._op(f"Rename material {material._name!r} to {name!r}", h.MATERIAL, material):
+            del self._material_names[material._name]
+            material._name = name
+            self._material_names[name] = material
+            self._changed()
 
     def _rename_texture(self, texture: Texture, name: str) -> None:
         _check_name(name, "texture")
@@ -906,18 +1023,21 @@ class MaterialLibrary:
                 "NAME_CONFLICT", f"a texture named {name!r} already exists", f"textures[{name}]"
             )
         old = texture._name
-        del self._texture_names[old]
-        texture._name = name
-        self._texture_names[name] = texture
-        # Graphs that sample this texture by name follow the rename.
-        for t in self._textures.values():
-            if isinstance(t, ProceduralTexture) and old in t.graph.image_references():
-                data = t.graph.to_dict()
-                for node in data["nodes"].values():
-                    if node.get("type") == "image" and node.get("texture") == old:
-                        node["texture"] = name
-                t._graph = TextureGraph.from_dict(data, t.location)
-        self._changed()
+        h = _history_aspects()
+        with self._op(f"Rename texture {old!r} to {name!r}", h.TEXTURE, texture):
+            del self._texture_names[old]
+            texture._name = name
+            self._texture_names[name] = texture
+            # Graphs that sample this texture by name follow the rename.
+            for t in self._textures.values():
+                if isinstance(t, ProceduralTexture) and old in t.graph.image_references():
+                    data = t.graph.to_dict()
+                    for node in data["nodes"].values():
+                        if node.get("type") == "image" and node.get("texture") == old:
+                            node["texture"] = name
+                    self._touch(h.TEXTURE, t)
+                    t._graph = TextureGraph.from_dict(data, t.location)
+            self._changed()
 
     def _texture_or_file(self, value: Any, location: str) -> Texture:
         """A texture by object/id/name, or an image texture for a file path (reused if loaded)."""

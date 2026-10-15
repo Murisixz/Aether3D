@@ -64,7 +64,8 @@ class SourceEditSession:
         if changed:
             new_mesh, build = self.mesh.build_mesh()
             diagnostics += build
-            g._system.set_source_mesh(g, new_mesh)
+            with g._system._transaction(f"Edit source mesh of geometry {g.name!r}"):
+                g._system.set_source_mesh(g, new_mesh)
         else:
             new_mesh = self._source
         self.mesh._closed = True

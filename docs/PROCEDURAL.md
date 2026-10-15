@@ -415,6 +415,12 @@ steps:
 The editing engine's own undo is separate and lives inside each editing
 session.
 
+Since 0.9.0 every procedural change is also a step of the scene's history,
+`scene.history` ([HISTORY.md](HISTORY.md)), which covers all kinds of changes.
+`proc.undo()` and `proc.redo()` remain the procedural-only history above, and
+each call is itself a step of the scene's history. `proc.batch(label)` names its
+step.
+
 ## Objects: sharing, baking and editing the source
 
 - `scene.add_object(name, geometry=node)` creates a procedural object, and

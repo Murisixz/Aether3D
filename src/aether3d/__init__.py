@@ -41,6 +41,7 @@ from .errors import (
     DetachedObjectError,
     EditError,
     HierarchyError,
+    HistoryError,
     MaterialError,
     NameConflictError,
     ObjectNotFoundError,
@@ -51,6 +52,7 @@ from .errors import (
     ValidationError,
 )
 from .gltf import ExportResult, ImportLimits, ImportResult, export_gltf, import_gltf
+from .history import History, HistoryEntry, Transaction
 from .inspection import MeshGeometryReport, SceneGeometryReport, inspect_mesh, inspect_scene
 from .materials import (
     ImageTexture,
@@ -104,6 +106,9 @@ __all__ = [
     "DetachedObjectError",
     "Diagnostic",
     "EditError",
+    "History",
+    "HistoryEntry",
+    "HistoryError",
     "EditSession",
     "EditableMesh",
     "Environment",
@@ -139,6 +144,7 @@ __all__ = [
     "SceneGeometryReport",
     "SceneObject",
     "ScriptError",
+    "Transaction",
     "ShadowSettings",
     "Selection",
     "TextureBinding",

@@ -141,8 +141,9 @@ class EditSession:
         targets = [obj]
         if scope == "shared" and self._source is not None:
             targets = [o for o in obj.scene if o.mesh is self._source]
-        for target in targets:
-            target.mesh = new_mesh
+        with obj.scene.history._op(f"Edit mesh of {obj.name!r}"):  # one undo step
+            for target in targets:
+                target.mesh = new_mesh
         self.mesh._closed = True
         self.result = CommitResult(
             mesh=new_mesh,

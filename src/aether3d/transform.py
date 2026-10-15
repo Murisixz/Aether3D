@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Iterable
 
 import numpy as np
 
 from . import math3d
+from .history import TRANSFORM
 from .math3d import IDENTITY_QUAT, Quat, Vec3
+
+_UNRECORDED = contextlib.nullcontext()
 
 
 class Transform:
@@ -23,9 +27,12 @@ class Transform:
         t.scale = 2                     # uniform scale shorthand
 
     See :mod:`aether3d.math3d` for the coordinate and rotation conventions.
+
+    An object's own transform (``obj.transform``) records every change in its
+    scene's history; standalone transforms record nothing.
     """
 
-    __slots__ = ("_position", "_rotation", "_scale")
+    __slots__ = ("_position", "_rotation", "_scale", "_owner")
 
     def __init__(
         self,
@@ -36,6 +43,7 @@ class Transform:
         self._position: Vec3 = math3d.vec3(position, "position")
         self._rotation: Quat = math3d.quat(rotation, "rotation")
         self._scale: Vec3 = math3d.scale3(scale, "scale")
+        self._owner = None  # the SceneObject this is the transform of
 
     # -- components --------------------------------------------------------
 
@@ -46,7 +54,9 @@ class Transform:
 
     @position.setter
     def position(self, value: Iterable[float]) -> None:
-        self._position = math3d.vec3(value, "position")
+        position = math3d.vec3(value, "position")
+        with self._edit("position"):
+            self._position = position
 
     @property
     def rotation(self) -> Quat:
@@ -55,7 +65,9 @@ class Transform:
 
     @rotation.setter
     def rotation(self, value: Iterable[float]) -> None:
-        self._rotation = math3d.quat(value, "rotation")
+        rotation = math3d.quat(value, "rotation")
+        with self._edit("rotation"):
+            self._rotation = rotation
 
     @property
     def rotation_euler(self) -> Vec3:
@@ -64,7 +76,9 @@ class Transform:
 
     @rotation_euler.setter
     def rotation_euler(self, value: Iterable[float]) -> None:
-        self._rotation = math3d.quat_from_euler(value)
+        rotation = math3d.quat_from_euler(value)
+        with self._edit("rotation"):
+            self._rotation = rotation
 
     @property
     def scale(self) -> Vec3:
@@ -73,7 +87,15 @@ class Transform:
 
     @scale.setter
     def scale(self, value: float | Iterable[float]) -> None:
-        self._scale = math3d.scale3(value, "scale")
+        scale = math3d.scale3(value, "scale")
+        with self._edit("scale"):
+            self._scale = scale
+
+    def _edit(self, what: str):
+        owner = self._owner
+        if owner is None:
+            return _UNRECORDED
+        return owner._edit(TRANSFORM, f"Set {what} of {owner._name!r}")
 
     # -- matrices ----------------------------------------------------------
 

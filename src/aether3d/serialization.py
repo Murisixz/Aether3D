@@ -21,6 +21,7 @@ from typing import Any
 
 import numpy as np
 
+from . import history
 from ._fileio import write_atomic
 from ._version import __version__
 from .errors import AetherError, ProjectFormatError, RenderError, ValidationError
@@ -29,7 +30,7 @@ from .procedural.params import value_from_json, value_to_json
 from .rendering.camera import Camera
 from .rendering.light import Light
 from .rendering.settings import Appearance, RenderSettings, World
-from .scene import Scene
+from .scene import Scene, _owned
 from .transform import Transform
 
 FORMAT_ID = "aether3d.project"
@@ -453,8 +454,24 @@ def scene_from_dict(
         ),
     )
     scene = Scene(_string(scene_data["name"], "scene.name"))
-    scene._world = _render_value(World, scene_data["world"], "scene.world")
-    scene._render_settings = _render_value(RenderSettings, scene_data["render"], "scene.render")
+    # Built through the API, but loading is not an edit: the history starts empty.
+    with scene.history._suspended():
+        _read_scene(scene, scene_data, meshes, project_dir)
+    return scene
+
+
+def _read_scene(
+    scene: Scene,
+    scene_data: dict[str, Any],
+    meshes: list[Mesh],
+    project_dir: str | os.PathLike[str] | None,
+) -> None:
+    scene._world = _owned(
+        _render_value(World, scene_data["world"], "scene.world"), scene, history.WORLD
+    )
+    scene._render_settings = _owned(
+        _render_value(RenderSettings, scene_data["render"], "scene.render"), scene, history.RENDER
+    )
 
     # Pass 1: parse and check every object record on its own.
     records: list[dict[str, Any]] = []
@@ -589,9 +606,9 @@ def scene_from_dict(
         )
         obj.transform = record["transform"]
         obj._geometry = record["geometry"]
-        obj._camera = record["camera"]
-        obj._light = record["light"]
-        obj._appearance = record["appearance"]
+        obj._camera = _owned(record["camera"], obj, history.CAMERA)
+        obj._light = _owned(record["light"], obj, history.LIGHT)
+        obj._appearance = _owned(record["appearance"], obj, history.APPEARANCE)
         obj._visible = record["visible"]
         obj._material = record["material"]
         obj._group_materials = record["group_materials"]
@@ -628,7 +645,6 @@ def scene_from_dict(
                 )
     if project_dir is not None:
         library.base_dir = base.absolute()
-    return scene
 
 
 def _group_materials(value: Any, loc: str) -> dict[int, str]:

@@ -197,3 +197,40 @@ class MaterialError(AetherError, ValueError):
             "hint": self.hint,
             "details": self.details,
         }
+
+
+class HistoryError(AetherError, ValueError):
+    """An undo, redo, checkpoint or history operation cannot be performed; nothing changed.
+
+    ``code`` is a stable identifier (e.g. ``"NOTHING_TO_UNDO"``, ``"TRANSACTION_OPEN"``,
+    ``"UNKNOWN_CHECKPOINT"``, ``"HISTORY_MISMATCH"``), ``location`` names the offending
+    element, ``hint`` suggests how to proceed and ``details`` carries structured context.
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        location: str | None = None,
+        *,
+        hint: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.location = location
+        self.hint = hint
+        self.details = dict(details or {})
+        text = f"[{code}] " + (f"{location}: " if location else "") + message
+        if hint:
+            text += f". Hint: {hint}"
+        super().__init__(text)
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "location": self.location,
+            "hint": self.hint,
+            "details": self.details,
+        }
