@@ -57,11 +57,16 @@ class Workspace:
     """A root directory and the rules for using paths inside it."""
 
     def __init__(self, root: str | os.PathLike[str], *, read_only: bool = False) -> None:
-        resolved = Path(root).expanduser().resolve()
+        given = Path(root).expanduser()
+        resolved = given.resolve()
         if not resolved.is_dir():
             raise WorkspaceError("WORKSPACE_INVALID", f"workspace {root!s} is not a directory")
         self.root = resolved
         self.read_only = read_only
+        # How the root may appear in messages: resolved, and as given (macOS: /var is a
+        # link to /private/var), longest first so neither is replaced inside the other.
+        spellings = {str(resolved), str(given.absolute())}
+        self._spellings = sorted(spellings, key=len, reverse=True)
 
     # ------------------------------------------------------------------ #
 
@@ -75,10 +80,11 @@ class Workspace:
     def redact(self, text: str) -> str:
         """``text`` with paths in the workspace made relative to it, the workspace itself
         shown as ``<workspace>`` and the user's home folder as ``~``."""
-        root = str(self.root)
-        text = text.replace(root + os.sep, "").replace(root, "<workspace>")
-        if os.sep != "/":
-            text = text.replace(self.root.as_posix() + "/", "")
+        for root in self._spellings:
+            text = text.replace(root + os.sep, "").replace(root, "<workspace>")
+            if os.sep != "/":
+                posix = root.replace(os.sep, "/")
+                text = text.replace(posix + "/", "").replace(posix, "<workspace>")
         home = str(Path.home())
         if len(home) > 1:
             text = text.replace(home, "~")

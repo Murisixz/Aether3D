@@ -54,8 +54,8 @@ server in). Then start `claude` in that folder and ask, for example:
 > Build a Minecraft-style castle with four towers and a keep, check that nothing
 > overlaps, show me a preview and export it to castle.glb.
 
-Claude Code asks before the first use of each tool. `claude mcp remove aether3d` removes
-the server again.
+Unless you allow its tools in advance, Claude Code asks for permission before it uses
+them. `claude mcp remove aether3d` removes the server again.
 
 To share the configuration with a team, `claude mcp add --scope project ...` writes a
 `.mcp.json` in the folder (each user approves it when Claude Code starts):
@@ -85,8 +85,9 @@ errors), and returns structured JSON -- also as text, for clients that read only
 tool that cannot do what was asked changes nothing and returns an error result:
 
 ```json
-{"error": {"code": "PATH_OUTSIDE_WORKSPACE", "message": "'../x.aether' leaves the workspace",
-           "hint": "use a path inside the workspace", "details": {}}}
+{"error": {"type": "WorkspaceError", "code": "PATH_OUTSIDE_WORKSPACE",
+           "message": "'../x.aether' is outside the workspace",
+           "hint": "use a path relative to the workspace root, without '..'"}}
 ```
 
 Arguments that do not fit the schema give `INVALID_ARGUMENTS` with a JSON pointer per

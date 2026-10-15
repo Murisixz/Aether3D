@@ -748,3 +748,33 @@ def test_unicode_names_round_trip(tmp_path):
     from aether3d import Scene
 
     assert Scene.load(tmp_path / "été.aether").get_by_name(name).material.name == "Pierre ✓"
+
+
+@pytest.mark.parametrize("kind", ["escaped", "linked"])
+def test_workspace_paths_are_hidden_however_they_are_spelled(tmp_path, kind):
+    """JSON escapes a Windows path's backslashes, and macOS reaches temporary folders
+    through a link (/var -> /private/var): the workspace is hidden either way."""
+    from aether3d import RenderError
+    from aether3d.mcp.session import ServerConfig, Session
+    from aether3d.mcp.tools import error_payload
+
+    if kind == "escaped":
+        if os.name != "posix":
+            pytest.skip("such a folder name needs a POSIX file system")
+        root = tmp_path / 'back\\slash "quoted"'
+        root.mkdir()
+    else:
+        real = tmp_path / "real"
+        real.mkdir()
+        root = tmp_path / "link"
+        try:
+            root.symlink_to(real, target_is_directory=True)
+        except OSError:  # pragma: no cover - Windows without the privilege
+            pytest.skip("cannot create a symbolic link here")
+    session = Session(ServerConfig(workspace=root))
+    payload = error_payload(
+        RenderError("X", f"cannot read {root / 'scenes' / 'a.aether'}"), session
+    )
+    message = payload["error"]["message"]
+    assert message == "cannot read scenes/a.aether" or message.endswith("scenes\\a.aether")
+    assert str(root) not in json.dumps(payload) and str(root.resolve()) not in json.dumps(payload)

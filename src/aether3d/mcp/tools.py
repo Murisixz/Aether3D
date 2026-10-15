@@ -380,9 +380,27 @@ def _engine_error(exc: AetherError, session: Session) -> dict[str, Any]:
         data["message"] = str(exc)
     data.setdefault("code", getattr(exc, "code", type(exc).__name__))
     data.setdefault("message", str(exc))
+    return _redacted(data, session)
+
+
+def _redacted(data: Any, session: Session) -> Any:
+    """``data`` as JSON values, with every string redacted (``Workspace.redact``).
+
+    Strings are redacted before they are encoded: in JSON text a Windows path's
+    backslashes are doubled, and would no longer match the workspace's path.
+    """
     import json
 
-    return json.loads(session.workspace.redact(json.dumps(data, default=str)))
+    def walk(value: Any) -> Any:
+        if isinstance(value, str):
+            return session.workspace.redact(value)
+        if isinstance(value, list):
+            return [walk(v) for v in value]
+        if isinstance(value, dict):
+            return {k: walk(v) for k, v in value.items()}
+        return value
+
+    return walk(json.loads(json.dumps(data, default=str)))
 
 
 # --------------------------------------------------------------------------- #
@@ -1339,6 +1357,4 @@ def error_payload(exc: BaseException, session: Session) -> dict[str, Any]:
             "code": "INTERNAL_ERROR",
             "message": f"{type(exc).__name__}: {redact_paths(str(exc))}",
         }
-    import json
-
-    return json.loads(session.workspace.redact(json.dumps({"error": data}, default=str)))
+    return _redacted({"error": data}, session)
