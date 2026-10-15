@@ -24,7 +24,6 @@ PROJECT_SUFFIXES = (".aether",)
 SCENE_SUFFIXES = (".aether", ".glb", ".gltf")
 EXPORT_SUFFIXES = (".glb", ".gltf")
 IMAGE_SUFFIXES = (".png", ".hdr", ".pfm")
-PLAN_SUFFIXES = (".json",)
 
 
 class WorkspaceError(AetherError, ValueError):
