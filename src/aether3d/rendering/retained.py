@@ -74,6 +74,7 @@ from .scene_data import (
     _material_cache,
     _render_camera,
     _render_mesh,
+    _world_from_local,
     _zero_scale,
     normal_matrices,
 )
@@ -451,10 +452,7 @@ class RenderWorld:
         recompute = np.flatnonzero(fresh_local)
         if recompute.size:
             local[recompute] = _local_matrices([objects[k] for k in recompute.tolist()])
-        world = local.copy()
-        for level in range(1, int(depth.max(initial=0)) + 1):
-            at = np.flatnonzero(depth == level)
-            world[at] = _mat4_mul_many(world[parent[at]], world[at])
+        world = _world_from_local(local.copy(), parent, depth)
         changed = fresh_local.copy()
         if kept.size:
             changed[kept] |= np.any(

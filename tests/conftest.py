@@ -49,6 +49,19 @@ def gpu() -> GPU:
     return GPU(adapter, status["selected"])
 
 
+def pytest_sessionstart(session):
+    """``AETHER3D_REQUIRE_NATIVE=1`` (CI jobs that build ``native/``): the native kernels must
+    be installed and used, or the run fails instead of falling back to NumPy."""
+    if os.environ.get("AETHER3D_REQUIRE_NATIVE") == "1":
+        from aether3d import _native
+
+        status = _native.status()
+        if not status["enabled"]:
+            pytest.exit(
+                f"AETHER3D_REQUIRE_NATIVE=1, but the native kernels are not used: {status}", 1
+            )
+
+
 @pytest.fixture(autouse=True)
 def strict_history(monkeypatch):
     """Every test runs with the history's strict checks: a change recorded outside an

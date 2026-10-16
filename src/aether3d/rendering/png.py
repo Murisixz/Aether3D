@@ -18,6 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .. import _native
 from .._fileio import write_atomic
 from ..errors import RenderError
 
@@ -53,6 +54,10 @@ def _filter_rows(rows: np.ndarray, bpp: int) -> np.ndarray:
     """
     height, stride = rows.shape
     out = np.empty((height, stride + 1), dtype=np.uint8)
+    native = _native.module()
+    if native is not None:  # the same choice and bytes (aether3d-native)
+        native.png_filter(np.ascontiguousarray(rows), height, stride, bpp, out)
+        return out
     previous = np.zeros(stride, dtype=np.int16)
     for r0 in range(0, height, _ROW_BLOCK):
         raw = rows[r0 : r0 + _ROW_BLOCK]

@@ -82,3 +82,10 @@ RETAINED_RENDER_WORLD = register(
     "change journal (rendering/retained.py, RenderWorld); 0 walks the whole scene for "
     "every render",
 )
+
+NATIVE = register(
+    "AETHER3D_NATIVE",
+    True,
+    "use the native kernels of aether3d-native when it is installed (aether3d/_native.py: "
+    "ray traversal, transform hierarchies, PNG filters); 0 uses the NumPy implementations",
+)

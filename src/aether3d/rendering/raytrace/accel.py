@@ -51,6 +51,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from ... import _native
 from .bvh import BVH, LEAF_SIZE, build_bvh, triangle_bounds
 
 if TYPE_CHECKING:
@@ -356,30 +357,9 @@ class SceneAccel:
         skip_tri: np.ndarray | None = None,
     ) -> Hits:
         """Nearest hit in ``(tmin, tmax)`` of every ray (``direction`` need not be unit)."""
-        n = origin.shape[0]
-        out = Hits(
-            np.full(n, np.inf),
-            np.full(n, -1, dtype=np.int64),
-            np.full(n, -1, dtype=np.int64),
-            np.zeros((n, 3)),
-        )
-        tmin_a = np.broadcast_to(np.asarray(tmin, dtype=np.float64), (n,))
-        tmax_a = np.broadcast_to(np.asarray(tmax, dtype=np.float64), (n,))
         t0 = time.perf_counter()
-        for s in range(0, n, BATCH):
-            sl = slice(s, min(n, s + BATCH))
-            self._trace(
-                origin[sl],
-                direction[sl],
-                tmin_a[sl],
-                tmax_a[sl],
-                None if skip_inst is None else skip_inst[sl],
-                None if skip_tri is None else skip_tri[sl],
-                out,
-                sl,
-                any_hit=False,
-            )
-        self.traced.rays += n
+        out = self._run(origin, direction, tmin, tmax, skip_inst, skip_tri, any_hit=False)
+        self.traced.rays += origin.shape[0]
         self.traced.seconds += time.perf_counter() - t0
         return out
 
@@ -393,6 +373,16 @@ class SceneAccel:
         skip_tri: np.ndarray | None = None,
     ) -> np.ndarray:
         """Whether anything lies in ``(tmin, tmax)`` along each ray (any-hit query)."""
+        t0 = time.perf_counter()
+        out = self._run(origin, direction, tmin, tmax, skip_inst, skip_tri, any_hit=True)
+        self.traced.shadow_rays += origin.shape[0]
+        self.traced.seconds += time.perf_counter() - t0
+        return out.inst >= 0
+
+    def _run(self, origin, direction, tmin, tmax, skip_inst, skip_tri, any_hit: bool) -> Hits:
+        """The hits of every ray: with the native kernel when it is available
+        (``aether3d._native``; the same arithmetic, bitwise the same hits and statistics),
+        otherwise with the NumPy traversal below, a batch of ``BATCH`` rays at a time."""
         n = origin.shape[0]
         out = Hits(
             np.full(n, np.inf),
@@ -402,7 +392,47 @@ class SceneAccel:
         )
         tmin_a = np.broadcast_to(np.asarray(tmin, dtype=np.float64), (n,))
         tmax_a = np.broadcast_to(np.asarray(tmax, dtype=np.float64), (n,))
-        t0 = time.perf_counter()
+        native = _native.module()
+        if native is not None:
+            skip = skip_tri is not None  # (the NumPy traversal skips only with both)
+            iterations, visits, tests = native.trace(
+                self.child,
+                self.child_lo,
+                self.child_hi,
+                self.kind,
+                self.first,
+                self.count,
+                self.v0,
+                self.v1,
+                self.v2,
+                self.tri_prim,
+                self.slot_inst,
+                self.inst_lo,
+                self.inst_hi,
+                self.inst_root,
+                self.to_object,
+                self.root_lo,
+                self.root_hi,
+                int(self.stack_size),
+                np.ascontiguousarray(origin, dtype=np.float64),
+                np.ascontiguousarray(direction, dtype=np.float64),
+                np.ascontiguousarray(tmin_a),
+                np.ascontiguousarray(tmax_a),
+                np.ascontiguousarray(skip_inst, dtype=np.int64) if skip else None,
+                np.ascontiguousarray(skip_tri, dtype=np.int64) if skip else None,
+                out.t,
+                out.inst,
+                out.prim,
+                out.b,
+                any_hit,
+                BATCH,
+                _native.threads(),
+            )
+            stats = self.traced
+            stats.iterations += iterations
+            stats.node_visits += visits
+            stats.triangle_tests += tests
+            return out
         for s in range(0, n, BATCH):
             sl = slice(s, min(n, s + BATCH))
             self._trace(
@@ -414,11 +444,9 @@ class SceneAccel:
                 None if skip_tri is None else skip_tri[sl],
                 out,
                 sl,
-                any_hit=True,
+                any_hit=any_hit,
             )
-        self.traced.shadow_rays += n
-        self.traced.seconds += time.perf_counter() - t0
-        return out.inst >= 0
+        return out
 
     # -- the traversal loop ---------------------------------------------------------------
 

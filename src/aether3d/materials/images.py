@@ -34,6 +34,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .. import _native
 from ..errors import MaterialError
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -335,6 +336,11 @@ def _unfilter(block: np.ndarray, bpp: int, location: str | None) -> np.ndarray:
         raise _invalid(f"invalid PNG filter type {int(types.max())}", location)
     filtered = block[:, 1:]
     height, stride = filtered.shape
+    native = _native.module()
+    if native is not None:  # the same bytes (aether3d-native)
+        out = np.empty((height, stride), dtype=np.uint8)
+        native.png_unfilter(np.ascontiguousarray(block), height, stride, bpp, out)
+        return out
     if not np.any(types >= 3):
         # None, Sub and Up only: rows are independent apart from Up's previous row.
         out = np.empty_like(filtered)

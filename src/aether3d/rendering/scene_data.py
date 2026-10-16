@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .. import _features
+from .. import _features, _native
 from ..diagnostics import INFO, WARNING, Diagnostic
 from ..errors import AetherError, RenderError
 from ..mesh import Mesh
@@ -246,6 +246,11 @@ def _local_matrices(objects: list[SceneObject]) -> np.ndarray:
     position = np.fromiter(_chain(map(_POSITION, transforms)), np.float64, 3 * n).reshape(n, 3)
     rotation = np.fromiter(_chain(map(_ROTATION, transforms)), np.float64, 4 * n).reshape(n, 4)
     scale = np.fromiter(_chain(map(_SCALE, transforms)), np.float64, 3 * n).reshape(n, 3)
+    native = _native.module()
+    if native is not None:  # the same arithmetic (aether3d-native)
+        m = np.empty((n, 4, 4), dtype=np.float64)
+        native.local_matrices(position, rotation, scale, m)
+        return m
     x, y, z, w = rotation.T
     r = np.empty((n, 3, 3), dtype=np.float64)
     r[:, 0, 0] = 1 - 2 * (y * y + z * z)
@@ -293,10 +298,24 @@ def _world_stack(scene: Scene) -> tuple[list[SceneObject], np.ndarray]:
         if obj.parent is not None:
             parent[k] = index[obj.parent.id]
             depth[k] = depth[parent[k]] + 1
-    for level in range(1, int(depth.max()) + 1):
+    return objects, _world_from_local(world, parent, depth)
+
+
+def _world_from_local(local: np.ndarray, parent: np.ndarray, depth: np.ndarray) -> np.ndarray:
+    """World matrices of objects in depth-first order (parents first) from their local
+    matrices: ``world[parent] @ local`` with :func:`_mat4_mul_many`'s sums, one hierarchy
+    level at a time (or in one native pass, with the same arithmetic). ``local`` may be
+    returned, updated in place."""
+    native = _native.module()
+    if native is not None and len(local):
+        world = np.empty_like(local)
+        native.world_matrices(np.ascontiguousarray(local), np.ascontiguousarray(parent), world)
+        return world
+    world = local
+    for level in range(1, int(depth.max(initial=0)) + 1):
         rows = np.flatnonzero(depth == level)
         world[rows] = _mat4_mul_many(world[parent[rows]], world[rows])
-    return objects, world
+    return world
 
 
 def normal_matrix(linear: np.ndarray) -> np.ndarray | None:

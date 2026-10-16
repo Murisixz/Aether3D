@@ -288,3 +288,77 @@ jobs:
           python examples/gltf_roundtrip.py ci_gltf --require-validator
           python examples/minecraft_hero.py ci_hero --require-validator
           python examples/minecraft_castle.py ci_castle --require-validator
+
+  native-lint:
+    # The Rust crate of the native kernels (native/): formatting and clippy's lints.
+    name: native kernels (rustfmt, clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain (the runner's rustup)
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+      - run: cargo fmt --manifest-path native/Cargo.toml --check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: clippy (warnings are errors)
+        env:
+          PYO3_PYTHON: python
+        run: cargo clippy --manifest-path native/Cargo.toml --release -- -D warnings
+
+  native:
+    # Aether3D with its native kernels (native/, aether3d-native): built from source with
+    # the runner's Rust, installed next to Aether3D and required by the tests
+    # (AETHER3D_REQUIRE_NATIVE). The jobs above run without them: the NumPy fallbacks.
+    name: native kernels (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    env:
+      AETHER3D_GPU_TESTS: skip
+      AETHER3D_REQUIRE_NATIVE: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"  # the oldest the wheels' stable ABI supports
+          - os: ubuntu-latest
+            python-version: "3.14"
+          - os: macos-latest
+            python-version: "3.13"
+          - os: windows-latest
+            python-version: "3.13"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - name: Rust toolchain (the runner's rustup)
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]" "maturin>=1.9,<2"
+      - name: Build the native wheel and install it
+        shell: bash
+        run: |
+          maturin build --release --manifest-path native/Cargo.toml --out native-wheels
+          pip install --no-index --find-links native-wheels aether3d-native
+          python -c "from aether3d import _native; print(_native.status())"
+      - name: Native kernels against the NumPy implementations (parity, errors, GIL, memory)
+        run: pytest tests/test_native.py -v -rs
+      - name: Whole suite with the native kernels (render goldens and path tracer bit for bit)
+        run: pytest -rs
+      - name: The NumPy fallbacks, with the package installed but switched off
+        shell: bash
+        env:
+          AETHER3D_NATIVE: "0"
+          AETHER3D_REQUIRE_NATIVE: "0"
+        run: pytest tests/test_pathtrace_golden.py tests/test_pathtrace.py tests/test_spatial_queries.py tests/test_invariants.py tests/test_render_png.py tests/test_material_images.py -rs
+      - name: Upload the wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: aether3d-native-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: native-wheels/*.whl
