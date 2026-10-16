@@ -218,6 +218,10 @@ nothing older can be undone either.
   procedural evaluations cached. `materials.version`, `procedural.revision` and
   `scene.revision` increase with undo and redo like any change, for tools that
   cache by version.
+- **A change is a change of value, to the bit.** Setting a part to the value it already
+  has records nothing; a change between `0.0` and `-0.0` (equal numbers, but renders
+  and query results can tell them apart) is recorded and undone like any other.
+  (Colors are stored normalized, so `-0.0` in a color is `0.0`.)
 - **Caches derived from the whole scene follow its change journal.** Once such a cache
   asks (the retained render world does at the first render), the history keeps, for the
   last 256 revisions, which parts each one changed -- commits, undo and redo alike, never

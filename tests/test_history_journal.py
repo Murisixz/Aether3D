@@ -168,3 +168,27 @@ def test_aspect_objects_are_the_history_aspects():
     cube.color = (1.0, 0.0, 0.0)
     aspects = {aspect for aspect, _ in s.history._changes_since(start)}
     assert {ALIVE, ROOTS, TRANSFORM, APPEARANCE} <= aspects
+
+
+def test_a_change_of_the_sign_of_a_zero_is_a_change():
+    """0.0 == -0.0, but they render and query differently: the history records the change
+    (and undoes it exactly), so caches that follow the revision see it."""
+    import struct
+
+    s = Scene("J")
+    cube = s.add_cube("C", position=(0.0, 1.0, 2.0))
+    steps, revision = len(s.history.entries), s.revision
+    cube.position = (0.0, 1.0, 2.0)  # the same value: nothing recorded
+    assert len(s.history.entries) == steps and s.revision == revision
+    cube.position = (-0.0, 1.0, 2.0)
+    assert len(s.history.entries) == steps + 1 and s.revision == revision + 1
+    assert struct.pack("<d", cube.position[0]) == struct.pack("<d", -0.0)
+    s.history.undo()
+    assert struct.pack("<d", cube.position[0]) == struct.pack("<d", 0.0)
+    s.history.redo()
+    assert struct.pack("<d", cube.position[0]) == struct.pack("<d", -0.0)
+    cube.color = (0.0, 0.5, 0.5)
+    steps = len(s.history.entries)
+    cube.color = (-0.0, 0.5, 0.5)  # colors are stored normalized: the same value
+    assert struct.pack("<d", cube.color[0]) == struct.pack("<d", 0.0)
+    assert len(s.history.entries) == steps

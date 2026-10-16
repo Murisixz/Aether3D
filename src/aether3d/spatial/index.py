@@ -236,8 +236,12 @@ class SpatialIndex:
                 ):
                     rows.append(row)
                     olds.append(entry)
-            if rows:
-                same = np.all(stack[rows] == np.stack([e.world for e in olds]), axis=(1, 2))
+            if rows:  # bit for bit: 0.0 and -0.0 are equal, but results can differ
+                same = np.all(
+                    stack[rows].view(np.uint64)
+                    == np.stack([e.world for e in olds]).view(np.uint64),
+                    axis=(1, 2),
+                )
                 for row, entry, equal in zip(rows, olds, same.tolist(), strict=True):
                     if equal:
                         reusable[row] = entry

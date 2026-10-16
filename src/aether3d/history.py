@@ -45,6 +45,7 @@ undone steps (the redo branch).
 from __future__ import annotations
 
 import contextlib
+import math
 import sys
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
@@ -97,7 +98,21 @@ def recording(value: Any, fields: Iterable[str]) -> Any:
 
 
 def _same(a: Any, b: Any) -> bool:
-    return a is b or a == b
+    """Whether a part's state is unchanged: equal, and also in the signs of its zeros (0.0 ==
+    -0.0, but a change from one to the other changes renders and query results, so the
+    history records it like any other change)."""
+    return a is b or (a == b and _identical(a, b))
+
+
+def _identical(a: Any, b: Any) -> bool:
+    """``a == b`` (given), also for the signs of zeros in floats, tuples, lists and dicts."""
+    if isinstance(a, float) and isinstance(b, float):
+        return math.copysign(1.0, a) == math.copysign(1.0, b)
+    if isinstance(a, (tuple, list)) and isinstance(b, (tuple, list)):
+        return len(a) == len(b) and all(_identical(x, y) for x, y in zip(a, b, strict=True))
+    if isinstance(a, dict) and isinstance(b, dict):
+        return all(_identical(v, b[k]) for k, v in a.items())
+    return True
 
 
 def _same_items(a: tuple, b: tuple) -> bool:
