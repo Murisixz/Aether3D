@@ -30,12 +30,15 @@ Aether3D/
 │   ├── errors.py          Exception hierarchy
 │   ├── diagnostics.py     Diagnostic: structured findings (code, severity, location, ...)
 │   ├── _fileio.py         Atomic file writes shared by all writers
+│   ├── _features.py       Implementation switches (environment variables, docs/PERFORMANCE.md)
+│   ├── _native.py         The optional native kernels (aether3d-native): loading, ABI check
 │   ├── math3d.py          Stateless vector/quaternion/matrix helpers (NumPy)
 │   ├── transform.py       Transform: position / rotation / scale
 │   ├── mesh.py            Mesh: immutable indexed triangle mesh
 │   ├── primitives.py      Cube, sphere and plane generators
 │   ├── scene.py           Scene and SceneObject: the scene graph
-│   ├── history.py         Undo/redo history: operations, aspects, transactions, limits
+│   ├── history.py         Undo/redo history: operations, aspects, transactions, limits,
+│   │                      the change journal for derived caches
 │   ├── _history_file.py   History files (<project>.history): encoding, checks, replay
 │   ├── serialization.py   .aether reader/writer, validation, migrations
 │   ├── inspection.py      Geometry analysis of meshes and scenes
@@ -149,7 +152,12 @@ Aether3D/
 ├── examples/              Runnable examples, a sample project, example textures, renders (output/)
 ├── tools/gltf-validator/  Pinned Khronos glTF Validator runner (Node.js, dev only)
 ├── benchmarks/            Editing, procedural, rendering, materials, ray tracing, path
-│                          tracing and scene plan benchmarks (bench_*.py)
+│                          tracing and scene plan benchmarks (bench_*.py); the engine-wide
+│                          suite (bench_engine.py) and its saved runs (results/)
+├── native/                aether3d-native: optional Rust kernels (PyO3, maturin), exact
+│                          counterparts of NumPy code (ray traversal, hierarchies, PNG filters)
+├── research/              The October 2026 architecture audit and the performance
+│                          modernization's investigations (not part of the package)
 ├── docs/                  API, file formats, glTF, inspection, architecture, install
 └── .github/workflows/     Continuous integration
 ```
@@ -714,3 +722,43 @@ exposes every query as a method. See [SPATIAL.md](SPATIAL.md). Key decisions:
   per step of procedural scripts, a material record built per object in every render and
   full garbage collections inside plans, all fixed in 0.11. Scaling tests time with the
   collector paused (`tests/timing.py`), as `timeit` does.
+
+## Performance modernization (v0.11.1)
+
+The [October 2026 audit](../research/2026-10-architecture-audit/REPORT.md) found that
+Aether3D's time went into recomputation and data layout, not into Python as such: a
+10,000-object GPU frame spent 1.8 ms on the GPU and over 100 ms rebuilding on the CPU
+what had not changed. The modernization followed its order -- the architecture first,
+then a short list of native kernels, hardware ray tracing as a separate decision -- and
+records every phase, with what was measured and what was not reached, in
+[PERFORMANCE.md](PERFORMANCE.md).
+
+- **Caches follow the history.** The history's change journal
+  (`History._changes_since(revision)`) names the parts each revision changed -- commits,
+  undo and redo alike. Caches derived from the whole scene (the retained render world,
+  kept GPU frame data, world matrices and framing points) update only those parts and
+  recompute everything when the journal cannot answer. They live with their scene
+  (`Scene._derived()`), never in a module-level dictionary keyed by scenes: such an entry
+  kept every scene that answered a spatial query alive (fixed in 0.11.1).
+- **The same results, by construction and by test.** Every faster path computes what the
+  path it replaces computes, bit for bit: `tests/parity.py`, the retained world's
+  comparisons with the full extraction along random edits, `VERIFY_KEPT` for GPU frames,
+  and NumPy references for the native kernels. The replaced path stays behind a switch
+  (`_features.py`) until the new one has proven itself.
+- **Authoring stays object-based; rendering works on arrays.** Scene objects, transforms
+  and history aspects keep their identity and exact undo; the render side keeps columns
+  (instance arrays, matrices, kept GPU records) and patches them per change. Columnar
+  authoring was not adopted: it would trade the scene model's guarantees for costs the
+  render side's columns already removed.
+- **Native code is an optional, exact accelerator.** `aether3d-native` (Rust, PyO3)
+  holds a few scalar kernels -- ray traversal, transform hierarchies, PNG filters -- each
+  performing its NumPy twin's operations in order. Aether3D stays pure Python and uses
+  them only when they are installed and speak its calling convention (`_native.py`).
+- **Exactness bounds what may change.** Where results rest on platform libraries (mesh
+  editing's geometric predicates use BLAS and libm), only exact optimizations were made;
+  changing that arithmetic would be a deliberate behavior change for a release of its own.
+- **Hardware ray tracing waits.** A prototype measured ray queries inside the GPU path
+  tracer: the same triangles for at least 99.995 % of rays, but renders only 1.04-1.65
+  times faster -- they remove 10-42 % of the kernel's GPU time, and shading stays as it
+  is. wgpu-py cannot build acceleration structures, so integrating them would need a
+  second GPU device owned by a Rust host. The software traversal stays.

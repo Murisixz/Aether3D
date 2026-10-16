@@ -636,8 +636,12 @@ How to read these numbers:
   written (`AETHER3D_GPU_PERSISTENT_BUFFERS`); `render(outputs=...)` reads back
   only the outputs asked for (the image alone: 4 bytes per pixel), with the
   non-finite check and the covered-pixel count made on the GPU; MCP previews
-  read back the image only. The tables above predate these changes; the
-  engine-wide measurements are in PERFORMANCE.md.
+  read back the image only. With the retained render world, a frame also keeps
+  its draw order, instance records and material tables and updates only what
+  changed: one moved object repacks one instance record, a camera move only the
+  camera-relative translations (`tests/test_gpu_kept_frames.py` compares every
+  such frame with a full render, bit for bit). The tables above predate these
+  changes; the engine-wide measurements are in PERFORMANCE.md.
 - **PNG encoding.** Aether3D's own PNG encoder runs on the CPU and costs more
   than a whole GPU render at 1080p and above; `result.image` is available
   without it.
@@ -761,7 +765,7 @@ Requirements:
 
 | Option | Verdict |
 | --- | --- |
-| **wgpu-py + wgpu-native (chosen)** | One API (WebGPU) on **Vulkan, Metal and Direct3D 12**. Headless by design: no surface needed, offscreen textures and buffer readback. WGSL validated by naga at compile time with clear errors. Compute shaders, timestamp queries and MSAA; ray queries and other native features are exposed where the hardware has them. Prebuilt wheels for all major platforms, BSD-2 / MIT-or-Apache. Used by pygfx and fastplotlib. It enumerated and selected the RTX 4060 (Vulkan) and lavapipe here. Drawbacks: Python ≥ 3.11, and a pre-1.0 Python API (pinned). The OpenGL backend is limited (it may lack compute), so it is ranked last |
+| **wgpu-py + wgpu-native (chosen)** | One API (WebGPU) on **Vulkan, Metal and Direct3D 12**. Headless by design: no surface needed, offscreen textures and buffer readback. WGSL validated by naga at compile time with clear errors. Compute shaders, timestamp queries and MSAA. (Ray queries: wgpu has them behind an experimental feature, but wgpu-native's C API, which wgpu-py uses, cannot build acceleration structures -- measured in 2026-10; see PERFORMANCE.md, Phase 5.) Prebuilt wheels for all major platforms, BSD-2 / MIT-or-Apache. Used by pygfx and fastplotlib. It enumerated and selected the RTX 4060 (Vulkan) and lavapipe here. Drawbacks: Python ≥ 3.11, and a pre-1.0 Python API (pinned). The OpenGL backend is limited (it may lack compute), so it is ranked last |
 | Vulkan directly (`vulkan` cffi bindings) | Very verbose. Needs a SPIR-V compiler (glslang or shaderc) at build or run time. macOS only through MoltenVK. Direct3D 12 and Metal would each need another implementation |
 | Three native APIs (Vulkan + Metal through PyObjC + Direct3D 12 through comtypes) | Three renderers to write, test and keep identical; rejected for this stage |
 | ModernGL / PyOpenGL (OpenGL 3.3+, EGL headless) | Mature and simple, but OpenGL is deprecated on macOS (stuck at 4.1, no compute shaders). No path to modern features, and headless contexts differ by platform |

@@ -48,7 +48,10 @@ apply to agents too.
 - Editing: mutate an `EditableMesh` only through the journaled primitives in
   `editing/core.py`; new operations are `@operation` methods that validate first and raise
   `EditError` with a stable code (never leave a partial edit; never approximate an operation).
-  Run `tests/test_editing_robustness.py` after touching topology code.
+  Run `tests/test_editing_robustness.py` after touching topology code. Building in bulk
+  (`MeshCore._bulk_faces`, behind `AETHER3D_EDITING_BULK`) must give the tables adding one
+  face at a time gives, in the same insertion and iteration orders, sharing one Python int
+  per id (`tests/test_editing_bulk.py` compares them, and their memory).
 - Procedural: modifiers are pure functions `PolyMesh -> PolyMesh` registered in
   `procedural/modifiers.py` with a `ParamSpec` schema; never mutate inputs (arrays are
   read-only), raise `ProceduralError` with a stable code instead of returning damaged
@@ -124,6 +127,9 @@ apply to agents too.
   - **Honest reports.** It runs on the adapter's shader cores with software BVH
     traversal: never claim hardware ray tracing, and report `"device": "gpu"` with the
     adapter. Without a usable GPU it fails with a `GPU_*` error, never a silent CPU render.
+    Hardware ray queries were prototyped outside the package
+    (`research/2026-10-modernization/hw_pathtrace/`) and deferred; see
+    docs/PERFORMANCE.md (Phase 5) before reopening that question.
 
 - Operations history (`history.py`):
   - **Every change of a scene is recorded.** A new public method that changes the
@@ -207,6 +213,22 @@ apply to agents too.
   - **Switchable replacements.** A new implementation of something that works keeps the
     old one behind a switch (`aether3d/_features.py`, documented in docs/PERFORMANCE.md)
     with a test comparing the two, until it has proven itself.
+  - **Native kernels** (`native/`, the optional `aether3d-native` package; loaded by
+    `aether3d/_native.py`):
+    - **NumPy stays the reference.** Every kernel has a NumPy implementation in the
+      package that runs without it (or with `AETHER3D_NATIVE=0`); `import aether3d` must
+      never require the native package.
+    - **Bitwise the same.** A kernel performs the NumPy code's operations in its order:
+      no fused multiply-adds, no `target-cpu`, no fast-math, no reassociation.
+      `tests/test_native.py` compares each kernel with NumPy bit for bit on random and
+      adversarial inputs; run the suite with and without the package.
+    - **Safe at the boundary.** Check every array (type, contiguity, size) and every
+      index a kernel follows and raise `ValueError`, never read out of bounds; release
+      the GIL while computing; keep no reference to Python objects.
+    - **One calling convention.** Changing a kernel's signature or meaning bumps `ABI` in
+      both `native/src/lib.rs` and `_native.py` (a mismatched package is not used).
+    - Lint the crate with `cargo fmt --check` and `cargo clippy --release -- -D warnings`
+      in `native/` (CI does).
 
 ## Using Aether3D from an agent
 

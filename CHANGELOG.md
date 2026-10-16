@@ -4,6 +4,121 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.11.1: performance modernization
+
+An architecture-first performance release, following the plan of the
+[October 2026 audit](research/2026-10-architecture-audit/REPORT.md) and recorded phase by
+phase, with every measurement and every target not met, in
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md). Renders, queries and edits reuse what earlier
+ones computed and update it from what changed; an optional native package runs the
+hottest CPU kernels. Every faster path computes exactly what the path it replaces
+computes: the same images, query answers, documents and history.
+
+Measured on the development machine (i9-12900H, RTX 4060 Laptop GPU, Vulkan), 10,000
+objects, GPU frames at 1280x720 (`benchmarks/bench_engine.py`: the Phase 0 baseline, made
+on 0.11.0 with the spatial-query leak fixed, against the final run, `phase4.json`):
+
+| | 0.11.0 | 0.11.1 |
+| --- | ---: | ---: |
+| GPU frame, nothing changed: every output / image only | 115.5 ms / -- | 15.2 ms / 7.3 ms |
+| GPU frame, one object moved: every output / image only | 113.4 ms / -- | 17.1 ms / 8.8 ms |
+| GPU frame, the camera moved | 117.3 ms | 14.5 ms |
+| GPU frame, every object moved | 116.2 ms | 40.8 ms |
+| The frame's GPU passes alone (timestamp queries) | 1.8 ms | 1.8 ms |
+| Extracting an unchanged scene | 69.1 ms | 0.21 ms |
+| First raycast after an edit / a warm raycast | 242.7 / 7.4 ms | 54.5 / 1.4 ms |
+| CPU camera rays, one thread (100k triangles) | 0.31 M/s | 3.1 M/s with `aether3d-native` |
+| PNG decoding, 1080p | 311.5 ms | 41.0 ms with `aether3d-native` |
+| `EditableMesh.from_mesh`, 199,808 triangles | 0.70 s | 0.35 s |
+| Bevelling every edge of a 2,048-face sphere | 0.66 s | 0.50 s |
+| One plan creating 10,000 objects | 89.1 ms | 77.1 ms |
+
+0.11.0 always read back every output (28 bytes per pixel); "image only" is the new
+`render(outputs=["image"])` (4 bytes per pixel), which MCP previews use. The audit
+estimated a frame with one moved object at about 12 ms (about 6 ms reading back only
+the image): measured, 17.1 ms and 8.8 ms -- the estimates are not reached. There is no
+render without readback (every render returns an image); the GPU passes alone take
+1.8 ms.
+
+### Added
+
+- **`aether3d-native`** (optional; `pip install ./native`, needs Rust 1.85 or later;
+  Apache-2.0, built with PyO3 and maturin): Rust kernels for ray traversal (the CPU path
+  tracer and spatial queries), transform hierarchies and PNG row filters, with exactly
+  the arithmetic of their NumPy implementations -- the same hits, matrices and bytes.
+  Without it, or with `AETHER3D_NATIVE=0`, the NumPy code runs. One wheel per platform
+  for CPython 3.11 and later (stable ABI); `AETHER3D_NATIVE_THREADS` traces with
+  threads (results do not depend on it).
+- **`render(outputs=...)`**: return only some per-pixel outputs (`"image"`, `"linear"`,
+  `"depth"`, `"object_index"`, `"coverage"`); the GPU then reads back only those (4 bytes
+  per pixel for the image alone, instead of 28). Saving `.hdr`/`.pfm` without linear
+  light raises `OUTPUT_NOT_RENDERED`.
+- **`RenderResult.png_bytes(compression=...)`**: the zlib level (default 6, as before).
+- **Benchmarks:** `benchmarks/bench_engine.py`, the engine-wide suite (objects, queries,
+  extraction, GPU frames, ray tracing, editing, images, I/O, memory, lifecycle), with the
+  saved run of every phase in `benchmarks/results/`.
+- **Implementation switches** (environment variables, `aether3d/_features.py`): every
+  new implementation keeps the old one until it has proven itself --
+  `AETHER3D_MATERIAL_CACHE`, `AETHER3D_GPU_PERSISTENT_BUFFERS`,
+  `AETHER3D_RETAINED_RENDER_WORLD`, `AETHER3D_NATIVE`, `AETHER3D_EDITING_BULK`.
+- **docs/PERFORMANCE.md**: how to measure, the correctness guards, the switches and the
+  record of every phase.
+- **Research:** `research/2026-10-architecture-audit/` (the audit: report, results and
+  experiments) and `research/2026-10-modernization/` (the camera-rebase study and the
+  hardware ray tracing prototype).
+
+### Changed
+
+- **Rendering is incremental.** A retained render world, updated from the history's new
+  change journal, replaces `extract_render_scene`'s walk over every object; materials
+  resolved for one render are reused by the next while unchanged (images are read again
+  every render); GPU frames keep their per-frame buffers and write only what changed,
+  and keep and update their instance records, draw order and material tables.
+  `world_matrices` and framed renders reuse the retained world's matrices and framing
+  points.
+- **Spatial queries** reuse every unchanged object's entry from the previous revision's
+  index and build in bulk (a warm raycast without `aether3d-native`: 2.8-3.0 ms).
+- **MCP previews** read back only the image and encode it at zlib level 1; PNG encoding
+  chooses its row filters 1.8 times faster (the same bytes).
+- **Scene plans** draw new object ids in one batch and check transforms in bulk.
+- **Mesh editing:** `EditableMesh.from_mesh` builds its tables in bulk (the same ids,
+  tables and orders); quad joining and cross products are cheaper.
+- **The CPU path tracer** traces with `aether3d-native` when installed: a one-process
+  render (160x120, 8 samples, 30 spheres and a plane) took 0.45 s instead of 1.85, with
+  the same image bit for bit.
+
+### Fixed
+
+- **A spatial query kept its scene alive forever** (a module-level cache keyed by the
+  scene): every scene that answered a query stayed in memory with its index. Caches
+  derived from a scene now live with the scene (`tests/test_scene_lifecycle.py`).
+- **A change between `0.0` and `-0.0` is a change**: the history recorded nothing when a
+  value changed only in the sign of a zero, so undo could not restore it and caches kept
+  the other zero.
+
+### Compatibility
+
+- **Unchanged results:** the render goldens, the path tracer's bit-for-bit images, the
+  spatial brute-force references and the history catalog pass unchanged, with and
+  without `aether3d-native`; every switch's old and new paths are compared by tests.
+- **No format change** (`FORMAT_VERSION` unchanged); public APIs only gain the additions
+  above; MCP workspace confinement and every security limit are unchanged.
+- **New optional package, no new dependency of `aether3d`**: `aether3d-native` (Rust, PyO3
+  is MIT or Apache-2.0). Aether3D stays pure Python and installs everywhere.
+- **CI:** the 17 jobs are unchanged; five new jobs build and test with `aether3d-native`
+  (Linux on Python 3.11 and 3.14, macOS, Windows) and lint the crate (rustfmt, clippy).
+- **Costs:** a rendered scene keeps 1,721 bytes per object for its retained world; setting
+  a transform to the value it already has costs 3.8-4.0 us instead of 3.3-3.4.
+- **Hardware ray tracing** is not used; the GPU path tracer keeps its software traversal.
+  A prototype with ray queries in its kernel (`research/2026-10-modernization/hw_pathtrace/`)
+  hit the same triangles for at least 99.995 % of rays but made the showcase renders only
+  1.04-1.65 times faster end to end, short of the 2x the audit set: deferred (see
+  docs/PERFORMANCE.md, Phase 5).
+- **Not reached** (documented with the reasons in docs/PERFORMANCE.md): every object moved
+  within 25 ms (40.8 ms), creating objects within 5 us each (7.7 us), a refit of the
+  spatial index after edits (not done), and editing at the audit's sizes (a
+  200,000-triangle mesh with attributes, or bevelling 51,000 faces, within 1 s).
+
 ## 0.11.0: AI tools and MCP
 
 ### Added

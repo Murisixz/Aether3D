@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.11.0 (AI tools and MCP).** Aether3D provides:
+> **Status: v0.11.1 (AI tools and MCP; performance modernization).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -52,7 +52,12 @@ graphical interface required.
 >   and applied as one undo step; 10,000 objects in about 0.1 s;
 > - an **MCP server** for AI agents (`aether3d mcp serve`): Claude Code and other MCP
 >   clients build, inspect, fix, preview, save and export scenes through tools, inside
->   a workspace folder, with no network exposure.
+>   a workspace folder, with no network exposure;
+> - **incremental rendering and optional native kernels**: renders update only what
+>   changed since the last one (a 10,000-object GPU frame in 7-8 ms when nothing
+>   changed), and the optional `aether3d-native` package (Rust) traces rays, builds
+>   transform hierarchies and filters PNG rows with exactly the results of the NumPy code
+>   ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
 > Animation, physics and other systems are intentionally **not** part of
@@ -655,6 +660,20 @@ Apache-2.0) and a Vulkan, Metal or Direct3D 12 driver; see
 The MCP server needs the optional `mcp` extra (`pip install "aether3d[mcp]"`, which
 installs the official MCP Python SDK, MIT, and its permissively licensed dependencies).
 
+The optional native kernels are a separate package in `native/`, built from source with
+a Rust toolchain (1.85 or later, from [rustup](https://rustup.rs) or your system's
+packages):
+
+```bash
+pip install ./native        # aether3d-native: Rust, PyO3 (MIT or Apache-2.0), maturin
+```
+
+Their ray traversal (the CPU path tracer and the spatial queries) traces 7 to 10 times
+faster per thread than the NumPy code, and PNG decoding is 7 times faster; transform
+hierarchies are computed natively too. The results are bitwise those of the NumPy code,
+which runs without them (or with `AETHER3D_NATIVE=0`). They need CPython 3.11 or later;
+see [docs/PERFORMANCE.md](docs/PERFORMANCE.md#phase-3-native-kernels-rust).
+
 ## Documentation
 
 | Document | Contents |
@@ -673,6 +692,7 @@ installs the official MCP Python SDK, MIT, and its permissively licensed depende
 | [docs/SPATIAL.md](docs/SPATIAL.md) | Spatial queries: conventions, tags and metadata, bounds, discovery, rays, nearest points, containment, overlaps, regions, cameras and picking, sight lines, relations, caching, JSON and CLI, errors, performance, limitations |
 | [docs/SCENE_PLANS.md](docs/SCENE_PLANS.md) | Scene plans: the format, symbols and references, resources, prefabs, patterns, variation, operations, selectors, queries, errors, idempotency, chunks, limits, CLI, performance |
 | [docs/MCP.md](docs/MCP.md) | The MCP server for AI agents: Claude Code setup, tools, resources, prompts, progress and cancellation, security |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Performance: measuring with `benchmarks/bench_engine.py`, the correctness guards, implementation switches, the native kernels, and the record of every phase of the performance modernization |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
