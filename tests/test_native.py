@@ -11,7 +11,6 @@ a failure (``conftest.py``).
 from __future__ import annotations
 
 import gc
-import resource
 import sys
 import threading
 import time
@@ -344,6 +343,43 @@ def test_the_gil_is_released_while_tracing():
     assert during > 1000  # Python ran meanwhile: the call did not hold the GIL
 
 
+def peak_memory_kib() -> int:
+    """The process's peak memory (resident set; on Windows, working set), in KiB."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        class Counters(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        counters = Counters()
+        counters.cb = ctypes.sizeof(Counters)
+        psapi = ctypes.WinDLL("psapi")
+        kernel32 = ctypes.WinDLL("kernel32")
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD]
+        ok = psapi.GetProcessMemoryInfo(
+            kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb
+        )
+        assert ok
+        return counters.PeakWorkingSetSize // 1024
+    import resource
+
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak // 1024 if sys.platform == "darwin" else peak  # (bytes on macOS)
+
+
 def test_no_references_or_memory_are_kept():
     s = tricky_scene(10)
     accel = SceneAccel.build(extract_render_scene(s, s.active_camera))
@@ -354,11 +390,11 @@ def test_no_references_or_memory_are_kept():
     assert [sys.getrefcount(a) for a in arrays] == counts
     gc.collect()
     native_trace(accel, o, d)
-    before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    before = peak_memory_kib()
     for _ in range(300):
         native_trace(accel, o, d)
         native.png_filter(np.zeros((64, 192), np.uint8), 64, 192, 3, np.empty((64, 193), np.uint8))
-    after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    after = peak_memory_kib()
     assert after - before < 20_000  # KiB: no growth per call
 
 
