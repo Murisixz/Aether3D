@@ -15,6 +15,7 @@ tracing as a separate decision).
 - [Phase 3: native kernels (Rust)](#phase-3-native-kernels-rust)
 - [Phase 4: mesh editing](#phase-4-mesh-editing)
 - [Phase 5: hardware ray tracing (prototype, deferred)](#phase-5-hardware-ray-tracing-prototype-deferred)
+- [Visual feedback (0.12.0)](#visual-feedback-0120)
 
 ## Measuring
 
@@ -50,6 +51,12 @@ and buffer creation), `prepare` (command encoding), `gpu` (submission until the 
 can be mapped, which includes synchronization and copying them to the readable
 buffer), `readback` (decoding into NumPy arrays); `gpu_passes` are the GPU's execution
 times of the shadow, scene and finalize passes, measured on the GPU.
+
+`benchmarks/bench_feedback.py` measures the visual feedback workflow
+([FEEDBACK.md](FEEDBACK.md#performance)): observations on both rasterizers (cold, after
+one move, reused; the retained world against the full extraction), the checks of a
+diagnosis, previews, verified corrections and whole loops (`--quick`; `--smoke` only
+checks that it runs).
 
 Compare runs on the same machine only. The saved runs in `benchmarks/results/` come
 from the development machine: Intel Core i9-12900H (20 threads), NVIDIA GeForce RTX
@@ -630,3 +637,26 @@ large native dependency, for the gains above. It becomes worth measuring again (
 prototype is kept for that) after shading is restructured -- a wavefront path tracer
 sorting hits by material, where traversal could dominate -- or when wgpu-native's C API
 gains acceleration structures, which would remove the second device.
+
+## Visual feedback (0.12.0)
+
+Stage 12 added no kernel: observations reuse the renderers, the retained render world and
+selective readback; per-object statistics are NumPy reductions over the buffers the
+renderers return; geometry reuses the spatial queries' exact kernels. The measurements
+(`benchmarks/bench_feedback.py`, saved as `benchmarks/results/stage12-feedback.json`; the
+full table is in [FEEDBACK.md](FEEDBACK.md#performance)), at 640 x 360:
+
+- One GPU observation after one object moved: 24.0 ms (34 objects), 26.8 ms (2,190),
+  46.2 ms (11,270); with the full extraction instead of the retained world 24.6, 36.8 and
+  96.4 ms. On the CPU rasterizer 1.1-3.1 s, about 99 % of it rendering.
+- An observation's measurements (every object's pixels, depth and luminance; the image's
+  statistics): 11-15 ms. An unchanged view is reused from the store in 0.01 ms.
+- The checks of a diagnosis: 240 ms for the furnished room (6 checks), 312 ms for the
+  castle (4 checks) -- mostly exact triangle tests deciding contacts and separations.
+- A whole loop from the first draft to accepted on the GPU: 390 ms for the room (1
+  iteration, 2 renders) and 179 ms for the garden view (2 iterations, 3 renders).
+
+One measured change: the image statistics reduced the last axis of 8-bit images
+(`max`/`any` over RGB), which NumPy does slowly; elementwise operations over the three
+channels give the same results, 2.5 times faster on the room's render (9.31 -> 3.71 ms).
+

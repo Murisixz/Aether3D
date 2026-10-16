@@ -274,3 +274,51 @@ def test_every_complete_plan_in_the_docs_is_valid():
             assert result.ok, (doc, result.issues)
             found += 1
     assert found >= 1
+
+
+@pytest.mark.parametrize(
+    ("doc", "starts_with"),
+    [
+        (
+            "docs/FEEDBACK.md",
+            'from aether3d import FeedbackSession, Scene\n\nscene = Scene("Reading',
+        ),
+        ("README.md", 'from aether3d import FeedbackSession, Scene\n\nscene = Scene("Corner")'),
+    ],
+)
+def test_feedback_quick_starts(doc, starts_with, capsys):
+    """The visual feedback quick starts print what their comments say (CPU renders)."""
+    source = python_block(ROOT / doc, starts_with)
+    namespace: dict = {}
+    exec(compile(source, doc, "exec"), namespace)
+    printed = capsys.readouterr().out.splitlines()
+    stated = [line.split("# ", 1)[1] for line in source.splitlines() if "print(" in line]
+    assert printed == stated
+    assert namespace["report"].stop_reason == "accepted"
+    if "corrections" in namespace:  # "Lower 'Vase' 0.3 m down onto 'Table'" (safe)
+        (proposal,) = namespace["corrections"].proposals
+        assert proposal.title == "Lower 'Vase' 0.3 m down onto 'Table'"
+        assert proposal.safety == "safe"
+    vase, table = namespace["scene"].get_by_name("Vase"), namespace["scene"].get_by_name("Table")
+    assert vase.bounds().aabb.min[2] == pytest.approx(table.bounds().aabb.max[2], abs=1e-6)
+
+
+def test_feedback_documents_in_the_docs_are_valid():
+    """The JSON examples of docs/FEEDBACK.md and the agent guide pass schemas and checkers."""
+    jsonschema = pytest.importorskip("jsonschema")
+    from aether3d.feedback import parse_expectations
+    from aether3d.feedback.schema import evaluation_schema, expectations_schema
+
+    found = 0
+    for name in ("docs/FEEDBACK.md", "src/aether3d/feedback/guide.md"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        for block in re.findall(r"```json\n(.*?)```", text, re.S):
+            data = json.loads(block)
+            if data.get("format") == "aether3d.expectations":
+                jsonschema.validate(data, expectations_schema())
+                parse_expectations(data)
+                found += 1
+            elif data.get("format") == "aether3d.vision-evaluation":
+                jsonschema.validate(data, evaluation_schema())
+                found += 1
+    assert found >= 3

@@ -5,7 +5,10 @@
 prompts. An agent builds a scene with [scene plans](SCENE_PLANS.md) (thousands of objects
 in one call), checks placement with exact spatial queries, fixes mistakes, undoes and
 redoes, looks at a quick GPU preview, saves the project and exports glTF, without writing
-Python.
+Python. Since 0.12.0 it also closes the loop on what the renders show: it observes views
+(images and measured facts), diagnoses them against stated expectations and the agent's
+own visual evaluations, and proposes, applies and verifies corrections
+([FEEDBACK.md](FEEDBACK.md)).
 
 It runs locally over **stdio** (the client starts it as a subprocess and talks to it
 through stdin and stdout). It opens no network port, makes no network requests, and uses
@@ -31,6 +34,7 @@ Linux, see [INSTALL.md](INSTALL.md) (a virtual environment).
 | `--no-path-tracing` | refuse path-traced renders |
 | `--gpu-adapter SPEC` | the GPU for GPU renders: an index, part of a name, `discrete`, `vulkan`, ... |
 | `--max-reply-kib N` | the largest reply of a read-only tool (default 256 KiB) |
+| `--feedback-backend B` | how the visual-feedback tools render observations: `auto` (default: the GPU rasterizer when one works, else the CPU one), `gpu`, `cpu` |
 | `--log-level LEVEL` | what to log on stderr: `debug`, `info`, `warning` (default), `error` |
 
 Without the SDK installed, `aether3d mcp serve` exits with status 1 and says how to
@@ -109,7 +113,12 @@ problem; a plan with problems gives every problem, as in [SCENE_PLANS.md](SCENE_
 | `export_scene` | a `.glb` or `.gltf` file (`allow_lossy`, `bake_textures`, `overwrite`) |
 | `run_script` | one of the engine's JSON scripts, atomically: edit scripts (polygon editing), procedural scripts, scene scripts |
 | `diagnostics` | checks with stable codes: `geometry`, `procedural`, `materials`, `history` |
-| `capabilities` | what the engine offers, by `topic`: `overview`, `plan`, `primitives`, `modifiers`, `materials`, `queries`, `limits`, `gpu` |
+| `capabilities` | what the engine offers, by `topic`: `overview`, `plan`, `primitives`, `modifiers`, `materials`, `queries`, `limits`, `gpu`, `feedback` |
+| `observe_scene` | **inspect**: render views (`view`, `views`: the active camera, a scene camera, a virtual camera, a close-up framed on objects, presets `top`/`front`/`iso`/...) and return the images as image content (`images`: `image`, `annotated` with numbered markers, `ids`, `depth`; `crops`), with measured facts per object (pixels, bounds, depth, border contact; for `focus` objects frustum, projected bounds, clipping and, with `occlusion`, what covers them) and for the image (coverage, luminance, black and clipped fractions). Nothing is added to the scene |
+| `diagnose_scene` | **inspect**: check the scene against `expectations` (kept for later calls) and default render checks, with your own visual `evaluations` grounded in the render's object index; findings with codes, magnitudes, regions and their basis |
+| `propose_corrections` | **propose**: typed corrections for the findings, each with its compiled scene plan or script, rationale, expected effect and safety (`safe`, `verify`, `approval`); `preview` applies them in a transaction, re-renders and rolls back |
+| `apply_corrections` | **change**: proposals (`proposals`, `approve`) or your own `actions`, as one undo step, refused if the scene changed (`expected_revision`), verified on a new render and undone if a passing check fails or nothing improved |
+| `feedback_loop` | **change**: observe -> diagnose -> propose -> apply -> verify until the expectations hold, approvals are needed (`resume` afterwards), progress stops, or a `budget` runs out; progress and cancellation as for plans |
 
 Notes for agents (the server also says this in its instructions):
 
@@ -124,6 +133,13 @@ Notes for agents (the server also says this in its instructions):
 - **Previews are cheap, path tracing is not.** `render_preview` never path traces; the
   reply says which renderer drew the image (`backend`, `device`, `adapter`, and
   `fallback` when the GPU could not be used): a CPU image is never reported as a GPU one.
+- **Look, then check, then correct.** `observe_scene` returns the image and what it
+  measured; look at it, state what must hold as expectations, send your own findings as an
+  `aether3d.vision-evaluation` (`image_input: true` only if you looked; regions in that
+  image's pixels; object ids from the markers), and let `propose_corrections` and
+  `apply_corrections` (or `feedback_loop`) do the precise, verified part. The engine never
+  treats your judgment as a measurement: such findings carry `basis: "vision"` (or
+  `"agent"`), are grounded in the object index, and only ever make approval proposals.
 - **Replies stay small.** A long query answer (thousands of overlapping pairs, a
   `describe` of a large scene) keeps its first `max_results` entries (default 100) and
   says so: `"truncated": true` and the full length as `total`. A read-only tool whose
@@ -148,10 +164,23 @@ way (`TIMEOUT`).
 | `aether3d://scene/summary` | the open scene's summary |
 | `aether3d://scene/objects/{ref}` | one object, by id or name |
 | `aether3d://render/last-preview` | the last preview (PNG) |
+| `aether3d://feedback/guide` | the visual feedback guide for agents (Markdown) |
+| `aether3d://schema/expectations`, `.../vision-evaluation`, `.../corrections` | the JSON Schemas of expectations, vision evaluations and correction actions |
+| `aether3d://observations/{id}`, `aether3d://observations/{id}/{kind}` | an observation's measured facts (JSON), its images (`image`, `annotated`, `ids`, `depth`; PNG) |
 
 Prompts: `build_scene` (build from a description, check, fix, preview, save),
 `inspect_and_fix` (find intersections, floating or sunken objects, objects out of view, and
-fix them), `from_example` (adapt an example plan).
+fix them), `from_example` (adapt an example plan), `visual_feedback` (make the scene match
+a goal with the closed loop: observe, evaluate, expect, correct, verify).
+
+**Images and client capabilities.** Images come back as MCP image content (PNG, base64),
+at most 8 per reply and 6 x 1920 x 1080 pixels; a client that passes image content to its
+model lets the agent look at them, and every image is also available as a resource. The
+facts always come as structured JSON too, so text-only clients can work from them -- but
+a text-only model has not seen an image, and its evaluations must say
+`image_input: false`. The server records only whether it delivered an image. MCP sampling
+(the server asking the client's model) is not used: it is deprecated as of the
+2026-07-28 protocol (SEP-2577), and the agent is already the model.
 
 ## Security
 
@@ -168,6 +197,10 @@ The server treats every argument, plan, path and imported file as untrusted.
 - **No code execution.** Plans and scripts are declarative data. Expressions use the
   procedural engine's whitelisted evaluator; nothing is passed to `eval`, `exec`, a shell
   or a compiler; shaders are Aether3D's own, never compiled from arguments.
+- **Untrusted evaluations and actions.** Vision evaluations and correction actions are
+  checked data (bounded sizes, an allowlist of actions: no deletion, no mesh editing, no
+  files, no code), tied to one observation's pixels, and can never run anything but the
+  engine's own plan and script operations.
 - **Bounded work.** Plans have [limits](SCENE_PLANS.md#limits) (`--max-objects`); images
   are bounded in pixels (previews at most 1920 x 1080 pixels' worth, images 3840 x 2160)
   and path tracing in samples (`width x height x spp` at most 400 million;

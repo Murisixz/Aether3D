@@ -243,6 +243,13 @@ projection has no foreshortening.
   either it raises `NO_CAMERA`, with a hint listing the scene's cameras.
 - `render(frame=True)` renders without any camera: it uses a temporary one,
   as described under framing below.
+- **Virtual cameras** (since 0.12.0): `render(camera=...)` also takes a camera that is not
+  part of the scene -- a `RenderCamera` without an object id, built by
+  `aether3d.feedback.virtual_camera(position, look_at=..., fov=...)` or, for a scene
+  camera's exact twin, `aether3d.feedback.camera_view(scene, "Cam")` (it renders bit for
+  bit like the camera). Inspection views of the visual feedback tools
+  ([FEEDBACK.md](FEEDBACK.md)) use them, so looking from above or framing a close-up adds
+  nothing to the scene. A malformed frame is `INVALID_CAMERA`.
 
 **Framing.** `cam.frame(targets=None, direction=None, margin=0.05,
 fit_clipping=True, aspect=None)` moves a camera so the targets (default:

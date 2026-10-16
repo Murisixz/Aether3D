@@ -28,6 +28,9 @@ apply to agents too.
 - Scene plans: [docs/SCENE_PLANS.md](docs/SCENE_PLANS.md) (the format, patterns, operations,
   errors, idempotency, chunks, limits, performance); the MCP server for AI agents:
   [docs/MCP.md](docs/MCP.md) (tools, resources, Claude Code, security).
+- Visual feedback and automatic corrections: [docs/FEEDBACK.md](docs/FEEDBACK.md)
+  (observations, views, expectations, findings and their basis, vision evaluations,
+  corrections, verification, the loop, safety, design, performance).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 - Performance: [docs/PERFORMANCE.md](docs/PERFORMANCE.md) (how to measure with
   `benchmarks/bench_engine.py`, the correctness guards, implementation switches, the record
@@ -193,6 +196,35 @@ apply to agents too.
   - Test tools through a real server process (`tests/test_mcp.py` uses the SDK client and
     raw JSON-RPC).
 
+- Visual feedback (`feedback/`):
+  - **Facts and judgments stay apart.** Every `Finding` names its `basis` (`geometry`,
+    `render`, `scene`, `heuristic`, `vision`, `agent`) and whether it is `exact`. Never
+    give a heuristic or a model's judgment the basis of a measurement, and never let it
+    count toward acceptance unless `require_vision` asks for it.
+  - **No fake vision.** The engine contains no model and makes no network request. A
+    vision evaluation's provenance is *declared* by whoever wrote it; the engine records
+    only what it delivered itself (`image_delivered_by_aether3d`). Never write that a
+    model saw an image, and give `basis: "vision"` only to findings whose evaluation
+    declares `image_input: true`.
+  - **Ground before use.** Evaluation findings are checked against their observation's
+    id and pixel digest (`OBSERVATION_MISMATCH`), marked stale after the scene changed,
+    and grounded in the object index; an `ungrounded` target is never corrected, and
+    evaluation-driven proposals are always `approval`.
+  - **Corrections are allowlisted actions compiled to plans and scripts.** A new action
+    needs its checker (`corrections.py`), its compilation, its policy class, the schema
+    (`schema.py`, fuzzed by `tests/test_feedback_schema.py`), the guide (`guide.md`) and
+    docs. Never add deletion, mesh editing, file or network access as an action.
+  - **Verify every automatic change.** `apply` runs one history transaction, diagnoses
+    again and undoes the step (`history.undo()`) on a regression or no improvement; the
+    loop stops with an explicit `stop_reason`. Keep previews and diagnoses inside open
+    transactions out of every cache.
+  - **Observations never change the scene.** Views are virtual cameras, not scene
+    objects; observing adds no object, history step or revision. Observation caches are
+    keyed by the revision and the full view and render options.
+  - Test a planner's correction by applying it and diagnosing again on a real render (the
+    tests in `tests/test_feedback_corrections.py`); stub critics only to test the
+    provider contract, and label them so.
+
 - Performance work:
   - **Measure first and after** with `benchmarks/bench_engine.py` (`--compare` against a
     saved run on the same machine); never report an improvement that was not measured end
@@ -238,6 +270,18 @@ apply to agents too.
   validate plan.json` (or `mode="dry_run"`), read every issue's `code` and `pointer`, pass
   the revision you read as `expected_revision`, and give retried plans an
   `idempotency_key`. Put the spatial checks in the plan's `queries`.
+
+- **Check what a render shows, then correct it.** State what must hold as an
+  `aether3d.expectations` document (`aether3d feedback schema expectations`), then
+  `aether3d feedback check PROJECT --expect FILE --json` (exit code 3: not accepted) and
+  `aether3d feedback correct PROJECT --expect FILE --preview|--apply` or `feedback loop`;
+  over MCP: `observe_scene` (look at the image), `diagnose_scene`, `propose_corrections`,
+  `apply_corrections`, `feedback_loop`. Read each finding's `code`, `basis` and
+  `magnitude`; `safe` corrections apply automatically, `verify` ones are kept only if a new
+  render shows improvement, and `approval` ones wait for `approve=[ids]`. If you evaluate
+  an image yourself, send an `aether3d.vision-evaluation` with `image_input: true` only if
+  you actually received the image. Python: `FeedbackSession(scene, expectations)`,
+  `.diagnose()`, `.propose()`, `.apply()`, `.run()`.
 
 - Prefer ids (`obj.id`) over names for durable references.
 - Every change can be undone: `scene.history.undo()`, `with scene.transaction("label"):`

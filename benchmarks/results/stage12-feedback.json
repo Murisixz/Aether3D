@@ -1,0 +1,190 @@
+{
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.12.0",
+    "switches": {
+      "AETHER3D_EDITING_BULK": true,
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.11.1",
+      "reason": "loaded"
+    },
+    "git": "2781a77",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "stats": {
+      "640x360": {
+        "objects": 3000,
+        "pixel_statistics_ms": 5.905,
+        "luminance_ms": 2.505,
+        "image_statistics_ms": 6.668
+      },
+      "1920x1080": {
+        "objects": 3000,
+        "pixel_statistics_ms": 16.164,
+        "luminance_ms": 22.693,
+        "image_statistics_ms": 45.392
+      }
+    },
+    "observe": {
+      "room": {
+        "objects": 34,
+        "cpu": {
+          "cold_ms": 1175.224,
+          "render_ms": 1164.062,
+          "metrics_ms": 11.044,
+          "one_moved_ms": 1138.316,
+          "reused_ms": 0.015,
+          "one_moved_full_extraction_ms": 1109.534
+        },
+        "gpu": {
+          "cold_ms": 227.977,
+          "render_ms": 202.01,
+          "metrics_ms": 11.743,
+          "one_moved_ms": 24.043,
+          "reused_ms": 0.013,
+          "one_moved_full_extraction_ms": 24.63,
+          "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU"
+        },
+        "camera": "Camera"
+      },
+      "castle": {
+        "objects": 2190,
+        "cpu": {
+          "cold_ms": 2570.66,
+          "render_ms": 2559.265,
+          "metrics_ms": 11.11,
+          "one_moved_ms": 2597.483,
+          "reused_ms": 0.014,
+          "one_moved_full_extraction_ms": 2618.283
+        },
+        "gpu": {
+          "cold_ms": 146.794,
+          "render_ms": 132.367,
+          "metrics_ms": 11.695,
+          "one_moved_ms": 26.781,
+          "reused_ms": 0.012,
+          "one_moved_full_extraction_ms": 36.844,
+          "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU"
+        },
+        "camera": "camera"
+      },
+      "village": {
+        "objects": 11270,
+        "cpu": {
+          "cold_ms": 3102.471,
+          "render_ms": 3086.729,
+          "metrics_ms": 14.819,
+          "one_moved_ms": 3096.296,
+          "reused_ms": 0.014,
+          "one_moved_full_extraction_ms": 3174.276
+        },
+        "gpu": {
+          "cold_ms": 65.978,
+          "render_ms": 44.613,
+          "metrics_ms": 15.003,
+          "one_moved_ms": 46.161,
+          "reused_ms": 0.012,
+          "one_moved_full_extraction_ms": 96.4,
+          "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU"
+        },
+        "camera": "camera"
+      }
+    },
+    "diagnose": {
+      "cpu": {
+        "room": {
+          "objects": 34,
+          "checks": 6,
+          "findings": 4,
+          "first_diagnosis_ms": 1407.45,
+          "checks_ms": 239.586,
+          "reused_ms": 0.014
+        },
+        "castle": {
+          "objects": 2190,
+          "checks": 4,
+          "findings": 2,
+          "first_diagnosis_ms": 3056.443,
+          "checks_ms": 312.194,
+          "reused_ms": 0.012
+        }
+      },
+      "gpu": {
+        "room": {
+          "objects": 34,
+          "checks": 6,
+          "findings": 4,
+          "first_diagnosis_ms": 289.953,
+          "checks_ms": 240.107,
+          "reused_ms": 0.014
+        },
+        "castle": {
+          "objects": 2190,
+          "checks": 4,
+          "findings": 2,
+          "first_diagnosis_ms": 558.698,
+          "checks_ms": 311.87,
+          "reused_ms": 0.012
+        }
+      }
+    },
+    "correct": {
+      "cpu": {
+        "propose_ms": 0.605,
+        "preview_ms": 1227.827,
+        "apply_and_verify_ms": 1221.231,
+        "applied_proposals": 3
+      },
+      "gpu": {
+        "propose_ms": 0.587,
+        "preview_ms": 109.785,
+        "apply_and_verify_ms": 100.278,
+        "applied_proposals": 3
+      }
+    },
+    "loop": {
+      "cpu": {
+        "room": {
+          "loop_ms": 2635.261,
+          "iterations": 1,
+          "renders": 2
+        },
+        "garden": {
+          "loop_ms": 5576.014,
+          "iterations": 2,
+          "renders": 3
+        }
+      },
+      "gpu": {
+        "room": {
+          "loop_ms": 390.277,
+          "iterations": 1,
+          "renders": 2
+        },
+        "garden": {
+          "loop_ms": 178.654,
+          "iterations": 2,
+          "renders": 3
+        }
+      }
+    }
+  },
+  "seconds": 199.8,
+  "backends": [
+    "cpu",
+    "gpu"
+  ],
+  "fast_backend": "gpu"
+}

@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -413,3 +414,18 @@ def test_feedback_room_example_on_the_gpu(tmp_path, gpu):
     _run_example("feedback_room.py", str(tmp_path), "--quick", "--backend", "gpu", env=env)
     report = json.loads((tmp_path / "feedback_room.json").read_text())
     assert report["failures"] == [] and report["renderer"]["device"] == "gpu"
+
+
+def test_committed_feedback_outputs():
+    """The visual feedback examples' committed results: Aether3D renders and reports."""
+    image = pytest.importorskip("PIL.Image")
+    for name, size in (
+        ("feedback_room.png", (2 * 960 + 8, 540)),
+        ("feedback_composition.png", (2 * 960 + 8, 540)),
+        ("mcp_feedback_agent.png", (2 * 960 + 8, 540)),
+    ):
+        with image.open(EXAMPLES / "output" / name) as png:
+            assert png.size == size and png.info["Software"].startswith("Aether3D ")
+    for name in ("feedback_room", "feedback_composition", "mcp_feedback_agent"):
+        report = json.loads((EXAMPLES / "output" / f"{name}.json").read_text())
+        assert report["failures"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", report["aether3d"])

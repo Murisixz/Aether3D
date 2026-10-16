@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.11.1 (AI tools and MCP; performance modernization).** Aether3D provides:
+> **Status: v0.12.0 (visual feedback and automatic corrections).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -53,6 +53,11 @@ graphical interface required.
 > - an **MCP server** for AI agents (`aether3d mcp serve`): Claude Code and other MCP
 >   clients build, inspect, fix, preview, save and export scenes through tools, inside
 >   a workspace folder, with no network exposure;
+> - **visual feedback and automatic corrections**: observe renders (images, object ids,
+>   depth, measured facts per object), check them against stated expectations and an
+>   agent's own visual evaluations, and correct what is wrong with verified, undoable
+>   steps -- by hand, in a budgeted loop, from Python, the CLI or MCP. Every finding says
+>   whether it was measured or judged; the engine never claims to have seen anything;
 > - **incremental rendering and optional native kernels**: renders update only what
 >   changed since the last one (a 10,000-object GPU frame in 7-8 ms when nothing
 >   changed), and the optional `aether3d-native` package (Rust) traces rays, builds
@@ -411,10 +416,12 @@ pip install -e ".[mcp]"
 claude mcp add aether3d -- aether3d mcp serve --workspace "$PWD"   # Claude Code
 ```
 
-The server gives MCP clients 15 tools -- `execute_scene_plan`, `spatial_query`,
+The server gives MCP clients 20 tools -- `execute_scene_plan`, `spatial_query`,
 `render_preview` (the GPU rasterizer when it works, the CPU one otherwise, and it says
-which), `history`, `scene_save`, `export_scene`, ... -- plus the plan guide, its JSON
-Schema and example plans as resources. It speaks stdio only, keeps every file inside the
+which), `history`, `scene_save`, `export_scene`, the visual feedback tools
+(`observe_scene`, `diagnose_scene`, `propose_corrections`, `apply_corrections`,
+`feedback_loop`), ... -- plus the plan and feedback guides, their JSON Schemas and
+example plans as resources. It speaks stdio only, keeps every file inside the
 workspace, and never runs code from its arguments.
 
 ![An agent's castle: built with two mistakes, found by spatial queries, fixed, undone, redone, previewed and exported over MCP](examples/output/mcp_castle_agent.png)
@@ -422,6 +429,48 @@ workspace, and never runs code from its arguments.
 *[`examples/mcp_castle_agent.py`](examples/mcp_castle_agent.py) runs an agent's whole
 loop as MCP tool calls; [`examples/mcp_client.py`](examples/mcp_client.py) is a minimal
 client. See [docs/MCP.md](docs/MCP.md).*
+
+### Visual feedback: look, check, correct
+
+```python
+from aether3d import FeedbackSession, Scene
+
+scene = Scene("Corner")
+scene.add_plane("Floor", size=8)
+scene.add_cube("Table", size=1, position=(0, 0, 0.5))
+scene.add_cube("Vase", size=0.2, position=(0.1, 0.1, 1.4))  # 0.3 m above the table
+scene.add_camera("Camera", position=(3, -4, 2.5), look_at=(0, 0, 0.7))
+scene.add_directional_light("Sun", direction=(-0.4, 0.6, -1.0), intensity=1.5)
+
+expectations = {
+    "format": "aether3d.expectations",
+    "version": 1,
+    "views": {"main": {"camera": "Camera"}},
+    "checks": [
+        {"check": "rests_on", "objects": "Vase", "support": "Table"},
+        {"check": "visible", "objects": ["Table", "Vase"], "in_frame": True},
+    ],
+}
+feedback = FeedbackSession(scene, expectations)
+finding = feedback.diagnose().findings[0]  # one render, then the checks
+print(finding.code, finding.basis, round(finding.magnitude, 3))  # FLOATING geometry 0.3
+report = feedback.run()  # propose, apply (one undo step), verify on a new render
+print(report.stop_reason)  # accepted
+```
+
+![A furnished room's first draft and the corrected room: the floating vase, the sunken chair and the lamp inside the wall, found and corrected](examples/output/feedback_room.png)
+
+*[`examples/feedback_room.py`](examples/feedback_room.py): a room built by one plan with
+three mistakes -- a vase floating over the table, a chair sunk into the rug, a lamp inside
+the back wall -- found on the triangles and the render, corrected in one verified step,
+measured again independently, and undone and redone through the history.
+[`examples/feedback_composition.py`](examples/feedback_composition.py) fixes a camera aimed
+past its subject, too far away and three stops underexposed;
+[`examples/mcp_feedback_agent.py`](examples/mcp_feedback_agent.py) does it over MCP. Facts
+(`geometry`, `render`, `scene`) and judgments (`heuristic`, `vision`, `agent`) are kept
+apart: a model's evaluation of an image is a checked document grounded in the render's
+object ids, and its suggestions always wait for approval. See
+[docs/FEEDBACK.md](docs/FEEDBACK.md).*
 
 ### GPU rendering
 
@@ -554,6 +603,9 @@ $ aether3d procedural types --json                         # primitive/modifier 
 $ aether3d execute-plan castle.aether plan.json --json     # a scene plan: one atomic step
 $ aether3d plan validate plan.json                         # check a plan without a project
 $ aether3d mcp serve --workspace .                         # the MCP server (stdio)
+$ aether3d feedback observe room.aether --out obs/ --images image,annotated --json  # look
+$ aether3d feedback check room.aether --expect room.expect.json   # exit code 3: not accepted
+$ aether3d feedback loop room.aether --expect room.expect.json    # correct, verify, repeat
 $ aether3d camera add castle.aether --frame --fov 30      # camera framed on everything
 $ aether3d light add castle.aether --direction 0.5 0.6 -0.8 --intensity 2.4
 $ aether3d object set castle.aether Keep --color "#8c7356"
@@ -609,7 +661,8 @@ Exit codes:
 - `1`: failure (invalid file, missing file, unsupported content, …)
 - `2`: usage error
 - `3`: `geometry`, `topology`, `procedural validate`, `material validate` or
-  `plan validate` found error-severity problems
+  `plan validate` found error-severity problems; `feedback check` or `feedback loop`
+  ended with the expectations not accepted
 `python -m aether3d` works the same as `aether3d`.
 
 ## Installation
@@ -692,6 +745,7 @@ see [docs/PERFORMANCE.md](docs/PERFORMANCE.md#phase-3-native-kernels-rust).
 | [docs/SPATIAL.md](docs/SPATIAL.md) | Spatial queries: conventions, tags and metadata, bounds, discovery, rays, nearest points, containment, overlaps, regions, cameras and picking, sight lines, relations, caching, JSON and CLI, errors, performance, limitations |
 | [docs/SCENE_PLANS.md](docs/SCENE_PLANS.md) | Scene plans: the format, symbols and references, resources, prefabs, patterns, variation, operations, selectors, queries, errors, idempotency, chunks, limits, CLI, performance |
 | [docs/MCP.md](docs/MCP.md) | The MCP server for AI agents: Claude Code setup, tools, resources, prompts, progress and cancellation, security |
+| [docs/FEEDBACK.md](docs/FEEDBACK.md) | Visual feedback and automatic corrections: observations, views, expectations, findings and their basis, vision evaluations, corrections, verification, the loop, CLI, MCP, safety, design, performance, limitations |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Performance: measuring with `benchmarks/bench_engine.py`, the correctness guards, implementation switches, the native kernels, and the record of every phase of the performance modernization |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Design principles, project structure, extension points |
 | [docs/INSTALL.md](docs/INSTALL.md) | Installation details |

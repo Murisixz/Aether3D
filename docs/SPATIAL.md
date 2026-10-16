@@ -272,9 +272,10 @@ position is.
 
 Image points are in pixels from the image's top-left corner: pixel `(i, j)`
 covers `[i, i + 1) x [j, j + 1)` and its center is `(i + 0.5, j + 0.5)`.
-`camera` is a camera object, id or name (default: the active camera); `width` x
-`height` is the image size (default: the scene's render settings), which sets
-the aspect ratio as in renders.
+`camera` is a camera object, id or name (default: the active camera), or a
+virtual camera that is not part of the scene, as `render` takes it (since 0.12.0;
+`aether3d.feedback.virtual_camera`); `width` x `height` is the image size
+(default: the scene's render settings), which sets the aspect ratio as in renders.
 
 - `scene.camera_ray(x, y, ...)`: the ray through an image point (`CameraRay`:
   `origin`, unit `direction`, and the near and far planes as distances along
