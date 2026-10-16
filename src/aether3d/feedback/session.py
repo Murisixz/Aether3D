@@ -393,6 +393,7 @@ class FeedbackSession:
         wanted = [p for p in wanted if p.compiled is not None]
         if not wanted:
             return {"proposals": [], "note": "nothing to preview"}
+        t0 = time.perf_counter()
         bound = [bind(scene, a) for p in wanted for a in p.actions]
         compiled = compile_actions(bound, "Feedback preview", scene.revision)
         before = corrections.diagnosis
@@ -421,6 +422,10 @@ class FeedbackSession:
             "comparison": comparison,
             "observation": main,
             "note": "applied in a transaction and rolled back: nothing changed",
+            "timings": {
+                "diagnose": after.timings.get("total", 0.0),
+                "total": time.perf_counter() - t0,
+            },
         }
 
     # -- proposing ------------------------------------------------------------------

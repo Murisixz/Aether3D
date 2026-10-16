@@ -324,6 +324,7 @@ def test_preview_changes_nothing():
     preview = fs.preview(corrections)
     assert preview["comparison"]["resolved"] == list(corrections.proposals[0].findings)
     assert preview["after"]["errors"] == 0 and preview["observation"].stale
+    assert 0 < preview["timings"]["diagnose"] <= preview["timings"]["total"]
     assert scene_to_dict(scene) == before
     assert scene.revision == revision and len(scene.history) == steps
     assert fs.apply(corrections).status == "applied"  # the proposals are still current
