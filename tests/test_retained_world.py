@@ -91,6 +91,37 @@ def outcome(extract, scene, camera, **kw):
         return None, (exc.code, exc.message, exc.location)
 
 
+def compare_kept_geometry(scene: Scene) -> None:
+    """World matrices and framing points kept by the world are the full computations'."""
+    from aether3d.rendering.framing import target_points
+    from aether3d.rendering.scene_data import _world_stack, world_matrices
+
+    objects, stack = _world_stack(scene)
+    got = world_matrices(scene)
+    assert list(got) == [o.id for o in objects]
+    for k, o in enumerate(objects):
+        assert_bitwise(got[o.id], stack[k], f"world matrix of {o.name}")
+    try:
+        kept = target_points(scene)
+    except RenderError as exc:
+        kept = exc.code
+    # framing.target_points' arithmetic, on the full stack's matrices (views of its rows).
+    chunks = []
+    for k, o in enumerate(objects):
+        if o.visible and o.camera is None and o.light is None:
+            mesh = o.mesh
+            if mesh is not None and mesh.vertex_count:
+                m = stack[k]
+                chunks.append(mesh.positions.astype(np.float64) @ m[:3, :3].T + m[:3, 3])
+    full = np.concatenate(chunks) if chunks else "NOTHING_TO_FRAME"
+    if not isinstance(full, str) and not np.all(np.isfinite(full)):
+        full = "NONFINITE_TRANSFORM"
+    if isinstance(full, str) or isinstance(kept, str):
+        assert kept == full
+    else:
+        assert_bitwise(kept, full, "framing points")
+
+
 def compare(scene: Scene, camera=None, **kw) -> None:
     """The retained world's render scene (or error) is the full extraction's."""
     camera = camera if camera is not None else scene.active_camera
@@ -106,6 +137,7 @@ def compare(scene: Scene, camera=None, **kw) -> None:
         ):  # the retained world was used and is current
             world = scene._derived()["render_world"]
             assert world.revision == scene.revision
+            compare_kept_geometry(scene)
 
 
 def random_actions(s: Scene, rng: random.Random, tmp_path) -> list:
@@ -522,3 +554,22 @@ def test_the_world_orders_objects_as_iterating_the_scene_does():
     out = _carry_items(items, kept, was, 6)
     assert out == [items[7], None, items[1], None, None, items[3]]
     assert _carry_items(items, np.array([0, 1]), np.array([4, 9]), 3) == [items[4], items[9], None]
+
+
+def test_signs_of_zeros_reach_the_world_and_the_spatial_index():
+    from parity import query_fingerprint
+
+    s = Scene("Zeros")
+    s.add_plane(name="Ground", size=10)
+    s.add_cube(name="Box", position=(0.0, 0.0, 0.5))
+    s.add_camera(name="Cam", position=(0, -8, 4), look_at=(0, 0, 0))
+    queries = [{"query": "raycast", "origin": [0.0, -20.0, 0.5], "direction": [0.0, 1.0, 0.0]}]
+    compare(s)
+    query_fingerprint(s, queries)
+    s.get_by_name("Box").position = (-0.0, 0.0, 0.5)
+    s.get_by_name("Ground").rotation_euler = (0.0, -0.0, 0.0)
+    compare(s)
+    fresh = Scene.from_dict(s.to_dict())
+    assert query_fingerprint(s, queries, ("revision",)) == query_fingerprint(
+        fresh, queries, ("revision",)
+    )

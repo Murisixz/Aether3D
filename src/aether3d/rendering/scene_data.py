@@ -21,7 +21,9 @@ so they all render exactly the same content.
 
 from __future__ import annotations
 
+import itertools
 import math
+import operator
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -224,6 +226,13 @@ def _mat4_mul_many(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return out
 
 
+_TRANSFORM = operator.attrgetter("_transform")
+_POSITION = operator.attrgetter("_position")
+_ROTATION = operator.attrgetter("_rotation")
+_SCALE = operator.attrgetter("_scale")
+_chain = itertools.chain.from_iterable
+
+
 def _local_matrices(objects: list[SceneObject]) -> np.ndarray:
     """``(n, 4, 4)`` local matrices, bitwise equal to ``obj.local_matrix`` for each object.
 
@@ -233,10 +242,10 @@ def _local_matrices(objects: list[SceneObject]) -> np.ndarray:
     evaluated for all objects at once.
     """
     n = len(objects)
-    transforms = [obj._transform for obj in objects]
-    position = np.array([t._position for t in transforms], dtype=np.float64).reshape(n, 3)
-    rotation = np.array([t._rotation for t in transforms], dtype=np.float64).reshape(n, 4)
-    scale = np.array([t._scale for t in transforms], dtype=np.float64).reshape(n, 3)
+    transforms = list(map(_TRANSFORM, objects))
+    position = np.fromiter(_chain(map(_POSITION, transforms)), np.float64, 3 * n).reshape(n, 3)
+    rotation = np.fromiter(_chain(map(_ROTATION, transforms)), np.float64, 4 * n).reshape(n, 4)
+    scale = np.fromiter(_chain(map(_SCALE, transforms)), np.float64, 3 * n).reshape(n, 3)
     x, y, z, w = rotation.T
     r = np.empty((n, 3, 3), dtype=np.float64)
     r[:, 0, 0] = 1 - 2 * (y * y + z * z)
@@ -261,6 +270,12 @@ def world_matrices(scene: Scene) -> dict[str, np.ndarray]:
     Computed for all objects at once, one hierarchy level at a time, with the
     same arithmetic as ``obj.local_matrix`` and :func:`_mat4_mul`.
     """
+    if _features.enabled("AETHER3D_RETAINED_RENDER_WORLD"):  # a rendered scene keeps them
+        from .retained import retained_world_matrices
+
+        found = retained_world_matrices(scene)
+        if found is not None:
+            return found
     objects, world = _world_stack(scene)
     return {obj.id: world[k] for k, obj in enumerate(objects)}
 

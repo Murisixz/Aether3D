@@ -208,6 +208,61 @@ def _carry_items(items: list, kept: np.ndarray, was: np.ndarray, n: int) -> list
     return out.tolist()
 
 
+FRAME_CACHE_BYTES = 64 << 20
+"""Framing points (float64 world-space vertices) a world keeps for later framed renders;
+scenes with more vertices compute them for every framed render, as before."""
+
+
+def _existing_world(scene: Scene) -> tuple[RenderWorld, MaterialCache] | None:
+    """The scene's retained world, if it has one (it was rendered) and it can be used now."""
+    history = scene.history
+    if history.in_progress or history._building:
+        return None
+    world = scene._derived().get(_DERIVED)
+    cache = _material_cache(scene)
+    if world is None or cache is None:
+        return None
+    return world, cache
+
+
+def retained_world_matrices(scene: Scene) -> dict[str, np.ndarray] | None:
+    """``world_matrices(scene)`` from the retained world, when the scene has one."""
+    found = _existing_world(scene)
+    if found is None:
+        return None
+    world, cache = found
+    return _with_world(scene, world, cache, world.world_matrices)
+
+
+def retained_target_points(scene: Scene) -> np.ndarray | None:
+    """``target_points(scene)`` from the retained world, when the scene has one."""
+    found = _existing_world(scene)
+    if found is None:
+        return None
+    world, cache = found
+    return _with_world(scene, world, cache, world.target_points)
+
+
+def _with_world(scene: Scene, world: RenderWorld, cache: MaterialCache, use: Any) -> Any:
+    """``use()`` with ``world`` brought up to date, or ``None`` if it cannot be."""
+    if not world.lock.acquire(blocking=False):
+        return None
+    try:
+        try:
+            world.sync(scene, cache)
+        except AetherError:
+            scene._derived().pop(_DERIVED, None)
+            return None
+        except Exception:
+            scene._derived().pop(_DERIVED, None)
+            if STRICT:
+                raise
+            return None
+        return use()
+    finally:
+        world.lock.release()
+
+
 def _first_use(keys: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """For a sequence of keys: where each distinct key first occurs, in order of first use,
     and the rank of each element's key in that order."""
@@ -279,6 +334,12 @@ class RenderWorld:
         self.procedural = np.zeros(0, dtype=bool)
         # Mesh rows (kind _MESH): the evaluated mesh, appearance, materials, normal matrix.
         self.mesh: list[Mesh | None] = []
+        # Framing (target_points): the meshes with vertices of visible objects, and their
+        # world-space vertices once computed (within FRAME_CACHE_BYTES).
+        self.frame_mesh: list[Mesh | None] = []
+        self.frame_points: list[np.ndarray | None] = []
+        self.frame_all: np.ndarray | None = None
+        self.world_items: list[tuple[str, np.ndarray]] | None = None  # world_matrices
         self.mesh_id = np.zeros(0, dtype=np.int64)  # id() of the mesh (it is held above)
         self.no_uvs = np.zeros(0, dtype=bool)
         self.look: list[tuple[Any, Any] | None] = []  # (specular, shininess) as given
@@ -411,6 +472,12 @@ class RenderWorld:
         self.kind = carry(self.kind, _NONE)
         self.procedural = carry(self.procedural, False)
         self.mesh = carry_list(self.mesh)
+        self.frame_mesh = carry_list(self.frame_mesh)
+        self.frame_points = carry_list(self.frame_points)
+        for k in np.flatnonzero(changed).tolist():
+            self.frame_points[k] = None
+        self.frame_all = None
+        self.world_items = None
         self.mesh_id = carry(self.mesh_id, 0)
         self.no_uvs = carry(self.no_uvs, False)
         self.look = carry_list(self.look)
@@ -468,6 +535,10 @@ class RenderWorld:
                     self.world[self.parent[inner]], self.local[inner]
                 )
         self.finite[at] = np.all(np.isfinite(self.world[at]), axis=(1, 2))
+        for r in at.tolist():
+            self.frame_points[r] = None
+        self.frame_all = None
+        self.world_items = None
         self._normals(at[self.kind[at] == _MESH])
 
     def _normals(self, rows: np.ndarray) -> None:
@@ -506,6 +577,9 @@ class RenderWorld:
                     kind = _MESH
             self.kind[r] = kind
             self.dirty[r] = True
+            self.frame_mesh[r] = mesh if mesh is not None and mesh.vertex_count > 0 else None
+            self.frame_points[r] = None
+            self.frame_all = None
             if kind != _MESH:
                 self.mesh[r] = None
                 self.look[r] = None
@@ -552,6 +626,50 @@ class RenderWorld:
         self.keys[key] = k
         self.key_info.append(info if info is not None else key)
         return k
+
+    # ------------------------------------------------------------------ #
+    # World matrices and framing (kept for the scene's later renders)
+    # ------------------------------------------------------------------ #
+
+    def world_matrices(self) -> dict[str, np.ndarray]:
+        """``scene_data.world_matrices``: read-only rows of a copy of the world matrices."""
+        items = self.world_items
+        if items is None:
+            copy = _frozen(self.world.copy())
+            items = self.world_items = list(zip([o._id for o in self.objects], copy, strict=True))
+        return dict(items)
+
+    def target_points(self) -> np.ndarray | None:
+        """``framing.target_points(scene)``: the world-space vertices of every visible mesh, in
+        scene order, with its arithmetic (``None``: the full computation runs, to report
+        that there is nothing to frame or that a position is not finite)."""
+        if self.frame_all is not None:
+            return self.frame_all
+        rows = [r for r, mesh in enumerate(self.frame_mesh) if mesh is not None]
+        if not rows:
+            return None
+        keep = sum(self.frame_mesh[r].vertex_count for r in rows) * 24 <= FRAME_CACHE_BYTES  # type: ignore[union-attr]
+        chunks = []
+        for r in rows:
+            p = self.frame_points[r]
+            if p is None:
+                m = self.world[r]
+                mesh = self.frame_mesh[r]
+                assert mesh is not None
+                p = _frozen(mesh.positions.astype(np.float64) @ m[:3, :3].T + m[:3, 3])
+                if keep:
+                    self.frame_points[r] = p
+            chunks.append(p)
+        if not keep:
+            for r in rows:
+                self.frame_points[r] = None
+        points = np.concatenate(chunks)
+        if not np.all(np.isfinite(points)):
+            return None
+        points = _frozen(points)
+        if keep:
+            self.frame_all = points
+        return points
 
     # ------------------------------------------------------------------ #
     # One frame
@@ -801,7 +919,7 @@ class RenderWorld:
         if before is not None and not built.size:
             return  # unchanged: the previous frame's tuple and arrays
         instances = self.instance
-        if before is None or tables.arrays is None:
+        if before is None or tables.arrays is None or built.size == len(rows):
             tables.instances = tuple([instances[r] for r in rows.tolist()])  # type: ignore[misc]
             tables.arrays = InstanceArrays(
                 world=_frozen(self.world[rows]),
@@ -814,6 +932,8 @@ class RenderWorld:
                 material=_frozen(default_index.astype(np.int64)),
                 has_groups=_frozen(self.ngroups[rows] > 0),
             )
+            if before is not None and len(before) == len(rows):
+                self._note_lineage(before, tables.instances, built)
             return
         # The same rows as the previous frame: only the instances built again change (every
         # other row has the previous frame's values, or it would have been built again).
@@ -840,15 +960,24 @@ class RenderWorld:
             material=patch(old.material, default_index[built]),
             has_groups=patch(old.has_groups, self.ngroups[changed] > 0),
         )
-        # Lineage for backends (RenderScene.shared_cache): these instances changed only in
-        # their transform, color or highlight -- the same mesh, materials, name and id.
+        self._note_lineage(before, tables.instances, built)
+
+    def _note_lineage(
+        self,
+        before: tuple[RenderInstance, ...],
+        after: tuple[RenderInstance, ...],
+        built: np.ndarray,
+    ) -> None:
+        """Lineage for backends (``RenderScene.shared_cache``) when the instances built again
+        changed only in their transform, color or highlight: the same mesh, materials, name
+        and id."""
         if all(
             a.mesh == b.mesh
             and a.material == b.material
             and a.group_materials == b.group_materials
             and a.name == b.name
             and a.object_id == b.object_id
-            for a, b in ((before[j], items[j]) for j in built.tolist())
+            for a, b in ((before[j], after[j]) for j in built.tolist())
         ):
             self.lineage = (before, _frozen(built.astype(np.int64)))
 
@@ -864,35 +993,52 @@ class RenderWorld:
         one read-only block of these rows (as the full extraction's are into its stack); the
         world counts the rows of each block still in use (``_compact``)."""
         at = rows[built]
+        rows_list = at.tolist()
+        self._release_rows(at)
         world = _frozen(self.world[at])
         normal = _frozen(self.normal[at])
         base = _frozen(self.base_color[at])
         block = self.next_block
         self.next_block += 1
-        self.blocks[block] = [len(at), 0]
+        self.blocks[block] = [len(at), len(at)]
         self.block_rows += len(at)
-        objects = self.objects
-        owner = self.inst_block
-        for k, (j, r) in enumerate(zip(built.tolist(), at.tolist(), strict=True)):
-            self._release(r)
-            owner[r] = block
-            obj = objects[r]
-            look = self.look[r]
-            assert look is not None
-            self.instance[r] = RenderInstance(
-                obj.id,
-                obj.name,
-                int(mesh_index[j]),
-                world[k],
-                normal[k],
-                bool(self.det[r] < 0.0),
-                base[k],
-                look[0],
-                look[1],
-                int(default_index[j]),
-                group_index.get(r, ()),
+        self.inst_block[at] = block
+        objects = [self.objects[r] for r in rows_list]
+        looks = [self.look[r] for r in rows_list]
+        groups = [group_index.get(r, ()) for r in rows_list] if group_index else [()] * len(at)
+        built_instances = [
+            RenderInstance(obj._id, obj._name, m, w, nm, mirrored, b, look[0], look[1], material, g)
+            for obj, m, w, nm, mirrored, b, look, material, g in zip(
+                objects,
+                mesh_index[built].tolist(),
+                world,
+                normal,
+                (self.det[at] < 0.0).tolist(),
+                base,
+                looks,
+                default_index[built].tolist(),
+                groups,
+                strict=True,
             )
-        self.blocks[block][1] = len(at)
+        ]
+        instance = self.instance
+        for r, inst in zip(rows_list, built_instances, strict=True):
+            instance[r] = inst
+
+    def _release_rows(self, at: np.ndarray) -> None:
+        """``_release`` for many rows at once."""
+        blocks = self.inst_block[at]
+        used = blocks[blocks >= 0]
+        if not used.size:
+            return
+        self.inst_block[at] = -1
+        ids, counts = np.unique(used, return_counts=True)
+        for block, count in zip(ids.tolist(), counts.tolist(), strict=True):
+            entry = self.blocks[block]
+            entry[1] -= count
+            if entry[1] == 0:
+                self.block_rows -= entry[0]
+                del self.blocks[block]
 
     def _release(self, r: int) -> None:
         """Row ``r`` no longer uses its instance's block (forgotten when none does)."""
