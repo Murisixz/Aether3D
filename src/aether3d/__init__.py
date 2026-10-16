@@ -32,8 +32,10 @@ Quick start::
         "objects": {"wall": {"mesh": "@block", "grid": {"count": [20, 1, 5], "spacing": 1}}},
     })
 
-    # Visual feedback (docs/FEEDBACK.md): what a render shows, measured per object
-    obs = scene.observe(width=640, height=360)
+    # Visual feedback (docs/FEEDBACK.md): look at the render, check it, correct it
+    obs = scene.observe(width=640, height=360)        # measured facts per object
+    feedback = FeedbackSession(scene, expectations)   # an aether3d.expectations document
+    report = feedback.run()                           # observe, diagnose, correct, verify
 
 Everything listed in ``__all__`` is the supported public API.
 """
@@ -68,6 +70,7 @@ from .errors import (
     UnsupportedFeatureError,
     ValidationError,
 )
+from .feedback import FeedbackSession
 from .gltf import ExportResult, ImportLimits, ImportResult, export_gltf, import_gltf
 from .history import History, HistoryEntry, Transaction
 from .inspection import MeshGeometryReport, SceneGeometryReport, inspect_mesh, inspect_scene
@@ -134,6 +137,7 @@ __all__ = [
     "ExportResult",
     "Expr",
     "FeedbackError",
+    "FeedbackSession",
     "HierarchyError",
     "ImageTexture",
     "ImportLimits",
