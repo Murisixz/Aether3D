@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import contextlib
 import math
+import struct
 import sys
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
@@ -106,11 +107,14 @@ def _same(a: Any, b: Any) -> bool:
 
 def _identical(a: Any, b: Any) -> bool:
     """``a == b`` (given), also for the signs of zeros in floats, tuples, lists and dicts."""
-    if isinstance(a, float) and isinstance(b, float):
-        return math.copysign(1.0, a) == math.copysign(1.0, b)
-    if isinstance(a, (tuple, list)) and isinstance(b, (tuple, list)):
-        return len(a) == len(b) and all(_identical(x, y) for x, y in zip(a, b, strict=True))
-    if isinstance(a, dict) and isinstance(b, dict):
+    if isinstance(a, float):
+        # Equal floats differ only as 0.0 and -0.0.
+        return (
+            a != 0.0 or not isinstance(b, float) or math.copysign(1.0, a) == math.copysign(1.0, b)
+        )
+    if isinstance(a, (tuple, list)):
+        return all(map(_identical, a, b))
+    if isinstance(a, dict):
         return all(_identical(v, b[k]) for k, v in a.items())
     return True
 
@@ -180,12 +184,24 @@ class _Attr(Aspect):
         return f"{self.root}.{self.name}" if self.root else super().path(target)
 
 
+_TRANSFORM_BITS = struct.Struct("<10d")
+
+
 class _Transform(Aspect):
     __slots__ = ()
 
     def capture(self, obj: SceneObject) -> tuple:
         t = obj._transform
         return (t._position, t._rotation, t._scale)
+
+    def same(self, a: tuple, b: tuple) -> bool:
+        # (_same, with the ten floats compared as bytes: setting a transform to its value
+        # is common, and must stay cheap)
+        return a is b or (
+            a == b
+            and _TRANSFORM_BITS.pack(*a[0], *a[1], *a[2])
+            == _TRANSFORM_BITS.pack(*b[0], *b[1], *b[2])
+        )
 
     def apply(self, obj: SceneObject, state: tuple) -> None:
         t = obj._transform
