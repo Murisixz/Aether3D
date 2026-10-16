@@ -9,6 +9,14 @@ implementation, with its research and measurements, is
 ## Contents
 
 1. [Rounded bevels](#rounded-bevels)
+2. [Planar cuts and knife cuts](#planar-cuts-and-knife-cuts)
+3. [Filling and bridging](#filling-and-bridging)
+4. [Slides](#slides)
+5. [Dissolving, connecting and cleaning up](#dissolving-connecting-and-cleaning-up)
+6. [Shading and orientation](#shading-and-orientation)
+7. [Sweeps](#sweeps)
+8. [Shrinkwrap and surface queries](#shrinkwrap-and-surface-queries)
+9. [Procedural creases and mirror bisect](#procedural-creases-and-mirror-bisect)
 
 ## Rounded bevels
 
@@ -128,3 +136,188 @@ Every refusal raises an `EditError` and leaves the mesh exactly as it was:
 
 The procedural `bevel` modifier takes the same `segments` and `profile`
 ([PROCEDURAL.md](PROCEDURAL.md#bevel)).
+
+## Planar cuts and knife cuts
+
+**Bisect.** `bisect(point, normal, faces=None, clear="none", fill=False, threshold=None)`
+cuts faces with a plane.
+
+1. **Classify each vertex once.** Each vertex of the cut faces gets its signed distance
+   `s = n · (p - point)`. It is on the plane if `|s| <= threshold` (default `1e-6` times
+   the mesh's size, so float32 positions read from a `Mesh` that lie on the plane
+   count as on it). Deciding once per vertex keeps every later decision consistent: an
+   edge is crossed exactly when its two ends are strictly on opposite sides.
+2. **Split the crossed edges** at `t = s_a / (s_a - s_b)`, and project the new vertex
+   onto the plane.
+3. **Split each face by its chord.** The chord joins the end of the on-plane run before
+   the face's front stretch to the start of the run after it. A face crossed more than
+   twice (a concave polygon) is triangulated first (`BISECT_TRIANGULATED`).
+
+Faces outside `faces` only gain the cut points on edges they share with cut faces, so
+there are no T-junctions. `clear` deletes the cut faces on one side; faces lying in the
+plane stay. `fill` closes each boundary loop the clearing leaves in the plane: a polygon
+when it is planar and simple, otherwise a triangulation.
+
+**Knife.** `knife_project(points, direction, closed=False, through=True)` cuts along a
+polyline swept along `direction`.
+
+- **Ribbons.** Each segment `P_i P_i+1` spans a planar ribbon
+  `{P_i + s (P_i+1 - P_i) + t d}`, `0 <= s <= 1`.
+- **Pieces and paths.** In each face, the ribbons leave segments. Their ends lie on the
+  face's boundary, or on the polyline's corners projected into the face. Pieces sharing a
+  corner join into paths.
+- **Splitting.** A path that enters and leaves a face splits it, with the corners as new
+  vertices. Several paths split it into several pieces. Points on edges are shared with
+  the neighbouring face (no T-junctions). Concave faces the cut crosses are triangulated
+  first.
+- **Dangling cuts.** A path that ends inside a face is not applied, because a polygon
+  mesh cannot hold a dangling edge (`KNIFE_PARTIAL_CUT`).
+- **`through=False`** cuts only faces whose front faces the cut, a simple criterion that
+  does not test occlusion.
+- **Attributes.** UVs of new vertices on edges are interpolated along the edge. Inside a
+  face they come from the face's affine fit.
+
+## Filling and bridging
+
+Both work on **boundary loops**, chains of edges with one face each. A new face must run
+each boundary edge opposite to the face already there, which fixes the winding of every
+fill and bridge face. Several loops touching at one vertex are refused
+(`AMBIGUOUS_BOUNDARY`) rather than guessed.
+
+`fill_holes(edges=None, mode="auto", max_sides=0)` has four modes:
+
+| `mode` | Result |
+| --- | --- |
+| `"ngon"` | one polygon (the loop must be simple seen along its normal) |
+| `"fan"` | triangles around the loop's centroid |
+| `"triangulate"` | the minimum-weight triangulation of Barequet and Sharir, with Liepa's weight ("Filling Holes in Meshes", SGP 2003): the largest dihedral angle between adjacent triangles (including the faces around the hole) first, then the total area; dynamic programming, O(n³), up to 64 vertices |
+| `"auto"` | a polygon if the loop is planar and simple, a triangulation up to 64 vertices, else a fan |
+
+The new corners take the UVs of the boundary they close. Faces whose UVs then have zero
+area are reported (`UV_DEGENERATE_FACES`), as for extrusion walls.
+
+`bridge_edge_loops(edges, segments=1, twist=0)` joins two boundary loops, or two open
+chains, with a strip:
+
+- **Pairing.** Oriented by their new faces, the two loops run in opposite directions
+  across the bridge, so loop A's `a_i` meets loop B's `b_(offset - i)`. The offset that
+  minimizes the summed squared rung lengths is used, and `twist` adds to it.
+- **Quads or triangles.** Equal vertex counts give `segments` rows of quads, with
+  interpolated intermediate rows. Different counts give one row of triangles that
+  advance along whichever loop has the smaller normalized arc length next.
+
+## Slides
+
+`slide_edges(edges, factor, even=False)` moves chains of edges (loops or open chains)
+along their **rails**.
+
+- **Rails.** A rail is the edge leaving the chain at a vertex on the chosen side.
+- **Sides.** Side `+1` holds the faces that run the chain's direction, walking from its
+  lowest-id end (or, for a closed loop, from its lowest-id vertex toward its lower-id
+  neighbour).
+- **Distance.** `factor` in `[-1, 1]` moves each vertex that fraction along its rail.
+  With `even=True`, every vertex moves `|factor|` times the shortest rail.
+- **Poles.** At a pole, the rail is the edge most nearly perpendicular to the chain.
+
+`slide_vertex(vertex, toward, factor)` moves one vertex along one edge.
+
+- **UVs.** With `correct_uvs` (the default), a vertex's corners in the faces containing
+  its rail are interpolated along the rail, which is exact. Its other corners take the
+  same value where the vertex has a single UV. Corners across a UV seam keep their
+  values and stretch, which is reported (`UV_SEAM_STRETCHED`).
+- **Folds.** A slide that would fold a face is refused (`SLIDE_FOLDS_FACE`).
+
+## Dissolving, connecting and cleaning up
+
+- **`dissolve_vertices`.** A vertex on two edges leaves its faces' loops. Any other vertex
+  must have one manifold fan, and its faces merge into one polygon: the concatenation of
+  each face's outline without the vertex, wound like the faces.
+- **`dissolve_faces`.** Each connected region becomes its outline. A region with holes
+  or a pinched outline is refused (`DISSOLVE_INVALID_FACE`).
+- **`limited_dissolve(angle)`.** Dissolves edges between faces whose normals differ by
+  at most `angle` degrees, smallest angle first, then vertices in the middle of straight
+  runs. Edges between face groups, across UV or normal seams, and sharp edges are kept
+  (`delimit`).
+- **`connect_vertex_path` and `connect_vertices`.** Split faces between vertices that
+  share a face.
+- **`cleanup`.** Runs explicit repairs in a fixed order: merge by distance, collapse
+  zero-length edges, delete duplicate faces, recalculate winding, fill holes, delete
+  loose vertices. It returns a report with what each step changed (`fixed`, with ids).
+  Zero-area faces and non-manifold edges are only counted (`remaining`), because
+  repairing them needs a decision `cleanup` does not guess.
+
+## Shading and orientation
+
+- **`set_auto_smooth(angle=30)`.** Smooth-shades faces and marks an edge sharp exactly
+  when its faces' normals differ by more than `angle`.
+- **`recalculate_normals(inside=False)`.**
+  - **Consistent winding.** Within each piece connected by manifold edges, a
+    breadth-first walk flips every face that runs a shared edge the same way as its
+    neighbour.
+  - **Outward.** A closed piece is turned outward by its signed volume. An open piece
+    has no inside, so its faces face away from its centroid by area-weighted majority,
+    which is reported (`ORIENTATION_HEURISTIC`).
+  - **Non-orientable pieces.** A Moebius strip cannot be oriented; it is left unchanged
+    and reported (`NON_ORIENTABLE`).
+- **`set_weighted_normals(mode="face_area", weight=50)`.** Writes custom corner normals.
+  - Within each smooth fan, the normal is the sum of the fan's face normals weighted by
+    `area ** (weight / 50)`, `corner angle ** (weight / 50)`, or their product.
+  - `weight=50` is plain area weighting. Larger weights let big faces dominate, which
+    keeps the large flat faces of a bevelled hard-surface model flat.
+  - The normals are kept at commit, and a later geometric edit of a face recomputes
+    them as usual.
+
+## Sweeps
+
+- **`extrude_edges(edges, offset)`.** Builds walls from boundary edges, wound like the
+  face each edge borders.
+- **`spin(faces, angle, steps, axis, center, merge=True)`.** Extrudes a region `steps`
+  times, rotating it by `angle / steps` each time. A merged full turn welds the last
+  ring to the first and removes the region at the end: spinning a square profile makes
+  a closed torus. The volume equals the polygonal solid of revolution's,
+  `(n / 2) sin(2π / n) ∫(r_out² - r_in²) dz`, to 1e-12.
+- **`add_lathe(profile, segments=32, angle=360)`.** Builds a surface of revolution from
+  `(radius, height)` points around the local Z axis.
+  - Faces: quads between rings, and triangle fans where the profile touches the axis.
+  - UVs: `u` around the axis, `v` along the profile's arc length.
+  - A profile running from bottom to top faces outward.
+
+## Shrinkwrap and surface queries
+
+`shrinkwrap(vertices, target, mode="nearest", direction=None, offset=0, max_distance=None)`
+moves vertices onto a target. The target is an immutable `Mesh` or, in an editing
+session or edit script, another scene object (both objects' world transforms apply).
+
+- **`"nearest"`** uses the exact closest point.
+- **`"project"`** uses the first hit along `direction`, both ways unless `both_ways=False`.
+- **`offset`** moves the vertex along the target face's normal, on the side the vertex
+  came from.
+- **Misses.** Vertices without a target point within `max_distance` stay where they are
+  (`SHRINKWRAP_MISSED`).
+
+The queries use `aether3d.spatial.surface.TriangleSurface`, a float64 copy of the target
+with a linear BVH built from the Morton order of its triangles (`build_bvh_morton`).
+
+- **Build.** Leaf boxes are reduced once and inner boxes merged bottom-up. For 4.2M
+  triangles the build takes 0.88 s instead of 9.9 s for the renderers' binned-SAH tree.
+- **Nearest.** One traversal stack per point, run in lockstep: nodes farther than the
+  best distance so far are skipped, and the nearer child is visited first. The result
+  is exact; it matches brute force bit for bit in the tests.
+- **Rays.** Möller-Trumbore in float64, front to back, closest hit with `tmin < t < tmax`.
+
+## Procedural creases and mirror bisect
+
+- **Creases.** The `subdivision` modifier's `crease` (0-10, default 0, which keeps the
+  previous results bit for bit) is the sharpness of the edges marked sharp (DeRose, Kass
+  and Truong 1998).
+  - At sharpness 1 or more, a creased edge follows the boundary rules. Its edge point is
+    the midpoint; a vertex on two creases moves by `(e1 + 6 p + e2) / 8`; a vertex on
+    three or more stays.
+  - Each level lowers the sharpness by 1, and values below 1 blend the sharp and smooth
+    rules.
+  - Primitives with `smooth=True` mark their rims sharp, so
+    `subdivision(levels=3, crease=4)` keeps a cylinder's caps flat and its rims crisp.
+- **Mirror bisect.** The `mirror` modifier's `bisect` first cuts the geometry at each
+  mirror plane with the editing engine's bisect and keeps the positive side (or, with
+  `bisect_flip`, the negative one). Geometry crossing the plane no longer overlaps its
+  mirror image.

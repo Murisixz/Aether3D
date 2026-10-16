@@ -366,15 +366,53 @@ class MirrorModifier(ModifierType):
         ),
         ParamSpec("mirror_u", "bool", False, description="mirror U (u -> 1 - u) on the copy"),
         ParamSpec("mirror_v", "bool", False, description="mirror V (v -> 1 - v) on the copy"),
+        ParamSpec(
+            "bisect",
+            "bool",
+            False,
+            description="cut the geometry at each plane first and keep one side",
+        ),
+        ParamSpec(
+            "bisect_flip",
+            "bool",
+            False,
+            description="with bisect, keep the negative side instead of the positive one",
+        ),
     )
 
     def apply(self, mesh, values, ctx):
         diagnostics = []
         for axis_name in values["axes"]:
             axis = "xyz".index(axis_name)
+            if values["bisect"]:
+                mesh, diags = self._bisect(mesh, axis, values, ctx.location)
+                diagnostics += diags
             mesh, diags = self._mirror(mesh, axis, values, ctx.location)
             diagnostics += diags
         return mesh, diagnostics
+
+    @staticmethod
+    def _bisect(mesh: PolyMesh, axis: int, values: dict, location: str):
+        """Cut at the plane with the editing engine's bisect and drop one side."""
+        if mesh.face_count == 0:
+            return mesh, []
+        normal = [0.0, 0.0, 0.0]
+        normal[axis] = 1.0
+        em = mesh.to_editable()
+        try:
+            result = em.bisect(
+                tuple(values["origin"]),
+                tuple(normal),
+                clear="front" if values["bisect_flip"] else "back",
+                threshold=values["merge_threshold"],
+            )
+        except EditError as exc:
+            raise ProceduralError(exc.code, exc.message, location, hint=exc.hint) from None
+        if em.face_count == 0:
+            return PolyMesh.empty(uvs=mesh.uvs is not None, normals=mesh.normals is not None), [
+                _diag("MIRROR_BISECT_EMPTY", WARNING, "nothing was left on the kept side", location)
+            ]
+        return PolyMesh.from_editable(em), list(result.diagnostics)
 
     def _mirror(self, mesh: PolyMesh, axis: int, values: dict, location: str):
         _limit(2 * mesh.face_count, location)
@@ -779,6 +817,15 @@ class SubdivisionModifier(ModifierType):
     params = (
         ParamSpec("levels", "int", 1, min=0, max=6, description="number of subdivision steps"),
         ParamSpec("shade_smooth", "bool", True, description="mark the result smooth-shaded"),
+        ParamSpec(
+            "crease",
+            "float",
+            0.0,
+            min=0.0,
+            max=10.0,
+            description="sharpness of the edges marked sharp (DeRose et al. 1998): 0 smooth, "
+            "1 or more sharp for that many levels, fractions blend",
+        ),
     )
 
     def apply(self, mesh, values, ctx):
@@ -787,15 +834,22 @@ class SubdivisionModifier(ModifierType):
             return mesh, []
         _require_topology(mesh, ctx.location, "subdivision")
         _limit(int(mesh.corner_count * 4 ** (levels - 1)), ctx.location)
-        for _ in range(levels):
-            mesh = catmull_clark(compact(mesh))
+        for level in range(levels):
+            mesh = catmull_clark(compact(mesh), crease=max(values["crease"] - level, 0.0))
         if values["shade_smooth"]:
             mesh = mesh.with_(smooth=np.ones(mesh.face_count, bool))
         return mesh, []
 
 
-def catmull_clark(mesh: PolyMesh) -> PolyMesh:
-    """One Catmull-Clark step on an edge-manifold polygon mesh."""
+def catmull_clark(mesh: PolyMesh, crease: float = 0.0) -> PolyMesh:
+    """One Catmull-Clark step on an edge-manifold polygon mesh.
+
+    ``crease`` is the sharpness of the edges marked sharp at this step (DeRose, Kass and
+    Truong, "Subdivision Surfaces in Character Animation", 1998): at 1 or more they follow
+    the boundary rules (edge midpoints; a vertex on two creases moves by the crease rule
+    ``(e1 + 6 p + e2) / 8``, on three or more stays), between 0 and 1 the sharp and smooth
+    results are blended, and 0 (the default) ignores the marks.
+    """
     v = mesh.vertex_count
     p = mesh.positions
     fv = mesh.face_vertices
@@ -813,6 +867,13 @@ def catmull_clark(mesh: PolyMesh) -> PolyMesh:
         midpoints,
         (p[edge_vertices[:, 0]] + p[edge_vertices[:, 1]] + face_sum) / 4,
     )
+    s = min(float(crease), 1.0)
+    creased = np.zeros(e, dtype=bool)
+    if s > 0 and len(mesh.sharp_edges):
+        key = edge_vertices[:, 0] * (v + 1) + edge_vertices[:, 1]
+        skey = mesh.sharp_edges[:, 0] * (v + 1) + mesh.sharp_edges[:, 1]
+        creased = np.isin(key, skey) & ~boundary_edge
+        edge_points[creased] = (1 - s) * edge_points[creased] + s * midpoints[creased]
     # Vertex points.
     n_faces = np.bincount(fv, minlength=v).astype(np.float64)
     f_sum = np.zeros((v, 3))
@@ -835,6 +896,28 @@ def catmull_clark(mesh: PolyMesh) -> PolyMesh:
     vertex_points = np.where(
         (b_count == 0)[:, None], interior, np.where((b_count == 2)[:, None], boundary_rule, p)
     )
+    if creased.any():
+        # Crease edges count as boundaries: two of them make a crease vertex, three or
+        # more (with boundary edges) a corner; sharpness below 1 blends with the smooth rule.
+        sharp = edge_vertices[boundary_edge | creased]
+        k_count = np.bincount(sharp.ravel(), minlength=v)
+        k_sum = np.zeros((v, 3))
+        np.add.at(k_sum, sharp[:, 0], p[sharp[:, 1]])
+        np.add.at(k_sum, sharp[:, 1], p[sharp[:, 0]])
+        crease_rule = np.where(
+            (k_count == 2)[:, None],
+            (k_sum + 6 * p) / 8,
+            np.where((k_count >= 3)[:, None], p, interior),
+        )
+        touched = np.zeros(v, dtype=bool)
+        touched[edge_vertices[creased].ravel()] = True
+        sharp_points = np.where(
+            (b_count == 0)[:, None],
+            crease_rule,
+            np.where((k_count >= 3)[:, None], p, vertex_points),
+        )
+        blended = (1 - s) * vertex_points + s * sharp_points
+        vertex_points = np.where(touched[:, None], blended, vertex_points)
     positions = np.concatenate([vertex_points, edge_points, face_points])
     prev = mesh.prev_corner
     nxt = mesh.next_corner

@@ -176,6 +176,12 @@ class _HistoryEntry:
     result: OperationResult
 
 
+def nested_data(result: Any) -> dict:
+    """The ``data`` of an operation's result. Operations called from inside another
+    operation share its transaction and return their ``data`` dict directly."""
+    return result if isinstance(result, dict) else result.data
+
+
 def operation(func: Callable) -> Callable:
     """Make a method an atomic, undoable operation returning an OperationResult.
 
@@ -1041,6 +1047,13 @@ class MeshCore:
             self._dirty_faces.update(added)
             self._log(("dirty", added))
 
+    def _mark_clean(self, fids: Iterable[int]) -> None:
+        """Keep the stored corner normals of faces at commit (an operation wrote them)."""
+        removed = [f for f in fids if f in self._dirty_faces]
+        if removed:
+            self._dirty_faces.difference_update(removed)
+            self._log(("clean", removed))
+
     def _new_vertex(self, position: Iterable[float]) -> int:
         vid = self._nv
         self._ensure_capacity(vid + 1)
@@ -1287,6 +1300,8 @@ class MeshCore:
                     self._sharp.discard(entry[1])
             elif kind == "dirty":
                 self._dirty_faces.difference_update(entry[1])
+            elif kind == "clean":
+                self._dirty_faces.update(entry[1])
             else:  # pragma: no cover
                 raise AssertionError(f"unknown journal entry {kind}")
         self._nv, self._next_face, self._next_edge = counters

@@ -254,6 +254,27 @@ the offending `elements`, and a `hint`.
 | `flip_faces(faces)` | Reverses winding and negates stored normals | |
 | `set_smooth(faces, smooth)`, `set_sharp(edges, sharp)` | Shading controls (see below) | |
 
+### Advanced modeling operations (0.13)
+
+These are described in detail, with their geometry and refusal rules, in
+[MODELING.md](MODELING.md).
+
+| Operation | Behaviour and ids | Fails cleanly with |
+| --- | --- | --- |
+| `bisect(point, normal, faces=, clear="none"\|"front"\|"back", fill=False, threshold=, space=)` | Cuts faces with a plane. Each vertex is classified once (on the plane within `threshold`), crossed edges are split, and each face is split by its chord. Concave faces crossed more than twice are triangulated first (`BISECT_TRIANGULATED`). `clear` deletes one side, and `fill` closes the cut. `data`: `cut_vertices`, `cut_edges`, `front`, `back`, `fill_faces`. | `ValidationError` (zero normal, `fill` without `clear`) |
+| `knife_project(points, direction, faces=, closed=False, through=True, space=)` | Cuts along a polyline swept along `direction`. Paths through a face split it, and the polyline's corners inside faces become vertices. Cuts that end inside a face are not applied (`KNIFE_PARTIAL_CUT`). `through=False` cuts only faces whose front faces the cut. | `KNIFE_INVALID_CUT` (crossing paths, invalid pieces) |
+| `fill_holes(edges=None, mode="auto"\|"ngon"\|"fan"\|"triangulate", max_sides=0)` | Closes boundary loops: a polygon, a fan, or Liepa's minimum-weight triangulation (up to 64 vertices). `"auto"` picks a polygon for planar, simple loops. | `NOT_BOUNDARY`, `FILL_NOT_SIMPLE`, `FILL_TOO_LARGE`, `AMBIGUOUS_BOUNDARY` |
+| `bridge_edge_loops(edges, segments=1, twist=0)` | Joins two boundary loops or chains with quads, or with triangles when the vertex counts differ. The pairing minimizes the rung lengths. | `NOT_BOUNDARY`, `BRIDGE_NEEDS_TWO_LOOPS`, `BRIDGE_LOOPS_TOUCH`, `BRIDGE_SEGMENTS_NEED_EQUAL_COUNTS`, `NON_MANIFOLD_RESULT` |
+| `slide_edges(edges, factor, even=False, correct_uvs=True)`, `slide_vertex(vertex, toward, factor)` | Moves chains of edges (or one vertex) along the edges leaving them. UVs follow exactly along the rails. | `SLIDE_NOT_A_CHAIN`, `SLIDE_NO_RAIL`, `SLIDE_FOLDS_FACE`, `NOT_ADJACENT` |
+| `dissolve_vertices(vertices)`, `dissolve_faces(faces)`, `limited_dissolve(angle=5, faces=, delimit=)` | Removes vertices and merges the faces around each; merges regions into their outline; dissolves nearly coplanar edges and straight-run vertices without crossing groups, seams or sharp edges | `DISSOLVE_INVALID_FACE` |
+| `connect_vertex_path(vertices)`, `connect_vertices(vertices)` | Splits the faces between consecutive (or paired) vertices | `CONNECT_NO_SHARED_FACE`, `AMBIGUOUS_CONNECTION` |
+| `extrude_edges(edges, offset)` | Walls from boundary edges, wound like their faces | `NOT_BOUNDARY`, `ZERO_EXTRUSION` |
+| `spin(faces, angle, steps, axis=, center=, merge=True)` | Sweeps a region around an axis. A merged full turn closes the sweep (a torus from a disc). | `SPIN_NEEDS_ONE_REGION`, `SPIN_WITHOUT_BOUNDARY` |
+| `add_lathe(profile, segments=32, angle=360, smooth=True)` | Builds a surface of revolution from `(radius, height)` points, with UVs | `ValidationError` |
+| `shrinkwrap(vertices, target, mode="nearest"\|"project", direction=, offset=, max_distance=)` | Moves vertices onto a `Mesh` or another scene object (exact closest point, or the first hit along a direction) | `SHRINKWRAP_MISSED` (diagnostic), `EMPTY_TARGET` |
+| `set_auto_smooth(angle=30)`, `recalculate_normals(inside=False)`, `set_weighted_normals(mode=, weight=50)` | Marks creases sharp by angle; makes winding consistent and outward (signed volume, or a reported heuristic for open pieces); writes custom normals weighted toward large faces | `NON_ORIENTABLE`, `ORIENTATION_HEURISTIC` (diagnostics), `NO_NORMAL_LAYER` |
+| `cleanup(merge_distance=, zero_length=True, duplicates=True, loose=True, fix_winding=False, fill_holes=False)` | Explicit repairs with an auditable report (`data["report"]`). Zero-area faces and non-manifold edges are counted, never guessed at. | `CLEANUP_UNRESOLVED` (diagnostic) |
+
 ## Attributes: UVs and normals
 
 Per-corner attributes live in **corner layers**: `"uv"` (2D) and `"normal"`
@@ -464,9 +485,10 @@ linear in the size of what it touches. Highlights for a 316x316 grid slab
   (hand-authored) normals survive only where geometry is untouched.
 - **Extrusion side walls get degenerate UVs** (reported); no automatic UV
   unwrapping.
-- **No self-intersection test** between different faces, and no automatic
-  repair operations. Problems are reported, not fixed.
+- **No self-intersection test** between different faces in `validate()`.
+  Repairs are explicit (`cleanup` reports what it changed); nothing is repaired
+  automatically.
 - **`merge_by_distance` and `move_along_normals`** use plain distances and
   vertex normals. There is no "even thickness" option.
-- **No edge slide, knife, bridge, spin, fill, or rounded bevels** in this
-  stage.
+- **Knife cuts that end inside a face** are not applied: a polygon cannot hold
+  a dangling edge (`KNIFE_PARTIAL_CUT`).

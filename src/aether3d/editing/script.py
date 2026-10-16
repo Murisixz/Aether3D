@@ -82,7 +82,9 @@ SELECTION_QUERIES = {
 }
 ELEMENT_PARAMS = {"faces", "edges", "vertices", "elements", "selection"}
 SINGLE_PARAMS = {"edge": "edges", "face": "faces"}
-VERTEX_ID_PARAMS = {"vertex_a", "vertex_b", "keep", "from_vertex"}
+VERTEX_ID_PARAMS = {"vertex_a", "vertex_b", "keep", "from_vertex", "vertex", "toward"}
+OBJECT_PARAMS = {"target"}
+"""Arguments naming another scene object (by name, ``{"id": ...}`` or ``{"name": ...}``)."""
 
 
 class ScriptError(AetherError, ValueError):
@@ -228,7 +230,9 @@ def _run_edit(scene: Scene, edit: Any, loc: str, created: list[str]) -> dict[str
     selections: dict[str, Selection] = {}
     outputs = []
     for k, step in enumerate(operations):
-        outputs.append(_run_step(session.mesh, step, f"{loc}.operations[{k}]", selections))
+        outputs.append(
+            _run_step(session.mesh, step, f"{loc}.operations[{k}]", selections, scene=scene)
+        )
     try:
         commit = session.commit(
             scope=edit.get("scope", "object"), allow_invalid=bool(edit.get("allow_invalid", False))
@@ -246,7 +250,12 @@ def _run_edit(scene: Scene, edit: Any, loc: str, created: list[str]) -> dict[str
 
 
 def _run_step(
-    mesh: EditableMesh, step: Any, loc: str, selections: dict[str, Selection]
+    mesh: EditableMesh,
+    step: Any,
+    loc: str,
+    selections: dict[str, Selection],
+    *,
+    scene: Scene | None = None,
 ) -> dict[str, Any]:
     step = _object(step, loc)
     op = step.get("op")
@@ -316,7 +325,7 @@ def _run_step(
                 "UNKNOWN_OPERATION",
                 {"hint": "see EditableMesh.operations()"},
             )
-        return _run_operation(mesh, op, step, loc, selections)
+        return _run_operation(mesh, op, step, loc, selections, scene)
     except ScriptError:
         raise
     except EditError as exc:
@@ -327,7 +336,9 @@ def _run_step(
         raise ScriptError(str(exc), loc, "INVALID_ARGUMENT") from None
 
 
-def _run_operation(mesh, op: str, step: dict, loc: str, selections: dict) -> dict[str, Any]:
+def _run_operation(
+    mesh, op: str, step: dict, loc: str, selections: dict, scene: Scene | None = None
+) -> dict[str, Any]:
     method = getattr(mesh, op)
     signature = inspect.signature(method)
     kwargs = {}
@@ -340,6 +351,14 @@ def _run_operation(mesh, op: str, step: dict, loc: str, selections: dict) -> dic
                 f"{loc}.{key}",
                 "INVALID_ARGUMENT",
             )
+        if key in OBJECT_PARAMS:
+            if scene is None:
+                raise ScriptError(f"{key} needs a scene", f"{loc}.{key}", "INVALID_ARGUMENT")
+            target = _find_object(scene, value, f"{loc}.{key}")
+            if target is None:
+                raise ScriptError(f"object {value!r} not found", f"{loc}.{key}", "OBJECT_NOT_FOUND")
+            kwargs[key] = target
+            continue
         kwargs[key] = _resolve(mesh, key, value, f"{loc}.{key}", selections)
     try:
         signature.bind(**kwargs)
