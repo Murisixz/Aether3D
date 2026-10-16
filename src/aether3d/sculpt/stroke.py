@@ -210,6 +210,7 @@ class StrokeRunner:
         self.timings = {"query": 0.0, "deform": 0.0, "apply": 0.0}
         self.skipped = 0
         self.max_displacement = 0.0
+        self.topology: dict[str, int] = {}
 
     # -- placement -------------------------------------------------------------------
 
@@ -263,6 +264,19 @@ class StrokeRunner:
             )
             if radius <= 0 or (strength <= 0 and brush.kind not in ("grab", "elastic")):
                 continue
+            if brush.dyntopo is not None:
+                from .remesh import dyntopo_dab
+
+                t_topo = time.perf_counter()
+                for variant in self.variants:
+                    counts = dyntopo_dab(
+                        sm, c * variant.mirror, radius / self.min_scale, radius, brush.dyntopo
+                    )
+                    for key, value in counts.items():
+                        self.topology[key] = self.topology.get(key, 0) + value
+                self.timings["topology"] = self.timings.get("topology", 0.0) + (
+                    time.perf_counter() - t_topo
+                )
             moves: list[tuple[np.ndarray, np.ndarray]] = []
             regions: list[np.ndarray] = []
             for variant in self.variants:
@@ -296,13 +310,17 @@ class StrokeRunner:
                 applied += 1
             self.timings["apply"] += time.perf_counter() - t0
         moved = int((sm._stamp[: sm._nv] == sm._serial).sum())
-        return {
+        out = {
             "dabs": len(dabs),
             "applied_dabs": applied,
             "skipped_dabs": self.skipped,
             "moved_vertices": moved,
             "max_displacement": self.max_displacement,
         }
+        if brush.dyntopo is not None:
+            out["topology"] = dict(self.topology)
+            out["triangles"] = sm.triangle_count
+        return out
 
     # -- one dab -----------------------------------------------------------------------
 

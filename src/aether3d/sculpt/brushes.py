@@ -159,6 +159,12 @@ class Brush:
         if self.smooth_method not in SMOOTH_METHODS:
             raise ValidationError(f"smooth_method must be one of {SMOOTH_METHODS}")
         _number(self.poisson_ratio, "poisson_ratio", 0.0, 0.499)
+        if self.dyntopo is not None:
+            from .remesh import check_dyntopo
+
+            check_dyntopo(self.dyntopo)
+            if self.kind in STATEFUL or self.kind == "mask":
+                raise ValidationError(f"dyntopo does not work with the {self.kind} brush")
         if self.kind in ("pinch", "flatten", "fill", "scrape", "smooth") and self.strength > 1:
             raise ValidationError(f"{self.kind} strength is a fraction per dab (at most 1)")
 

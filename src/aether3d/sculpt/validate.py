@@ -23,11 +23,13 @@ The summary gives counts, ``closed``, ``edge_manifold``, ``vertex_manifold``,
 ``consistently_oriented``, the Euler characteristic, the signed volume of closed meshes,
 the edge-length range and the smallest triangle angle (quality).
 
-Self-intersections are found exactly: candidate pairs from a BVH over the triangles'
-boxes (:func:`~aether3d.spatial.geometry.bvh_box_pairs`), decided by
-:func:`~aether3d.spatial.geometry.triangles_intersect` for pairs without a shared
-vertex, and by segment-triangle tests of the edges away from the shared vertex for
-pairs sharing one. Without the option the report lists self-intersections under
+Self-intersections: candidate pairs come from a BVH over the triangles' boxes
+(:func:`~aether3d.spatial.geometry.bvh_box_pairs`). Pairs without a shared vertex are
+decided by :func:`~aether3d.spatial.geometry.triangles_intersect` (touching counts);
+pairs sharing one vertex by exact segment-triangle tests of the edges away from it, and
+pairs sharing an edge by exact coplanarity and side tests
+(:mod:`aether3d.spatial.predicates`), so the coplanar neighbours of flat regions are
+never mistaken for intersections. Without the option the report lists self-intersections under
 ``not_evaluated`` and never claims their absence.
 """
 
@@ -283,7 +285,14 @@ def _non_manifold_vertices(
 def _self_intersections(p: np.ndarray, t: np.ndarray, degenerate: np.ndarray) -> np.ndarray:
     """``(k, 2)`` triangle pairs that intersect improperly (see the module docs)."""
     from ..rendering.raytrace.bvh import build_bvh_morton, triangle_bounds
-    from ..spatial.geometry import bvh_box_pairs, segment_triangle_points, triangles_intersect
+    from ..spatial.geometry import bvh_box_pairs, triangles_intersect
+    from ..spatial.predicates import (
+        _drop_axis,
+        _project,
+        orient2d,
+        orient3d,
+        segment_crosses_triangle,
+    )
 
     keep = np.flatnonzero(~degenerate)
     if len(keep) < 2:
@@ -311,25 +320,39 @@ def _self_intersections(p: np.ndarray, t: np.ndarray, degenerate: np.ndarray) ->
             )
         one = np.flatnonzero(shared == 1)
         if len(one):
-            # The edge of each triangle away from the shared vertex must not cross the other.
+            # The edge of each triangle away from the shared vertex must not meet the
+            # other triangle (exact predicates: coplanar neighbours are common).
             for first, second in ((ta, tb), (tb, ta)):
                 f, g = first[one], second[one]
                 common = (f[:, :, None] == g[:, None, :]).any(axis=2)  # row by row
                 k_common = np.argmax(common, axis=1)
-                e0 = f[np.arange(len(one)), (k_common + 1) % 3]
-                e1 = f[np.arange(len(one)), (k_common + 2) % 3]
-                crosses, *_ = segment_triangle_points(
+                rows = np.arange(len(one))
+                e0 = f[rows, (k_common + 1) % 3]
+                e1 = f[rows, (k_common + 2) % 3]
+                hit[one] |= segment_crosses_triangle(
                     p[e0], p[e1], p[g[:, 0]], p[g[:, 1]], p[g[:, 2]]
                 )
-                hit[one] |= crosses
         two = np.flatnonzero(shared == 2)
         if len(two):
-            n1 = np.cross(b1[two] - a1[two], c1[two] - a1[two])
-            n2 = np.cross(b2[two] - a2[two], c2[two] - a2[two])
-            l1 = np.sqrt((n1 * n1).sum(axis=1))
-            l2 = np.sqrt((n2 * n2).sum(axis=1))
-            cos = (n1 * n2).sum(axis=1) / (l1 * l2)
-            hit[two] |= cos <= -(1.0 - 1e-12)  # folded flat onto each other
+            # Neighbours across an edge meet improperly only when coplanar and on the
+            # same side of the edge (folded onto each other).
+            f, g = ta[two], tb[two]
+            in_g = (f[:, :, None] == g[:, None, :]).any(axis=2)
+            k_f = np.argmin(in_g, axis=1)  # f's corner not in g
+            in_f = (g[:, :, None] == f[:, None, :]).any(axis=2)
+            k_g = np.argmin(in_f, axis=1)
+            rows = np.arange(len(two))
+            c_f = f[rows, k_f]
+            c_g = g[rows, k_g]
+            e0 = f[rows, (k_f + 1) % 3]
+            e1 = f[rows, (k_f + 2) % 3]
+            flat = orient3d(p[e0], p[e1], p[c_f], p[c_g]) == 0
+            if flat.any():
+                fr = np.flatnonzero(flat)
+                axis = _drop_axis(p[e0[fr]], p[e1[fr]], p[c_f[fr]])
+                pr = [_project(p[x[fr]], axis) for x in (e0, e1, c_f, c_g)]
+                same = orient2d(pr[0], pr[1], pr[2]) * orient2d(pr[0], pr[1], pr[3]) > 0
+                hit[two[fr[same]]] = True
         if hit.any():
             found.append(np.stack([keep[qi[hit]], keep[pi[hit]]], axis=1))
     return np.concatenate(found) if found else np.zeros((0, 2), dtype=np.int64)

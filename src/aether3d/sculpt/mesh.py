@@ -55,7 +55,7 @@ from typing import Any
 
 import numpy as np
 
-from ..diagnostics import INFO, Diagnostic
+from ..diagnostics import INFO, WARNING, Diagnostic
 from ..errors import SculptError, ValidationError
 from ..mesh import Mesh
 from ..rendering.raytrace.bvh import morton_codes
@@ -167,13 +167,41 @@ def sculpt_operation(func: Callable) -> Callable:
     return wrapper
 
 
+def _validity(summary: dict, triangles: np.ndarray, vertex_count: int) -> dict:
+    """The validity metrics a remesh reports (from a :func:`check_mesh` summary)."""
+    from ..spatial.geometry import component_labels
+
+    labels = component_labels(triangles, vertex_count)
+    keys = (
+        "closed",
+        "edge_manifold",
+        "vertex_manifold",
+        "consistently_oriented",
+        "boundary_edge_count",
+        "non_manifold_edge_count",
+        "degenerate_triangle_count",
+        "euler_characteristic",
+        "min_angle_degrees",
+    )
+    out = {k: summary[k] for k in keys}
+    out["volume"] = summary.get("volume")
+    out["components"] = int(labels.max()) + 1 if len(labels) and labels.max() >= 0 else 0
+    out["triangles"] = int(summary["triangle_count"])
+    out["vertices"] = int(summary["vertex_count"])
+    return out
+
+
 def _journal_bytes(journal: list) -> int:
-    total = 0
-    for entry in journal:
-        for item in entry[1:]:
-            if isinstance(item, np.ndarray):
-                total += item.nbytes
-    return total
+    def size(item: Any) -> int:
+        if isinstance(item, np.ndarray):
+            return item.nbytes
+        if isinstance(item, dict):
+            return sum(size(x) for x in item.values())
+        if isinstance(item, (list, tuple)):
+            return sum(size(x) for x in item)
+        return 0
+
+    return sum(size(item) for entry in journal for item in entry[1:])
 
 
 class SculptMesh:
@@ -576,6 +604,163 @@ class SculptMesh:
         return data
 
     @sculpt_operation
+    def remesh(
+        self,
+        target_length: float,
+        *,
+        iterations: int = 5,
+        flips: str = "valence",
+        relax: float = 0.5,
+        project: bool = True,
+    ):
+        """Isotropic remeshing toward edges of world length ``target_length`` (Botsch and
+        Kobbelt 2004; see :mod:`aether3d.sculpt.remesh`), keeping features. ``data``:
+        operations done and the resulting edge-length statistics."""
+        from .remesh import isotropic_remesh
+
+        return isotropic_remesh(
+            self,
+            float(target_length),
+            iterations=iterations,
+            flips=flips,
+            relax=float(relax),
+            project=project,
+        )
+
+    @sculpt_operation
+    def voxel_remesh(
+        self,
+        voxel_size: float,
+        *,
+        mode: str = "solid",
+        thickness: float | None = None,
+        max_voxels: int | None = None,
+    ):
+        """Rebuild the whole mesh from a voxel grid of spacing ``voxel_size`` (world
+        units): a signed distance field on a narrow band, then marching cubes (see
+        :mod:`aether3d.sculpt.voxel`). ``mode="solid"`` needs closed, manifold,
+        consistently oriented parts (overlapping parts fuse; inward-facing ones are
+        cavities); ``mode="shell"`` wraps any mesh in a closed shell of ``thickness``.
+
+        Every vertex and triangle is new. Kept: face groups (each new triangle takes the
+        group of the nearest old triangle) and the mask (interpolated at the nearest old
+        point). Not kept, and reported: UVs (``VOXEL_UVS_DROPPED``) and stored normals
+        (recomputed smooth). ``data`` holds validity metrics of the input and the result
+        (closed, manifold, oriented, volume, Euler characteristic, components, smallest
+        angle) and the grid's size."""
+        from ..spatial.geometry import component_labels
+        from ..spatial.surface import TriangleSurface
+        from .validate import check_mesh
+        from .voxel import MAX_VOXELS, check_voxel_args, voxel_surface
+
+        limit = MAX_VOXELS if max_voxels is None else max_voxels
+        check_voxel_args(voxel_size, mode, thickness, limit)
+        tris = self.triangle_ids()
+        if not len(tris):
+            raise SculptError("EMPTY_MESH", "there are no triangles to remesh")
+        used = np.unique(self._tri[tris])
+        remap = np.full(self._nv, -1, dtype=np.int64)
+        remap[used] = np.arange(len(used))
+        t = remap[self._tri[tris]]
+        m = np.asarray(self.world_matrix, dtype=np.float64)
+        world = self._pos[used] @ m[:3, :3].T + m[:3, 3]
+        before = check_mesh(world, t, welded=True)
+        component = outward = None
+        if mode == "solid":
+            s = before.summary
+            if not (
+                s["closed"]
+                and s["vertex_manifold"]
+                and s["consistently_oriented"]
+                and s["degenerate_triangle_count"] == 0
+            ):
+                raise SculptError(
+                    "VOXEL_NOT_WATERTIGHT",
+                    "a solid voxel remesh needs closed, manifold, consistently oriented parts "
+                    f"without degenerate triangles; this mesh has {s['boundary_edge_count']} "
+                    f"boundary edges, {s['non_manifold_edge_count']} non-manifold edges, "
+                    f"{s['non_manifold_vertex_count']} non-manifold vertices and "
+                    f"{s['degenerate_triangle_count']} degenerate triangles"
+                    + ("" if s["consistently_oriented"] else ", and inconsistent winding"),
+                    hint="close the holes first (EditableMesh.fill_holes), or use "
+                    "mode='shell' with a thickness",
+                )
+            component = component_labels(t, len(world))
+            a, b, c = world[t[:, 0]], world[t[:, 1]], world[t[:, 2]]
+            volume = np.bincount(component[t[:, 0]], weights=(a * np.cross(b, c)).sum(axis=1) / 6.0)
+            outward = volume >= 0
+            if not outward.any():
+                raise SculptError(
+                    "VOXEL_INSIDE_OUT",
+                    "every closed part faces inward (negative volume)",
+                    hint="flip the normals outward first (recalculate_normals)",
+                )
+        positions, triangles, stats = voxel_surface(
+            world,
+            t,
+            float(voxel_size),
+            mode=mode,
+            thickness=None if thickness is None else float(thickness),
+            max_voxels=limit,
+            component=component,
+            outward=outward,
+        )
+        if not len(triangles):
+            raise SculptError(
+                "VOXEL_EMPTY",
+                "no surface is left at this voxel size (the mesh is thinner than about two voxels)",
+                hint="use a smaller voxel_size",
+            )
+        inverse = np.linalg.inv(m)
+        local = positions @ inverse[:3, :3].T + inverse[:3, 3]
+        source = TriangleSurface(world, t)
+        groups = np.zeros(len(triangles), dtype=np.int64)
+        if self._has_groups:
+            centre = positions[triangles].mean(axis=1)
+            groups = self._tgroup[tris][source.nearest(centre, batch=1 << 15).triangles]
+        mask = np.zeros(len(positions), dtype=np.float32)
+        old_mask = self._mask[used]
+        if old_mask.any():
+            near = source.nearest(positions, batch=1 << 15)
+            corner = old_mask[t[near.triangles]].astype(np.float64)
+            mask = np.clip((corner * near.bary).sum(axis=1), 0.0, 1.0).astype(np.float32)
+        if self._ruv is not None:
+            self._op_diagnostics.append(
+                Diagnostic(
+                    "VOXEL_UVS_DROPPED",
+                    WARNING,
+                    "UVs cannot follow a new topology: the remeshed mesh has none (unwrap it "
+                    "again, or map textures with object coordinates)",
+                    None,
+                    int(self._nr),
+                    (),
+                )
+            )
+        if self._rnorm is not None:
+            self._op_diagnostics.append(
+                Diagnostic(
+                    "VOXEL_NORMALS_RECOMPUTED",
+                    INFO,
+                    "stored normals were replaced by smooth normals of the new surface",
+                    None,
+                    0,
+                    (),
+                )
+            )
+        self._replace(local, triangles, groups, mask, normals=self._rnorm is not None)
+        after = check_mesh(positions, triangles, welded=True)
+        return {
+            "voxel_size": float(voxel_size),
+            "mode": mode,
+            "grid": stats["grid"],
+            "band_points": stats["band_points"],
+            "vertices": int(len(positions)),
+            "triangles": int(len(triangles)),
+            "input": _validity(before.summary, t, len(world)),
+            "output": _validity(after.summary, triangles, len(positions)),
+        }
+
+    @sculpt_operation
     def set_mask(
         self,
         value: float = 1.0,
@@ -733,7 +918,10 @@ class SculptMesh:
 
     def _tighten_boxes(self) -> None:
         if self._loose_boxes:
-            self._refit_chunks(np.array(sorted(self._loose_boxes)))
+            count = len(self._chunks)
+            ids = [i for i in sorted(self._loose_boxes) if i < count]  # (rollback drops chunks)
+            if ids:
+                self._refit_chunks(np.array(ids))
             self._loose_boxes.clear()
 
     # ------------------------------------------------------------------ #
@@ -820,12 +1008,137 @@ class SculptMesh:
                 self._mask[entry[1]] = entry[2]
             elif kind == "topology":
                 self._restore_topology(entry[1])
+            elif kind == "uv":
+                self._ruv[entry[1]] = entry[2]
+            elif kind == "state":
+                for name, value in entry[1].items():
+                    setattr(self, name, value)
+                self._loose_boxes.clear()
             else:  # pragma: no cover
                 raise AssertionError(f"unknown journal entry {kind}")
         self._tighten_boxes()
 
-    def _restore_topology(self, state: dict) -> None:  # pragma: no cover - set by dyntopo
-        raise AssertionError("topology journal without a restorer")
+    def _restore_topology(self, state: dict) -> None:
+        from .topology import restore_topology
+
+        restore_topology(self, state)
+
+    _limit = MAX_ELEMENTS
+
+    _STATE_FIELDS = (
+        "_pos",
+        "_valive",
+        "_nv",
+        "_tri",
+        "_trv",
+        "_talive",
+        "_tgroup",
+        "_nt",
+        "_rgeo",
+        "_ruv",
+        "_rnorm",
+        "_rng",
+        "_nr",
+        "_mask",
+        "_dirty",
+        "_cross",
+        "_vsum",
+        "_stamp",
+        "_chunk_of",
+        "_chunks",
+        "_chunk_lo",
+        "_chunk_hi",
+        "_topology_changed",
+    )
+
+    def _replace(
+        self,
+        positions: np.ndarray,
+        triangles: np.ndarray,
+        groups: np.ndarray,
+        mask: np.ndarray,
+        *,
+        normals: bool,
+    ) -> None:
+        """Replace the whole mesh (a destructive remesh): one render vertex per vertex, no
+        UVs, smooth normals recomputed at commit if the mesh had normals. Journaled by
+        keeping the previous arrays themselves: nothing writes into them afterwards."""
+        nv, nt = len(positions), len(triangles)
+        if nv > self._limit or nt > self._limit:
+            raise SculptError(
+                "TOO_MANY_ELEMENTS", f"the mesh would exceed {self._limit} vertices or triangles"
+            )
+        self._log(("state", {name: getattr(self, name) for name in self._STATE_FIELDS}))
+        self._pos = np.array(positions, dtype=np.float64)
+        self._valive = np.ones(nv, dtype=bool)
+        self._nv = nv
+        self._tri = np.array(triangles, dtype=np.int64).reshape(-1, 3)
+        self._trv = self._tri.copy()
+        self._talive = np.ones(nt, dtype=bool)
+        self._tgroup = np.array(groups, dtype=np.int64)
+        self._nt = nt
+        self._rgeo = np.arange(nv, dtype=np.int64)
+        self._ruv = None
+        self._rnorm = np.zeros((nv, 3)) if normals else None
+        self._rng = np.arange(nv, dtype=np.int64)
+        self._nr = nv
+        self._mask = np.array(mask, dtype=np.float32)
+        self._dirty = np.ones(nv, dtype=bool)
+        self._stamp = np.zeros(nv, dtype=np.int64)
+        self._cross = self._triangle_cross(np.arange(nt))
+        self._vsum = np.zeros((nv, 3))
+        for k in range(3):
+            np.add.at(self._vsum, self._tri[:, k], self._cross)
+        self._topology_changed = True
+        self._loose_boxes.clear()
+        self._build_chunks()
+
+    def _ensure(self, nv: int, nt: int, nr: int) -> None:
+        """Room for ``nv`` vertices, ``nt`` triangles and ``nr`` render vertices."""
+        if nv > len(self._pos):
+            self._pos = _grow(self._pos, nv)
+            self._valive = _grow(self._valive, nv, False)
+            self._mask = _grow(self._mask, nv)
+            self._dirty = _grow(self._dirty, nv, False)
+            self._stamp = _grow(self._stamp, nv)
+            self._vsum = _grow(self._vsum, nv)
+        if nt > len(self._tri):
+            self._tri = _grow(self._tri, nt)
+            self._trv = _grow(self._trv, nt)
+            self._talive = _grow(self._talive, nt, False)
+            self._tgroup = _grow(self._tgroup, nt)
+            self._cross = _grow(self._cross, nt)
+            self._chunk_of = _grow(self._chunk_of, nt, -1)
+        if nr > len(self._rgeo):
+            self._rgeo = _grow(self._rgeo, nr)
+            self._rng = _grow(self._rng, nr)
+            if self._ruv is not None:
+                self._ruv = _grow(self._ruv, nr)
+            if self._rnorm is not None:
+                self._rnorm = _grow(self._rnorm, nr)
+
+    def _split_big_chunks(self, chunk_ids: np.ndarray) -> None:
+        """Halve chunks that grew past twice the chunk size (by Morton order of their
+        triangles' centroids), so queries stay local after refinement."""
+        work = [int(i) for i in np.asarray(chunk_ids).tolist()]
+        while work:
+            i = work.pop()
+            tris = self._chunks[i]
+            tris = tris[self._talive[tris]]
+            if len(tris) <= 2 * CHUNK_TRIANGLES:
+                self._chunks[i] = tris
+                continue
+            centroid = self._pos[self._tri[tris]].mean(axis=1)
+            order = np.argsort(morton_codes(centroid), kind="stable")
+            half = len(order) // 2
+            keep, move = np.sort(tris[order[:half]]), np.sort(tris[order[half:]])
+            self._chunks[i] = keep
+            new_id = len(self._chunks)
+            self._chunks.append(move)
+            self._chunk_of[move] = new_id
+            self._chunk_lo = np.vstack([self._chunk_lo, np.full((1, 3), np.inf)])
+            self._chunk_hi = np.vstack([self._chunk_hi, np.full((1, 3), -np.inf)])
+            work += [i, new_id]
 
     # ------------------------------------------------------------------ #
     # History

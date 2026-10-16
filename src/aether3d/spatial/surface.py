@@ -76,7 +76,9 @@ class TriangleSurface:
     def triangle_count(self) -> int:
         return len(self.triangles)
 
-    def nearest(self, points: np.ndarray, max_distance: float = np.inf) -> Nearest:
+    def nearest(
+        self, points: np.ndarray, max_distance: float = np.inf, *, batch: int = BATCH
+    ) -> Nearest:
         p = np.atleast_2d(np.asarray(points, dtype=np.float64))
         n = len(p)
         out_t = np.full(n, -1, dtype=np.int64)
@@ -87,8 +89,8 @@ class TriangleSurface:
             return Nearest(out_p, out_t, out_b, out_d)
         bvh = self.bvh
         cap = 2 * bvh.depth + 4
-        for s in range(0, n, BATCH):
-            q = p[s : s + BATCH]
+        for s in range(0, n, batch):
+            q = p[s : s + batch]
             m = len(q)
             best_d = np.full(m, float(max_distance))
             best_t = np.full(m, -1, dtype=np.int64)
