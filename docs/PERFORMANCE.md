@@ -13,6 +13,7 @@ tracing as a separate decision).
 - [Phase 1: quick wins in the current architecture](#phase-1-quick-wins-in-the-current-architecture)
 - [Phase 2: the retained render world](#phase-2-the-retained-render-world)
 - [Phase 3: native kernels (Rust)](#phase-3-native-kernels-rust)
+- [Phase 4: mesh editing](#phase-4-mesh-editing)
 
 ## Measuring
 
@@ -106,6 +107,7 @@ is an error naming the variable). Benchmark records include their state.
 | `AETHER3D_RETAINED_RENDER_WORLD` | on | keep what extraction computed between renders and update it from the history's change journal (`rendering/retained.py`, `RenderWorld`; it needs the material cache); `0` walks the whole scene for every render |
 | `AETHER3D_NATIVE` | on | use the native kernels of `aether3d-native` when installed (`aether3d/_native.py`: ray traversal, transform hierarchies, PNG filters); `0` uses the NumPy implementations, which give the same bits |
 | `AETHER3D_NATIVE_THREADS` | `1` | threads of the native ray traversal (`0`: one per CPU); results do not depend on it (a count, not an on/off switch) |
+| `AETHER3D_EDITING_BULK` | on | build an `EditableMesh`'s faces, edges and corner layers from a `Mesh` in bulk with NumPy (`editing/core.py`, `MeshCore._bulk_faces`); `0` adds one face at a time |
 
 ## Phase 0: foundation and baseline
 
@@ -499,3 +501,62 @@ run with `AETHER3D_NATIVE=0`; `*_8_threads` with `AETHER3D_NATIVE_THREADS=8`):
   the transforms from Python objects costs more than the arithmetic, and renders reuse
   the retained world's matrices anyway.
 - **Not affected**: GPU frames (the GPU traces nothing here), extraction, editing.
+
+## Phase 4: mesh editing
+
+The audit proposed rebuilding `EditableMesh` on arrays (half-edge tables and corner
+layers) with native operators. Its geometric decisions -- which triangles join into quads
+(`from_mesh`, `join_triangles`), convexity, the shading inferred from normals, the points
+an operation computes -- compare values from `np.dot`, `np.linalg.norm`, `np.arccos` and
+`np.log`: BLAS and libm (or SVML) calls whose last bits depend on the platform. A vectorized
+or native rewrite of those computations could not promise the same quads and the same
+results, so this phase changed only what computes exactly what it replaces.
+
+**What changed**
+
+- **Bulk construction** (`MeshCore._bulk_faces`; switch `AETHER3D_EDITING_BULK`):
+  `EditableMesh.from_mesh` builds its faces, edges and corner layers with NumPy -- the
+  same ids, the same tables in the same insertion orders, each vertex's edge set filled in
+  increasing edge id as building one face at a time fills it (so even the iteration order
+  of sets matches), and one Python int per id shared by every table, as before.
+- **Quad joining** computes each triangle's normal once instead of once per edge.
+- **`poly.cross3`** (bevel, inset, extrude): `np.cross`'s operations for two float64
+  3-vectors, without its per-call cost (about 28 us, mostly axis bookkeeping).
+
+`tests/test_editing_bulk.py` compares meshes built both ways with a strict snapshot (every
+table in its order, every set in its iteration order) on primitives, face groups, a random
+soup with welding, signed zeros, degenerate and non-manifold triangles and an empty mesh,
+with both welds and both quad settings; runs a chain of operations on both; compares quad
+joining with a copy of the previous implementation; `cross3` with `np.cross` (signed
+zeros, infinities, NaN, extreme magnitudes); and the builder's memory with the old one.
+
+**A regression found and fixed on the way.** The first bulk builder gave every table its
+own Python int for each id and kept its temporaries to the end: building the
+199,808-triangle mesh peaked at 438 MiB (tracemalloc) instead of 251, and the mesh held
+305 MiB instead of 226. The benchmark's peak memory showed it (517 MiB for the editing
+group instead of 322); sharing the ids and freeing temporaries early brought the build to
+248 MiB at peak, the mesh to 205 MiB, and the group back to 328 MiB.
+
+**Measured** (`benchmarks/results/phase4.json`):
+
+| metric | phase 3 | phase 4 |
+| --- | ---: | ---: |
+| `editing.from_mesh_topology_s` (199,808 triangles) | 0.732 | 0.348 |
+| `editing.from_mesh_attributes_s` (16,128 triangles) | 0.875 | 0.585 |
+| `editing.bevel_all_edges_ms` (2,048 faces) | 691.1 | 502.6 |
+| `editing.inset_500_faces_ms` | 133.5 | 99.05 |
+| `editing.bevel_edge_ms` | 1.388 | 1.171 |
+| `editing.extrude_region_ms` | 5.909 | 5.739 |
+| `editing.subdivide_quads_ms` | 118.1 | 115.9 |
+| `editing.to_mesh_ms` | 35.17 | 33.79 |
+| `editing.peak_rss_mib` | 321.7 | 328.4 |
+
+**Targets of the audit not met**: opening a 200,000-triangle mesh *with* UVs and normals
+within 1 s (here 16,128 such triangles take 0.59 s, most of it joining triangle pairs into
+quads, each pair's decision taken with the scalar geometry described above), and
+bevelling 51,000 faces within 1 s (2,048 faces take 0.50 s: per-vertex geometry and
+topology updates in Python). Meeting them needs the redesign the audit planned -- array
+topology and native operators -- with geometric predicates that no longer depend on the
+platform's BLAS and libm, which would change some quads and the last bits of computed
+points relative to 0.11 on some platforms. That is a deliberate behavior change for a
+release of its own, with the editing corpus as its guard; it was not made silently here.
