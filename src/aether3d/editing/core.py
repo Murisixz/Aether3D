@@ -389,53 +389,76 @@ class MeshCore:
         n, k = loops.shape
         if n == 0:
             return
+        # One Python int per id, shared by every table that holds it (as building one face
+        # at a time shares them): the tables cost what they cost before, not a copy per use.
+        vertex = list(range(self._nv)).__getitem__
         first = self._next_face
-        fids = range(first, first + n)
-        self._faces.update(zip(fids, loops.tolist(), strict=True))
+        fids = list(range(first, first + n))
+        flat = list(map(vertex, loops.reshape(-1).tolist()))
+        self._faces.update(zip(fids, (flat[i : i + k] for i in range(0, n * k, k)), strict=True))
+        del flat
         # The edges of every loop, (loop[j], loop[j + 1]) as (lower, higher) vertex id.
         nxt = np.roll(loops, -1, axis=1)
         lo = np.minimum(loops, nxt).reshape(-1)
         hi = np.maximum(loops, nxt).reshape(-1)
+        del nxt
         keys = lo * np.int64(max(self._nv, 1)) + hi
         unique, first_use, inverse = np.unique(keys, return_index=True, return_inverse=True)
+        del keys
         by_first = np.argsort(first_use, kind="stable")
         rank = np.empty(len(unique), dtype=np.int64)
         rank[by_first] = np.arange(len(unique), dtype=np.int64)
         edge_of = rank[inverse.reshape(-1)]  # each loop edge's edge, 0 = first used
-        m = len(unique)
+        del unique, inverse, rank
+        m = len(by_first)
         e0 = self._next_edge
-        eids = range(e0, e0 + m)
+        eids = list(range(e0, e0 + m))
         ends_lo = lo[first_use[by_first]]
         ends_hi = hi[first_use[by_first]]
-        pairs = list(zip(ends_lo.tolist(), ends_hi.tolist(), strict=True))
+        del lo, hi, first_use, by_first
+        pairs = list(
+            zip(
+                map(vertex, ends_lo.tolist()),
+                map(vertex, ends_hi.tolist()),
+                strict=True,
+            )
+        )
         self._edge_by_pair.update(zip(pairs, eids, strict=True))
         self._edge_verts.update(zip(eids, pairs, strict=True))
+        del pairs
         # Each edge's faces, in face order.
         order = np.argsort(edge_of, kind="stable")
-        faces = (np.repeat(np.arange(first, first + n, dtype=np.int64), k)[order]).tolist()
         cuts = np.zeros(m + 1, dtype=np.int64)
         np.cumsum(np.bincount(edge_of, minlength=m), out=cuts[1:])
+        del edge_of
+        faces = list(map(fids.__getitem__, (order // k).tolist()))
+        del order
         cut = cuts.tolist()
         self._edge_faces.update(
             zip(eids, (faces[cut[i] : cut[i + 1]] for i in range(m)), strict=True)
         )
+        del faces, cut, cuts
         # Each vertex's edges, in increasing id (creation) order.
         ends = np.concatenate((ends_lo, ends_hi))
-        owners = np.concatenate((np.arange(e0, e0 + m), np.arange(e0, e0 + m)))
+        owners = np.concatenate((np.arange(m), np.arange(m)))
+        del ends_lo, ends_hi
         by_vertex = np.lexsort((owners, ends))
         vertex_sorted = ends[by_vertex]
-        edge_sorted = owners[by_vertex].tolist()
+        edge_sorted = list(map(eids.__getitem__, owners[by_vertex].tolist()))
+        del ends, owners, by_vertex
         starts = np.flatnonzero(np.concatenate(([True], vertex_sorted[1:] != vertex_sorted[:-1])))
         bounds = np.append(starts, len(vertex_sorted)).tolist()
         vertex_edges = self._vert_edges
         for j, v in enumerate(vertex_sorted[starts].tolist()):
             vertex_edges[v].update(edge_sorted[bounds[j] : bounds[j + 1]])
+        del edge_sorted, vertex_sorted
         # Corner values (tuples of Python floats), smoothness, groups.
         for name, layer in self._layers.items():
             values = list(map(tuple, corners[name].reshape(n * k, layer.dim).tolist()))
             layer.data.update(
                 zip(fids, (values[i * k : (i + 1) * k] for i in range(n)), strict=True)
             )
+            del values
         self._smooth.update(dict.fromkeys(fids, False))
         self._group.update(zip(fids, [0] * n if groups is None else groups.tolist(), strict=True))
         self._dirty_faces.update(fids)

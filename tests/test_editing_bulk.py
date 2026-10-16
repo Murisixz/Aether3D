@@ -200,3 +200,31 @@ def test_cross3_is_np_cross():
         with np.errstate(invalid="ignore", over="ignore"):
             x, y = cross3(a, b), np.cross(a, b)
         assert x.dtype == y.dtype and x.tobytes() == y.tobytes(), (a, b, x, y)
+
+
+def test_a_bulk_build_holds_and_peaks_no_more_memory(monkeypatch):
+    """The bulk builder shares one Python int per id between its tables, as building one
+    face at a time does, and frees its temporaries early: the mesh holds no more memory
+    (it holds less: a vertex id is one object, not one per corner) and building peaks no
+    higher."""
+    import gc
+    import tracemalloc
+
+    sphere = create_sphere(1.0, 160, 80)
+    mesh = Mesh(sphere.positions, sphere.triangles)
+
+    def measure(bulk: str) -> tuple[int, int]:
+        with monkeypatch.context() as m:
+            m.setenv("AETHER3D_EDITING_BULK", bulk)
+            gc.collect()
+            tracemalloc.start()
+            built = EditableMesh.from_mesh(mesh, quads=False)
+            held, peak = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+            del built
+        return held, peak
+
+    held_bulk, peak_bulk = measure("1")
+    held_one, peak_one = measure("0")
+    assert held_bulk <= held_one
+    assert peak_bulk <= 1.05 * peak_one
