@@ -14,6 +14,7 @@ tracing as a separate decision).
 - [Phase 2: the retained render world](#phase-2-the-retained-render-world)
 - [Phase 3: native kernels (Rust)](#phase-3-native-kernels-rust)
 - [Phase 4: mesh editing](#phase-4-mesh-editing)
+- [Phase 5: hardware ray tracing (prototype, deferred)](#phase-5-hardware-ray-tracing-prototype-deferred)
 
 ## Measuring
 
@@ -521,7 +522,8 @@ results, so this phase changed only what computes exactly what it replaces.
   of sets matches), and one Python int per id shared by every table, as before.
 - **Quad joining** computes each triangle's normal once instead of once per edge.
 - **`poly.cross3`** (bevel, inset, extrude): `np.cross`'s operations for two float64
-  3-vectors, without its per-call cost (about 28 us, mostly axis bookkeeping).
+  3-vectors, without its per-call cost: 0.8 us per call instead of 11.9 (timeit on the
+  development machine; in `np.cross`, mostly axis bookkeeping).
 
 `tests/test_editing_bulk.py` compares meshes built both ways with a strict snapshot (every
 table in its order, every set in its iteration order) on primitives, face groups, a random
@@ -560,3 +562,71 @@ topology and native operators -- with geometric predicates that no longer depend
 platform's BLAS and libm, which would change some quads and the last bits of computed
 points relative to 0.11 on some platforms. That is a deliberate behavior change for a
 release of its own, with the editing corpus as its guard; it was not made silently here.
+
+## Phase 5: hardware ray tracing (prototype, deferred)
+
+The audit's last phase was optional: hardware ray tracing through a Rust wgpu host,
+prototyped end to end first, and integrated only if showcase path renders became at least
+twice as fast end to end with at least 99.99 % of rays hitting the same triangle as the
+software traversal. wgpu-py cannot build acceleration structures (wgpu-native's C API has
+none), so ray queries need a Rust host that owns its own GPU device.
+
+**The prototype** ([research/2026-10-modernization/hw_pathtrace](../research/2026-10-modernization/README.md#phase-5-hardware-ray-queries-in-the-gpu-path-tracer-hw_pathtrace))
+captures what `render_scene` binds and dispatches for each showcase scene (the settings of
+`benchmarks/bench_gpu_pathtrace.py`) and replays it in a Rust host (wgpu 30.0.1, Vulkan):
+with the production kernel unchanged, or with only `trace_ray` replaced by ray queries over
+a BLAS per mesh and a TLAS of the instances. The replacement keeps the software
+traversal's semantics -- hits with tmin < t < tmax, never the triangle a ray leaves from
+(an opaque query, then, only when it returns that triangle or a hit at t <= tmin, a
+non-opaque query confirming candidates one by one), any hit for shadow and AO rays. The
+host's software renders are bitwise `render_scene`'s (all 22 accumulation planes, every
+scene), so the comparison is Aether3D's path tracer with and without hardware traversal.
+
+**Measured** (RTX 4060 Laptop GPU, Vulkan; trace: the sample passes, wall and GPU time;
+end to end: the Python render's measured CPU stages with the host's GPU stages, and for
+ray queries without the CPU BVH build):
+
+| Scene | Size, samples | Triangles (instances) | Software trace (GPU) | Ray queries (GPU) | Trace | End to end |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| cornell | 640x640, 256 | 36 (8) | 8.99 s (8.62 s) | 7.76 s (7.42 s) | 1.16x | 9.07 -> 7.84 s: 1.16x |
+| metals | 960x540, 128 | 36,122 (7) | 2.63 s (2.44 s) | 1.70 s (1.52 s) | 1.55x | 2.74 -> 1.80 s: 1.52x |
+| window-room | 960x640, 512 | 102 (16) | 40.56 s (38.95 s) | 25.03 s (23.51 s) | 1.62x | 40.70 -> 25.17 s: 1.62x |
+| castle | 1920x1080, 64 | 6,842 (25) | 17.16 s (16.58 s) | 10.13 s (9.57 s) | 1.70x | 17.86 -> 10.82 s: 1.65x |
+| hero | 1280x720, 64 | 458 (8) | 2.28 s (2.00 s) | 2.05 s (1.76 s) | 1.11x | 2.58 -> 2.34 s: 1.10x |
+| castle-ao | 1920x1080, 8 | 6,842 (25) | 0.36 s (0.30 s) | 0.33 s (0.27 s) | 1.08x | 0.86 -> 0.83 s: 1.04x |
+
+| Scene | Camera rays: same triangle | Bounce rays: same triangle | Any-hit: same verdict | Rays that differ (same point / one hit / elsewhere) | Image: difference / sample noise | Mean bias | Host = render_scene |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | --- |
+| cornell | 100.0000 % of 409,600 | 100.0000 % of 409,600 | 100.0000 % of 409,600 | camera 0 / 0 / 0; bounce 0 / 0 / 0 | 6.6e-04 | 0.0e+00 | bitwise |
+| metals | 100.0000 % of 518,400 | 100.0000 % of 395,706 | 100.0000 % of 395,706 | camera 0 / 0 / 0; bounce 0 / 0 / 0 | 7.8e-04 | -2.8e-07 | bitwise |
+| window-room | 100.0000 % of 614,400 | 100.0000 % of 582,094 | 100.0000 % of 582,094 | camera 0 / 0 / 0; bounce 0 / 0 / 0 | 3.8e-03 | 2.8e-07 | bitwise |
+| castle | 99.9999 % of 2,073,600 | 100.0000 % of 2,073,599 | 100.0000 % of 2,073,599 | camera 1 / 1 / 1; bounce 1 / 0 / 0 | 1.7e-02 | 9.9e-07 | bitwise |
+| hero | 99.9962 % of 921,600 | 99.9956 % of 497,043 | 100.0000 % of 497,043 | camera 35 / 0 / 0; bounce 21 / 1 / 0 | 2.1e-02 | -2.8e-06 | bitwise |
+| castle-ao | 99.9999 % of 2,073,600 | 100.0000 % of 2,073,599 | 100.0000 % of 2,073,599 | camera 1 / 1 / 1; bounce 1 / 0 / 0 | 6.7e-03 | 2.4e-07 | bitwise |
+
+(The AO-only castle traces the castle's agreement rays again: the agreement kernel does
+not depend on the integrator.)
+
+- **Agreement holds.** At least 99.995 % of camera and bounce rays -- the path tracer's
+  own rays, traced with both traversals -- hit the same triangle, and every any-hit
+  verdict agrees; almost every ray that differs hits the same point on another triangle
+  (a shared edge or coincident faces). Images differ by 0.07-2.1 % of the sample noise,
+  without bias (within 3e-6 of the mean). The pixel-center pass (the depth and instance
+  outputs) agrees on at least 99.997 % of the pixels, except in the Cornell box, whose
+  differing 0.084 % all lie on the image's diagonals: rays along the box's corner edges,
+  where the software traversal slips between two walls (152 pixels) or hits the other
+  wall at the same depth (194), and ray queries hit a wall every time.
+- **The 2x target is missed.** The trace is 1.08-1.70 times faster and renders 1.04-1.65
+  times faster end to end; building the acceleration structures takes about 1 ms. The
+  GPU time ray queries remove is a lower bound for what the software traversal costs
+  (if the rest of the kernel costs the same in both): 10-42 % of the kernel. The rest --
+  material evaluation, light sampling, the state machine of one large kernel and its
+  divergence -- is untouched by ray queries.
+
+**Decision: deferred; the software traversal stays the only one.** Integration would add
+a second GPU device owned by a Rust extension (scene data and textures uploaded twice, the
+kernel compiled twice), wgpu's experimental ray-query API (measured on Vulkan only) and a
+large native dependency, for the gains above. It becomes worth measuring again (the
+prototype is kept for that) after shading is restructured -- a wavefront path tracer
+sorting hits by material, where traversal could dominate -- or when wgpu-native's C API
+gains acceleration structures, which would remove the second device.
