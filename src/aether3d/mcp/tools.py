@@ -1042,6 +1042,12 @@ def capabilities(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
             "operations": list(OPERATIONS),
             "validity_tiers": list(TIERS),
             "limits": list(LIMIT_KEYS),
+            "unsupported": {
+                "quad remeshing": "not offered: remesh (isotropic triangles) and "
+                "voxel_remesh are what exist",
+                "multiresolution sculpting": "not offered (no subdivision levels with "
+                "displacement)",
+            },
             "tips": [
                 "brush radius and dyntopo detail are in world units; strokes follow the "
                 "surface (project: nearest) unless told otherwise",

@@ -23,12 +23,14 @@ of about 10k, 100k and 1M vertices (``--quick``: 10k and 100k):
 
 * ``convert`` -- ``SculptMesh.from_mesh``; committing an unchanged mesh, after one dab
   (normals of the touched groups recomputed) and after a dynamic-topology dab (compaction).
-* ``dab`` -- one ``draw`` dab of radius 0.03, 0.1 and 0.3 (the sphere's radius is 1).
+* ``dab`` -- one ``draw`` dab of radius 0.03, 0.1 and 0.3 (the sphere's radius is 1),
+  and the ``baseline`` group's dab (radius 0.1 at the pole) with its commit.
 * ``stroke`` -- 100-dab strokes of ``draw``, ``clay``, ``smooth`` and ``grab`` (radius
   0.1, dabs 10 % of the radius apart): per dab, per stage, undo, commit, journal size.
 * ``symmetry`` -- the same 50-dab stroke without symmetry, mirrored in x, in x and y.
-* ``dyntopo`` -- a 30-dab ``clay`` stroke refining to half the edge length: per dab,
-  topology changes, commit, undo.
+* ``dyntopo`` -- 30-dab ``clay`` strokes refining to half the edge length, with a brush
+  scaled to the mesh's density (about the same number of vertices at every size) and
+  with one of radius 0.15 on every mesh: per dab, topology changes, commit, undo.
 * ``remesh`` -- isotropic remeshing at the current mean edge length (3 iterations, 1 at
   1M).
 * ``voxel`` -- voxel remeshing of the 100k sphere at voxel sizes giving about 10k, 100k
@@ -133,6 +135,10 @@ def group_baseline(quick: bool) -> dict[str, Any]:
     return out
 
 
+SPHERE_10K_VERTICES = 9662
+"""Welded vertices of the 10k sphere (``SculptMesh.vertex_count``)."""
+
+
 def _sculpt(size: str):
     from aether3d.sculpt import SculptMesh
 
@@ -188,7 +194,13 @@ def group_dab(size: str, quick: bool) -> dict[str, Any]:
         r = sm.stroke(stroke)
         out[f"r{radius}_moved"] = r.data["moved_vertices"]
         out[f"r{radius}_ms"] = ms(median_time(lambda stroke=stroke: sm.stroke(stroke), 5))
-    # The same dab with the editing API (the baseline), for the same vertices.
+    # The baseline's dab (group ``baseline``): radius 0.1 at the pole (0, 0, 1), where the
+    # sphere's rings crowd: the same vertices, now with a falloff.
+    pole = {"brush": {"kind": "draw", "radius": 0.1, "strength": 0.01}, "path": [[0, 0, 1]]}
+    r = sm.stroke(pole)
+    out["pole_r0.1_moved"] = r.data["moved_vertices"]
+    out["pole_r0.1_ms"] = ms(median_time(lambda: sm.stroke(pole), 5))
+    out["commit_after_pole_dab_ms"] = ms(median_time(sm.to_mesh, 3, warmup=0))
     return out
 
 
@@ -229,6 +241,17 @@ def group_dyntopo(size: str, quick: bool) -> dict[str, Any]:
     sm = _sculpt(size)
     detail = edge_statistics(sm)["mean"] / 2  # refine to half the current edge length
     out: dict[str, Any] = {"triangles_before": sm.triangle_count, "detail": detail}
+    # A brush of the same size on every mesh (radius 0.15: about 220 vertices at 10k,
+    # 22,000 at 1M within its reach), then one scaled to the mesh's density (about the
+    # same number of vertices at every size): the work follows the brush's region.
+    scaled = 0.15 * (SPHERE_10K_VERTICES / sm.vertex_count) ** 0.5
+    stroke = _stroke("clay", scaled, 30, dyntopo={"detail": detail, "mode": "constant"})
+    t0 = time.perf_counter()
+    r = sm.stroke(stroke)
+    out["scaled_radius"] = round(scaled, 4)
+    out["scaled_ms_per_dab"] = round(1000 * (time.perf_counter() - t0) / 30, 2)
+    out["scaled_topology"] = r.data["topology"]
+    sm.undo()
     stroke = _stroke("clay", 0.15, 30, dyntopo={"detail": detail, "mode": "constant"})
     t0 = time.perf_counter()
     r = sm.stroke(stroke)

@@ -14,6 +14,12 @@ masked vertices and degenerate triangles are kept as they are (see the topology
 module); splits still refine feature edges. The result is measured, not assumed: the
 operation returns the edge-length statistics and the number of operations of each kind.
 
+The passes run on a compact copy of the mesh that keeps no history (whole-mesh passes
+would otherwise journal every element and keep every replaced row), compacted again when
+dead rows pile up; the result replaces the mesh in one journaled step. The checks of
+each pass run in batches of candidates, so memory follows the mesh, not the candidates
+times their neighbourhoods.
+
 Dynamic topology (``brush.dyntopo``) runs the same passes inside a brush's sphere before
 each dab: splits down to the detail size, collapses (``refine`` = ``"subdivide"``,
 ``"collapse"`` or ``"both"``), Delaunay flips and a tangential relaxation (``relax``,
@@ -98,40 +104,56 @@ def isotropic_remesh(
             f"about {expected} triangles would be needed (limit {budget})",
             hint="use a larger target length",
         )
+    # The passes run on a compact copy without history (whole-mesh passes would journal
+    # every element and keep their old rows); the result replaces the mesh in one
+    # journaled step. Stopping (should_stop) leaves the mesh as it was.
+    work = sm._detached()
     reference = None
     if project:
-        reference = TriangleSurface(sm._pos[: sm._nv], sm._tri[sm.triangle_ids()])
+        reference = TriangleSurface(work._pos[: work._nv], work._tri[work.triangle_ids()])
     hi, lo = SPLIT_RATIO * target, COLLAPSE_RATIO * target
+    # Splits, collapses and relaxation keep vertices within about an edge of the surface:
+    # projections search twice the split length (local units) and ask again without a
+    # bound for the rare vertex with nothing that near.
+    sigma = np.linalg.svd(np.asarray(sm.world_matrix, dtype=np.float64)[:3, :3], compute_uv=False)
+    bound = 2.0 * hi / max(float(sigma.min()), 1e-300)
     counts = {"splits": 0, "collapses": 0, "flips": 0, "relaxed": 0}
+
+    def phase(run, limit: int, key: str) -> None:
+        nonlocal work
+        for _ in range(limit):
+            sm._checkpoint()
+            done = run(work, _whole(work))
+            counts[key] += done
+            if not done:
+                break
+        if work._nt > 1.5 * work.triangle_count + 1024:  # drop the rows passes left dead
+            work = work._detached()
+
     for _ in range(iterations):
-        for _ in range(MAX_SPLIT_PASSES):
-            sm._checkpoint()
-            region = _whole(sm)
-            done = split_pass(sm, region, hi, max_new=budget)
-            counts["splits"] += done
-            if not done:
-                break
-        for _ in range(MAX_COLLAPSE_PASSES):
-            sm._checkpoint()
-            region = _whole(sm)
-            done = collapse_pass(sm, region, lo, hi, max_ops=budget)
-            counts["collapses"] += done
-            if not done:
-                break
+        phase(
+            lambda w, region: split_pass(w, region, hi, max_new=budget), MAX_SPLIT_PASSES, "splits"
+        )
+        phase(
+            lambda w, region: collapse_pass(w, region, lo, hi, max_ops=budget),
+            MAX_COLLAPSE_PASSES,
+            "collapses",
+        )
         if flips != "none":
-            for _ in range(MAX_FLIP_PASSES):
-                sm._checkpoint()
-                region = _whole(sm)
-                done = flip_pass(sm, region, flips, max_ops=budget)
-                counts["flips"] += done
-                if not done:
-                    break
+            phase(
+                lambda w, region: flip_pass(w, region, flips, max_ops=budget),
+                MAX_FLIP_PASSES,
+                "flips",
+            )
         if relax > 0:
             for _ in range(2):
-                region = _whole(sm)
-                counts["relaxed"] += relax_pass(sm, region, relax)
+                sm._checkpoint()
+                region = _whole(work)
+                counts["relaxed"] += relax_pass(work, region, relax)
             if reference is not None:
-                _project(sm, region, reference)
+                _project(work, region, reference, bound)
+    sm._checkpoint()
+    sm._adopt(work)
     return {**counts, "edge_length": edge_statistics(sm), "triangles": sm.triangle_count}
 
 
@@ -150,12 +172,25 @@ def _whole(sm):
     return build_region(sm, sm.triangle_ids(), sm.vertex_ids())
 
 
-def _project(sm, region, reference) -> None:
-    """Move the free vertices onto the reference surface (nearest points)."""
+PROJECT_BATCH = 1 << 15
+"""Points per lockstep traversal when projecting (wide: projections ask for every free
+vertex at once)."""
+
+
+def _project(sm, region, reference, bound: float = np.inf) -> None:
+    """Move the free vertices onto the reference surface (exact nearest points), searching
+    within ``bound`` first (local units; the same nearest point when it lies that near)
+    and without a bound for the vertices that found nothing."""
     free = region.verts[~region.locked]
     if not len(free):
         return
-    hit = reference.nearest(sm._pos[free])
+    points = sm._pos[free]
+    hit = reference.nearest(points, max_distance=bound, batch=PROJECT_BATCH)
+    missed = np.flatnonzero(hit.triangles < 0)
+    if len(missed) and np.isfinite(bound):
+        again = reference.nearest(points[missed], batch=PROJECT_BATCH)
+        hit.points[missed] = again.points
+        hit.triangles[missed] = again.triangles
     ok = hit.triangles >= 0
     if ok.any():
         sm._move(free[ok], hit.points[ok], region.tris)

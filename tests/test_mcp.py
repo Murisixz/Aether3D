@@ -652,6 +652,7 @@ def test_sculpt_scripts_and_mesh_inspection(tmp_path):
     assert out["missing"]["error"]["code"] == "NOT_FOUND"
     assert [s["label"] for s in out["history"]["steps"]][-1] == "Dent the ball"
     assert "voxel_remesh" in out["topic"]["operations"] and out["topic"]["validity_tiers"]
+    assert "quad remeshing" in out["topic"]["unsupported"]  # said, not faked
     assert out["guide"].startswith("# Aether3D sculpting")
     jsonschema.Draft202012Validator.check_schema(out["schema"])
 

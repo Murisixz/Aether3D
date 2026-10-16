@@ -56,6 +56,15 @@ SPLIT_RATIO = 4.0 / 3.0
 COLLAPSE_RATIO = 4.0 / 5.0
 """Edges shorter than this times the target length are collapsed."""
 
+CHECK_BATCH = 1 << 15
+"""Collapse candidates checked at once (bounds the temporary memory)."""
+
+FLIP_BATCH = 1 << 16
+"""Flip candidates whose geometry is measured at once (bounds the temporary memory)."""
+
+RESAMPLE_BATCH = 1 << 15
+"""Moved vertices whose UVs are re-sampled at once (bounds the temporary memory)."""
+
 FOLD_COS = math.cos(math.radians(60.0))
 """A collapse or flip may turn no triangle's normal by more than 60 degrees."""
 
@@ -222,27 +231,33 @@ def apply_topology(
         np.concatenate([sm._tri[removed_tris].ravel(), moved, removed_vertices]).astype(np.int64)
     )
     chunks = np.unique(np.concatenate([sm._chunk_of[removed_tris], new_chunk]).astype(np.int64))
-    state = {
-        "nv": nv,
-        "nt": nt,
-        "nr": nr,
-        "removed_tris": removed_tris.copy(),
-        "removed_vertices": removed_vertices.copy(),
-        "moved": moved.copy(),
-        "moved_pos": sm._pos[moved].copy(),
-        "vsum_ids": touched,
-        "vsum": sm._vsum[touched].copy(),
-        "dirty_ids": touched[~sm._dirty[touched]],
-        "uv_ids": uv_ids.copy(),
-        "uv": None if sm._ruv is None else sm._ruv[uv_ids].copy(),
-        "chunk_ids": chunks,
-        "chunk_lists": [sm._chunks[i].copy() for i in chunks.tolist()],
-        "chunk_lo": sm._chunk_lo[chunks].copy(),
-        "chunk_hi": sm._chunk_hi[chunks].copy(),
-        "chunk_count": len(sm._chunks),
-        "changed": sm._topology_changed,
-    }
-    sm._log(("topology", state))
+    chunk_count = len(sm._chunks)
+    state = (
+        None
+        if sm._journal is None
+        else {
+            "nv": nv,
+            "nt": nt,
+            "nr": nr,
+            "removed_tris": removed_tris.copy(),
+            "removed_vertices": removed_vertices.copy(),
+            "moved": moved.copy(),
+            "moved_pos": sm._pos[moved].copy(),
+            "vsum_ids": touched,
+            "vsum": sm._vsum[touched].copy(),
+            "dirty_ids": touched[~sm._dirty[touched]],
+            "uv_ids": uv_ids.copy(),
+            "uv": None if sm._ruv is None else sm._ruv[uv_ids].copy(),
+            "chunk_ids": chunks,
+            "chunk_lists": [sm._chunks[i].copy() for i in chunks.tolist()],
+            "chunk_lo": sm._chunk_lo[chunks].copy(),
+            "chunk_hi": sm._chunk_hi[chunks].copy(),
+            "chunk_count": len(sm._chunks),
+            "changed": sm._topology_changed,
+        }
+    )
+    if state is not None:
+        sm._log(("topology", state))
     sm._topology_changed = True
     sm._dirty[touched] = True
     if len(removed_tris):
@@ -294,7 +309,7 @@ def apply_topology(
             c = int(sorted_chunks[s])
             sm._chunks[c] = np.concatenate([sm._chunks[c], new_ids[order[s:e]]])
     sm._split_big_chunks(chunks)
-    refit = np.concatenate([chunks, np.arange(state["chunk_count"], len(sm._chunks))])
+    refit = np.concatenate([chunks, np.arange(chunk_count, len(sm._chunks))])
     sm._refit_chunks(np.unique(refit))
     return new_ids
 
@@ -516,6 +531,7 @@ def independent_set(
     alive = np.ones(len(rows_a), dtype=bool)
     chosen: list[np.ndarray] = []
     blocked = np.zeros(nvr, dtype=bool)
+    owner, nb = _gather(nbr_off, nbr, np.arange(nvr))  # every vertex's neighbours
     for _ in range(64):
         idx = np.flatnonzero(alive)
         if not len(idx):
@@ -523,7 +539,6 @@ def independent_set(
         at_v = np.full(nvr, big, dtype=np.int64)
         np.minimum.at(at_v, rows_a[idx], prio[idx])
         np.minimum.at(at_v, rows_b[idx], prio[idx])
-        owner, nb = _gather(nbr_off, nbr, np.arange(nvr))
         ring = at_v.copy()
         np.minimum.at(ring, owner, at_v[nb])
         win = idx[np.minimum(ring[rows_a[idx]], ring[rows_b[idx]]) == prio[idx]]
@@ -580,42 +595,54 @@ def collapse_pass(
     nbr_local = region.index(nbr)
     tri_local = region.index(tri)
     inc_off, inc = _csr(tri_local.ravel(), np.repeat(np.arange(t), 3), nvr)
-    # Link condition: a and b share exactly their two opposite vertices.
-    oa, na = _gather(nbr_off, nbr, la)
-    ob, nb = _gather(nbr_off, nbr, lb)
-    key = np.concatenate([oa * np.int64(sm._nv + 1) + na, ob * np.int64(sm._nv + 1) + nb])
-    uk, cnt = np.unique(key, return_counts=True)
-    common = np.bincount(uk[cnt > 1] // np.int64(sm._nv + 1), minlength=n)
-    ok &= common == 2
-    # No new edge from the midpoint reaches the split threshold.
+    # The checks, per batch of candidates (bounded memory), each on the candidates the
+    # cheaper ones left: the link condition (a and b share exactly their two opposite
+    # vertices), no new edge from the midpoint reaching the split threshold, and no
+    # surrounding triangle folding (turning by 60 degrees or more) or degenerating. Each
+    # surrounding triangle has one corner at a or b (only the two removed triangles hold
+    # both), which moves to the midpoint.
     target = (sm._pos[a] + sm._pos[b]) / 2.0
     m = np.asarray(sm.world_matrix, dtype=np.float64)[:3, :3]
-    owners = np.concatenate([oa, ob])
-    others = np.concatenate([na, nb])
-    d = (sm._pos[others] - target[owners]) @ m.T
-    far = np.zeros(n)
-    np.maximum.at(far, owners, np.sqrt((d * d).sum(axis=1)))
-    ok &= far < high
-    # No surrounding triangle folds (turns by 60 degrees or more) or degenerates.
-    ta_o, ta_t = _gather(inc_off, inc, la)
-    tb_o, tb_t = _gather(inc_off, inc, lb)
-    own = np.concatenate([ta_o, tb_o])
-    rows = np.concatenate([ta_t, tb_t])
-    keep_pair = (rows != r1[own]) & (rows != r2[own])
-    own, rows = own[keep_pair], rows[keep_pair]
-    pts = sm._pos[tri[rows]].copy()
-    before = np.cross(pts[:, 1] - pts[:, 0], pts[:, 2] - pts[:, 0])
-    moving = (tri[rows] == a[own][:, None]) | (tri[rows] == b[own][:, None])
-    pts[moving] = np.repeat(target[own], 3, axis=0).reshape(-1, 3, 3)[moving]
-    after = np.cross(pts[:, 1] - pts[:, 0], pts[:, 2] - pts[:, 0])
-    lb_ = np.sqrt((before * before).sum(axis=1))
-    la_ = np.sqrt((after * after).sum(axis=1))
-    good = (la_ > 1e-12 * np.maximum(lb_, 1e-300)) & (
-        (before * after).sum(axis=1) > FOLD_COS * lb_ * la_
-    )
-    bad = np.zeros(n, dtype=bool)
-    bad[own[~good]] = True
-    ok &= ~bad
+    nv1 = np.int64(sm._nv + 1)
+    for s in range(0, n, CHECK_BATCH):
+        cnd = np.arange(s, min(n, s + CHECK_BATCH))
+        cnd = cnd[ok[cnd]]
+        if not len(cnd):
+            continue
+        oa, na = _gather(nbr_off, nbr, la[cnd])
+        ob, nb = _gather(nbr_off, nbr, lb[cnd])
+        key = np.concatenate([oa * nv1 + na, ob * nv1 + nb])
+        uk, cnt = np.unique(key, return_counts=True)
+        good = np.bincount(uk[cnt > 1] // nv1, minlength=len(cnd)) == 2
+        owners = np.concatenate([oa, ob])
+        others = np.concatenate([na, nb])
+        keep_o = good[owners]
+        owners, others = owners[keep_o], others[keep_o]
+        d = (sm._pos[others] - target[cnd[owners]]) @ m.T
+        far = np.zeros(len(cnd))
+        np.maximum.at(far, owners, np.sqrt((d * d).sum(axis=1)))
+        good &= far < high
+        live = np.flatnonzero(good)
+        ta_o, ta_t = _gather(inc_off, inc, la[cnd[live]])
+        tb_o, tb_t = _gather(inc_off, inc, lb[cnd[live]])
+        own = cnd[live[np.concatenate([ta_o, tb_o])]]
+        rows = np.concatenate([ta_t, tb_t])
+        keep_pair = (rows != r1[own]) & (rows != r2[own])
+        own, rows = own[keep_pair], rows[keep_pair]
+        corners = tri[rows]
+        pts = sm._pos[corners]
+        k = np.argmax((corners == a[own][:, None]) | (corners == b[own][:, None]), axis=1)
+        pts[np.arange(len(rows)), k] = target[own]
+        after = np.cross(pts[:, 1] - pts[:, 0], pts[:, 2] - pts[:, 0])
+        before = sm._cross[region.tris[rows]]  # kept up to date: (b - a) x (c - a)
+        lb_ = np.sqrt((before * before).sum(axis=1))
+        la_ = np.sqrt((after * after).sum(axis=1))
+        folds = ~(
+            (la_ > 1e-12 * np.maximum(lb_, 1e-300))
+            & ((before * after).sum(axis=1) > FOLD_COS * lb_ * la_)
+        )
+        ok[cnd] = good
+        ok[own[folds]] = False
     if stats is not None:
         stats["candidates"] = stats.get("candidates", 0) + n
         stats["valid"] = stats.get("valid", 0) + int(ok.sum())
@@ -707,7 +734,6 @@ def flip_pass(sm, region: Region, mode: str, max_ops: int) -> int:
     d = tri[r2, (k2 + 2) % 3]
     ic, id_ = region.index(c), region.index(d)
     usable = ~region.locked[ic] & ~region.locked[id_] & (c != d)
-    pa, pb, pc, pd = sm._pos[a], sm._pos[b], sm._pos[c], sm._pos[d]
     m = np.asarray(sm.world_matrix, dtype=np.float64)[:3, :3]
 
     def angle(at, u, v):
@@ -717,30 +743,38 @@ def flip_pass(sm, region: Region, mode: str, max_ops: int) -> int:
         with np.errstate(invalid="ignore", divide="ignore"):
             return np.arccos(np.clip((x * y).sum(axis=1) / (nx * ny), -1.0, 1.0))
 
-    if mode == "delaunay":
-        gain = angle(pc, pa, pb) + angle(pd, pa, pb) - math.pi
-    else:
+    if mode != "delaunay":
         # Every vertex here is interior (unlocked, so off any boundary): target 6.
         val = region.valence
         ia, ib = region.index(a), region.index(b)
         before = (val[ia] - 6) ** 2 + (val[ib] - 6) ** 2 + (val[ic] - 6) ** 2 + (val[id_] - 6) ** 2
         after = (val[ia] - 7) ** 2 + (val[ib] - 7) ** 2 + (val[ic] - 5) ** 2 + (val[id_] - 5) ** 2
         gain = (before - after).astype(np.float64)
-    good = usable & (gain > 1e-9)
-    # The new triangles (a, d, c) and (d, b, c) must not fold against the old ones.
-    n1 = np.cross(pb - pa, pc - pa)
-    n2 = np.cross(pa - pb, pd - pb)
-    m1 = np.cross(pd - pa, pc - pa)
-    m2 = np.cross(pb - pd, pc - pd)
-    ref = n1 + n2
-    good &= ((m1 * ref).sum(axis=1) > 0) & ((m2 * ref).sum(axis=1) > 0)
-    lm1 = np.sqrt((m1 * m1).sum(axis=1))
-    lm2 = np.sqrt((m2 * m2).sum(axis=1))
-    lr = np.sqrt((ref * ref).sum(axis=1))
-    with np.errstate(invalid="ignore", divide="ignore"):
-        good &= ((m1 * ref).sum(axis=1) > FOLD_COS * lm1 * lr) & (
-            (m2 * ref).sum(axis=1) > FOLD_COS * lm2 * lr
-        )
+    else:
+        gain = np.empty(len(e))
+    good = usable.copy()
+    # Per batch of candidates (bounded memory): the Delaunay gain, and the new triangles
+    # (a, d, c) and (d, b, c) must not fold against the old ones.
+    for s in range(0, len(e), FLIP_BATCH):
+        sl = slice(s, s + FLIP_BATCH)
+        pa, pb, pc, pd = sm._pos[a[sl]], sm._pos[b[sl]], sm._pos[c[sl]], sm._pos[d[sl]]
+        if mode == "delaunay":
+            gain[sl] = angle(pc, pa, pb) + angle(pd, pa, pb) - math.pi
+        n1 = np.cross(pb - pa, pc - pa)
+        n2 = np.cross(pa - pb, pd - pb)
+        m1 = np.cross(pd - pa, pc - pa)
+        m2 = np.cross(pb - pd, pc - pd)
+        ref = n1 + n2
+        ok = ((m1 * ref).sum(axis=1) > 0) & ((m2 * ref).sum(axis=1) > 0)
+        lm1 = np.sqrt((m1 * m1).sum(axis=1))
+        lm2 = np.sqrt((m2 * m2).sum(axis=1))
+        lr = np.sqrt((ref * ref).sum(axis=1))
+        with np.errstate(invalid="ignore", divide="ignore"):
+            ok &= ((m1 * ref).sum(axis=1) > FOLD_COS * lm1 * lr) & (
+                (m2 * ref).sum(axis=1) > FOLD_COS * lm2 * lr
+            )
+        good[sl] &= ok
+    good &= gain > 1e-9
     # The new edge must not exist already (edge keys are sorted: a binary search).
     nv = max(sm._nv, 1)
     keys = ev[:, 0] * nv + ev[:, 1]
@@ -841,35 +875,44 @@ def relax_pass(sm, region: Region, strength: float = 0.5) -> int:
 
 def _resample_uvs(sm, region: Region, ids: np.ndarray, target: np.ndarray) -> None:
     """New UVs for moved vertices from the old one-ring triangle the target falls in
-    (each vertex has one render vertex: it touches no seam)."""
+    (each vertex has one render vertex: it touches no seam). Batches of vertices bound
+    the memory; every batch reads the old UVs, written once at the end."""
     tri, trv = region.tri, region.trv
     mark = np.full(sm._nv, -1, dtype=np.int64)
-    mark[ids] = np.arange(len(ids))
-    owner_rows, owner_k = np.nonzero(mark[tri] >= 0)
-    p = sm._pos[tri[owner_rows]]
-    q = target[mark[tri[owner_rows, owner_k]]]
-    # Barycentric coordinates of q in each incident triangle (projected on its plane).
-    v0, v1 = p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]
-    v2 = q - p[:, 0]
-    d00 = (v0 * v0).sum(axis=1)
-    d01 = (v0 * v1).sum(axis=1)
-    d11 = (v1 * v1).sum(axis=1)
-    d20 = (v2 * v0).sum(axis=1)
-    d21 = (v2 * v1).sum(axis=1)
-    denom = d00 * d11 - d01 * d01
-    with np.errstate(invalid="ignore", divide="ignore"):
-        bv = (d11 * d20 - d01 * d21) / denom
-        bw = (d00 * d21 - d01 * d20) / denom
-        bu = 1.0 - bv - bw  # not finite for degenerate triangles: never used
-    inside = (bu >= -1e-9) & (bv >= -1e-9) & (bw >= -1e-9) & np.isfinite(bu)
-    if not inside.any():
+    renders, values = [], []
+    for s in range(0, len(ids), RESAMPLE_BATCH):
+        batch, goal = ids[s : s + RESAMPLE_BATCH], target[s : s + RESAMPLE_BATCH]
+        mark[batch] = np.arange(len(batch))
+        owner_rows, owner_k = np.nonzero(mark[tri] >= 0)
+        p = sm._pos[tri[owner_rows]]
+        q = goal[mark[tri[owner_rows, owner_k]]]
+        mark[batch] = -1
+        # Barycentric coordinates of q in each incident triangle (projected on its plane).
+        v0, v1 = p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]
+        v2 = q - p[:, 0]
+        d00 = (v0 * v0).sum(axis=1)
+        d01 = (v0 * v1).sum(axis=1)
+        d11 = (v1 * v1).sum(axis=1)
+        d20 = (v2 * v0).sum(axis=1)
+        d21 = (v2 * v1).sum(axis=1)
+        denom = d00 * d11 - d01 * d01
+        with np.errstate(invalid="ignore", divide="ignore"):
+            bv = (d11 * d20 - d01 * d21) / denom
+            bw = (d00 * d21 - d01 * d20) / denom
+            bu = 1.0 - bv - bw  # not finite for degenerate triangles: never used
+        inside = (bu >= -1e-9) & (bv >= -1e-9) & (bw >= -1e-9) & np.isfinite(bu)
+        if not inside.any():
+            continue
+        rows, k = owner_rows[inside], owner_k[inside]
+        bary = np.stack([bu, bv, bw], axis=1)[inside]
+        vertex = tri[rows, k]
+        first = np.unique(vertex, return_index=True)[1]
+        rows, k, bary = rows[first], k[first], bary[first]
+        values.append((sm._ruv[trv[rows]] * bary[:, :, None]).sum(axis=1))
+        renders.append(trv[rows, k])
+    if not renders:
         return
-    rows, k = owner_rows[inside], owner_k[inside]
-    bary = np.stack([bu, bv, bw], axis=1)[inside]
-    vertex = tri[rows, k]
-    first = np.unique(vertex, return_index=True)[1]
-    rows, k, bary, vertex = rows[first], k[first], bary[first], vertex[first]
-    uv = (sm._ruv[trv[rows]] * bary[:, :, None]).sum(axis=1)
-    render = trv[rows, k]
-    sm._log(("uv", render, sm._ruv[render].copy()))
+    render, uv = np.concatenate(renders), np.concatenate(values)
+    if sm._journal is not None:
+        sm._log(("uv", render, sm._ruv[render].copy()))
     sm._ruv[render] = uv

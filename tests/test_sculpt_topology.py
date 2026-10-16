@@ -174,14 +174,19 @@ def test_remesh_keeps_uv_seams_and_face_group_borders():
     assert border_z and np.ptp(border_z) < 0.25
 
 
+def corner_sets(sm: SculptMesh) -> set:
+    """Triangles as sets of their corners' exact positions (ids may be renumbered)."""
+    p = sm._pos
+    return {frozenset(map(tuple, p[t].tolist())) for t in sm.triangles()}
+
+
 def test_masked_regions_keep_their_topology():
     sm = SculptMesh.from_mesh(plain_sphere(32, 16))
     sm.set_mask(1.0, box=((-2, -2, -2), (2, 2, 0)))
-    tris_before = {tuple(sorted(x)) for x in sm.triangles().tolist() if True}
-    lower = {t for t in tris_before if all(sm._pos[v, 2] < -0.1 for v in t)}
+    lower = {t for t in corner_sets(sm) if all(c[2] < -0.1 for c in t)}
+    assert len(lower) > 100
     sm.remesh(0.08, iterations=3)
-    after = {tuple(sorted(x)) for x in sm.triangles().tolist()}
-    assert lower <= after
+    assert lower <= corner_sets(sm)  # the same triangles, at the same positions
     valid(sm)
 
 

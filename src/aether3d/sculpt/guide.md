@@ -45,8 +45,9 @@ operations and tiers.
   `strength * radius` at the centre); `direction: -1` inverts (draw lowers, clay digs).
 * Brushes: `draw`, `inflate`, `clay`, `flatten`, `fill`, `scrape`, `pinch`, `crease`,
   `layer`, `grab`, `elastic`, `snake_hook`, `twist`, `smooth` (`smooth_method`:
-  `laplacian`, `taubin`, `relax`), `mask` (paints the mask). `grab` and `elastic` move
-  what the first dab caught along the path.
+  `laplacian`, `taubin`, `relax`), `mask` (paints the mask). `grab`, `elastic` and
+  `snake_hook` snap only their first dab to the surface; the rest of the path is the
+  motion, so a path leaving the surface pulls the geometry out with it.
 * `falloff`: `smooth`, `smoother`, `sphere`, `root`, `sharp`, `linear`, `constant`, or a
   curve of `[x, y]` points; `hardness` keeps full strength up to a fraction of the radius.
 * `symmetry`: `"x"`, `"xy"`, ...: every dab is mirrored across the object's local planes
@@ -61,15 +62,17 @@ operations and tiers.
 `set_mask` (`value`, `mode`: `set`, `add`, `subtract`) on `vertices` (ids), a `sphere`
 `[[x, y, z], r]`, a `box` `[[x0, y0, z0], [x1, y1, z1]]` or face `groups`, in the
 object's **local** coordinates; `invert_mask`, `clear_mask`. Masked vertices (1) do not
-move under brushes, symmetrize or relaxation, and dynamic topology does not change them.
+move under brushes or relaxation, and dynamic topology does not change them (symmetrize
+in `mirror` mode rebuilds the other side whatever its mask).
 
 ## Topology
 
 * **Dynamic topology**: before each dab, a brush's `"dyntopo": {"detail": d}` splits
   the edges inside the brush longer than about `d * radius` (`"mode": "constant"`: `d`
-  in world units), then collapses shorter ones, flips and relaxes in and around it. UVs are interpolated exactly on splits; seams,
-  hard edges, face-group borders and open boundaries are kept (split along, never
-  collapsed across). Not for `grab`, `elastic`, `layer` or `mask`.
+  in world units), then collapses shorter ones, flips and relaxes in and around it.
+  UVs are interpolated exactly on splits; seams, hard edges, face-group borders and
+  open boundaries are kept (split along, never collapsed across). Not for `grab`,
+  `elastic`, `layer` or `mask`.
 * `{"op": "remesh", "target_length": L}`: isotropic remeshing of the whole mesh toward
   edges of length `L` (world units), keeping the same features; reports edge-length
   statistics.
@@ -80,7 +83,10 @@ move under brushes, symmetrize or relaxation, and dynamic topology does not chan
   `VOXEL_UVS_DROPPED` warning), groups and mask carried over from the nearest point,
   details under about two voxels lost. It reports validity metrics before and after.
 * `{"op": "symmetrize", "axis": "x", "direction": "+"}`: copies the `+x` side onto the
-  `-x` side (exact for paired vertices, projected otherwise; reported).
+  `-x` side -- exactly, vertex by vertex, when the sides' vertices pair up; otherwise it
+  cuts the mesh at the plane and mirrors the `+x` half (`"mode": "positions"` or
+  `"mirror"` forces one).
+* Not offered: quad remeshing and multiresolution sculpting.
 
 ## Validity
 
@@ -105,6 +111,7 @@ value), `BELOW_VALIDITY_TIER`, `REMESH_TOO_DENSE`, `TOO_MANY_ELEMENTS`,
 ## Look at the result
 
 After sculpting, `observe_scene` (a close-up: `{"view": {"focus": {"objects": "Head"}},
-"focus": "Head"}`) and `diagnose_scene` with a `mesh_validity` check (`{"check": "mesh_validity", "objects":
-"Head", "tier": "closed"}`) confirm what the mesh looks like and that it stayed sound.
-Undo the whole script with `history` (`undo`) if it is not what you wanted.
+"focus": "Head"}`) and `diagnose_scene` with a `mesh_validity` check (`{"check":
+"mesh_validity", "objects": "Head", "tier": "closed"}`) confirm what the mesh looks
+like and that it stayed sound. Undo the whole script with `history` (`undo`) if it is
+not what you wanted.

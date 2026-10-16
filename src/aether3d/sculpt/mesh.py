@@ -582,10 +582,17 @@ class SculptMesh:
         return tuple(p.min(axis=0).tolist()), tuple(p.max(axis=0).tolist())
 
     def scale(self) -> float:
-        b = self.bounds()
-        if b is None:
-            return 1.0
-        return max(float(np.max(np.subtract(b[1], b[0]))), 1e-12)
+        """The mesh's largest extent (local units). Read from the chunk boxes, which hold
+        every vertex of a triangle and are tight between operations: no pass over the
+        vertices (a stroke asks for it once)."""
+        if len(self._chunks):
+            lo, hi = self._chunk_lo.min(axis=0), self._chunk_hi.max(axis=0)
+        else:
+            b = self.bounds()
+            if b is None:
+                return 1.0
+            lo, hi = b
+        return max(float(np.max(np.subtract(hi, lo))), 1e-12)
 
     def vertex_normals(self, ids: np.ndarray | None = None) -> np.ndarray:
         """Area-weighted unit vertex normals (zero where undefined)."""
@@ -1211,14 +1218,17 @@ class SculptMesh:
             return
         if not np.all(np.isfinite(new_positions)):
             raise SculptError("NON_FINITE_RESULT", "a brush produced non-finite positions")
+        journal = self._journal is not None  # a detached working copy records nothing
         serial = self._serial
         first = ids[self._stamp[ids] != serial]
         if len(first):
-            self._log(("pos", first, self._pos[first].copy()))
+            if journal:
+                self._log(("pos", first, self._pos[first].copy()))
             self._stamp[first] = serial
             clean = first[~self._dirty[first]]
             if len(clean):
-                self._log(("dirty", clean))
+                if journal:
+                    self._log(("dirty", clean))
                 self._dirty[clean] = True
         mark = self._scratch_mark()
         mark[ids] = True
@@ -1226,8 +1236,9 @@ class SculptMesh:
         mark[ids] = False
         corner = self._tri[tris]
         touched = np.unique(corner)
-        self._log(("cross", tris, self._cross[tris].copy()))
-        self._log(("vsum", touched, self._vsum[touched].copy()))
+        if journal:
+            self._log(("cross", tris, self._cross[tris].copy()))
+            self._log(("vsum", touched, self._vsum[touched].copy()))
         self._pos[ids] = new_positions
         new = self._triangle_cross(tris)
         delta = new - self._cross[tris]
@@ -1375,6 +1386,57 @@ class SculptMesh:
         self._origin_count = 0
         self._loose_boxes.clear()
         self._build_chunks()
+
+    def _compact_arrays(self) -> dict[str, Any]:
+        """The alive elements renumbered in order, as :meth:`_replace` takes them (loose
+        vertices are left out)."""
+        nt, nr, nv = self._nt, self._nr, self._nv
+        tris = np.flatnonzero(self._talive[:nt])
+        trv = self._trv[tris]
+        used_r = np.unique(trv)
+        remap_r = np.full(nr, -1, dtype=np.int64)
+        remap_r[used_r] = np.arange(len(used_r))
+        used_v = np.unique(self._tri[tris])
+        remap_v = np.full(nv, -1, dtype=np.int64)
+        remap_v[used_v] = np.arange(len(used_v))
+        _, rng = np.unique(self._rng[used_r], return_inverse=True)
+        return {
+            "positions": self._pos[used_v],
+            "triangles": remap_v[self._tri[tris]],
+            "groups": self._tgroup[tris],
+            "mask": self._mask[used_v],
+            "trv": remap_r[trv],
+            "rgeo": remap_v[self._rgeo[used_r]],
+            "ruv": None if self._ruv is None else self._ruv[used_r],
+            "rng": rng.reshape(-1),
+        }
+
+    def _detached(self) -> SculptMesh:
+        """A compact copy without history, for whole-mesh passes: they would otherwise
+        journal (and keep as dead rows) every element they touch. The result goes back
+        with :meth:`_adopt`, one journaled replacement."""
+        work = type(self)()
+        work.world_matrix = self.world_matrix
+        work._limit = self._limit
+        work._has_groups = self._has_groups
+        work._adopt(self)
+        return work
+
+    def _adopt(self, other: SculptMesh) -> None:
+        """Replace this mesh by ``other``'s alive elements (journaled as one state swap
+        when an operation runs)."""
+        a = other._compact_arrays()
+        self._replace(
+            a["positions"],
+            a["triangles"],
+            a["groups"],
+            a["mask"],
+            normals=other._rnorm is not None,
+            trv=a["trv"],
+            rgeo=a["rgeo"],
+            ruv=a["ruv"],
+            rng=a["rng"],
+        )
 
     def _ensure(self, nv: int, nt: int, nr: int) -> None:
         """Room for ``nv`` vertices, ``nt`` triangles and ``nr`` render vertices."""
