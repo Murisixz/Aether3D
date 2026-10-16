@@ -11,6 +11,7 @@ tracing as a separate decision).
 - [Implementation switches](#implementation-switches)
 - [Phase 0: foundation and baseline](#phase-0-foundation-and-baseline)
 - [Phase 1: quick wins in the current architecture](#phase-1-quick-wins-in-the-current-architecture)
+- [Phase 2: the retained render world](#phase-2-the-retained-render-world)
 
 ## Measuring
 
@@ -71,6 +72,14 @@ Getting faster must never change what Aether3D computes or keep memory alive.
   same arithmetic bit for bit, also after reparenting; extracting a frame twice gives
   identical render scenes. `tests/parity.py` compares render scenes, arrays and query
   answers exactly (bytes, ids, order, diagnostics) and reports the first difference.
+- **Retained state equals recomputed state** (Phase 2): `tests/test_retained_world.py`
+  compares the retained render world's render scenes, world matrices and framing points
+  with the full computations after every change of random chains (and errors with the
+  full extraction's errors); `retained.STRICT` makes its unexpected errors fail tests
+  instead of falling back. GPU frames run with `VERIFY_KEPT`: everything a frame kept or
+  updated from earlier frames is compared with a computation from scratch, bit for bit,
+  and `tests/test_gpu_kept_frames.py` compares frame sequences with renders made without
+  the retained world.
 - **The existing suites**: render goldens (`tests/data/renders`), CPU/GPU parity,
   path-tracer bit-for-bit tests, the history catalog, the spatial brute-force
   references and the editing robustness tests run unchanged.
@@ -266,3 +275,131 @@ computations in `tests/test_invariants.py`, `tests/test_render_caches.py` and
   against 50-51 ms for `extract.extract_unchanged_ms`); the GPU's packing reads them
   instead of visiting instances, which took the upload stage from 28 ms to 10.6 (and the
   persistent buffers, from 10.6 to 2.5).
+
+## Phase 2: the retained render world
+
+Renders no longer visit every object of the scene: what a frame computes is kept with the
+scene and brought up to date with what changed. Every retained result equals the full
+computation it replaces (see [Correctness guards](#correctness-guards)).
+
+**What changed**
+
+- **The change journal** (`history.py`, `History._changes_since(revision)`): which parts
+  of the scene (aspect, target) each revision changed -- commits, undo and redo -- for
+  the last 256 revisions and at most 65,536 parts; it starts when a cache first asks and
+  never keeps the states themselves. A cache asks what changed since the revision it was
+  computed at; `None` (the journal does not reach back) means recompute everything.
+- **The retained render world** (`rendering/retained.py`, `RenderWorld`; switch
+  `AETHER3D_RETAINED_RENDER_WORLD`): the objects in depth-first order as rows, with
+  NumPy columns for local and world matrices, finiteness, normal matrices and
+  determinants, colors and material keys, and per row the evaluated mesh and the render
+  instance. A transform recomputes its subtree's world matrices level by level with the
+  full extraction's arithmetic; an edited object is classified again; a change of
+  structure orders the objects again and keeps what each unchanged one had (world
+  matrices compared bit for bit); procedural and geometry changes evaluate procedural
+  objects again; library materials are resolved for every render through the material
+  cache, which reads their images again. The mesh and material tables keep their order of
+  first use. Inside open operations, with the material cache off, under contention and
+  when a render fails, the full extraction runs (it reports the errors).
+- **Kept GPU frame data** (`RenderScene.shared_cache()`, `rendering/gpu/renderer.py`):
+  render scenes of a retained world share one dict while their instances, meshes and
+  materials are the same objects; the GPU backend keeps there what it computes from them
+  -- draw order, instance records, material tables, the float32 range check -- and, when
+  only some instances' transforms or colors changed, updates it: their records again
+  (one moved object: one record), and only the camera-relative translations when the
+  camera moved (with packing's float64 subtraction and float32 rounding). Read-only kept
+  arrays are uploaded without comparison. `RenderResult.objects` rows are kept too.
+- **Kept world matrices and framing points**: `world_matrices(scene)` (spatial index,
+  framing, scripts, framed renders) and `framing.target_points(scene)` come from the
+  world of a scene that was rendered, up to date; each object's framing points (its
+  world-space vertices) are recomputed only when its mesh or matrix changes, within 64 MiB
+  of points per scene (`FRAME_CACHE_BYTES`; larger scenes compute them for every framed
+  render, as before). Scenes never rendered compute everything as before.
+- **Bulk changes**: instances' matrices are views into one read-only block per build
+  (the world compacts when blocks hold more than twice the rows in use, plus 1,024);
+  structural changes order objects in one pass and match them to their old rows through
+  sorted id arrays; `_local_matrices` gathers transforms with C-level iteration.
+- **A change of the sign of a zero is a change** (`history._same`): the history recorded
+  nothing when a value went from `0.0` to `-0.0` (they compare equal), so undo could not
+  restore it and every cache keyed by the revision kept the other zero (the spatial index
+  since 0.10, the render world now). Transforms compare their ten floats as bytes.
+
+**Measured** (`benchmarks/results/phase2.json`; 10,000 objects; GPU frames at 1280x720 on
+the RTX 4060; median wall times):
+
+| metric | phase 0 | phase 1 | phase 2 |
+| --- | ---: | ---: | ---: |
+| `frame.unchanged_image_only_wall_ms` |  | 67.71 | 7.906 |
+| `frame.one_moved_image_only_wall_ms` |  | 68.17 | 10.29 |
+| `frame.unchanged_wall_ms` | 115.5 | 71.78 | 15.88 |
+| `frame.one_moved_wall_ms` | 113.4 | 71.88 | 17.61 |
+| `frame.camera_moved_wall_ms` | 117.3 | 75.12 | 15.47 |
+| `frame.one_added_wall_ms` |  | (74.77) | 26.52 |
+| `frame.all_moved_wall_ms` | 116.2 | 75.54 | 43.66 |
+| `frame.preview_640x360_png_ms` |  | 76.56 | 17.72 |
+| `frame.preview_framed_unchanged_640x360_png_ms` |  | (183.3) | 46.43 |
+| `frame.preview_framed_one_moved_640x360_png_ms` |  | (184.1) | 58.62 |
+| `extract.extract_unchanged_ms` | 69.08 | 54.49 | 0.21 |
+| `extract.extract_one_moved_ms` | 69.65 | 54.04 | 0.659 |
+| `extract.extract_camera_moved_ms` | 71.94 | 55.48 | 0.285 |
+| `extract.extract_one_added_ms` |  | (55.28) | 8.692 |
+| `extract.extract_all_moved_ms` | 72.34 | 56.35 | 25.01 |
+| `extract.extract_all_moved_full_ms` |  |  | 53.73 |
+| `extract.retained_bytes_per_object` |  |  | 1721 |
+| `core.plan_create_per_object_us` | 8.91 | 7.288 | 8.114 |
+| `core.set_position_in_transaction_us` | 3.132 | 3.035 | 3.853 |
+| `queries.raycast_after_edit_ms` | 242.7 | 59.35 | 59.91 |
+| `lifecycle.scenes_still_alive` | 0 | 0 | 0 |
+
+Values in parentheses are new metrics measured on the Phase 1 commit with the Phase 2
+benchmark script, the same day. `*_full_ms` is the full extraction, which still runs
+when the retained world cannot.
+
+- **GPU frames.** With nothing changed, a frame takes 7.9 ms reading back only the image
+  (15.9 ms reading back everything): the GPU stage (2.2-4.1 ms) and the readback
+  (2.8 ms for the image, 6.6-8.9 ms for everything) are most of it. One moved object:
+  10.3 ms (17.6 ms). The audit estimated about 6 ms for a frame with one changed object
+  and image-only readback (section 8 of its report); measured, it is 10.3 ms -- the
+  extraction (1.1 ms), uploads (0.9 ms), the result's per-object list and Python
+  overhead account for the difference.
+- **Previews.** An MCP-sized preview (640x360, image only, PNG at zlib level 1) takes
+  17.7 ms instead of 76.6; framed on the geometry (`frame=True`, previews of scenes
+  without a camera), 46.4 ms instead of 183.3. What remains there is the exact camera
+  fit over every vertex (240,000 points) and the PNG encoding.
+- **Costs.** A rendered scene keeps 1,721 bytes per object for its world (17 MB at
+  10,000 objects, measured with tracemalloc). Setting a transform to the value it
+  already has costs 3.8-4.0 us instead of 3.3-3.4 (the exact comparison; alternating
+  runs of the Phase 1 commit and this code); real changes cost the same. After the first
+  cycle of the lifecycle benchmark, RSS is about 4 MiB higher than with Phase 1 (code and
+  caches loaded once) and does not grow over 36 cycles; no scene stays alive.
+- **Drift.** The run was made on a laptop running slower than for the Phase 1 record:
+  groups whose code did not change measure 1-14 % slower (ray tracing 10-14 %, editing
+  2-10 %, images 2-6 %, I/O 1-4 %). Plan creation (8.1 against 7.3 us per object) and the first
+  queries match the Phase 1 commit run alternately with this code on the same machine
+  state (76-81 against 79-81 ms per 10,000-object plan).
+
+**Targets of the audit not met** (its phase plan gave estimates, marked as such):
+
+- *All objects moved within 25 ms*: 43.7 ms (extraction 25 ms). Every moved object gets
+  a new `RenderInstance` -- the render scene `extract_render_scene` returns (public API)
+  is a tuple of instance objects -- and a normal matrix through LAPACK, bitwise the full
+  extraction's and the goldens': about 11 ms and 4 ms of those 25 at 10,000 objects.
+  Instances as lazy views over the columns would meet the estimate but change what the
+  public function returns.
+- *Creation within 5 us per object*: 8.1 us per object for plans. The estimate assumed
+  transforms stored in columns with column deltas in the history. Authoring stays
+  object-based: `SceneObject` and `Transform` handles, undo and redo restoring the same
+  Python objects, and per-object history aspects are the scene model's contract, and the
+  render side's columns already remove the per-frame cost that columnar storage aimed at.
+- *Camera rebase on the GPU*: investigated and declined, see
+  [research/2026-10-modernization](../research/2026-10-modernization/README.md): it
+  would change 0.23 % of instance translations in their last bit, with twice the CPU
+  rebase's worst error, to save about 1 ms per camera move.
+- *The spatial index as a journal consumer, with a refit of its top level*: not done.
+  The first query after an edit takes 59.9 ms at 10,000 objects, about half to index the
+  objects again (vectorized since Phase 1) and half to build the top-level BVH over all
+  of them; a refit would leave the query results unchanged (they are ordered by distance,
+  scene order and triangle, not by traversal) and is the next step for edit-and-query
+  loops.
+- *Readback of every output*: 6.6-8.9 ms, varying between runs and frame kinds on this
+  laptop (the image alone: a steady 2.8 ms); nothing in this phase changed it.

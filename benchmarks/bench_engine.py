@@ -273,33 +273,60 @@ def _frame_edits(scene):
         x, y, z = camera.position
         camera.position = (x + (0.05 if state["k"] % 2 else -0.05), y, z)
 
+    def one_added():  # a change of structure: one object more (then fewer again)
+        if "added" in state:
+            scene.remove(state.pop("added"))
+        else:
+            state["added"] = scene.add_object("bench added", mesh=one.mesh, position=(0, -3, 0.45))
+
     return {
         "unchanged": unchanged,
         "one_moved": one_moved,
+        "one_added": one_added,
         "all_moved": all_moved,
         "camera_moved": camera_moved,
     }
 
 
 def group_extract(quick: bool) -> dict[str, Any]:
+    import tracemalloc
+
+    from aether3d.rendering import scene_data
     from aether3d.rendering.scene_data import extract_render_scene
 
+    # Since 0.11.1 extract_render_scene keeps a retained render world; _extract_full is
+    # the full walk it replaces (and falls back to), measured too for comparison.
+    full = getattr(scene_data, "_extract_full", None)
     out: dict[str, Any] = {}
     scene = blocks_scene(10_000)
     camera = scene.get_by_name("Camera")
     for name, edit in _frame_edits(scene).items():
-        # Only the extraction is timed: the edit itself is excluded.
-        times = []
-        for k in range(6 if quick else 9):
-            edit()
-            gc.disable()
-            t0 = time.perf_counter()
-            extract_render_scene(scene, camera, aspect=16 / 9)
-            dt = time.perf_counter() - t0
-            gc.enable()
-            if k:
-                times.append(dt)
-        out[f"extract_{name}_ms"] = ms(statistics.median(times))
+        for label, extract in (("", extract_render_scene), ("_full", full)):
+            if extract is None:
+                continue
+            # Only the extraction is timed: the edit itself is excluded.
+            times = []
+            for k in range(6 if quick else 9):
+                edit()
+                gc.disable()
+                t0 = time.perf_counter()
+                extract(scene, camera, aspect=16 / 9)
+                dt = time.perf_counter() - t0
+                gc.enable()
+                if k:
+                    times.append(dt)
+            out[f"extract_{name}{label}_ms"] = ms(statistics.median(times))
+    if full is not None:  # what the retained world keeps, per object
+        fresh = blocks_scene(10_000)
+        camera = fresh.get_by_name("Camera")
+        gc.collect()
+        tracemalloc.start()
+        before = tracemalloc.get_traced_memory()[0]
+        extract_render_scene(fresh, camera, aspect=16 / 9)
+        gc.collect()
+        held = tracemalloc.get_traced_memory()[0] - before
+        tracemalloc.stop()
+        out["retained_bytes_per_object"] = round(held / len(fresh))
     return out
 
 
@@ -362,6 +389,26 @@ def group_frame(quick: bool, adapter: str | None) -> dict[str, Any]:
             walls.append(time.perf_counter() - t0)
             gc.enable()
         out["preview_640x360_png_ms"] = ms(statistics.median(walls))
+        # The same preview framed on the geometry (frame=True: MCP previews of scenes
+        # without a camera), unchanged and after one object moved.
+        for name in ("unchanged", "one_moved"):
+            walls = []
+            for _ in range(repeat):
+                edits[name]()
+                gc.disable()
+                t0 = time.perf_counter()
+                result = scene.render(
+                    width=640,
+                    height=360,
+                    backend="gpu",
+                    adapter=adapter,
+                    outputs=("image",),
+                    frame=True,
+                )
+                result.png_bytes(compression=1)
+                walls.append(time.perf_counter() - t0)
+                gc.enable()
+            out[f"preview_framed_{name}_640x360_png_ms"] = ms(statistics.median(walls))
     return out
 
 
