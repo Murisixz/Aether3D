@@ -39,6 +39,7 @@ Switch: ``AETHER3D_RETAINED_RENDER_WORLD`` (``docs/PERFORMANCE.md``).
 
 from __future__ import annotations
 
+import operator
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -150,6 +151,63 @@ def retained_render_scene(
         world.lock.release()
 
 
+def _depth_first(scene: Scene) -> tuple[list[SceneObject], list[int], list[int]]:
+    """The scene's objects in ``iter(scene)``'s order -- each root, then its descendants
+    depth-first in order -- with each one's parent row (-1 for roots) and depth."""
+    roots = scene._roots
+    parents_at = [i for i, root in enumerate(roots) if root._children]
+    if not parents_at:  # a flat scene
+        return list(roots), [-1] * len(roots), [0] * len(roots)
+    objects: list[SceneObject] = []
+    parents: list[int] = []
+    depths: list[int] = []
+    start = 0
+    for i in [*parents_at, len(roots)]:
+        run = roots[start:i]  # roots without children
+        objects += run
+        parents += [-1] * len(run)
+        depths += [0] * len(run)
+        if i == len(roots):
+            break
+        stack: list[tuple[SceneObject, int, int]] = [(roots[i], -1, 0)]
+        while stack:
+            obj, parent, depth = stack.pop()
+            k = len(objects)
+            objects.append(obj)
+            parents.append(parent)
+            depths.append(depth)
+            for child in reversed(obj._children):
+                stack.append((child, k, depth + 1))
+        start = i + 1
+    return objects, parents, depths
+
+
+def _old_rows(ids: np.ndarray, old_ids: np.ndarray) -> np.ndarray:
+    """For each id, its row among ``old_ids`` (-1 if absent)."""
+    out = np.full(len(ids), -1, dtype=np.int64)
+    if not len(old_ids) or not len(ids):
+        return out
+    order = np.argsort(old_ids, kind="stable")
+    sorted_ids = old_ids[order]
+    at = np.minimum(np.searchsorted(sorted_ids, ids), len(sorted_ids) - 1)
+    found = sorted_ids[at] == ids
+    out[found] = order[at[found]]
+    return out
+
+
+def _carry_items(items: list, kept: np.ndarray, was: np.ndarray, n: int) -> list:
+    """A list of ``n`` items: ``items[was[i]]`` at ``kept[i]``, ``None`` elsewhere."""
+    m = len(was)
+    if m == 0:
+        return [None] * n
+    picked = operator.itemgetter(*was.tolist())(items) if m > 1 else (items[int(was[0])],)
+    if int(kept[-1]) == m - 1:  # kept rows come first (objects added after them)
+        return [*picked, *([None] * (n - m))]
+    out = np.empty(n, dtype=object)
+    out[kept] = np.fromiter(picked, dtype=object, count=m)
+    return out.tolist()
+
+
 def _first_use(keys: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """For a sequence of keys: where each distinct key first occurs, in order of first use,
     and the rank of each element's key in that order."""
@@ -183,6 +241,8 @@ class _Tables:
         "uv_slots",
         "instances",
         "arrays",
+        "materials_tuple",
+        "shared",
     )
 
     valid_rows: np.ndarray  # rows of the objects with an instance, in order
@@ -197,6 +257,8 @@ class _Tables:
     uv_slots: list[bool]  # per material: some texture maps by UV
     instances: tuple[RenderInstance, ...] | None
     arrays: InstanceArrays | None
+    materials_tuple: tuple[RenderMaterial, ...] | None  # (None when the list changed)
+    shared: dict[str, Any] | None  # the render scenes' shared cache (RenderScene.cache)
 
 
 class RenderWorld:
@@ -207,6 +269,7 @@ class RenderWorld:
         self.revision = -1
         self.objects: list[SceneObject] = []
         self.rows: dict[int, int] = {}  # id(object) -> row
+        self.ids = np.zeros(0, dtype=np.int64)  # id(object) of each row
         self.parent = np.zeros(0, dtype=np.int64)
         self.depth = np.zeros(0, dtype=np.int64)
         self.local = np.zeros((0, 4, 4))
@@ -233,6 +296,11 @@ class RenderWorld:
         self.inst_mesh = np.zeros(0, dtype=np.int64)
         self.inst_material = np.zeros(0, dtype=np.int64)
         self.dirty = np.zeros(0, dtype=bool)  # the instance must be built again
+        # Instances' matrices and colors live in read-only blocks: block -> [rows, in use].
+        self.inst_block = np.zeros(0, dtype=np.int64)  # each row's instance's block, or -1
+        self.blocks: dict[int, list[int]] = {}
+        self.block_rows = 0
+        self.next_block = 0
         # Material keys: ("library", material id) or ("color", appearance bytes) -> int.
         self.keys: dict[tuple[str, Any], int] = {}
         self.key_info: list[tuple[str, Any]] = []  # ("library", id) | ("color", material)
@@ -240,6 +308,8 @@ class RenderWorld:
         self.reorder = True  # the mesh and material orders must be computed again
         self.render_meshes: dict[int, RenderMesh] = {}
         self.evaluate_time = 0.0
+        # (previous instances tuple, indices of the instances built again) of this frame
+        self.lineage: tuple[tuple[RenderInstance, ...], np.ndarray] | None = None
 
     # ------------------------------------------------------------------ #
     # Bringing the world up to date
@@ -300,21 +370,13 @@ class RenderWorld:
         """Order the objects again. With ``keep``, what was computed for an object is kept
         unless the journal says it changed (``moved``, ``content``, ``reevaluate``);
         without, everything is computed again."""
-        objects = list(scene)  # depth-first: parents first
+        objects, parents, depths = _depth_first(scene)  # the order of iter(scene)
         n = len(objects)
-        rows = {id(obj): k for k, obj in enumerate(objects)}
-        parents = [-1] * n
-        depths = [0] * n
-        for k, obj in enumerate(objects):
-            p = obj._parent
-            if p is not None:
-                pk = rows[id(p)]
-                parents[k] = pk
-                depths[k] = depths[pk] + 1
+        ids = np.fromiter(map(id, objects), dtype=np.int64, count=n)
+        rows = dict(zip(ids.tolist(), range(n), strict=True))
         parent = np.array(parents, dtype=np.int64).reshape(n)
         depth = np.array(depths, dtype=np.int64).reshape(n)
-        before = self.rows if keep else {}
-        old = np.fromiter((before.get(id(o), -1) for o in objects), dtype=np.int64, count=n)
+        old = _old_rows(ids, self.ids if keep else np.zeros(0, dtype=np.int64))
         kept = np.flatnonzero(old >= 0)
         was = old[kept]
         fresh = old < 0
@@ -344,10 +406,7 @@ class RenderWorld:
             return out
 
         def carry_list(items: list) -> list:
-            out: list = [None] * n
-            for k, j in zip(kept.tolist(), was.tolist(), strict=True):
-                out[k] = items[j]
-            return out
+            return _carry_items(items, kept, was, n)
 
         self.kind = carry(self.kind, _NONE)
         self.procedural = carry(self.procedural, False)
@@ -364,11 +423,14 @@ class RenderWorld:
         self.normal = carry(self.normal, 0.0)
         self.det = carry(self.det, 0.0)
         self.valid = carry(self.valid, False)
+        for r in np.setdiff1d(np.flatnonzero(self.inst_block >= 0), was).tolist():
+            self._release(r)  # (objects removed, or nothing kept)
         self.instance = carry_list(self.instance)
+        self.inst_block = carry(self.inst_block, -1)
         self.inst_mesh = carry(self.inst_mesh, -1)
         self.inst_material = carry(self.inst_material, -1)
         self.dirty = carry(self.dirty, True)
-        self.objects, self.rows = objects, rows
+        self.objects, self.rows, self.ids = objects, rows, ids
         self.parent, self.depth = parent, depth
         self.local, self.world = local, world
         self.finite = np.all(np.isfinite(world), axis=(1, 2)).reshape(n)
@@ -450,6 +512,7 @@ class RenderWorld:
                 self.group_keys[r] = ()
                 self.ngroups[r] = 0
                 self.instance[r] = None
+                self._release(r)
                 continue
             assert mesh is not None
             meshes.append(r)
@@ -541,6 +604,7 @@ class RenderWorld:
         library_materials = self._library_materials(scene, cache, tables, ordered)
         if library_materials is not tables.materials:  # a material changed: new list
             tables.materials = library_materials
+            tables.materials_tuple = None
             tables.uv_slots = [_uv_slots(m) for m in library_materials]
         if any(tables.uv_slots):
             ordered += self._missing_uvs(tables)
@@ -550,6 +614,33 @@ class RenderWorld:
         self._instances(tables)
         self.tables = tables
         assert tables.instances is not None and tables.arrays is not None
+        materials = tables.materials_tuple
+        if materials is None:
+            materials = tables.materials_tuple = tuple(tables.materials)
+        shared = tables.shared
+        if (
+            shared is None
+            or shared["instances"] is not tables.instances
+            or (shared["materials"] is not materials)
+        ):  # what backends kept is for other instances or materials
+            previous = shared
+            shared = tables.shared = {
+                "instances": tables.instances,
+                "meshes": tables.meshes,
+                "materials": materials,
+            }
+            lineage = self.lineage
+            if (
+                previous is not None
+                and lineage is not None
+                and previous["instances"] is lineage[0]
+                and previous["meshes"] is tables.meshes
+                and previous["materials"] is materials
+            ):  # backends may update what they kept for the previous frame
+                previous.pop("previous", None)  # (one frame back at most)
+                shared["previous"] = previous
+                shared["changed"] = lineage[1]
+        self.lineage = None
         return _finish(
             scene,
             meshes=tables.meshes,
@@ -558,12 +649,13 @@ class RenderWorld:
             camera=render_camera,
             diagnostics=diagnostics,
             ordered=ordered,
-            materials=tuple(tables.materials),
+            materials=materials,
             arrays=tables.arrays,
             default_lights=default_lights,
             evaluate_time=self.evaluate_time,
             texture_time=texture_time,
             start=start,
+            cache=shared,
         )
 
     def _order(self, valid_rows: np.ndarray) -> _Tables:
@@ -622,6 +714,8 @@ class RenderWorld:
         t.uv_slots = [m is not None and _uv_slots(m) for m in materials]
         t.instances = None
         t.arrays = None
+        t.materials_tuple = None
+        t.shared = None
         return t
 
     def _library_materials(
@@ -693,9 +787,95 @@ class RenderWorld:
             if inst is None or inst.group_materials != group_index[r]:
                 rebuild[j] = True
         built = np.flatnonzero(rebuild)
-        objects = self.objects
+        if built.size:
+            self._build(rows, built, mesh_index, default_index, group_index)
+            if self.block_rows > 2 * len(rows) + 1024:  # too many rows kept for few instances
+                self._compact(rows)
+                built = np.arange(len(rows))
+                self._build(rows, built, mesh_index, default_index, group_index)
+            self.inst_mesh[rows[built]] = mesh_index[built]
+            self.inst_material[rows[built]] = default_index[built]
+        self.dirty[rows] = False
+        self.lineage = None
+        before = tables.instances
+        if before is not None and not built.size:
+            return  # unchanged: the previous frame's tuple and arrays
+        instances = self.instance
+        if before is None or tables.arrays is None:
+            tables.instances = tuple([instances[r] for r in rows.tolist()])  # type: ignore[misc]
+            tables.arrays = InstanceArrays(
+                world=_frozen(self.world[rows]),
+                normal_matrix=_frozen(self.normal[rows]),
+                mirrored=_frozen(self.det[rows] < 0.0),
+                mesh=_frozen(mesh_index.astype(np.int64)),
+                base_color=_frozen(self.base_color[rows]),
+                specular=_frozen(self.specular[rows]),
+                shininess=_frozen(self.shininess[rows]),
+                material=_frozen(default_index.astype(np.int64)),
+                has_groups=_frozen(self.ngroups[rows] > 0),
+            )
+            return
+        # The same rows as the previous frame: only the instances built again change (every
+        # other row has the previous frame's values, or it would have been built again).
+        changed = rows[built]
+        items = list(before)
         for j in built.tolist():
-            r = int(rows[j])
+            items[j] = instances[int(rows[j])]
+        tables.instances = tuple(items)  # type: ignore[arg-type]
+        old = tables.arrays
+
+        def patch(array: np.ndarray, values: np.ndarray) -> np.ndarray:
+            out = array.copy()
+            out[built] = values
+            return _frozen(out)
+
+        tables.arrays = InstanceArrays(
+            world=patch(old.world, self.world[changed]),
+            normal_matrix=patch(old.normal_matrix, self.normal[changed]),
+            mirrored=patch(old.mirrored, self.det[changed] < 0.0),
+            mesh=patch(old.mesh, mesh_index[built]),
+            base_color=patch(old.base_color, self.base_color[changed]),
+            specular=patch(old.specular, self.specular[changed]),
+            shininess=patch(old.shininess, self.shininess[changed]),
+            material=patch(old.material, default_index[built]),
+            has_groups=patch(old.has_groups, self.ngroups[changed] > 0),
+        )
+        # Lineage for backends (RenderScene.shared_cache): these instances changed only in
+        # their transform, color or highlight -- the same mesh, materials, name and id.
+        if all(
+            a.mesh == b.mesh
+            and a.material == b.material
+            and a.group_materials == b.group_materials
+            and a.name == b.name
+            and a.object_id == b.object_id
+            for a, b in ((before[j], items[j]) for j in built.tolist())
+        ):
+            self.lineage = (before, _frozen(built.astype(np.int64)))
+
+    def _build(
+        self,
+        rows: np.ndarray,
+        built: np.ndarray,
+        mesh_index: np.ndarray,
+        default_index: np.ndarray,
+        group_index: dict[int, tuple[tuple[int, int], ...]],
+    ) -> None:
+        """The render instances of ``rows[built]``. Their matrices and colors are views into
+        one read-only block of these rows (as the full extraction's are into its stack); the
+        world counts the rows of each block still in use (``_compact``)."""
+        at = rows[built]
+        world = _frozen(self.world[at])
+        normal = _frozen(self.normal[at])
+        base = _frozen(self.base_color[at])
+        block = self.next_block
+        self.next_block += 1
+        self.blocks[block] = [len(at), 0]
+        self.block_rows += len(at)
+        objects = self.objects
+        owner = self.inst_block
+        for k, (j, r) in enumerate(zip(built.tolist(), at.tolist(), strict=True)):
+            self._release(r)
+            owner[r] = block
             obj = objects[r]
             look = self.look[r]
             assert look is not None
@@ -703,34 +883,38 @@ class RenderWorld:
                 obj.id,
                 obj.name,
                 int(mesh_index[j]),
-                _frozen(self.world[r].copy()),
-                _frozen(self.normal[r].copy()),
+                world[k],
+                normal[k],
                 bool(self.det[r] < 0.0),
-                _frozen(self.base_color[r].copy()),
+                base[k],
                 look[0],
                 look[1],
                 int(default_index[j]),
                 group_index.get(r, ()),
             )
-        if built.size:
-            self.inst_mesh[rows[built]] = mesh_index[built]
-            self.inst_material[rows[built]] = default_index[built]
-        self.dirty[rows] = False
-        if tables.instances is not None and not built.size:
-            return  # unchanged: the previous frame's tuple and arrays
-        instances = self.instance
-        tables.instances = tuple([instances[r] for r in rows.tolist()])  # type: ignore[misc]
-        tables.arrays = InstanceArrays(
-            world=_frozen(self.world[rows]),
-            normal_matrix=_frozen(self.normal[rows]),
-            mirrored=_frozen(self.det[rows] < 0.0),
-            mesh=_frozen(mesh_index.astype(np.int64)),
-            base_color=_frozen(self.base_color[rows]),
-            specular=_frozen(self.specular[rows]),
-            shininess=_frozen(self.shininess[rows]),
-            material=_frozen(default_index.astype(np.int64)),
-            has_groups=_frozen(self.ngroups[rows] > 0),
-        )
+        self.blocks[block][1] = len(at)
+
+    def _release(self, r: int) -> None:
+        """Row ``r`` no longer uses its instance's block (forgotten when none does)."""
+        block = int(self.inst_block[r])
+        if block < 0:
+            return
+        self.inst_block[r] = -1
+        entry = self.blocks[block]
+        entry[1] -= 1
+        if entry[1] == 0:
+            self.block_rows -= entry[0]
+            del self.blocks[block]
+
+    def _compact(self, rows: np.ndarray) -> None:
+        """Forget every instance: the next build puts all of ``rows`` in one block, so the
+        blocks kept never hold more than about twice the rows in use."""
+        drawn = set(rows.tolist())
+        for r in np.flatnonzero(self.inst_block >= 0).tolist():
+            self._release(r)
+            if r not in drawn:  # (an instance not drawn now is built again when it is)
+                self.instance[r] = None
+                self.dirty[r] = True
 
     def _prune_keys(self) -> None:
         """Forget material keys no object uses any more (colors that changed, ...)."""

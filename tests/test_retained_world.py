@@ -461,3 +461,64 @@ def test_scenes_with_nothing_to_render(tmp_path):
     compare(s, camera, default_lights=False)
     s.remove(s.get_by_name("Lamp"))
     compare(s, camera, default_lights=False)  # NO_LIGHTS
+
+
+def test_instance_blocks_stay_bounded_and_exact():
+    """Instances' matrices are views into blocks of the rows built together; a block lives
+    while one of its rows' instances does. Random partial rebuilds must never keep more than
+    about twice the rows in use (the world compacts), and stay exact."""
+    rng = random.Random(5)
+    s = Scene("Blocks")
+    cube = create_cube(0.5)
+    objects = [s.add_object(f"b{k}", mesh=cube, position=(k % 40, k // 40, 0)) for k in range(1200)]
+    camera = s.add_camera(name="Cam", position=(20, -30, 20), look_at=(20, 15, 0))
+    extract_render_scene(s, camera)
+    world = s._derived()["render_world"]
+    compacted = 0
+    for frame in range(150):
+        before = world.next_block
+        with s.transaction("move some"):
+            for obj in rng.sample(objects, rng.randrange(1, 400)):
+                x, y, _ = obj.position
+                obj.position = (x, y, rng.uniform(0, 1))
+        extract_render_scene(s, camera)
+        live = int(np.count_nonzero(world.inst_block >= 0))
+        assert world.block_rows <= 2 * live + 1024
+        assert sum(rows for rows, _ in world.blocks.values()) == world.block_rows
+        assert sum(used for _, used in world.blocks.values()) == live
+        compacted += world.next_block - before > 1
+        if frame % 25 == 0:
+            compare(s, camera)
+    assert compacted  # the bound was reached and kept
+    compare(s, camera)
+
+
+def test_the_world_orders_objects_as_iterating_the_scene_does():
+    from aether3d.rendering.retained import _carry_items, _depth_first, _old_rows
+
+    rng = random.Random(3)
+    s = Scene("Order")
+    objects = []
+    for k in range(400):
+        parent = rng.choice(objects) if objects and rng.random() < 0.6 else None
+        objects.append(s.add_cube(name=f"c{k}", parent=parent))
+    for _ in range(80):
+        with contextlib.suppress(a3.AetherError):
+            rng.choice(objects).set_parent(rng.choice([None, *objects]))
+    order, parents, depths = _depth_first(s)
+    assert [id(o) for o in order] == [id(o) for o in s]
+    for k, obj in enumerate(order):
+        assert (order[parents[k]] if parents[k] >= 0 else None) is obj.parent
+        assert depths[k] == (depths[parents[k]] + 1 if parents[k] >= 0 else 0)
+    ids = np.array([id(o) for o in order], dtype=np.int64)
+    shuffled = ids.copy()
+    rng.shuffle(shuffled)
+    old = _old_rows(ids, shuffled[:300])
+    for k, row in enumerate(old.tolist()):
+        assert (row == -1) == (ids[k] not in set(shuffled[:300].tolist()))
+        assert row == -1 or shuffled[row] == ids[k]
+    items = [object() for _ in range(10)]
+    kept, was = np.array([0, 2, 5]), np.array([7, 1, 3])
+    out = _carry_items(items, kept, was, 6)
+    assert out == [items[7], None, items[1], None, None, items[3]]
+    assert _carry_items(items, np.array([0, 1]), np.array([4, 9]), 3) == [items[4], items[9], None]

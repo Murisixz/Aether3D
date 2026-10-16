@@ -150,6 +150,241 @@ def check_request(
         )
 
 
+VERIFY_KEPT = False
+"""Testing aid: compute every frame's data from scratch as well, and require what was kept or
+updated to be identical."""
+
+
+def _frozen(a: np.ndarray) -> np.ndarray:
+    a.flags.writeable = False
+    return a
+
+
+@dataclass
+class _Kept:
+    """What GPU frames computed from a render scene, kept for later frames of the same retained
+    render world (``RenderScene.shared_cache``): their instances, meshes and materials are the
+    same objects. A frame whose instances changed only in their transforms or colors (same
+    meshes, materials, names) starts from the frame before's and updates the instances in
+    ``stale``: their extents and records; the camera-relative translations of every record
+    when the camera moved. Arrays kept here are read-only (uploaded again unchanged)."""
+
+    first_user: dict[int, str]
+    masked: np.ndarray
+    stale: np.ndarray | None = None  # instances changed since the kept data was computed
+    extent: np.ndarray | None = None  # per instance: |linear| @ max(|lo|, |hi|) of its mesh
+    eye: bytes | None = None  # keep is for this camera position
+    keep: np.ndarray | None = None
+    keep_diags: list[Diagnostic] = field(default_factory=list)
+    cull: str | None = None
+    order: np.ndarray | None = None
+    draws: list[tuple[int, bool, int, int]] | None = None
+    order_keep: np.ndarray | None = None  # the keep array the order was computed with
+    order_mirrored: np.ndarray | None = None  # the instances' mirroring then
+    inverse: np.ndarray | None = None  # each instance's position in the order (-1: not drawn)
+    data: np.ndarray | None = None  # instance records for data_order and data_eye
+    data_order: np.ndarray | None = None
+    data_eye: bytes | None = None
+    material_data: Any = None  # for material_order
+    material_order: np.ndarray | None = None
+
+    def keep_for(
+        self, rs: RenderScene, eye: np.ndarray, bounds: np.ndarray
+    ) -> tuple[np.ndarray, list[Diagnostic]]:
+        """``_finite_instances(rs, eye, bounds)``."""
+        key = eye.tobytes()
+        stale = self.stale
+        if self.keep is not None and self.eye == key and (stale is None or not stale.size):
+            return self.keep, self.keep_diags
+        arrays = rs.instance_arrays
+        n = len(rs.instances)
+        reach = _reach(bounds)
+        if self.extent is None or len(self.extent) != n:
+            extent = _extent(arrays, reach)
+        elif stale is not None and stale.size:
+            extent = self.extent.copy()
+            extent[stale] = _extent(arrays, reach, stale)
+        else:
+            extent = self.extent
+        self.extent = _frozen(extent)
+        if n and _in_range(arrays, eye, extent):
+            keep = self.keep
+            if keep is None or len(keep) != n or not keep.all():
+                keep = _frozen(np.ones(n, dtype=bool))
+            diags: list[Diagnostic] = []
+        else:
+            keep, diags = _finite_instances(rs, eye, bounds)
+            keep = _frozen(keep)
+        self.eye, self.keep, self.keep_diags = key, keep, diags
+        return keep, diags
+
+    def order_for(
+        self, rs: RenderScene, cull: str, keep: np.ndarray
+    ) -> tuple[np.ndarray, list[tuple[int, bool, int, int]]]:
+        """``draw_order(rs, cull, keep, masked)`` (it depends on meshes, mirroring, masks)."""
+        mirrored = rs.instance_arrays.mirrored
+        stale = self.stale
+        if (
+            self.order is not None
+            and self.draws is not None
+            and self.cull == cull
+            and self.order_keep is keep
+            and (
+                cull == "none"
+                or stale is None
+                or not stale.size
+                or np.array_equal(mirrored[stale], self.order_mirrored[stale])  # type: ignore[index]
+            )
+        ):
+            self.order_mirrored = mirrored
+            return self.order, self.draws
+        order, draws = draw_order(rs, cull, keep, self.masked)
+        inverse = np.full(len(rs.instances), -1, dtype=np.int64)
+        inverse[order] = np.arange(len(order), dtype=np.int64)
+        self.cull, self.order, self.draws = cull, _frozen(order), draws
+        self.order_keep, self.order_mirrored, self.inverse = keep, mirrored, _frozen(inverse)
+        return self.order, draws
+
+    def instances_for(self, rs: RenderScene, order: np.ndarray, eye: np.ndarray) -> np.ndarray:
+        """``pack_instances(rs, order, eye)``."""
+        key = eye.tobytes()
+        stale = self.stale
+        changed = stale is not None and bool(stale.size)
+        if self.data is None or self.data_order is not order:
+            data = pack_instances(rs, order, eye)
+        elif self.data_eye == key and not changed:
+            return self.data
+        else:
+            data = self.data.copy()
+            n = len(order)
+            if n and self.data_eye != key:  # camera-relative translations, as packing makes them
+                data[:n, [3, 7, 11]] = rs.instance_arrays.world[order, :3, 3] - eye
+            if changed and self.inverse is not None:
+                at = self.inverse[stale]
+                at = at[at >= 0]
+                if at.size:
+                    data[at] = pack_instances(rs, order[at], eye)[: at.size]
+        self.data, self.data_order, self.data_eye = _frozen(data), order, key
+        return self.data
+
+    def materials_for(self, rs: RenderScene, order: np.ndarray) -> Any:
+        """``pack_material_data(rs, order)`` (the instances' materials did not change)."""
+        if self.material_data is None or self.material_order is not order:
+            self.material_data = pack_material_data(rs, order)
+            self.material_order = order
+        return self.material_data
+
+
+def _kept_state(rs: RenderScene, context: GPUContext) -> _Kept | None:
+    """The render scene's kept GPU frame data (``None``: compute everything). Each GPU
+    context keeps its own (renders on one context are serialized by its lock; the data
+    itself is the same on any device)."""
+    shared = rs.shared_cache()
+    if shared is None:
+        return None
+    name = ("gpu", id(context))
+    kept = shared.get(name)
+    if kept is not None:
+        return kept
+    previous = shared.get("previous")
+    before = None if previous is None else previous.get(name)
+    if before is None:
+        kept = _Kept(_first_users(rs), _frozen(instance_masks(rs)))
+    else:  # the frame before's, for instances that changed only in transform or color
+        kept = _Kept(before.first_user, before.masked, stale=shared["changed"])
+        for field_name in (
+            "extent",
+            "eye",
+            "keep",
+            "keep_diags",
+            "cull",
+            "order",
+            "draws",
+            "order_keep",
+            "order_mirrored",
+            "inverse",
+            "data",
+            "data_order",
+            "data_eye",
+            "material_data",
+            "material_order",
+        ):
+            setattr(kept, field_name, getattr(before, field_name))
+        if before.stale is not None:  # (it never finished: start again)
+            kept = _Kept(before.first_user, before.masked)
+    shared[name] = kept
+    return kept
+
+
+def _verify(
+    rs: RenderScene,
+    eye: np.ndarray,
+    cull: str,
+    bounds: np.ndarray,
+    first_user: dict[int, str],
+    keep: np.ndarray,
+    diags: list[Diagnostic],
+    masked: np.ndarray,
+    order: np.ndarray,
+    draws: list,
+    data: np.ndarray,
+    material_data: Any,
+) -> None:
+    """``VERIFY_KEPT``: everything a frame kept or updated is what computing it gives."""
+
+    def same(a: np.ndarray, b: np.ndarray, what: str) -> None:
+        a, b = np.asarray(a), np.asarray(b)
+        if a.dtype != b.dtype or a.shape != b.shape or a.tobytes() != b.tobytes():
+            raise AssertionError(f"kept GPU frame data differs: {what}")
+
+    if first_user != _first_users(rs):
+        raise AssertionError("kept GPU frame data differs: first users")
+    fresh_keep, fresh_diags = _finite_instances(rs, eye, bounds)
+    same(keep, fresh_keep, "keep")
+    if [d.to_dict() for d in diags] != [d.to_dict() for d in fresh_diags]:
+        raise AssertionError("kept GPU frame data differs: diagnostics")
+    same(masked, instance_masks(rs), "masked")
+    fresh_order, fresh_draws = draw_order(rs, cull, keep, masked)
+    same(order, fresh_order, "order")
+    if draws != fresh_draws:
+        raise AssertionError("kept GPU frame data differs: draws")
+    same(data, pack_instances(rs, order, eye), "instance records")
+    fresh = pack_material_data(rs, order)
+    same(material_data.words, fresh.words, "material words")
+    if [image_key(i) for i in material_data.images] != [image_key(i) for i in fresh.images]:
+        raise AssertionError("kept GPU frame data differs: material images")
+
+
+def _reach(bounds: np.ndarray) -> np.ndarray:
+    return np.maximum(np.abs(bounds[:, 0]), np.abs(bounds[:, 1]))
+
+
+def _extent(arrays: Any, reach: np.ndarray, rows: np.ndarray | None = None) -> np.ndarray:
+    """``|linear| @ reach`` of each instance (of ``rows``): how far its corners reach from its
+    origin, per axis."""
+    world = arrays.world if rows is None else arrays.world[rows]
+    mesh = arrays.mesh if rows is None else arrays.mesh[rows]
+    with np.errstate(over="ignore", invalid="ignore"):
+        return np.sum(np.abs(world[:, :3, :3]) * reach[mesh][:, None, :], axis=2)
+
+
+def _in_range(arrays: Any, eye: np.ndarray, extent: np.ndarray) -> bool:
+    """Whether every corner of every instance is surely within float32 range of the camera:
+    within ``|translation - eye| + extent``, with a margin far above rounding (NaN and
+    infinity fail)."""
+    with np.errstate(over="ignore", invalid="ignore"):
+        bound = np.abs(arrays.world[:, :3, 3] - eye) + extent
+        return bool(np.all(bound * (1.0 + 1e-9) < MAX_COORDINATE))
+
+
+def _first_users(rs: RenderScene) -> dict[int, str]:
+    """The name of the first instance using each mesh (for error locations)."""
+    if not rs.instances:
+        return {}
+    meshes, first = np.unique(rs.instance_arrays.mesh, return_index=True)
+    return {m: rs.instances[i].name for m, i in zip(meshes.tolist(), first.tolist(), strict=True)}
+
+
 def _finite_instances(
     rs: RenderScene, eye: np.ndarray, bounds: np.ndarray
 ) -> tuple[np.ndarray, list[Diagnostic]]:
@@ -160,13 +395,8 @@ def _finite_instances(
     # When that bound (with a margin far above rounding) is in range for every instance,
     # so is every corner the exact test below would compute: it is skipped.
     arrays = rs.instance_arrays
-    reach = np.maximum(np.abs(bounds[:, 0]), np.abs(bounds[:, 1]))
-    with np.errstate(over="ignore", invalid="ignore"):
-        bound = np.abs(arrays.world[:, :3, 3] - eye) + np.sum(
-            np.abs(arrays.world[:, :3, :3]) * reach[arrays.mesh][:, None, :], axis=2
-        )
-        if np.all(bound * (1.0 + 1e-9) < MAX_COORDINATE):  # NaN and inf fail: exact test
-            return np.ones(len(rs.instances), dtype=bool), []
+    if _in_range(arrays, eye, _extent(arrays, _reach(bounds))):
+        return np.ones(len(rs.instances), dtype=bool), []
     corners = instance_corners(rs, bounds) - eye
     keep = np.all(np.isfinite(corners) & (np.abs(corners) < MAX_COORDINATE), axis=(1, 2))
     diagnostics = []
@@ -232,19 +462,45 @@ def _render(
     # ---- uploads: meshes (cached) and per-frame data -----------------------------------
     t0 = time.perf_counter()
     uploads_before = (context.meshes.uploads, context.meshes.upload_bytes)
-    first_user: dict[int, str] = {}
-    for inst in rs.instances:
-        first_user.setdefault(inst.mesh, inst.name)
+    # What a frame computes from the render scene's instances, meshes and materials is kept
+    # between frames of a retained render world and updated for what changed (_Kept).
+    kept = _kept_state(rs, context)
+    first_user = kept.first_user if kept is not None else _first_users(rs)
     meshes = []
     for index, mesh in enumerate(rs.meshes):
         location = f"objects[{first_user[index]}]" if index in first_user else "meshes"
         gpu_mesh, _ = context.meshes.get(mesh, location)
         meshes.append(gpu_mesh)
     bounds = np.stack([m.bounds for m in meshes]) if meshes else np.zeros((0, 2, 3))
-    keep, finite_diags = _finite_instances(rs, eye, bounds)
+    if kept is None:
+        keep, finite_diags = _finite_instances(rs, eye, bounds)
+        masked = instance_masks(rs)
+        order, draws = draw_order(rs, cull, keep, masked)
+        instance_data = pack_instances(rs, order, eye)
+        material_data = pack_material_data(rs, order)
+    else:
+        keep, finite_diags = kept.keep_for(rs, eye, bounds)
+        masked = kept.masked
+        order, draws = kept.order_for(rs, cull, keep)
+        instance_data = kept.instances_for(rs, order, eye)
+        material_data = kept.materials_for(rs, order)
+        kept.stale = None  # (every part is up to date)
+        if VERIFY_KEPT:
+            _verify(
+                rs,
+                eye,
+                cull,
+                bounds,
+                first_user,
+                keep,
+                finite_diags,
+                masked,
+                order,
+                draws,
+                instance_data,
+                material_data,
+            )
     diagnostics += finite_diags
-    masked = instance_masks(rs)
-    order, draws = draw_order(rs, cull, keep, masked)
     storage = wgpu.BufferUsage.STORAGE
     uniform = wgpu.BufferUsage.UNIFORM
     frame_buffers = []
@@ -266,13 +522,13 @@ def _render(
     def binding(buf: Any) -> dict[str, Any]:
         return {"buffer": buf, "offset": 0, "size": bound[id(buf)]}
 
-    instance_buffer = buffer(pack_instances(rs, order, eye), storage, "instances")
-    materials = pack_material_data(rs, order)
+    instance_buffer = buffer(instance_data, storage, "instances")
+    materials = material_data
     textures_before = (context.textures.uploads, context.textures.upload_bytes)
     t_textures = time.perf_counter()
     texel_buffer, offsets, _ = context.textures.prepare(materials.images)
     t_textures = time.perf_counter() - t_textures
-    words = materials.words
+    words = materials.words.copy()  # (kept between frames: the image offsets go in a copy)
     for i, image in enumerate(materials.images):  # where each image's levels start in the pool
         words[words[HEADER_IMAGES] + i * IMAGE_WORDS] = offsets[image_key(image)]
     material_buffer = buffer(words, storage, "materials")

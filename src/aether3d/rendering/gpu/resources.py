@@ -590,6 +590,9 @@ class FrameBuffers:
     large. Bindings name the data's exact size, so the shaders see exactly this
     render's data. ``AETHER3D_GPU_PERSISTENT_BUFFERS=0`` creates fresh buffers for
     every render instead.
+
+    Uploading the very array a slot last received, unchanged since (it is read-only: data
+    kept between frames, ``RenderScene.shared_cache``), skips the comparison.
     """
 
     MERGE_WORDS = 64  # changed ranges closer than 256 bytes are written together
@@ -598,6 +601,7 @@ class FrameBuffers:
     def __init__(self, context: GPUContext) -> None:
         self.context = context
         self.slots: dict[str, tuple[Any, np.ndarray, int]] = {}  # name: (buffer, copy, usage)
+        self.sources: dict[str, np.ndarray] = {}  # name: the read-only array last uploaded
         self.writes = 0
         self.bytes_written = 0
         self.allocations = 0
@@ -606,6 +610,7 @@ class FrameBuffers:
         for buffer, _, _ in self.slots.values():
             buffer.destroy()
         self.slots.clear()
+        self.sources.clear()
 
     def stats(self) -> dict[str, int]:
         return {
@@ -618,10 +623,19 @@ class FrameBuffers:
 
     def upload(self, name: str, data: np.ndarray, usage: int) -> tuple[Any, int]:
         """The slot ``name``'s buffer holding ``data``, and the data's size in bytes."""
+        usage |= self.context.wgpu.BufferUsage.COPY_DST
+        found = self.slots.get(name)
+        if found is not None and self.sources.get(name) is data and found[2] == usage:
+            return found[0], data.nbytes  # the same unchanged array: already in the buffer
+        self.sources.pop(name, None)
+        result = self._write(name, data, usage)
+        if not data.flags.writeable:
+            self.sources[name] = data
+        return result
+
+    def _write(self, name: str, data: np.ndarray, usage: int) -> tuple[Any, int]:
         words = np.ascontiguousarray(data).reshape(-1).view(np.uint32)
         size = words.size * 4
-        wgpu = self.context.wgpu
-        usage |= wgpu.BufferUsage.COPY_DST
         found = self.slots.get(name)
         if found is not None:
             buffer, copy, slot_usage = found

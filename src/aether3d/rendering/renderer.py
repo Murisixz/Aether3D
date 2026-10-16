@@ -540,15 +540,26 @@ def render(
 
 
 def _objects(rs: RenderScene, visible: np.ndarray) -> list[dict[str, Any]]:
+    shared = rs.shared_cache()  # the rows depend on the instances and meshes only
+    rows = None if shared is None else shared.get("result.objects")
+    if rows is None and shared is not None and "changed" in shared:
+        # The frame before's instances, some with another transform or color (the same ids,
+        # names and meshes): the same rows.
+        rows = shared["previous"].get("result.objects")
+        if rows is not None:
+            shared["result.objects"] = rows
+    if rows is None:
+        rows = [
+            (k, inst.object_id, inst.name, int(rs.meshes[inst.mesh].triangles.shape[0]))
+            for k, inst in enumerate(rs.instances)
+        ]
+        if shared is not None:
+            shared["result.objects"] = rows
     return [
-        {
-            "index": k,
-            "id": inst.object_id,
-            "name": inst.name,
-            "triangles": int(rs.meshes[inst.mesh].triangles.shape[0]),
-            "visible_samples": int(visible[k]),
-        }
-        for k, inst in enumerate(rs.instances)
+        {"index": k, "id": object_id, "name": name, "triangles": triangles, "visible_samples": v}
+        for (k, object_id, name, triangles), v in zip(
+            rows, np.asarray(visible[: len(rows)], dtype=np.int64).tolist(), strict=True
+        )
     ]
 
 

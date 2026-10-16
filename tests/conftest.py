@@ -61,7 +61,10 @@ def strict_history(monkeypatch):
 @pytest.fixture(autouse=True)
 def strict_render_world(monkeypatch):
     """An unexpected error of the retained render world fails the test, instead of being
-    covered by the full extraction it falls back to."""
+    covered by the full extraction it falls back to; GPU frames check the data they kept
+    or updated between frames against a computation from scratch."""
     from aether3d.rendering import retained
+    from aether3d.rendering.gpu import renderer as gpu_renderer
 
     monkeypatch.setattr(retained, "STRICT", True)
+    monkeypatch.setattr(gpu_renderer, "VERIFY_KEPT", True)

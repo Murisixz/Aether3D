@@ -160,6 +160,26 @@ class RenderScene:
     materials: tuple[RenderMaterial, ...] = ()
     environment: Environment | None = None  # scene.world.environment (path tracer)
     arrays: InstanceArrays | None = field(default=None, repr=False, compare=False)
+    cache: dict[str, Any] | None = field(default=None, repr=False, compare=False)
+
+    def shared_cache(self) -> dict[str, Any] | None:
+        """A dict where backends may keep work between frames, or ``None``.
+
+        The retained render world gives the render scenes it returns one dict, shared by
+        later frames while their instances, meshes and materials are the same objects. Keep
+        in it only results that depend on those alone, or key them by the other inputs
+        (the camera, settings). Other render scenes -- from the full extraction, or derived
+        with :func:`dataclasses.replace` -- get ``None``.
+        """
+        cache = self.cache
+        if (
+            cache is None
+            or cache.get("instances") is not self.instances
+            or cache.get("meshes") is not self.meshes
+            or cache.get("materials") is not self.materials
+        ):
+            return None
+        return cache
 
     @property
     def instance_arrays(self) -> InstanceArrays:
@@ -632,6 +652,7 @@ def _finish(
     evaluate_time: float,
     texture_time: float,
     start: float,
+    cache: dict[str, Any] | None = None,
 ) -> RenderScene:
     """The render scene: diagnostics in object order, then the scene-wide ones."""
     diagnostics += [d for _, d in sorted(ordered, key=lambda item: item[0])]
@@ -679,6 +700,7 @@ def _finish(
         materials=materials,
         environment=world_settings.environment.copy(),
         arrays=arrays,
+        cache=cache,
     )
 
 
