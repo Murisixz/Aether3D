@@ -200,6 +200,11 @@ def group_core(quick: bool) -> dict[str, Any]:
         median_time(lambda: [target.world_matrix for _ in range(1000)], 3) / 1000 * 1e6, 3
     )
     out["world_matrices_10k_ms"] = ms(median_time(lambda: world_matrices(scene), repeat))
+    if _native_available():
+        with _environment(AETHER3D_NATIVE="0"):
+            out["world_matrices_10k_numpy_ms"] = ms(
+                median_time(lambda: world_matrices(scene), repeat)
+            )
 
     s = Scene("s")
     s.execute_plan(blocks_plan(n))
@@ -435,13 +440,49 @@ def group_raytrace(quick: bool) -> dict[str, Any]:
     accel = SceneAccel.build(rs, BLASCache())
     o, d = camera_rays((0, -4, 0), 320, 240)
     so, sd, si, sp = surface_rays(accel, o, d, np.random.default_rng(0))
-    t = median_time(lambda: accel.closest_hit(o, d), 1 if quick else 3)
-    out["closest_camera_mrays_s"] = round(o.shape[0] / t / 1e6, 3)
-    t = median_time(lambda: accel.closest_hit(so, sd, skip_inst=si, skip_tri=sp), 1 if quick else 3)
-    out["closest_bounce_mrays_s"] = round(so.shape[0] / t / 1e6, 3)
-    t = median_time(lambda: accel.occluded(so, sd, skip_inst=si, skip_tri=sp), 1 if quick else 3)
-    out["any_bounce_mrays_s"] = round(so.shape[0] / t / 1e6, 3)
+
+    def traversal(suffix: str) -> None:
+        t = median_time(lambda: accel.closest_hit(o, d), 1 if quick else 3)
+        out[f"closest_camera{suffix}_mrays_s"] = round(o.shape[0] / t / 1e6, 3)
+        t = median_time(
+            lambda: accel.closest_hit(so, sd, skip_inst=si, skip_tri=sp), 1 if quick else 3
+        )
+        out[f"closest_bounce{suffix}_mrays_s"] = round(so.shape[0] / t / 1e6, 3)
+        t = median_time(
+            lambda: accel.occluded(so, sd, skip_inst=si, skip_tri=sp), 1 if quick else 3
+        )
+        out[f"any_bounce{suffix}_mrays_s"] = round(so.shape[0] / t / 1e6, 3)
+
+    traversal("")
+    if _native_available():  # the native kernels (0.11.1): also NumPy alone, and 8 threads
+        with _environment(AETHER3D_NATIVE="0"):
+            traversal("_numpy")
+        with _environment(AETHER3D_NATIVE_THREADS="8"):
+            traversal("_8_threads")
     return out
+
+
+def _native_available() -> bool:
+    try:
+        from aether3d import _native
+    except ImportError:
+        return False
+    return bool(_native.status()["enabled"])
+
+
+@contextlib.contextmanager
+def _environment(**values: str):
+    """Environment variables set for the block (the implementation switches)."""
+    saved = {k: os.environ.get(k) for k in values}
+    os.environ.update(values)
+    try:
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 def group_editing(quick: bool) -> dict[str, Any]:
@@ -506,6 +547,13 @@ def group_images(quick: bool) -> dict[str, Any]:
     rgb = np.ascontiguousarray(decoded.pixels[..., :3])
     out["png_encode_1080p_level6_ms"] = ms(median_time(lambda: encode_png(rgb), 3))
     out["png_encode_1080p_level1_ms"] = ms(median_time(lambda: encode_png(rgb, compression=1), 3))
+    if _native_available():  # the same with NumPy alone
+        with _environment(AETHER3D_NATIVE="0"):
+            out["png_decode_1080p_numpy_ms"] = ms(median_time(lambda: decode_png(data), 3))
+            out["png_encode_1080p_level6_numpy_ms"] = ms(median_time(lambda: encode_png(rgb), 3))
+            out["png_encode_1080p_level1_numpy_ms"] = ms(
+                median_time(lambda: encode_png(rgb, compression=1), 3)
+            )
     return out
 
 
@@ -602,6 +650,12 @@ def machine() -> dict[str, Any]:
     from aether3d import _features
 
     info["switches"] = _features.report()
+    try:  # (since 0.11.1)
+        from aether3d import _native
+
+        info["native"] = _native.status()
+    except ImportError:
+        info["native"] = None
     with contextlib.suppress(OSError, subprocess.CalledProcessError):
         info["git"] = subprocess.run(
             ["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],

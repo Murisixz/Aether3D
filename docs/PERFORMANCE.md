@@ -12,6 +12,7 @@ tracing as a separate decision).
 - [Phase 0: foundation and baseline](#phase-0-foundation-and-baseline)
 - [Phase 1: quick wins in the current architecture](#phase-1-quick-wins-in-the-current-architecture)
 - [Phase 2: the retained render world](#phase-2-the-retained-render-world)
+- [Phase 3: native kernels (Rust)](#phase-3-native-kernels-rust)
 
 ## Measuring
 
@@ -103,6 +104,8 @@ is an error naming the variable). Benchmark records include their state.
 | `AETHER3D_MATERIAL_CACHE` | on | reuse materials resolved for earlier renders of a scene (`rendering/materials.py`, `MaterialCache`); `0` resolves every material for every render |
 | `AETHER3D_GPU_PERSISTENT_BUFFERS` | on | keep the GPU's per-frame data buffers between renders and write only what changed (`rendering/gpu/resources.py`, `FrameBuffers`); `0` creates fresh buffers for every render |
 | `AETHER3D_RETAINED_RENDER_WORLD` | on | keep what extraction computed between renders and update it from the history's change journal (`rendering/retained.py`, `RenderWorld`; it needs the material cache); `0` walks the whole scene for every render |
+| `AETHER3D_NATIVE` | on | use the native kernels of `aether3d-native` when installed (`aether3d/_native.py`: ray traversal, transform hierarchies, PNG filters); `0` uses the NumPy implementations, which give the same bits |
+| `AETHER3D_NATIVE_THREADS` | `1` | threads of the native ray traversal (`0`: one per CPU); results do not depend on it (a count, not an on/off switch) |
 
 ## Phase 0: foundation and baseline
 
@@ -403,3 +406,96 @@ when the retained world cannot.
   loops.
 - *Readback of every output*: 6.6-8.9 ms, varying between runs and frame kinds on this
   laptop (the image alone: a steady 2.8 ms); nothing in this phase changed it.
+
+## Phase 3: native kernels (Rust)
+
+One Rust crate, `native/` (`aether3d-native`, PyO3 0.30 and maturin, Apache-2.0; PyO3 is
+MIT or Apache-2.0), implements the kernels the audit found native code helps most, with
+exactly the arithmetic of their NumPy implementations. Aether3D uses it through
+`aether3d/_native.py` when it is installed; otherwise, when it cannot be loaded or speaks
+another calling convention (`ABI`), and with `AETHER3D_NATIVE=0`, the NumPy code runs --
+the default for the 17 portable CI jobs, which do not install it.
+
+**The kernels** (in the audit's order of priority)
+
+- **Ray traversal** (`SceneAccel.closest_hit`, `occluded`: the CPU path tracer and the
+  spatial queries): `SceneAccel._trace`'s state machine one ray at a time, with the same
+  slab tests, instance spaces, watertight triangle test, visiting order and choice of
+  hits; the hits and the traversal statistics are bitwise NumPy's. `AETHER3D_NATIVE_THREADS`
+  (default 1; 0: one per CPU) traces with threads -- results do not depend on it; the
+  path tracer already runs several processes on Linux.
+- **Transform hierarchies**: local matrices from transforms (`_local_matrices`) and the
+  top-down world stack (`_world_stack`, the retained world's rebuilds), with
+  `_mat4_mul`'s fixed sums.
+- **PNG row filters**: the encoder's choice of filter per row and the decoder's
+  reconstruction (all five filters).
+
+**Exactness.** Rust never contracts `a * b + c` into a fused multiply-add on its own, and
+nothing in the crate asks it to (no `target-cpu`, no fast-math): every kernel performs
+the NumPy code's operations in its order. `tests/test_native.py` compares each kernel with
+NumPy bit for bit on random and adversarial inputs (axis-aligned and non-finite rays,
+mirrored, singular and nested instances, skip pairs, signed zeros and extreme scales,
+every PNG filter and pixel size), checks that threads change nothing, and the whole suite
+-- render goldens, the path tracer's bit-for-bit images -- runs with the kernels in the
+`native` CI jobs (Linux, macOS, Windows).
+
+**Safety.** Every function checks its arrays (element types, contiguity, sizes, every
+index the traversal follows, outputs sharing memory with another array) and raises
+`ValueError` instead of reading out of bounds; panics become Python exceptions. The GIL is
+released while a kernel runs (tested for the traversal), and no reference or memory is
+kept (tested).
+
+**Packaging.** A separate distribution: Aether3D stays pure Python (hatchling) and
+installs everywhere; `pip install ./native` builds the kernels with a Rust toolchain
+(1.85 or later). Its wheels use CPython's stable ABI from 3.11 (one wheel per platform);
+on Python 3.10 the NumPy code runs. CI builds it on Linux, macOS and Windows and lints it
+(rustfmt, clippy with warnings as errors).
+
+**Not done.** Embree, an optional accelerator in the audit's plan, is not integrated: its
+float32 traversal would not give the exact hits the CPU path tracer's bit-for-bit images
+and the spatial queries rely on, and the exact native traversal already traces several
+times faster.
+
+**Measured** (`benchmarks/results/phase3.json`, the same machine; `*_numpy` is the same
+run with `AETHER3D_NATIVE=0`; `*_8_threads` with `AETHER3D_NATIVE_THREADS=8`):
+
+| metric | phase 2 | phase 3 |
+| --- | ---: | ---: |
+| `raytrace.closest_camera_numpy_mrays_s` |  | 0.305 |
+| `raytrace.closest_camera_mrays_s` | 0.293 | 3.049 |
+| `raytrace.closest_camera_8_threads_mrays_s` |  | 12.12 |
+| `raytrace.closest_bounce_numpy_mrays_s` |  | 0.104 |
+| `raytrace.closest_bounce_mrays_s` | 0.102 | 0.757 |
+| `raytrace.closest_bounce_8_threads_mrays_s` |  | 4.084 |
+| `raytrace.any_bounce_numpy_mrays_s` |  | 0.093 |
+| `raytrace.any_bounce_mrays_s` | 0.102 | 0.804 |
+| `raytrace.any_bounce_8_threads_mrays_s` |  | 3.964 |
+| `images.png_decode_1080p_numpy_ms` |  | 324.4 |
+| `images.png_decode_1080p_ms` | 327.7 | 44.66 |
+| `images.png_encode_1080p_level6_numpy_ms` |  | 535.8 |
+| `images.png_encode_1080p_level6_ms` | 515.6 | 433.2 |
+| `images.png_encode_1080p_level1_numpy_ms` |  | 189.9 |
+| `images.png_encode_1080p_level1_ms` | 182.7 | 104 |
+| `core.world_matrices_10k_numpy_ms` |  | 6.646 |
+| `core.world_matrices_10k_ms` | 6.855 | 6.427 |
+| `queries.raycast_warm_ms` | 2.98 | 1.42 |
+| `frame.preview_640x360_png_ms` | 17.72 | 10.91 |
+| `frame.preview_framed_unchanged_640x360_png_ms` | 46.43 | 38.84 |
+| `lifecycle.scenes_still_alive` | 0 | 0 |
+
+- **Traversal.** On the 100,000-triangle scene of the raytrace group, one thread traces
+  camera rays 10.0 times faster than NumPy and bounce rays 7.3 (closest hit) and 8.6
+  (any hit) times faster; eight threads, 39-43 times. The audit measured 9-22 times per
+  thread for the bare kernel; here each call also prepares its arrays in Python, and the
+  wheel targets every x86-64 CPU (no `target-cpu`).
+- **The path tracer, end to end** (160x120, 8 samples, 3 bounces, 30 spheres and a
+  plane, one process; measured separately): 0.45 s instead of 1.85 s, 4.1 times faster,
+  with bitwise the same image, linear light and depth. Shading, in NumPy, is most of what
+  remains.
+- **PNG.** Decoding a 1080p image takes 45 ms instead of 324 (the reconstruction was a
+  Python loop over anti-diagonals); encoding is now mostly zlib (level 6: 433 ms, of
+  which choosing the filters takes a few). MCP-sized previews take 10.9 ms instead of 17.7.
+- **World matrices** barely change (6.4 against 6.6 ms for 10,000 flat objects): gathering
+  the transforms from Python objects costs more than the arithmetic, and renders reuse
+  the retained world's matrices anyway.
+- **Not affected**: GPU frames (the GPU traces nothing here), extraction, editing.

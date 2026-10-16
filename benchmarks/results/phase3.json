@@ -1,0 +1,232 @@
+{
+  "label": "phase3",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.11.0",
+    "switches": {
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.11.1",
+      "reason": "loaded"
+    },
+    "git": "550ad15",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "core": {
+      "plan_create_10k_ms": 80.154,
+      "plan_create_per_object_us": 8.015,
+      "add_object_per_object_us": 25.225,
+      "set_position_in_transaction_us": 4.007,
+      "set_position_alone_us": 3.797,
+      "read_position_ns": 32.9,
+      "read_world_matrix_us": 12.037,
+      "world_matrices_10k_ms": 6.427,
+      "world_matrices_10k_numpy_ms": 6.646,
+      "undo_redo_plan_10k_ms": 2.541,
+      "bytes_per_object_with_history": 934,
+      "peak_rss_mib": 120.3
+    },
+    "queries": {
+      "raycast_first_ms": 61.509,
+      "raycast_warm_ms": 1.42,
+      "raycast_after_edit_ms": 57.07,
+      "overlaps_first_ms": 25.77,
+      "overlaps_warm_ms": 0.381,
+      "nearest_warm_ms": 6.047,
+      "peak_rss_mib": 104.4
+    },
+    "extract": {
+      "extract_unchanged_ms": 0.21,
+      "extract_unchanged_full_ms": 51.908,
+      "extract_one_moved_ms": 0.697,
+      "extract_one_moved_full_ms": 50.537,
+      "extract_one_added_ms": 8.868,
+      "extract_one_added_full_ms": 50.932,
+      "extract_all_moved_ms": 24.457,
+      "extract_all_moved_full_ms": 52.967,
+      "extract_camera_moved_ms": 0.249,
+      "extract_camera_moved_full_ms": 51.505,
+      "retained_bytes_per_object": 1721,
+      "peak_rss_mib": 206.2
+    },
+    "frame": {
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "unchanged_wall_ms": 15.401,
+      "unchanged_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.001,
+        "extract": 0.352,
+        "init": 0.02,
+        "upload": 0.128,
+        "prepare": 0.386,
+        "gpu": 4.243,
+        "readback": 8.057,
+        "total": 13.497
+      },
+      "unchanged_gpu_passes_ms": {
+        "scene": 1.552,
+        "finalize": 0.224
+      },
+      "one_moved_wall_ms": 16.41,
+      "one_moved_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.001,
+        "extract": 1.145,
+        "init": 0.02,
+        "upload": 0.855,
+        "prepare": 0.386,
+        "gpu": 4.124,
+        "readback": 7.932,
+        "total": 14.608
+      },
+      "one_moved_gpu_passes_ms": {
+        "scene": 1.504,
+        "finalize": 0.18
+      },
+      "one_added_wall_ms": 24.939,
+      "one_added_stages_ms": {
+        "evaluate": 0.001,
+        "textures": 0.001,
+        "extract": 8.641,
+        "init": 0.025,
+        "upload": 2.41,
+        "prepare": 0.394,
+        "gpu": 3.994,
+        "readback": 6.376,
+        "total": 22.303
+      },
+      "one_added_gpu_passes_ms": {
+        "scene": 1.501,
+        "finalize": 0.18
+      },
+      "all_moved_wall_ms": 42.883,
+      "all_moved_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.002,
+        "extract": 26.483,
+        "init": 0.029,
+        "upload": 2.974,
+        "prepare": 0.406,
+        "gpu": 4.023,
+        "readback": 6.791,
+        "total": 41.151
+      },
+      "all_moved_gpu_passes_ms": {
+        "scene": 1.501,
+        "finalize": 0.181
+      },
+      "camera_moved_wall_ms": 14.5,
+      "camera_moved_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.001,
+        "extract": 0.386,
+        "init": 0.018,
+        "upload": 1.291,
+        "prepare": 0.386,
+        "gpu": 4.139,
+        "readback": 6.098,
+        "total": 12.61
+      },
+      "camera_moved_gpu_passes_ms": {
+        "scene": 1.503,
+        "finalize": 0.18
+      },
+      "unchanged_image_only_wall_ms": 7.832,
+      "unchanged_image_only_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.001,
+        "extract": 0.316,
+        "init": 0.018,
+        "upload": 0.126,
+        "prepare": 0.371,
+        "gpu": 2.296,
+        "readback": 2.804,
+        "total": 6.257
+      },
+      "one_moved_image_only_wall_ms": 9.307,
+      "one_moved_image_only_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.001,
+        "extract": 0.931,
+        "init": 0.018,
+        "upload": 0.797,
+        "prepare": 0.366,
+        "gpu": 2.371,
+        "readback": 2.776,
+        "total": 7.529
+      },
+      "preview_640x360_png_ms": 10.911,
+      "preview_framed_unchanged_640x360_png_ms": 38.835,
+      "preview_framed_one_moved_640x360_png_ms": 50.839,
+      "peak_rss_mib": 566.8
+    },
+    "raytrace": {
+      "blas_build_100k_tris_ms": 273.976,
+      "closest_camera_mrays_s": 3.049,
+      "closest_bounce_mrays_s": 0.757,
+      "any_bounce_mrays_s": 0.804,
+      "closest_camera_numpy_mrays_s": 0.305,
+      "closest_bounce_numpy_mrays_s": 0.104,
+      "any_bounce_numpy_mrays_s": 0.093,
+      "closest_camera_8_threads_mrays_s": 12.115,
+      "closest_bounce_8_threads_mrays_s": 4.084,
+      "any_bounce_8_threads_mrays_s": 3.964,
+      "peak_rss_mib": 172.9
+    },
+    "editing": {
+      "from_mesh_attributes_tris": 16128,
+      "from_mesh_attributes_s": 0.875,
+      "from_mesh_topology_tris": 199808,
+      "from_mesh_topology_s": 0.732,
+      "extrude_region_ms": 5.909,
+      "inset_500_faces_ms": 133.462,
+      "bevel_edge_ms": 1.388,
+      "subdivide_quads_ms": 118.066,
+      "bevel_all_edges_faces": 2048,
+      "bevel_all_edges_ms": 691.114,
+      "to_mesh_ms": 35.173,
+      "peak_rss_mib": 321.7
+    },
+    "images": {
+      "png_decode_1080p_ms": 44.663,
+      "png_decode_mpix_s": 46.43,
+      "png_encode_1080p_level6_ms": 433.242,
+      "png_encode_1080p_level1_ms": 103.977,
+      "png_decode_1080p_numpy_ms": 324.398,
+      "png_encode_1080p_level6_numpy_ms": 535.8,
+      "png_encode_1080p_level1_numpy_ms": 189.882,
+      "peak_rss_mib": 125.1
+    },
+    "io": {
+      "save_10k_s": 0.4733,
+      "file_mb": 5.26,
+      "load_10k_s": 0.4693,
+      "export_glb_10k_s": 0.0895,
+      "peak_rss_mib": 158.1
+    },
+    "memory": {
+      "objects": 100000,
+      "plan_s": 0.976,
+      "first_raycast_s": 0.87,
+      "rss_after_mib": 315.78515625,
+      "peak_rss_mib": 373.9
+    },
+    "lifecycle": {
+      "cycles": 12,
+      "scenes_still_alive": 0,
+      "rss_growth_mib": 13.5,
+      "peak_rss_mib": 67.0
+    }
+  }
+}
