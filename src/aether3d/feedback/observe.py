@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from .._version import __version__
 from ..diagnostics import Diagnostic
 from ..errors import AetherError, FeedbackError, QueryError, RenderError
 from .views import ResolvedView, resolve_view
@@ -391,7 +392,7 @@ class Observation:
         found = self._png.get(key)
         if found is not None:
             return found
-        text = {"Software": "Aether3D", "Comment": f"observation {self.id} ({kind})"}
+        text = {"Software": f"Aether3D {__version__}", "Comment": f"observation {self.id} ({kind})"}
         if kind == "image":
             pixels = self.image
         elif kind == "annotated":
@@ -433,7 +434,7 @@ class Observation:
         pixels = self.image[y0:y1, x0:x1]
         if scale > 1:
             pixels = np.repeat(np.repeat(pixels, scale, axis=0), scale, axis=1)
-        text = {"Software": "Aether3D", "Comment": f"observation {self.id} crop"}
+        text = {"Software": f"Aether3D {__version__}", "Comment": f"observation {self.id} crop"}
         return encode_png(pixels, text=text, compression=compression), [x0, y0, x1, y1]
 
     def markers(self) -> list[dict[str, Any]]:
