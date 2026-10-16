@@ -104,7 +104,7 @@ value), `BELOW_VALIDITY_TIER`, `REMESH_TOO_DENSE`, `TOO_MANY_ELEMENTS`,
 
 ## Look at the result
 
-After sculpting, `observe_scene` (a close-up: `{"focus": {"objects": "Head"}}`) and
-`diagnose_scene` with a `mesh_validity` check (`{"check": "mesh_validity", "objects":
+After sculpting, `observe_scene` (a close-up: `{"view": {"focus": {"objects": "Head"}},
+"focus": "Head"}`) and `diagnose_scene` with a `mesh_validity` check (`{"check": "mesh_validity", "objects":
 "Head", "tier": "closed"}`) confirm what the mesh looks like and that it stayed sound.
 Undo the whole script with `history` (`undo`) if it is not what you wanted.

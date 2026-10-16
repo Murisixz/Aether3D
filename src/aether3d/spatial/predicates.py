@@ -118,12 +118,18 @@ def segment_crosses_triangle(
     the line through ``p q`` passes inside or on the triangle (the three edge
     orientations do not disagree). Coplanar rows are decided in the triangle's plane:
     an end inside the triangle, or the segment crossing or touching one of its edges.
+    Degenerate triangles (collinear corners, exactly) have no plane: they are never met
+    here, and callers decide them by distance.
     """
     p, q, a, b, c = (np.atleast_2d(np.asarray(x, dtype=np.float64)) for x in (p, q, a, b, c))
+    flat_tri = np.ones(len(a), dtype=bool)
+    for keep in ((0, 1), (1, 2), (2, 0)):  # collinear iff every projection is
+        k = list(keep)
+        flat_tri &= orient2d(a[:, k], b[:, k], c[:, k]) == 0
     sp = orient3d(a, b, c, p)
     sq = orient3d(a, b, c, q)
     out = np.zeros(len(p), dtype=bool)
-    general = ~((sp == 0) & (sq == 0)) & (sp * sq <= 0)
+    general = ~((sp == 0) & (sq == 0)) & (sp * sq <= 0) & ~flat_tri
     rows = np.flatnonzero(general)
     if len(rows):
         o1 = orient3d(p[rows], q[rows], a[rows], b[rows])
@@ -132,7 +138,7 @@ def segment_crosses_triangle(
         pos = (o1 >= 0) & (o2 >= 0) & (o3 >= 0)
         neg = (o1 <= 0) & (o2 <= 0) & (o3 <= 0)
         out[rows] = pos | neg
-    flat = np.flatnonzero((sp == 0) & (sq == 0))
+    flat = np.flatnonzero((sp == 0) & (sq == 0) & ~flat_tri)
     if len(flat):
         axis = _drop_axis(a[flat], b[flat], c[flat])
         P, Q = _project(p[flat], axis), _project(q[flat], axis)

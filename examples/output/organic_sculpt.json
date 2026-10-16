@@ -1,0 +1,334 @@
+{
+  "aether3d": "0.13.0",
+  "quick": false,
+  "operations": [
+    {
+      "step": "fuse the block-out",
+      "operation": "voxel_remesh",
+      "data": {
+        "voxel_size": 0.035,
+        "mode": "solid",
+        "grid": [
+          67,
+          77,
+          91
+        ],
+        "band_points": 55677,
+        "vertices": 18644,
+        "triangles": 37284,
+        "input": {
+          "closed": true,
+          "edge_manifold": true,
+          "vertex_manifold": true,
+          "consistently_oriented": true,
+          "boundary_edge_count": 0,
+          "non_manifold_edge_count": 0,
+          "degenerate_triangle_count": 0,
+          "euler_characteristic": 6,
+          "min_angle_degrees": 6.808292839307775,
+          "volume": 5.6522815381037335,
+          "components": 3,
+          "triangles": 5376,
+          "vertices": 2694
+        },
+        "output": {
+          "closed": true,
+          "edge_manifold": true,
+          "vertex_manifold": true,
+          "consistently_oriented": true,
+          "boundary_edge_count": 0,
+          "non_manifold_edge_count": 0,
+          "degenerate_triangle_count": 0,
+          "euler_characteristic": 2,
+          "min_angle_degrees": 0.4709538219525986,
+          "volume": 4.928149894285493,
+          "components": 1,
+          "triangles": 37284,
+          "vertices": 18644
+        }
+      },
+      "ms": null,
+      "diagnostics": [
+        "VOXEL_NORMALS_RECOMPUTED"
+      ],
+      "seconds": 1.548
+    },
+    {
+      "step": "even out the triangles",
+      "operation": "remesh",
+      "data": {
+        "splits": 2389,
+        "collapses": 9920,
+        "flips": 3413,
+        "relaxed": 94392,
+        "edge_length": {
+          "min": 0.022250690334689367,
+          "mean": 0.04022679715862667,
+          "max": 0.05710388283637608,
+          "std": 0.004206031346450199
+        },
+        "triangles": 22222
+      },
+      "ms": null,
+      "diagnostics": [],
+      "seconds": 4.893
+    },
+    {
+      "step": "brow ridge",
+      "operation": "stroke",
+      "data": {
+        "dabs": 32,
+        "applied_dabs": 32,
+        "skipped_dabs": 0,
+        "moved_vertices": 700,
+        "max_displacement": 0.02568760964647507
+      },
+      "ms": 51.37,
+      "diagnostics": [],
+      "seconds": 0.07
+    },
+    {
+      "step": "eye sockets",
+      "operation": "stroke",
+      "data": {
+        "dabs": 1,
+        "applied_dabs": 1,
+        "skipped_dabs": 0,
+        "moved_vertices": 111,
+        "max_displacement": 0.055770469343389716
+      },
+      "ms": 1.17,
+      "diagnostics": [],
+      "seconds": 0.003
+    },
+    {
+      "step": "cheekbones",
+      "operation": "stroke",
+      "data": {
+        "dabs": 36,
+        "applied_dabs": 36,
+        "skipped_dabs": 0,
+        "moved_vertices": 628,
+        "max_displacement": 0.011844863763435074
+      },
+      "ms": 42.93,
+      "diagnostics": [],
+      "seconds": 0.061
+    },
+    {
+      "step": "nose bridge",
+      "operation": "stroke",
+      "data": {
+        "dabs": 42,
+        "applied_dabs": 42,
+        "skipped_dabs": 0,
+        "moved_vertices": 230,
+        "max_displacement": 0.027323269879902645
+      },
+      "ms": 42.0,
+      "diagnostics": [],
+      "seconds": 0.067
+    },
+    {
+      "step": "mouth line",
+      "operation": "stroke",
+      "data": {
+        "dabs": 92,
+        "applied_dabs": 92,
+        "skipped_dabs": 0,
+        "moved_vertices": 347,
+        "max_displacement": 0.01170248416567718
+      },
+      "ms": 83.19,
+      "diagnostics": [],
+      "seconds": 0.14
+    },
+    {
+      "step": "chin",
+      "operation": "stroke",
+      "data": {
+        "dabs": 5,
+        "applied_dabs": 4,
+        "skipped_dabs": 0,
+        "moved_vertices": 208,
+        "max_displacement": 0.059829349722078665
+      },
+      "ms": 3.97,
+      "diagnostics": [],
+      "seconds": 0.006
+    },
+    {
+      "step": "horn, one side, dynamic topology",
+      "operation": "stroke",
+      "data": {
+        "dabs": 37,
+        "applied_dabs": 22,
+        "skipped_dabs": 0,
+        "moved_vertices": 354,
+        "max_displacement": 0.018821947491270235,
+        "topology": {
+          "splits": 50,
+          "collapses": 154,
+          "flips": 24,
+          "relaxed": 3516
+        },
+        "triangles": 22014
+      },
+      "ms": 240.53,
+      "diagnostics": []
+    },
+    {
+      "step": "symmetrize +x onto -x",
+      "operation": "symmetrize",
+      "data": {
+        "mode": "mirror",
+        "cut_triangles": 461,
+        "removed_triangles": 10819,
+        "mirrored_triangles": 11425,
+        "triangles": 22850,
+        "vertices": 11427
+      },
+      "ms": null,
+      "diagnostics": []
+    },
+    {
+      "step": "relax the face",
+      "operation": "stroke",
+      "data": {
+        "dabs": 17,
+        "applied_dabs": 17,
+        "skipped_dabs": 0,
+        "moved_vertices": 1858,
+        "max_displacement": 0.034814517901715684
+      },
+      "ms": 297.28,
+      "diagnostics": []
+    }
+  ],
+  "base": {
+    "tier": "solid",
+    "triangle_count": 22222,
+    "vertex_count": 11113,
+    "volume": 4.925687760016872,
+    "min_angle_degrees": 24.553556820467232,
+    "euler_characteristic": 2,
+    "self_intersecting_pairs": 0
+  },
+  "sculpt": {
+    "tier": "solid",
+    "triangle_count": 22850,
+    "vertex_count": 11427,
+    "volume": 5.040966302561137,
+    "min_angle_degrees": 0.5227007987235932,
+    "euler_characteristic": 2,
+    "self_intersecting_pairs": 0
+  },
+  "sculpt_seconds": 1.28,
+  "symmetry_error": {
+    "max": 0.0,
+    "mean": 0.0
+  },
+  "render": {
+    "backend": {
+      "name": "gpu",
+      "requested": "auto",
+      "api": "wgpu",
+      "versions": {
+        "wgpu": "0.32.0",
+        "wgpu_native": "29.0.1.1"
+      },
+      "adapter": {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "vendor": "NVIDIA",
+        "vendor_id": 4318,
+        "device_id": 10400,
+        "type": "discrete",
+        "backend": "vulkan",
+        "driver": "615.78.08",
+        "software": false
+      },
+      "antialiasing": {
+        "msaa": 4,
+        "supersample": 1,
+        "samples_per_pixel": 4
+      },
+      "shadows": {
+        "lights": null,
+        "map_size": 2048,
+        "bias": 0.5,
+        "normal_offset": 0.5,
+        "pcf_radius": 1,
+        "maps": [
+          {
+            "light": "Key",
+            "id": "f83dcff0-733b-42ae-87f7-57f227c2a396",
+            "map_size": 2048,
+            "texel_size": 0.004586221412739007,
+            "extent": [
+              9.392581453289486,
+              9.392581453289486,
+              13.288774322661958
+            ],
+            "depth_range": 13.288774322661958
+          },
+          {
+            "light": "Rim",
+            "id": "f52084ed-eb19-4a25-97d2-b139d659ff89",
+            "map_size": 2048,
+            "texel_size": 0.004156327525684937,
+            "extent": [
+              8.512158772602751,
+              8.512158772602751,
+              15.372738246998887
+            ],
+            "depth_range": 15.372738246998887
+          }
+        ]
+      },
+      "device_created": true,
+      "device_init_seconds": 0.3546525559941074,
+      "resources": {
+        "mesh_uploads": 2,
+        "mesh_upload_bytes": 136928,
+        "mesh_cache": {
+          "meshes": 2,
+          "bytes": 136928,
+          "budget": 1073741824,
+          "uploads": 2,
+          "upload_bytes": 136928,
+          "hits": 0,
+          "evictions": 0
+        },
+        "materials": 2,
+        "textured_materials": 0,
+        "texture_bindings": 0,
+        "texture_program_instructions": 0,
+        "material_data_bytes": 1476,
+        "images": 0,
+        "texel_uploads": 1,
+        "texel_upload_bytes": 256,
+        "texel_upload_seconds": 6.733099871780723e-05,
+        "texel_pool": {
+          "images": 0,
+          "bytes": 256,
+          "uploads": 1,
+          "upload_bytes": 256
+        },
+        "target_bytes": 95814656,
+        "targets_allocated": true,
+        "frame_buffer_bytes": 2308,
+        "frame_buffers_kept": true,
+        "frame_buffer_writes": 8,
+        "frame_buffer_bytes_written": 2308,
+        "color_format": "rgba32float",
+        "pipelines": 5
+      }
+    },
+    "size": [
+      640,
+      640
+    ]
+  },
+  "failures": []
+}

@@ -186,7 +186,7 @@ def test_symmetrize_copies_one_side_exactly():
     assert not sm.has_changes or sm.history[-1]["operation"] == "stroke"
 
 
-def test_symmetrize_projects_when_the_topology_differs():
+def one_sided_detail() -> SculptMesh:
     sm = SculptMesh.from_mesh(create_sphere(1.0, 24, 12))
     sm.stroke(
         {
@@ -199,11 +199,45 @@ def test_symmetrize_projects_when_the_topology_differs():
             "path": [[0.7, -0.7, 0.1]],
         }
     )
-    r = sm.symmetrize("x", direction="-")
-    assert r.data["projected"] > 0
+    return sm
+
+
+def test_symmetrize_positions_projects_unpaired_vertices():
+    sm = one_sided_detail()
+    r = sm.symmetrize("x", direction="-", mode="positions")
+    assert r.data["mode"] == "positions" and r.data["projected"] > 0
     assert any(d.code == "SYMMETRIZE_PROJECTED" for d in r.diagnostics)
     out = sm.to_mesh()
     assert check_mesh(out.positions, out.triangles).ok
+
+
+def test_symmetrize_mirrors_when_the_topology_differs():
+    sm = one_sided_detail()
+    before = sm.to_mesh()
+    r = sm.symmetrize("x", direction="+")  # auto: the sides do not pair up
+    assert r.data["mode"] == "mirror"
+    out = sm.to_mesh()
+    report = check_mesh(out.positions, out.triangles, self_intersections=True)
+    assert report.summary["tier"] == "solid"
+    # Exactly symmetric: every mirrored vertex is a vertex.
+    p = out.positions
+    keys = {tuple(x) for x in p.tolist()}
+    assert all(tuple(x) in keys for x in (p * np.float32([-1, 1, 1])).tolist())
+    assert out.uvs is not None and len(out.uvs) == len(out.positions)
+    sm.undo()
+    assert sm.to_mesh() == before
+    # Triangles crossing the plane are cut: a sphere turned off its vertex columns.
+    c, s_ = np.cos(0.1), np.sin(0.1)
+    turn = np.array([[c, -s_, 0], [s_, c, 0], [0, 0, 1]], dtype=np.float32)
+    ball = create_sphere(1.0, 24, 12)
+    sm = SculptMesh.from_mesh(Mesh(ball.positions @ turn.T, ball.triangles, uvs=ball.uvs))
+    r = sm.symmetrize("x", mode="mirror")
+    assert r.data["cut_triangles"] > 0
+    out = sm.to_mesh()
+    assert check_mesh(out.positions, out.triangles, self_intersections=True).summary["tier"] == (
+        "solid"
+    )
+    assert np.abs(out.positions[np.abs(out.positions[:, 0]) < 1e-6, 0]).max() == 0
 
 
 def test_operations_stop_when_asked_and_roll_back():

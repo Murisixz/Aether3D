@@ -187,9 +187,10 @@ def triangles_intersect(
     A separating axis among the two normals and the nine edge cross products
     proves a pair disjoint. Every other pair is decided constructively: two
     triangles meet exactly when an edge of one crosses the other (their
-    intersection is a segment whose ends lie on edges) or, for touching and
-    coplanar pairs, when a vertex-triangle or edge-edge distance is zero --
-    within ``TOUCH`` times the coordinates' scale, the rounding of exact contacts.
+    intersection is a segment whose ends lie on edges; decided by exact
+    orientation predicates, :mod:`aether3d.spatial.predicates`) or, for touching
+    pairs, when a vertex-triangle or edge-edge distance is zero -- within
+    ``TOUCH`` times the coordinates' scale, the rounding of exact contacts.
     Degenerate triangles (segments, points) are handled the same way.
     """
     n = a1.shape[0]
@@ -212,6 +213,10 @@ def triangles_intersect(
         t1 = (a1[rows], b1[rows], c1[rows])
         t2 = (a2[rows], b2[rows], c2[rows])
         hit = np.zeros(rows.size, dtype=bool)
+        # Exact orientation predicates: a float ray-triangle test misfires on nearly
+        # parallel planes (its determinant is then all rounding).
+        from .predicates import segment_crosses_triangle
+
         for (p, q), tri in (
             ((t1[0], t1[1]), t2),
             ((t1[1], t1[2]), t2),
@@ -220,7 +225,7 @@ def triangles_intersect(
             ((t2[1], t2[2]), t1),
             ((t2[2], t2[0]), t1),
         ):
-            hit |= segment_triangle_points(p, q, *tri)[0]
+            hit |= segment_crosses_triangle(p, q, *tri)
         rest = np.flatnonzero(~hit)
         if rest.size:
             d, _, _ = triangle_distances_raw(*(x[rest] for x in (*t1, *t2)))

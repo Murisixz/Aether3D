@@ -180,6 +180,7 @@ def _operations() -> list[dict[str, Any]]:
             {
                 "axis": {"enum": ["x", "y", "z"], "default": "x"},
                 "direction": {"enum": ["+", "-"], "default": "+"},
+                "mode": {"enum": ["auto", "positions", "mirror"], "default": "auto"},
                 "tolerance": _nullable({"type": "number", "minimum": 0}),
             },
         ),

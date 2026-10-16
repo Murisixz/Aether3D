@@ -83,3 +83,26 @@ def test_segment_triangle_cases():
     # triangle it meets it; folded away by a hair it does not.
     assert crosses([0.6, 0.1, 0], [0.1, 0.6, 0])
     assert not crosses([0.6, 0.1, 1e-9], [0.1, 0.6, 1e-9])
+
+
+def test_parallel_translated_triangles_do_not_intersect():
+    # Two marching-cubes triangles one cell apart: parallel planes, so a float
+    # ray-triangle determinant is all rounding. The exact test finds no contact.
+    from aether3d.spatial.geometry import triangles_intersect
+
+    a = np.array(
+        [
+            [0.8799999356269836, -0.8200000524520874, -0.2184751331806183],
+            [0.9299999475479126, -0.8366247415542603, -0.17000000178813934],
+            [0.8966246247291565, -0.8700000643730164, -0.17000000178813934],
+        ]
+    )
+    b = np.array(
+        [
+            [0.9299999475479126, -0.7700000405311584, -0.2184751331806183],
+            [0.9799999594688416, -0.7866247296333313, -0.17000000178813934],
+            [0.9466246366500854, -0.8200000524520874, -0.17000000178813934],
+        ]
+    )
+    for x, y in ((a, b), (b, a)):
+        assert not triangles_intersect(x[[0]], x[[1]], x[[2]], y[[0]], y[[1]], y[[2]])[0]

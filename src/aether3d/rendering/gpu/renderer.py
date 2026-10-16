@@ -623,7 +623,9 @@ def _render(
                 ],
             )
             writes = {}
-            if query_set is not None:
+            # The first shadow pass records the start, the last the end; passes between
+            # record nothing (wgpu refuses timestamp writes without an index).
+            if query_set is not None and layer in (0, layers - 1):
                 writes = {"query_set": query_set}
                 if layer == 0:
                     writes["beginning_of_pass_write_index"] = 0

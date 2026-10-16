@@ -6,7 +6,9 @@ A stroke is plain data: a :class:`~aether3d.sculpt.brushes.Brush`, a path of sam
 * ``space``: ``"world"`` (default) or the object's ``"local"`` coordinates;
 * ``project``: ``"nearest"`` snaps every dab center to the closest point of the current
   surface (default), ``"ray"`` casts it along ``view`` onto the surface (dabs that miss
-  are skipped and counted), ``"none"`` uses the samples as they are;
+  are skipped and counted), ``"none"`` uses the samples as they are. Brushes that move
+  geometry along the path (``grab``, ``elastic``, ``snake_hook``) project only their
+  first dab; the others follow the path's motion from it, off the surface;
 * ``resample``: place dabs every ``brush.spacing * radius`` (world units) along the
   path, with pressure interpolated (default), or use the samples as dabs.
 
@@ -40,6 +42,10 @@ from .brushes import Brush, kelvinlet
 
 MAX_SAMPLES = 100_000
 """Most samples one stroke may have."""
+
+FOLLOW = frozenset({"grab", "elastic", "snake_hook"})
+"""Brushes whose first dab is placed on the surface and whose later dabs follow the
+path's motion from there (they pull geometry off the surface)."""
 
 MAX_DABS = 200_000
 """Most dabs one stroke may make after resampling."""
@@ -265,9 +271,15 @@ class StrokeRunner:
         sm, brush = self.sm, self.brush
         dabs = self.dabs()
         applied = 0
+        anchor = None  # (projected, raw) first dab of a brush that follows the path
         for k, (c_raw, pressure) in enumerate(dabs):
             sm._checkpoint()
-            c = self.project(c_raw)
+            if anchor is not None:
+                c = anchor[0] + (c_raw - anchor[1])
+            else:
+                c = self.project(c_raw)
+                if c is not None and brush.kind in FOLLOW:
+                    anchor = (c, c_raw)
             if c is None:
                 self.skipped += 1
                 continue

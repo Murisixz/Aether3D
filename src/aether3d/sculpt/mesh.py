@@ -766,8 +766,8 @@ class SculptMesh:
 
         Every vertex and triangle is new. Kept: face groups (each new triangle takes the
         group of the nearest old triangle) and the mask (interpolated at the nearest old
-        point). Not kept, and reported: UVs (``VOXEL_UVS_DROPPED``) and stored normals
-        (recomputed smooth). ``data`` holds validity metrics of the input and the result
+        point). Not kept, and reported: UVs (``VOXEL_UVS_DROPPED``) and stored normals;
+        the result has smooth normals. ``data`` holds validity metrics of the input and the result
         (closed, manifold, oriented, volume, Euler characteristic, components, smallest
         angle) and the grid's size."""
         from ..spatial.geometry import component_labels
@@ -880,7 +880,7 @@ class SculptMesh:
             triangles[:, ::-1] if mirrored else triangles,
             groups,
             mask,
-            normals=self._rnorm is not None,
+            normals=True,
         )
         after = check_mesh(positions, triangles, welded=True)
         return {
@@ -895,30 +895,48 @@ class SculptMesh:
         }
 
     @sculpt_operation
-    def symmetrize(self, axis: str = "x", *, direction: str = "+", tolerance: float | None = None):
+    def symmetrize(
+        self,
+        axis: str = "x",
+        *,
+        direction: str = "+",
+        mode: str = "auto",
+        tolerance: float | None = None,
+    ):
         """Make the mesh symmetric across the local plane ``axis = 0`` by copying the
         ``direction`` side (``"+"``: positive coordinates) onto the other.
 
         Vertices are paired by mirrored positions (within ``tolerance``, default
         ``1e-5`` of the mesh's size), using each vertex's position when the session
         started -- sculpting one side does not break its pairs -- or, for vertices made
-        since, its current one. A paired vertex takes exactly the mirror of its partner's
-        position, a vertex on the plane gets a zero coordinate. A vertex without a
-        partner (the sides' topologies differ, e.g. after dynamic topology) moves to the
-        mirror of the nearest point of the source side's surface instead: the shape
-        becomes symmetric, not the vertices (``data``: ``paired``, ``on_plane``,
-        ``projected``; diagnostic ``SYMMETRIZE_PROJECTED``). The mask holds vertices as
-        brushes do. The topology never changes."""
+        since, its current one.
+
+        * ``mode="positions"``: a paired vertex takes exactly the mirror of its partner's
+          position, a vertex on the plane gets a zero coordinate; the topology, ids, UVs
+          and mask stay. A vertex without a partner moves to the mirror of the nearest
+          point of the source side's surface (``SYMMETRIZE_PROJECTED``): it lies on the
+          mirrored surface, but no vertex is added, so a feature of the source side that
+          the other side's vertices do not reach is not reproduced. The mask holds
+          vertices as brushes do.
+        * ``mode="mirror"``: the mesh is cut at the plane, the other side removed and the
+          source side mirrored onto it (:mod:`aether3d.sculpt.symmetry`): new topology,
+          exactly symmetric; UVs, groups and the mask are copied.
+        * ``mode="auto"`` (default): ``positions`` when every vertex on either side has
+          a partner, else ``mirror``.
+
+        ``data``: the mode used and its counts."""
         from ..spatial.surface import TriangleSurface
 
         if axis not in ("x", "y", "z"):
             raise ValidationError("axis must be 'x', 'y' or 'z'")
         if direction not in ("+", "-"):
             raise ValidationError("direction must be '+' or '-'")
+        if mode not in ("auto", "positions", "mirror"):
+            raise ValidationError("mode must be 'auto', 'positions' or 'mirror'")
         a = "xyz".index(axis)
         ids = self.vertex_ids()
         if not len(ids):
-            return {"paired": 0, "on_plane": 0, "projected": 0, "moved": 0}
+            return {"mode": mode, "paired": 0, "on_plane": 0, "projected": 0, "moved": 0}
         current = self._pos[ids]
         size = float(np.ptp(current, axis=0).max()) or 1.0
         if tolerance is None:
@@ -943,6 +961,19 @@ class SculptMesh:
         partner = _match_points(reference, mirrored[target_side], tol, candidates=source_side)
         targets = np.flatnonzero(target_side)
         paired = partner >= 0
+        if mode == "auto":
+            complete = paired.all() and len(np.unique(partner)) == int(source_side.sum())
+            mode = "positions" if complete else "mirror"
+        if mode == "mirror":
+            from .symmetry import mirror_half
+
+            if not source_side.any():
+                raise SculptError(
+                    "SYMMETRIZE_NO_SOURCE",
+                    f"no vertex lies on the {direction}{axis} side to copy",
+                    hint="choose the other direction",
+                )
+            return mirror_half(self, a, sign, tol)
         new = current.copy()
         # Paired: exactly the mirror of the partner's current position.
         src = partner[paired]
@@ -987,6 +1018,7 @@ class SculptMesh:
         if moving.any():
             self._move(ids[moving], new[moving], self.triangle_ids())
         return {
+            "mode": "positions",
             "paired": int(paired.sum()),
             "on_plane": int(plane.sum()),
             "projected": int(len(lonely)),
@@ -1295,10 +1327,16 @@ class SculptMesh:
         mask: np.ndarray,
         *,
         normals: bool,
+        trv: np.ndarray | None = None,
+        rgeo: np.ndarray | None = None,
+        ruv: np.ndarray | None = None,
+        rng: np.ndarray | None = None,
     ) -> None:
-        """Replace the whole mesh (a destructive remesh): one render vertex per vertex, no
-        UVs, smooth normals recomputed at commit if the mesh had normals. Journaled by
-        keeping the previous arrays themselves: nothing writes into them afterwards."""
+        """Replace the whole mesh. Without render arrays (a destructive remesh): one
+        render vertex per vertex, no UVs, smooth normals; with them (``trv``, ``rgeo``,
+        ``ruv``, ``rng``), those render vertices. Normals are recomputed at commit if the
+        mesh had normals. Journaled by keeping the previous arrays themselves: nothing
+        writes into them afterwards."""
         nv, nt = len(positions), len(triangles)
         if nv > self._limit or nt > self._limit:
             raise SculptError(
@@ -1309,15 +1347,22 @@ class SculptMesh:
         self._valive = np.ones(nv, dtype=bool)
         self._nv = nv
         self._tri = np.array(triangles, dtype=np.int64).reshape(-1, 3)
-        self._trv = self._tri.copy()
         self._talive = np.ones(nt, dtype=bool)
         self._tgroup = np.array(groups, dtype=np.int64)
         self._nt = nt
-        self._rgeo = np.arange(nv, dtype=np.int64)
-        self._ruv = None
-        self._rnorm = np.zeros((nv, 3)) if normals else None
-        self._rng = np.arange(nv, dtype=np.int64)
-        self._nr = nv
+        if trv is None:
+            self._trv = self._tri.copy()
+            self._rgeo = np.arange(nv, dtype=np.int64)
+            self._ruv = None
+            self._rng = np.arange(nv, dtype=np.int64)
+        else:
+            self._trv = np.array(trv, dtype=np.int64).reshape(-1, 3)
+            self._rgeo = np.array(rgeo, dtype=np.int64)
+            self._ruv = None if ruv is None else np.array(ruv, dtype=np.float64)
+            self._rng = np.array(rng, dtype=np.int64)
+        nr = len(self._rgeo)
+        self._rnorm = np.zeros((nr, 3)) if normals else None
+        self._nr = nr
         self._mask = np.array(mask, dtype=np.float32)
         self._dirty = np.ones(nv, dtype=bool)
         self._stamp = np.zeros(nv, dtype=np.int64)

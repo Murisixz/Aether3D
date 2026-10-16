@@ -1,0 +1,344 @@
+{
+  "aether3d": "0.13.0",
+  "seconds": 4.43719697999768,
+  "orient": {
+    "brushes": 15,
+    "operations": [
+      "stroke",
+      "set_mask",
+      "invert_mask",
+      "clear_mask",
+      "remesh",
+      "voxel_remesh",
+      "symmetrize",
+      "undo",
+      "redo",
+      "check"
+    ],
+    "guide_chars": 6083,
+    "schema_bytes": 7035
+  },
+  "refused": {
+    "type": "SculptScriptError",
+    "code": "VOXEL_NOT_WATERTIGHT",
+    "message": "a solid voxel remesh needs closed, manifold, consistently oriented parts without degenerate triangles; this mesh has 4 boundary edges, 0 non-manifold edges, 0 non-manifold vertices and 0 degenerate triangles",
+    "location": "sculpts[0].operations[0]",
+    "hint": "close the holes first (EditableMesh.fill_holes), or use mode='shell' with a thickness"
+  },
+  "sculpt": {
+    "changed": true,
+    "triangles": 8370,
+    "tier": "solid",
+    "operations": [
+      "voxel_remesh",
+      "remesh",
+      "stroke",
+      "stroke",
+      "stroke",
+      "stroke",
+      "stroke",
+      "stroke",
+      "check"
+    ]
+  },
+  "head": {
+    "tier": "solid",
+    "triangle_count": 8370,
+    "components": 1,
+    "volume": 0.5322436909374917
+  },
+  "diagnosis": {
+    "accepted": false,
+    "findings": [
+      [
+        "SUNKEN",
+        "geometry",
+        0.022792520139018595
+      ]
+    ]
+  },
+  "proposals": {
+    "proposals": [
+      [
+        "P1",
+        "safe",
+        "Raise 'head' 0.02279 m up onto 'pedestal'"
+      ]
+    ]
+  },
+  "applied": {
+    "status": "applied",
+    "decision": "kept"
+  },
+  "final": {
+    "accepted": true,
+    "findings": []
+  },
+  "history": [
+    "Bust on a pedestal",
+    "Sculpt the bust",
+    "Feedback: Raise 'head' 0.02279 m up onto 'pedestal'"
+  ],
+  "transcript": [
+    {
+      "tool": "capabilities",
+      "seconds": 0.0074,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "topic": "sculpt",
+        "script_format": {
+          "format": "aether3d.sculpt-script",
+          "version": 1
+        },
+        "schema_resource": "aether3d://schema/sculpt-script"
+      }
+    },
+    {
+      "tool": "scene_new",
+      "seconds": 0.0019,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "scene": {
+          "open": true,
+          "name": "bust",
+          "project": "bust.aether",
+          "revision": 0,
+          "dirty": true,
+          "objects": 0
+        }
+      }
+    },
+    {
+      "tool": "execute_scene_plan",
+      "seconds": 0.0382,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "ok": true,
+        "mode": "execute",
+        "status": "applied"
+      }
+    },
+    {
+      "tool": "inspect_mesh",
+      "seconds": 0.035,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "tier": "solid",
+        "triangle_count": 2208,
+        "components": 1,
+        "volume": 0.5198714205271684
+      }
+    },
+    {
+      "tool": "observe_scene",
+      "seconds": 0.9173,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "renderer": {
+          "backend": "gpu",
+          "requested": "auto",
+          "device": "gpu",
+          "adapter": {
+            "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+            "backend": "vulkan",
+            "software": false
+          },
+          "antialiasing_samples": 2
+        }
+      }
+    },
+    {
+      "tool": "scene_info",
+      "seconds": 0.0034,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "open": true,
+        "name": "bust",
+        "project": "bust.aether"
+      }
+    },
+    {
+      "tool": "run_script",
+      "seconds": 0.0047,
+      "error": true,
+      "images": 0,
+      "brief": {
+        "code": "VOXEL_NOT_WATERTIGHT",
+        "location": "sculpts[0].operations[0]",
+        "hint": "close the holes first (EditableMesh.fill_holes), or use mode='shell' with a thickness"
+      }
+    },
+    {
+      "tool": "scene_info",
+      "seconds": 0.0025,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "open": true,
+        "name": "bust",
+        "project": "bust.aether"
+      }
+    },
+    {
+      "tool": "run_script",
+      "seconds": 1.6885,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "changed": true,
+        "triangles": 8370,
+        "tier": "solid",
+        "operations": [
+          "voxel_remesh",
+          "remesh",
+          "stroke",
+          "stroke",
+          "stroke",
+          "stroke",
+          "stroke",
+          "stroke",
+          "check"
+        ]
+      }
+    },
+    {
+      "tool": "inspect_mesh",
+      "seconds": 0.1199,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "tier": "solid",
+        "triangle_count": 8370,
+        "components": 1,
+        "volume": 0.5322436909374917
+      }
+    },
+    {
+      "tool": "observe_scene",
+      "seconds": 0.0552,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "renderer": {
+          "backend": "gpu",
+          "requested": "auto",
+          "device": "gpu",
+          "adapter": {
+            "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+            "backend": "vulkan",
+            "software": false
+          },
+          "antialiasing_samples": 2
+        }
+      }
+    },
+    {
+      "tool": "diagnose_scene",
+      "seconds": 0.2674,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "accepted": false,
+        "findings": [
+          [
+            "SUNKEN",
+            "geometry",
+            0.022792520139018595
+          ]
+        ]
+      }
+    },
+    {
+      "tool": "propose_corrections",
+      "seconds": 0.2016,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "proposals": [
+          [
+            "P1",
+            "safe",
+            "Raise 'head' 0.02279 m up onto 'pedestal'"
+          ]
+        ]
+      }
+    },
+    {
+      "tool": "apply_corrections",
+      "seconds": 0.1744,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "status": "applied",
+        "decision": "kept"
+      }
+    },
+    {
+      "tool": "diagnose_scene",
+      "seconds": 0.0025,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "accepted": true,
+        "findings": []
+      }
+    },
+    {
+      "tool": "observe_scene",
+      "seconds": 0.0446,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "renderer": {
+          "backend": "gpu",
+          "requested": "auto",
+          "device": "gpu",
+          "adapter": {
+            "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+            "backend": "vulkan",
+            "software": false
+          },
+          "antialiasing_samples": 2
+        }
+      }
+    },
+    {
+      "tool": "history",
+      "seconds": 0.0018,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "steps": [
+          "Bust on a pedestal",
+          "Sculpt the bust",
+          "Feedback: Raise 'head' 0.02279 m up onto 'pedestal'"
+        ]
+      }
+    },
+    {
+      "tool": "scene_save",
+      "seconds": 0.121,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "scene": {
+          "open": true,
+          "name": "bust",
+          "project": "bust.aether",
+          "revision": 3,
+          "dirty": false,
+          "objects": 6
+        },
+        "saved": "bust.aether",
+        "history_file": null
+      }
+    }
+  ],
+  "failures": []
+}

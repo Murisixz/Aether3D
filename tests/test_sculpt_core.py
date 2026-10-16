@@ -180,6 +180,31 @@ def test_grab_follows_the_stroke_exactly():
     assert np.allclose(sm.positions()[:, 2], 0.3 * w, atol=1e-12)
 
 
+def test_grab_and_snake_hook_pull_geometry_off_the_surface():
+    # With the default projection only the first dab lands on the surface; the later
+    # ones follow the path's motion, so the geometry leaves the surface.
+    sm = SculptMesh.from_mesh(grid_mesh(20, 2.0))
+    before = sm.positions()
+    sm.stroke(
+        {
+            "brush": {"kind": "grab", "radius": 0.5, "falloff": "linear"},
+            "path": [[0, 0, 0.2], [0, 0, 0.5]],  # starts 0.2 above the grid: snapped
+            "resample": False,
+        }
+    )
+    d = np.linalg.norm(before[:, :2], axis=1)
+    w = np.clip(1 - d / 0.5, 0, 1)
+    assert np.allclose(sm.positions()[:, 2], 0.3 * w, atol=1e-12)
+    ball = SculptMesh.from_mesh(create_sphere(1.0, 32, 16))
+    ball.stroke(
+        {
+            "brush": {"kind": "snake_hook", "radius": 0.3, "strength": 1.0},
+            "path": [[0, 0, 1], [0, 0, 1.5]],
+        }
+    )
+    assert ball.positions()[:, 2].max() > 1.45  # a horn half a radius long
+
+
 def test_kelvinlet_is_normalized_and_divergence_free_when_incompressible():
     delta = np.array([0.0, 0.0, 0.25])
     assert np.allclose(kelvinlet(np.zeros((1, 3)), delta, 0.5, 0.3)[0], delta)

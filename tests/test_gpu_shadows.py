@@ -195,6 +195,19 @@ def test_two_shadowed_lights_follow_the_shading_equation(gpu):
     assert np.percentile(error, 99.5) < 1e-3
 
 
+def test_three_or_more_shadowed_lights_render(gpu):
+    """Shadow passes between the first and the last record no timestamps (wgpu refuses
+    timestamp writes without an index; adapters with timestamp queries failed here)."""
+    scene = Scene()
+    scene.add_plane("Ground", size=14)
+    scene.add_cube("Pillar", size=1, position=(0, 0, 1.5), scale=(1, 1, 3))
+    for k in range(4):
+        scene.add_directional_light(f"Sun {k}", direction=(0.6 - 0.4 * k, 0.5, -1), intensity=0.5)
+    scene.add_camera("Cam", position=(5, -9, 8), look_at=(0, 0, 0), fov=50)
+    result = gpu.render(scene, shadows=True, width=64, height=48, samples=1, msaa=1)
+    assert [m["light"] for m in result.backend["shadows"]["maps"]] == [f"Sun {k}" for k in range(4)]
+
+
 def test_shadow_requests_are_validated_and_reported(gpu):
     scene = floating_box()
     scene.add_point_light("Bulb", position=(3, 3, 3), intensity=2)

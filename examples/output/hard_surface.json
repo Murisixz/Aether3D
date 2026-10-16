@@ -1,0 +1,407 @@
+{
+  "aether3d": "0.13.0",
+  "modeling_seconds": 0.154,
+  "operations": [
+    {
+      "part": "body",
+      "operation": "bevel_edges",
+      "created": {
+        "vertices": 64,
+        "edges": 120,
+        "faces": 52
+      },
+      "diagnostics": [],
+      "ms": 5.68
+    },
+    {
+      "part": "body",
+      "operation": "inset_faces",
+      "created": {
+        "vertices": 4,
+        "edges": 8,
+        "faces": 4
+      },
+      "diagnostics": [],
+      "ms": 0.4
+    },
+    {
+      "part": "body",
+      "operation": "extrude_faces",
+      "created": {
+        "vertices": 4,
+        "edges": 8,
+        "faces": 4
+      },
+      "diagnostics": [
+        "UV_DEGENERATE_FACES"
+      ],
+      "ms": 0.14
+    },
+    {
+      "part": "body",
+      "operation": "inset_faces",
+      "created": {
+        "vertices": 8,
+        "edges": 16,
+        "faces": 8
+      },
+      "diagnostics": [],
+      "ms": 0.71
+    },
+    {
+      "part": "body",
+      "operation": "delete_faces",
+      "created": {
+        "vertices": 0,
+        "edges": 0,
+        "faces": 0
+      },
+      "diagnostics": [],
+      "ms": 0.02
+    },
+    {
+      "part": "body",
+      "operation": "bridge_edge_loops",
+      "created": {
+        "vertices": 8,
+        "edges": 20,
+        "faces": 12
+      },
+      "diagnostics": [
+        "UV_DEGENERATE_FACES"
+      ],
+      "ms": 0.5
+    },
+    {
+      "part": "body",
+      "operation": "knife_project",
+      "created": {
+        "vertices": 10,
+        "edges": 29,
+        "faces": 9
+      },
+      "diagnostics": [],
+      "ms": 3.87
+    },
+    {
+      "part": "body",
+      "operation": "knife_project",
+      "created": {
+        "vertices": 8,
+        "edges": 23,
+        "faces": 7
+      },
+      "diagnostics": [],
+      "ms": 2.25
+    },
+    {
+      "part": "body",
+      "operation": "inset_faces",
+      "created": {
+        "vertices": 4,
+        "edges": 8,
+        "faces": 4
+      },
+      "diagnostics": [],
+      "ms": 0.39
+    },
+    {
+      "part": "body",
+      "operation": "extrude_faces",
+      "created": {
+        "vertices": 4,
+        "edges": 8,
+        "faces": 4
+      },
+      "diagnostics": [
+        "UV_DEGENERATE_FACES"
+      ],
+      "ms": 0.14
+    },
+    {
+      "part": "body",
+      "operation": "bisect",
+      "created": {
+        "vertices": 12,
+        "edges": 24,
+        "faces": 13
+      },
+      "diagnostics": [],
+      "ms": 3.12
+    },
+    {
+      "part": "body",
+      "operation": "set_auto_smooth",
+      "created": {
+        "vertices": 0,
+        "edges": 0,
+        "faces": 0
+      },
+      "diagnostics": [],
+      "ms": 1.78
+    },
+    {
+      "part": "body",
+      "operation": "set_weighted_normals",
+      "created": {
+        "vertices": 0,
+        "edges": 0,
+        "faces": 0
+      },
+      "diagnostics": [],
+      "ms": 10.55
+    },
+    {
+      "part": "body",
+      "operation": "cleanup",
+      "created": {
+        "vertices": 0,
+        "edges": 0,
+        "faces": 0
+      },
+      "diagnostics": [
+        "CLEANUP_DONE"
+      ],
+      "ms": 0.79
+    },
+    {
+      "part": "knob",
+      "operation": "add_lathe",
+      "created": {
+        "vertices": 242,
+        "edges": 528,
+        "faces": 288
+      },
+      "diagnostics": [],
+      "ms": 3.22
+    },
+    {
+      "part": "knob",
+      "operation": "set_auto_smooth",
+      "created": {
+        "vertices": 0,
+        "edges": 0,
+        "faces": 0
+      },
+      "diagnostics": [],
+      "ms": 3.87
+    },
+    {
+      "part": "bezel",
+      "operation": "spin",
+      "created": {
+        "vertices": 188,
+        "edges": 384,
+        "faces": 192
+      },
+      "diagnostics": [],
+      "ms": 5.0
+    },
+    {
+      "part": "bezel",
+      "operation": "recalculate_normals",
+      "created": {
+        "vertices": 0,
+        "edges": 0,
+        "faces": 0
+      },
+      "diagnostics": [],
+      "ms": 3.1
+    },
+    {
+      "part": "bezel",
+      "operation": "set_auto_smooth",
+      "created": {
+        "vertices": 0,
+        "edges": 0,
+        "faces": 0
+      },
+      "diagnostics": [],
+      "ms": 3.05
+    },
+    {
+      "part": "cap",
+      "operation": "subdivision (levels 2, crease 3)",
+      "created": {
+        "triangles": 1152
+      },
+      "diagnostics": [],
+      "ms": 5.58
+    }
+  ],
+  "parts": {
+    "Power cell": {
+      "tier": "solid",
+      "triangles": 236,
+      "components": 1,
+      "volume": 1.5200532699047138,
+      "min_angle_degrees": 0.8
+    },
+    "Knob": {
+      "tier": "solid",
+      "triangles": 480,
+      "components": 1,
+      "volume": 0.011808966168763183,
+      "min_angle_degrees": 7.5
+    },
+    "Bezel": {
+      "tier": "solid",
+      "triangles": 384,
+      "components": 1,
+      "volume": 0.002105126714932099,
+      "min_angle_degrees": 30.79
+    },
+    "Cap": {
+      "tier": "solid",
+      "triangles": 1152,
+      "components": 1,
+      "volume": 0.02379564848905603,
+      "min_angle_degrees": 1.89
+    }
+  },
+  "cleanup": [
+    {
+      "step": "zero_length_edges",
+      "fixed": 0,
+      "ids": []
+    },
+    {
+      "step": "duplicate_faces",
+      "fixed": 0,
+      "ids": []
+    },
+    {
+      "step": "loose_vertices",
+      "fixed": 0,
+      "ids": []
+    },
+    {
+      "step": "zero_area_faces",
+      "fixed": 0,
+      "remaining": 0,
+      "ids": []
+    },
+    {
+      "step": "non_manifold_edges",
+      "fixed": 0,
+      "remaining": 0,
+      "ids": []
+    }
+  ],
+  "render": {
+    "backend": {
+      "name": "gpu",
+      "requested": "auto",
+      "api": "wgpu",
+      "versions": {
+        "wgpu": "0.32.0",
+        "wgpu_native": "29.0.1.1"
+      },
+      "adapter": {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "vendor": "NVIDIA",
+        "vendor_id": 4318,
+        "device_id": 10400,
+        "type": "discrete",
+        "backend": "vulkan",
+        "driver": "615.78.08",
+        "software": false
+      },
+      "antialiasing": {
+        "msaa": 4,
+        "supersample": 1,
+        "samples_per_pixel": 4
+      },
+      "shadows": {
+        "lights": null,
+        "map_size": 2048,
+        "bias": 0.5,
+        "normal_offset": 0.5,
+        "pcf_radius": 1,
+        "maps": [
+          {
+            "light": "Key",
+            "id": "f96ac8ed-00c6-410f-88a5-42161c96f221",
+            "map_size": 2048,
+            "texel_size": 0.002812970750657986,
+            "extent": [
+              5.760964097347555,
+              5.760964097347555,
+              10.922237769037524
+            ],
+            "depth_range": 10.922237769037524
+          },
+          {
+            "light": "Fill",
+            "id": "6ce2c236-5cec-47cf-abd6-5c04a93bee10",
+            "map_size": 2048,
+            "texel_size": 0.0030804072539391183,
+            "extent": [
+              6.308674056067314,
+              6.308674056067314,
+              13.998132830591834
+            ],
+            "depth_range": 13.998132830591834
+          },
+          {
+            "light": "Back light",
+            "id": "8cc69ac0-eb95-4092-8362-d2c346dbb1f9",
+            "map_size": 2048,
+            "texel_size": 0.002855300937852514,
+            "extent": [
+              5.847656320721948,
+              5.847656320721948,
+              14.129286984508596
+            ],
+            "depth_range": 14.129286984508596
+          }
+        ]
+      },
+      "device_created": true,
+      "device_init_seconds": 0.3490326409955742,
+      "resources": {
+        "mesh_uploads": 5,
+        "mesh_upload_bytes": 90648,
+        "mesh_cache": {
+          "meshes": 5,
+          "bytes": 90648,
+          "budget": 1073741824,
+          "uploads": 5,
+          "upload_bytes": 90648,
+          "hits": 0,
+          "evictions": 0
+        },
+        "materials": 8,
+        "textured_materials": 0,
+        "texture_bindings": 0,
+        "texture_program_instructions": 0,
+        "material_data_bytes": 2112,
+        "images": 0,
+        "texel_uploads": 1,
+        "texel_upload_bytes": 256,
+        "texel_upload_seconds": 6.67830026941374e-05,
+        "texel_pool": {
+          "images": 0,
+          "bytes": 256,
+          "uploads": 1,
+          "upload_bytes": 256
+        },
+        "target_bytes": 123292672,
+        "targets_allocated": true,
+        "frame_buffer_bytes": 3536,
+        "frame_buffers_kept": true,
+        "frame_buffer_writes": 9,
+        "frame_buffer_bytes_written": 3536,
+        "color_format": "rgba32float",
+        "pipelines": 5
+      }
+    },
+    "size": [
+      800,
+      600
+    ],
+    "seconds": 0.89
+  },
+  "failures": []
+}
