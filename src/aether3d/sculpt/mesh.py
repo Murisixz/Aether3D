@@ -167,6 +167,100 @@ def sculpt_operation(func: Callable) -> Callable:
     return wrapper
 
 
+def _number_arg(value: Any, name: str) -> None:
+    """A finite real number (not a bool), or a ValidationError."""
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float, np.integer, np.floating))
+        or not math.isfinite(float(value))
+    ):
+        raise ValidationError(f"{name} must be a finite number")
+
+
+def _integers(value: Any, name: str) -> list[int]:
+    """A list of integers (JSON-like input), or a ValidationError."""
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if not isinstance(value, (list, tuple)) or not all(
+        isinstance(x, (int, np.integer)) and not isinstance(x, bool) for x in value
+    ):
+        raise ValidationError(f"{name} is a list of integers")
+    return [int(x) for x in value]
+
+
+def _point(value: Any, name: str) -> np.ndarray:
+    """Three finite numbers, or a ValidationError."""
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if (
+        not isinstance(value, (list, tuple))
+        or len(value) != 3
+        or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in value)
+    ):
+        raise ValidationError(f"{name} is three numbers")
+    p = np.asarray(value, dtype=np.float64)
+    if not np.all(np.isfinite(p)):
+        raise ValidationError(f"{name} must be finite")
+    return p
+
+
+def _match_points(
+    points: np.ndarray, queries: np.ndarray, tol: float, *, candidates: np.ndarray
+) -> np.ndarray:
+    """For each query, the index of the nearest candidate point within ``tol`` (``-1``:
+    none): candidates hashed into cells of size ``tol``, the 27 cells around each query
+    searched."""
+    out = np.full(len(queries), -1, dtype=np.int64)
+    cand = np.flatnonzero(candidates)
+    if not len(cand) or not len(queries):
+        return out
+    if tol <= 0:
+        keys = np.ascontiguousarray(points[cand]).view(np.dtype((np.void, 24))).ravel()
+        order = np.argsort(keys, kind="stable")
+        qk = np.ascontiguousarray(queries + 0.0).view(np.dtype((np.void, 24))).ravel()
+        pos = np.minimum(np.searchsorted(keys[order], qk), len(cand) - 1)
+        hit = keys[order][pos] == qk
+        out[hit] = cand[order[pos[hit]]]
+        return out
+    lo = np.minimum(points[cand].min(axis=0), queries.min(axis=0))
+    cells = np.floor((points[cand] - lo) / tol).astype(np.int64)
+    qcells = np.floor((queries - lo) / tol).astype(np.int64)
+    span = np.maximum(cells.max(axis=0), qcells.max(axis=0)) + 3
+    if float(np.prod(span.astype(np.float64))) > 2.0**62:
+        raise ValidationError("tolerance is too small for the size of this mesh")
+
+    def code(c):
+        return ((c[:, 0] + 1) * span[1] + (c[:, 1] + 1)) * span[2] + (c[:, 2] + 1)
+
+    keys = code(cells)
+    order = np.argsort(keys, kind="stable")
+    keys = keys[order]
+    best = np.full(len(queries), np.inf)
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                k = code(qcells + np.array([dx, dy, dz]))
+                left = np.searchsorted(keys, k, side="left")
+                right = np.searchsorted(keys, k, side="right")
+                count = right - left
+                q = np.repeat(np.arange(len(queries)), count)
+                idx = order[
+                    np.repeat(left, count)
+                    + np.arange(int(count.sum()))
+                    - np.repeat(np.cumsum(count) - count, count)
+                ]
+                d = np.sqrt(((points[cand[idx]] - queries[q]) ** 2).sum(axis=1))
+                better = (d <= tol) & (d < best[q])
+                # Several candidates of one query in one cell: keep the nearest.
+                sel = np.flatnonzero(better)
+                o = np.lexsort((d[sel], q[sel]))
+                sel = sel[o]
+                first = sel[np.r_[True, q[sel][1:] != q[sel][:-1]]] if len(sel) else sel
+                best[q[first]] = d[first]
+                out[q[first]] = cand[idx[first]]
+    return out
+
+
 def _validity(summary: dict, triangles: np.ndarray, vertex_count: int) -> dict:
     """The validity metrics a remesh reports (from a :func:`check_mesh` summary)."""
     from ..spatial.geometry import component_labels
@@ -252,6 +346,11 @@ class SculptMesh:
         self._closed = False
         self.world_matrix = np.eye(4)
         self.source_diagnostics: list[Diagnostic] = []
+        self._origin_count = 0  # vertices that still are the source mesh's welded vertices
+        self.should_stop: Callable[[], Any] | None = None
+        """Polled at the safe points of long operations (between dabs, passes, batches):
+        a true result stops the operation with ``CANCELLED`` and rolls it back; it may
+        also raise a :class:`~aether3d.SculptError` of its own (a script's budget)."""
 
     # ------------------------------------------------------------------ #
     # Conversion
@@ -332,7 +431,26 @@ class SculptMesh:
         for k in range(3):
             np.add.at(sm._vsum, sm._tri[:nt, k], sm._cross)
         sm._build_chunks()
+        sm._origin_count = nv
         return sm
+
+    def _checkpoint(self) -> None:
+        """A safe point of a long operation: stop (and roll back) if asked to."""
+        if self.should_stop is not None and self.should_stop():
+            raise SculptError(
+                "CANCELLED",
+                "the operation was stopped before it finished; nothing changed",
+                hint="should_stop asked to stop",
+            )
+
+    def _source_positions(self) -> np.ndarray:
+        """Positions of the source mesh's welded vertices (ids ``< _origin_count`` are
+        still those vertices)."""
+        if self._source is None or not self._origin_count:
+            return np.zeros((0, 3))
+        keys = np.ascontiguousarray(self._source.positions + np.float32(0.0)).view(_VOID12).ravel()
+        _, first = np.unique(keys, return_index=True)
+        return self._source.positions[np.sort(first)].astype(np.float64)
 
     def to_mesh(self) -> Mesh:
         """The committed immutable :class:`Mesh` (see the module documentation)."""
@@ -618,6 +736,10 @@ class SculptMesh:
         operations done and the resulting edge-length statistics."""
         from .remesh import isotropic_remesh
 
+        _number_arg(target_length, "target_length")
+        _number_arg(relax, "relax")
+        if not isinstance(project, bool):
+            raise ValidationError("project must be true or false")
         return isotropic_remesh(
             self,
             float(target_length),
@@ -661,8 +783,13 @@ class SculptMesh:
         used = np.unique(self._tri[tris])
         remap = np.full(self._nv, -1, dtype=np.int64)
         remap[used] = np.arange(len(used))
-        t = remap[self._tri[tris]]
         m = np.asarray(self.world_matrix, dtype=np.float64)
+        # In world space a mirroring transform turns the winding over: work with the
+        # winding the object is shown with, and turn the result back.
+        mirrored = np.linalg.det(m[:3, :3]) < 0
+        t = remap[self._tri[tris]]
+        if mirrored:
+            t = t[:, ::-1]
         world = self._pos[used] @ m[:3, :3].T + m[:3, 3]
         before = check_mesh(world, t, welded=True)
         component = outward = None
@@ -704,6 +831,7 @@ class SculptMesh:
             max_voxels=limit,
             component=component,
             outward=outward,
+            checkpoint=self._checkpoint,
         )
         if not len(triangles):
             raise SculptError(
@@ -747,7 +875,13 @@ class SculptMesh:
                     (),
                 )
             )
-        self._replace(local, triangles, groups, mask, normals=self._rnorm is not None)
+        self._replace(
+            local,
+            triangles[:, ::-1] if mirrored else triangles,
+            groups,
+            mask,
+            normals=self._rnorm is not None,
+        )
         after = check_mesh(positions, triangles, welded=True)
         return {
             "voxel_size": float(voxel_size),
@@ -758,6 +892,105 @@ class SculptMesh:
             "triangles": int(len(triangles)),
             "input": _validity(before.summary, t, len(world)),
             "output": _validity(after.summary, triangles, len(positions)),
+        }
+
+    @sculpt_operation
+    def symmetrize(self, axis: str = "x", *, direction: str = "+", tolerance: float | None = None):
+        """Make the mesh symmetric across the local plane ``axis = 0`` by copying the
+        ``direction`` side (``"+"``: positive coordinates) onto the other.
+
+        Vertices are paired by mirrored positions (within ``tolerance``, default
+        ``1e-5`` of the mesh's size), using each vertex's position when the session
+        started -- sculpting one side does not break its pairs -- or, for vertices made
+        since, its current one. A paired vertex takes exactly the mirror of its partner's
+        position, a vertex on the plane gets a zero coordinate. A vertex without a
+        partner (the sides' topologies differ, e.g. after dynamic topology) moves to the
+        mirror of the nearest point of the source side's surface instead: the shape
+        becomes symmetric, not the vertices (``data``: ``paired``, ``on_plane``,
+        ``projected``; diagnostic ``SYMMETRIZE_PROJECTED``). The mask holds vertices as
+        brushes do. The topology never changes."""
+        from ..spatial.surface import TriangleSurface
+
+        if axis not in ("x", "y", "z"):
+            raise ValidationError("axis must be 'x', 'y' or 'z'")
+        if direction not in ("+", "-"):
+            raise ValidationError("direction must be '+' or '-'")
+        a = "xyz".index(axis)
+        ids = self.vertex_ids()
+        if not len(ids):
+            return {"paired": 0, "on_plane": 0, "projected": 0, "moved": 0}
+        current = self._pos[ids]
+        size = float(np.ptp(current, axis=0).max()) or 1.0
+        if tolerance is None:
+            tol = 1e-5 * size
+        else:
+            if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)):
+                raise ValidationError("tolerance must be a number")
+            tol = float(tolerance)
+            if not (math.isfinite(tol) and tol >= 0):
+                raise ValidationError("tolerance must be a finite number >= 0")
+        reference = current.copy()
+        start = self._source_positions()
+        old = ids < len(start)
+        reference[old] = start[ids[old]]
+        sign = 1.0 if direction == "+" else -1.0
+        coord = reference[:, a] * sign
+        source_side = coord > tol
+        target_side = coord < -tol
+        plane = ~source_side & ~target_side
+        mirrored = reference.copy()
+        mirrored[:, a] *= -1.0
+        partner = _match_points(reference, mirrored[target_side], tol, candidates=source_side)
+        targets = np.flatnonzero(target_side)
+        paired = partner >= 0
+        new = current.copy()
+        # Paired: exactly the mirror of the partner's current position.
+        src = partner[paired]
+        mirror_pos = current[src].copy()
+        mirror_pos[:, a] *= -1.0
+        new[targets[paired]] = mirror_pos
+        new[plane, a] = 0.0
+        # Unpaired: the mirror of the nearest point of the source side's surface.
+        lonely = targets[~paired]
+        if len(lonely):
+            tris = self.triangle_ids()
+            local = np.full(self._nv, -1, dtype=np.int64)
+            local[ids] = np.arange(len(ids))
+            corner = local[self._tri[tris]]
+            keep = (source_side | plane)[corner].all(axis=1)
+            if not keep.any():
+                raise SculptError(
+                    "SYMMETRIZE_NO_SOURCE",
+                    f"no triangle lies on the {direction}{axis} side to copy",
+                    hint="choose the other direction",
+                )
+            surface = TriangleSurface(current, corner[keep])
+            query = current[lonely].copy()
+            query[:, a] *= -1.0
+            hit = surface.nearest(query, batch=1 << 15).points
+            hit[:, a] *= -1.0
+            new[lonely] = hit
+            self._diagnose(
+                Diagnostic(
+                    "SYMMETRIZE_PROJECTED",
+                    INFO,
+                    "vertices without a mirrored partner were moved onto the mirrored surface "
+                    "(the shape is symmetric there, the vertices are not)",
+                    "vertices",
+                    len(lonely),
+                    tuple(int(i) for i in ids[lonely][:10]),
+                )
+            )
+        free = 1.0 - self._mask[ids].astype(np.float64)
+        new = current + (new - current) * free[:, None]
+        moving = np.any(new != current, axis=1)
+        if moving.any():
+            self._move(ids[moving], new[moving], self.triangle_ids())
+        return {
+            "paired": int(paired.sum()),
+            "on_plane": int(plane.sum()),
+            "projected": int(len(lonely)),
+            "moved": int(moving.sum()),
         }
 
     @sculpt_operation
@@ -775,6 +1008,7 @@ class SculptMesh:
         vertices: given ids, inside a ``sphere`` ``(center, radius)``, inside a ``box``
         ``(min, max)``, or on faces of the face ``groups`` (all vertices without any of
         these). Coordinates are local. Masked vertices (1) do not move."""
+        _number_arg(value, "mask value")
         v = float(value)
         if not 0.0 <= v <= 1.0:
             raise ValidationError("mask value must be in [0, 1]")
@@ -804,7 +1038,7 @@ class SculptMesh:
         ids = self.vertex_ids()
         keep = np.ones(len(ids), dtype=bool)
         if vertices is not None:
-            chosen = np.asarray(sorted({int(x) for x in vertices}), dtype=np.int64)
+            chosen = np.asarray(sorted(set(_integers(vertices, "vertices"))), dtype=np.int64)
             bad = chosen[(chosen < 0) | (chosen >= self._nv)]
             if len(bad) or (len(chosen) and not self._valive[chosen].all()):
                 raise SculptError(
@@ -814,19 +1048,20 @@ class SculptMesh:
                 )
             keep &= np.isin(ids, chosen)
         if sphere is not None:
-            center, radius = sphere
-            c = np.asarray(center, dtype=np.float64)
-            r = float(radius)
-            if c.shape != (3,) or not np.all(np.isfinite(c)) or not r >= 0:
+            if not isinstance(sphere, (list, tuple)) or len(sphere) != 2:
                 raise ValidationError("sphere is ((x, y, z), radius >= 0)")
-            keep &= ((self._pos[ids] - c) ** 2).sum(axis=1) <= r * r
+            c = _point(sphere[0], "sphere center")
+            r = sphere[1]
+            if isinstance(r, bool) or not isinstance(r, (int, float)) or not 0 <= r < math.inf:
+                raise ValidationError("sphere is ((x, y, z), radius >= 0)")
+            keep &= ((self._pos[ids] - c) ** 2).sum(axis=1) <= float(r) ** 2
         if box is not None:
-            lo, hi = (np.asarray(x, dtype=np.float64) for x in box)
-            if lo.shape != (3,) or hi.shape != (3,):
+            if not isinstance(box, (list, tuple)) or len(box) != 2:
                 raise ValidationError("box is ((min x, y, z), (max x, y, z))")
+            lo, hi = _point(box[0], "box min"), _point(box[1], "box max")
             keep &= np.all((self._pos[ids] >= lo) & (self._pos[ids] <= hi), axis=1)
         if groups is not None:
-            wanted = np.asarray(list(groups), dtype=np.int64)
+            wanted = np.asarray(_integers(groups, "groups"), dtype=np.int64)
             nt = self._nt
             rows = np.flatnonzero(self._talive[:nt] & np.isin(self._tgroup[:nt], wanted))
             on = np.zeros(self._nv, dtype=bool)
@@ -1049,6 +1284,7 @@ class SculptMesh:
         "_chunk_lo",
         "_chunk_hi",
         "_topology_changed",
+        "_origin_count",
     )
 
     def _replace(
@@ -1090,6 +1326,7 @@ class SculptMesh:
         for k in range(3):
             np.add.at(self._vsum, self._tri[:, k], self._cross)
         self._topology_changed = True
+        self._origin_count = 0
         self._loose_boxes.clear()
         self._build_chunks()
 

@@ -97,7 +97,10 @@ def falloff_curve(name: Any) -> Any:
         if name not in curves:
             raise ValidationError(f"falloff must be one of {FALLOFFS} or a list of points")
         return curves[name]
-    pts = np.asarray(name, dtype=np.float64)
+    try:
+        pts = np.asarray(name, dtype=np.float64)
+    except (TypeError, ValueError):
+        raise ValidationError("a custom falloff is a list of [x, y] number pairs") from None
     if pts.ndim != 2 or pts.shape[1] != 2 or len(pts) < 2 or len(pts) > 64:
         raise ValidationError("a custom falloff is a list of 2 to 64 [x, y] points")
     if not np.all(np.isfinite(pts)) or pts[0, 0] != 0 or pts[-1, 0] != 1:
@@ -140,6 +143,9 @@ class Brush:
         if self.direction not in (1, -1) or isinstance(self.direction, bool):
             raise ValidationError("direction must be 1 or -1")
         falloff_curve(self.falloff)
+        for flag in ("geodesic", "front_faces_only", "use_mask"):
+            if not isinstance(getattr(self, flag), bool):
+                raise ValidationError(f"{flag} must be true or false")
         _number(self.hardness, "hardness", 0.0, 0.99)
         _number(self.spacing, "spacing", 0.01, 10.0)
         if self.normal not in ("area", "vertex", "view"):
@@ -147,11 +153,15 @@ class Brush:
         _number(self.normal_radius, "normal_radius", 0.01, 2.0)
         if self.falloff_shape not in ("sphere", "projected"):
             raise ValidationError("falloff_shape must be 'sphere' or 'projected'")
-        bad = [a for a in self.automask if a not in AUTOMASKS]
+        bad = [a for a in self.automask if not isinstance(a, str) or a not in AUTOMASKS]
         if bad:
             raise ValidationError(f"unknown automask {bad} (choices: {AUTOMASKS})")
-        if any(c not in "xyz" for c in self.symmetry) or len(set(self.symmetry)) != len(
-            self.symmetry
+        if len(set(self.automask)) != len(self.automask):
+            raise ValidationError("automask lists each choice once")
+        if (
+            not isinstance(self.symmetry, str)
+            or any(c not in "xyz" for c in self.symmetry)
+            or len(set(self.symmetry)) != len(self.symmetry)
         ):
             raise ValidationError("symmetry is a subset of 'xyz'")
         if self.pressure not in PRESSURE_TARGETS:
@@ -184,7 +194,15 @@ class Brush:
                 raise ValidationError("automask is a list")
             values["automask"] = tuple(values["automask"])
         if isinstance(values.get("falloff"), list):
-            values["falloff"] = tuple(tuple(p) for p in values["falloff"])
+            points = values["falloff"]
+            if not all(
+                isinstance(p, (list, tuple))
+                and len(p) == 2
+                and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in p)
+                for p in points
+            ):
+                raise ValidationError("a custom falloff is a list of [x, y] number pairs")
+            values["falloff"] = tuple(tuple(p) for p in points)
         if values.get("dyntopo") is not None and not isinstance(values["dyntopo"], dict):
             raise ValidationError("dyntopo is an object")
         return cls(**values)

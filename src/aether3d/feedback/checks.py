@@ -1288,6 +1288,58 @@ class Diagnoser:
                     ),
                 )
 
+    def _check_mesh_validity(self, check: Check, result: CheckResult) -> None:
+        from ..sculpt.validate import object_report, tier_index
+
+        want = check.params.get("tier", "closed")
+        targets = []
+        for obj in self._geometry_objects(check, result):
+            meshes = [obj] if obj.mesh is not None else [e.obj for e in self.parts(obj)]
+            for part in meshes:
+                if part.mesh is not None and part not in targets:
+                    targets.append(part)
+        measured = {}
+        for obj in targets:
+            report = object_report(obj, self_intersections=want == "solid")
+            s = report["summary"]
+            measured[obj.name] = s["tier"]
+            if tier_index(s["tier"]) >= tier_index(want):
+                continue
+            counts = {
+                k: s[k]
+                for k in (
+                    "boundary_edge_count",
+                    "non_manifold_edge_count",
+                    "non_manifold_vertex_count",
+                    "degenerate_triangle_count",
+                    "self_intersecting_pairs",
+                )
+                if s.get(k)
+            }
+            if not s["consistently_oriented"]:
+                counts["inconsistent_winding"] = True
+            problems = ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in counts.items())
+            self.add(
+                result,
+                self.finding(
+                    check,
+                    "MESH_BELOW_TIER",
+                    f"the mesh of {obj.name!r} is {s['tier'] or 'not even valid'}, below "
+                    f"{want}" + (f" ({problems})" if problems else ""),
+                    [_ref(obj, "subject")],
+                    evidence={
+                        "tier": s["tier"],
+                        "required": want,
+                        **counts,
+                        "volume": s.get("volume"),
+                        "components": s["components"],
+                    },
+                    hint="repair the mesh (fill holes, remesh, voxel remesh) or undo the "
+                    "change that broke it; corrections never edit meshes",
+                ),
+            )
+        result.measured = measured
+
     def _check_camera_clipping(self, check: Check, result: CheckResult) -> None:
         obs = self.observation(check.view)
         if "objects" in check.params:

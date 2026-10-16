@@ -114,6 +114,7 @@ from .rendering import (
 )
 from .rendering.script import run_scene_script
 from .scene import Scene, SceneObject
+from .sculpt.script import SculptScriptError, run_sculpt_script
 from .serialization import FORMAT_VERSION, load_scene, save_scene
 from .spatial import run_query
 from .transform import Transform
@@ -173,6 +174,7 @@ __all__ = [
     "SceneGeometryReport",
     "SceneObject",
     "ScriptError",
+    "SculptScriptError",
     "SculptError",
     "Transaction",
     "ShadowSettings",
@@ -201,6 +203,7 @@ __all__ = [
     "render",
     "run_edit_script",
     "run_procedural_script",
+    "run_sculpt_script",
     "run_query",
     "run_scene_script",
     "save_scene",

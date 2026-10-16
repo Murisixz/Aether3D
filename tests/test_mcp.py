@@ -70,9 +70,9 @@ def test_tools_are_discoverable_with_strict_schemas(tmp_path):
     assert names == [
         "scene_new", "scene_open", "scene_save", "scene_info", "objects_list",
         "execute_scene_plan", "check_scene_plan", "spatial_query", "render_preview",
-        "render_image", "history", "export_scene", "run_script", "diagnostics", "capabilities",
-        "observe_scene", "diagnose_scene", "propose_corrections", "apply_corrections",
-        "feedback_loop",
+        "render_image", "history", "export_scene", "run_script", "inspect_mesh", "diagnostics",
+        "capabilities", "observe_scene", "diagnose_scene", "propose_corrections",
+        "apply_corrections", "feedback_loop",
     ]  # fmt: skip
     for tool in tools:
         schema = tool.input_schema
@@ -166,7 +166,7 @@ def test_stdout_carries_only_protocol_messages(tmp_path):
             proc.kill()
     assert proc.stdout.read() == b""
     assert replies[1]["result"]["serverInfo"]["name"] == "aether3d"
-    assert len(replies[2]["result"]["tools"]) == 20
+    assert len(replies[2]["result"]["tools"]) == 21
     assert replies[4]["result"]["structuredContent"]["counts"]["objects"] == 44
     image = replies[5]["result"]["content"][0]
     assert image["type"] == "image" and image["mimeType"] == "image/png"
@@ -590,6 +590,70 @@ def test_scripts_and_diagnostics(tmp_path):
     assert out["bad"]["error"]["code"] == "INVALID_ARGUMENTS"  # the schema's enum
     assert out["diagnostics"]["history"]["ok"] is True
     assert [s["label"] for s in out["history"]["steps"]][0] == "Scene plan"
+
+
+def test_sculpt_scripts_and_mesh_inspection(tmp_path):
+    stroke = {
+        "op": "stroke",
+        "brush": {"kind": "draw", "radius": 0.5, "strength": 0.3, "symmetry": "x"},
+        "path": [[0.3, -0.5, 0.2], [0.3, -0.5, 0.4]],
+    }
+
+    async def body(client):
+        await call(client, "scene_new")
+        await call(
+            client,
+            "execute_scene_plan",
+            {
+                "plan": {
+                    "format": "aether3d.scene-plan",
+                    "version": 1,
+                    "objects": {
+                        "Ball": {"mesh": {"primitive": "sphere", "segments": 32, "rings": 16}},
+                        "Ground": {"mesh": {"primitive": "plane", "size": 4}},
+                    },
+                }
+            },
+        )
+        out = {}
+        out["inspect"] = await call(client, "inspect_mesh", {"object": "Ball"})
+        out["solid"] = await call(
+            client, "inspect_mesh", {"object": "Ball", "self_intersections": True}
+        )
+        out["ground"] = await call(client, "inspect_mesh", {"object": "Ground"})
+        out["sculpt"] = await call(client, "run_script", {"script": {
+            "format": "aether3d.sculpt-script", "version": 1, "label": "Dent the ball",
+            "sculpts": [{"object": "Ball", "require": "closed", "operations": [stroke]}],
+        }})  # fmt: skip
+        out["refused"] = await call(client, "run_script", {"script": {
+            "format": "aether3d.sculpt-script", "version": 1,
+            "sculpts": [{"object": "Ground", "operations": [
+                {"op": "voxel_remesh", "voxel_size": 0.1}]}],
+        }}, error=True)  # fmt: skip
+        out["missing"] = await call(client, "inspect_mesh", {"object": "Nobody"}, error=True)
+        out["history"] = await call(client, "history", {"action": "list"})
+        out["topic"] = await call(client, "capabilities", {"topic": "sculpt"})
+        guide = await client.read_resource("aether3d://sculpt/guide")
+        out["guide"] = guide.contents[0].text
+        schema = await client.read_resource("aether3d://schema/sculpt-script")
+        out["schema"] = json.loads(schema.contents[0].text)
+        return out
+
+    out = session(tmp_path, body)
+    assert out["inspect"]["summary"]["tier"] == "closed"
+    assert out["inspect"]["not_evaluated"]  # self-intersections were not tested
+    assert out["solid"]["summary"]["tier"] == "solid"
+    assert out["ground"]["summary"]["tier"] == "manifold"
+    commit = out["sculpt"]["sculpts"][0]["commit"]
+    assert out["sculpt"]["format"] == "aether3d.sculpt-script"
+    assert commit["changed"] and commit["report"]["summary"]["tier"] == "closed"
+    error = out["refused"]["error"]
+    assert error["code"] == "VOXEL_NOT_WATERTIGHT" and error["location"].startswith("sculpts[0]")
+    assert out["missing"]["error"]["code"] == "NOT_FOUND"
+    assert [s["label"] for s in out["history"]["steps"]][-1] == "Dent the ball"
+    assert "voxel_remesh" in out["topic"]["operations"] and out["topic"]["validity_tiers"]
+    assert out["guide"].startswith("# Aether3D sculpting")
+    jsonschema.Draft202012Validator.check_schema(out["schema"])
 
 
 def test_server_opens_a_project_at_start(tmp_path):

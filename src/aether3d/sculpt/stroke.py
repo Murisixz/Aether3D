@@ -73,10 +73,17 @@ class Stroke:
         points, pressure = parse_path(data["path"])
         view = data.get("view")
         if view is not None:
+            if not isinstance(view, (list, tuple, np.ndarray)) or not all(
+                isinstance(x, (int, float, np.integer, np.floating)) and not isinstance(x, bool)
+                for x in view
+            ):
+                raise ValidationError("view must be a non-zero 3D direction")
             v = np.asarray(view, dtype=np.float64)
             if v.shape != (3,) or not np.all(np.isfinite(v)) or not np.any(v):
                 raise ValidationError("view must be a non-zero 3D direction")
             view = tuple(float(x) for x in v / np.linalg.norm(v))
+        if not isinstance(data.get("resample", True), bool):
+            raise ValidationError("resample must be true or false")
         stroke = cls(
             brush,
             points,
@@ -133,11 +140,16 @@ def parse_path(path: Any) -> tuple[np.ndarray, np.ndarray]:
             pos, pres = item["position"], item.get("pressure", 1.0)
         else:
             pos, pres = item, 1.0
-        try:
-            p = np.asarray(pos, dtype=np.float64)
-            q = float(pres)
-        except (TypeError, ValueError):
-            raise ValidationError(f"path[{k}] is not a point") from None
+        number = (int, float, np.integer, np.floating)
+        if (
+            not isinstance(pos, (list, tuple, np.ndarray))
+            or not all(isinstance(x, number) and not isinstance(x, bool) for x in pos)
+            or isinstance(pres, bool)
+            or not isinstance(pres, number)
+        ):
+            raise ValidationError(f"path[{k}] is not a point")
+        p = np.asarray(pos, dtype=np.float64)
+        q = float(pres)
         if p.shape != (3,) or not np.all(np.isfinite(p)):
             raise ValidationError(f"path[{k}] must be three finite numbers")
         if not 0.0 <= q <= 1.0:
@@ -254,6 +266,7 @@ class StrokeRunner:
         dabs = self.dabs()
         applied = 0
         for k, (c_raw, pressure) in enumerate(dabs):
+            sm._checkpoint()
             c = self.project(c_raw)
             if c is None:
                 self.skipped += 1

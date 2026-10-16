@@ -21,7 +21,18 @@ SELF_INTERSECTIONS         error     two triangles that share no vertex intersec
 
 The summary gives counts, ``closed``, ``edge_manifold``, ``vertex_manifold``,
 ``consistently_oriented``, the Euler characteristic, the signed volume of closed meshes,
-the edge-length range and the smallest triangle angle (quality).
+the edge-length range, the smallest triangle angle (quality) and the validity ``tier``.
+
+Validity tiers (:data:`TIERS`), each including the previous one:
+
+* ``valid`` -- every position is finite (``tier`` is ``None`` otherwise);
+* ``manifold`` -- every edge has one or two triangles, the triangles around every vertex
+  form one fan, shared edges run opposite ways (consistent winding) and no triangle is
+  degenerate;
+* ``closed`` -- manifold without boundary edges (watertight);
+* ``solid`` -- closed, a positive volume (facing outward) and no self-intersection;
+  only reached with ``self_intersections=True`` (the test is exact but costs a BVH
+  traversal), never assumed.
 
 Self-intersections: candidate pairs come from a BVH over the triangles' boxes
 (:func:`~aether3d.spatial.geometry.bvh_box_pairs`). Pairs without a shared vertex are
@@ -42,6 +53,9 @@ from typing import Any
 import numpy as np
 
 from ..diagnostics import ERROR, INFO, MAX_SAMPLES, WARNING, Diagnostic, worst_severity
+
+TIERS = ("valid", "manifold", "closed", "solid")
+"""Validity tiers, weakest first (see the module docs)."""
 
 PAIR_BATCH = 1 << 20
 """Candidate triangle pairs tested at once (bounds temporary memory)."""
@@ -221,7 +235,30 @@ def check_mesh(
             )
     else:
         report.not_evaluated.append("self-intersections (self_intersections=True checks them)")
+    summary["tier"] = _tier(summary, finite.all(), self_intersections)
     return report
+
+
+def _tier(summary: dict, finite: bool, tested: bool) -> str | None:
+    if not finite:
+        return None
+    if not (
+        summary["edge_manifold"]
+        and summary["vertex_manifold"]
+        and summary["consistently_oriented"]
+        and summary["degenerate_triangle_count"] == 0
+    ):
+        return "valid"
+    if not summary["closed"]:
+        return "manifold"
+    if tested and summary.get("self_intersecting_pairs") == 0 and summary.get("volume", 0) > 0:
+        return "solid"
+    return "closed"
+
+
+def tier_index(tier: str | None) -> int:
+    """Position of a tier in :data:`TIERS` (``-1`` for ``None``: not even valid)."""
+    return -1 if tier is None else TIERS.index(tier)
 
 
 def _min_angle(a, b, c, degenerate) -> float:
@@ -356,3 +393,22 @@ def _self_intersections(p: np.ndarray, t: np.ndarray, degenerate: np.ndarray) ->
         if hit.any():
             found.append(np.stack([keep[qi[hit]], keep[pi[hit]]], axis=1))
     return np.concatenate(found) if found else np.zeros((0, 2), dtype=np.int64)
+
+
+def object_report(obj: Any, *, self_intersections: bool = False) -> dict[str, Any]:
+    """The validity report of a scene object's mesh in world units (read-only): the
+    :func:`check_mesh` report as a dict, with the object and its connected components."""
+    from ..spatial.geometry import component_labels
+
+    mesh = obj.mesh
+    world = np.asarray(obj.world_matrix, dtype=np.float64)
+    positions = mesh.positions.astype(np.float64) @ world[:3, :3].T + world[:3, 3]
+    # A mirroring transform turns the winding over in world space: compare orientation
+    # (and the volume's sign) with how the object is shown.
+    triangles = mesh.triangles if np.linalg.det(world[:3, :3]) >= 0 else mesh.triangles[:, ::-1]
+    report = check_mesh(positions, triangles, self_intersections=self_intersections)
+    p, t = weld(positions, triangles)
+    labels = component_labels(t, len(p))
+    out = report.to_dict()
+    out["summary"]["components"] = int(labels.max()) + 1 if len(labels) and labels.max() >= 0 else 0
+    return {"object": {"id": obj.id, "name": obj.name}, **out}

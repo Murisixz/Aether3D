@@ -9,6 +9,8 @@ Resources (read-only):
 * ``aether3d://scene/objects/{ref}`` -- one object (by id or name), all fields.
 * ``aether3d://render/last-preview`` -- the last preview image (PNG).
 * ``aether3d://feedback/guide`` -- the visual feedback guide for agents (Markdown).
+* ``aether3d://sculpt/guide`` -- the sculpting guide for agents (Markdown).
+* ``aether3d://schema/sculpt-script`` -- the JSON Schema of sculpt scripts.
 * ``aether3d://schema/expectations``, ``.../vision-evaluation``, ``.../corrections`` -- the
   JSON Schemas of the feedback documents.
 * ``aether3d://observations/{id}`` -- an observation's measured facts (JSON), and
@@ -39,6 +41,14 @@ def _package_text(name: str) -> str:
 
 def guide() -> str:
     return _package_text("guide.md")
+
+
+def sculpt_guide() -> str:
+    return (
+        importlib_resources.files("aether3d.sculpt")
+        .joinpath("guide.md")
+        .read_text(encoding="utf-8")
+    )
 
 
 def feedback_guide() -> str:
@@ -112,6 +122,25 @@ def resources(session: Session) -> list[types.Resource]:
             description="Observe, diagnose against expectations, evaluate images, propose, "
             "apply and verify corrections; the loop",
             mime_type="text/markdown",
+        )
+    )
+    out.append(
+        types.Resource(
+            uri="aether3d://sculpt/guide",
+            name="sculpt-guide",
+            title="Sculpting guide",
+            description="Brushes, strokes, masks, symmetry, dynamic topology, remeshing, "
+            "validity tiers and sculpt scripts",
+            mime_type="text/markdown",
+        )
+    )
+    out.append(
+        types.Resource(
+            uri="aether3d://schema/sculpt-script",
+            name="sculpt-script-schema",
+            title="Sculpt script JSON Schema",
+            description="The JSON Schema (2020-12) of aether3d.sculpt-script version 1",
+            mime_type="application/schema+json",
         )
     )
     for uri, (name, title) in FEEDBACK_SCHEMAS.items():
@@ -208,6 +237,12 @@ def read_resource(session: Session, uri: str) -> list[Any]:
         return data(object_fields(obj, OBJECT_FIELDS))
     if uri == "aether3d://feedback/guide":
         return text(feedback_guide(), "text/markdown")
+    if uri == "aether3d://sculpt/guide":
+        return text(sculpt_guide(), "text/markdown")
+    if uri == "aether3d://schema/sculpt-script":
+        from ..sculpt.schema import sculpt_script_schema
+
+        return data(sculpt_script_schema(), "application/schema+json")
     if uri in FEEDBACK_SCHEMAS:
         return data(feedback_schema(uri), "application/schema+json")
     if uri.startswith("aether3d://observations/"):

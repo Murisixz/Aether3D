@@ -860,7 +860,7 @@ def _resample_uvs(sm, region: Region, ids: np.ndarray, target: np.ndarray) -> No
     with np.errstate(invalid="ignore", divide="ignore"):
         bv = (d11 * d20 - d01 * d21) / denom
         bw = (d00 * d21 - d01 * d20) / denom
-    bu = 1.0 - bv - bw
+        bu = 1.0 - bv - bw  # not finite for degenerate triangles: never used
     inside = (bu >= -1e-9) & (bv >= -1e-9) & (bw >= -1e-9) & np.isfinite(bu)
     if not inside.any():
         return

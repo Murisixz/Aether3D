@@ -2052,6 +2052,9 @@ def build_parser() -> argparse.ArgumentParser:
     add_material_parsers(sub, common, lossy, writing)
     _add_plan_parsers(sub, common, writing)
     add_feedback_parsers(sub, common, lossy, writing)
+    from ._cli_sculpt import add_sculpt_parsers
+
+    add_sculpt_parsers(sub, common, writing)
     _add_mcp_parsers(sub)
     return parser
 

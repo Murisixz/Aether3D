@@ -41,6 +41,7 @@ off. ``max_voxels`` bounds the points visited.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from itertools import product
 from typing import Any
 
@@ -350,6 +351,7 @@ def band_values(
     max_voxels: int,
     component: np.ndarray | None = None,
     outward: np.ndarray | None = None,
+    checkpoint: Callable[[], None] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """``(keys, values, nearest)``: the band's grid points (sorted linear keys), their
     field values (signed distance, or ``distance - shell``) and nearest triangles.
@@ -398,7 +400,9 @@ def band_values(
         at = d == now
         np.minimum.at(best_t, slot[at], tri[at])
 
+    tick = checkpoint or (lambda: None)
     for start, stop in _chunks_of(volume[small], _CANDIDATES):
+        tick()
         rows = small[start:stop]
         cnt = volume[rows]
         tri = np.repeat(rows, cnt)
@@ -414,6 +418,7 @@ def band_values(
     lk = np.arange(BLOCK**3)
     lx, ly, lz = lk % BLOCK, (lk // BLOCK) % BLOCK, lk // (BLOCK * BLOCK)
     for row in large:
+        tick()
         owner, bx, by, bz = _block_pairs(np.array([row]), a, b, c, h, origin, glo, span, band)
         for s in range(0, len(owner), max(1, _CANDIDATES // BLOCK**3)):
             sel = slice(s, s + max(1, _CANDIDATES // BLOCK**3))
@@ -574,6 +579,7 @@ def voxel_surface(
     max_voxels: int = MAX_VOXELS,
     component: np.ndarray | None = None,
     outward: np.ndarray | None = None,
+    checkpoint: Callable[[], None] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     """Positions and triangles of the voxel surface of a triangle mesh given in world
     space (see the module docs), and statistics."""
@@ -590,7 +596,10 @@ def voxel_surface(
         max_voxels=max_voxels,
         component=component,
         outward=outward,
+        checkpoint=checkpoint,
     )
+    if checkpoint is not None:
+        checkpoint()
     positions, triangles = marching_cubes(keys, values, dims, origin, h)
     stats = {"grid": [int(x) for x in dims], "band_points": int(len(keys))}
     return positions, triangles, stats

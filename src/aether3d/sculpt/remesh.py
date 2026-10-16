@@ -105,12 +105,14 @@ def isotropic_remesh(
     counts = {"splits": 0, "collapses": 0, "flips": 0, "relaxed": 0}
     for _ in range(iterations):
         for _ in range(MAX_SPLIT_PASSES):
+            sm._checkpoint()
             region = _whole(sm)
             done = split_pass(sm, region, hi, max_new=budget)
             counts["splits"] += done
             if not done:
                 break
         for _ in range(MAX_COLLAPSE_PASSES):
+            sm._checkpoint()
             region = _whole(sm)
             done = collapse_pass(sm, region, lo, hi, max_ops=budget)
             counts["collapses"] += done
@@ -118,6 +120,7 @@ def isotropic_remesh(
                 break
         if flips != "none":
             for _ in range(MAX_FLIP_PASSES):
+                sm._checkpoint()
                 region = _whole(sm)
                 done = flip_pass(sm, region, flips, max_ops=budget)
                 counts["flips"] += done
