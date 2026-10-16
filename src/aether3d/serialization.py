@@ -36,7 +36,7 @@ from .transform import Transform
 FORMAT_ID = "aether3d.project"
 """Value of the top-level ``format`` field identifying an Aether3D project."""
 
-FORMAT_VERSION = 6
+FORMAT_VERSION = 7
 """Version written by this release. Files with a higher version are rejected.
 
 * Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
@@ -151,12 +151,18 @@ def _migrate_v5_to_v6(document: dict[str, Any]) -> dict[str, Any]:
     return dict(document)
 
 
+def _migrate_v6_to_v7(document: dict[str, Any]) -> dict[str, Any]:
+    """v6 -> v7: painted textures (``"type": "painted"``) exist; a v6 document has none."""
+    return dict(document)
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
     4: _migrate_v4_to_v5,
     5: _migrate_v5_to_v6,
+    6: _migrate_v6_to_v7,
 }
 """``MIGRATIONS[n]`` upgrades a version-``n`` document to version ``n + 1``."""
 

@@ -70,7 +70,7 @@ def test_projects_round_trip_materials_textures_and_groups(tmp_path):
     path = project / "scene.aether"
     scene.save(path)
     doc = json.loads(path.read_text())
-    assert doc["format_version"] == FORMAT_VERSION == 6
+    assert doc["format_version"] == FORMAT_VERSION == 7
     textures = {t["name"]: t for t in doc["scene"]["textures"]}
     assert textures["floor"]["path"] == "textures/floor.png"  # relative, POSIX
     assert (

@@ -212,8 +212,21 @@ def _row_bytes(width: int, bit_depth: int, samples: int) -> int:
     return (width * bit_depth * samples + 7) // 8
 
 
-def decode_png(
+def decode_png16(
     data: bytes, *, limits: ImageLimits | None = None, location: str | None = None
+) -> np.ndarray:
+    """Decode a PNG file to ``(height, width, 4)`` ``uint16`` RGBA, keeping 16-bit samples
+    exactly (8-bit and smaller samples are scaled to 16 bits exactly: ``v * 65535 / max``).
+    The same checks as :func:`decode_png`."""
+    return decode_png(data, limits=limits, location=location, _wide=True)
+
+
+def decode_png(
+    data: bytes,
+    *,
+    limits: ImageLimits | None = None,
+    location: str | None = None,
+    _wide: bool = False,
 ) -> DecodedImage:
     """Decode a PNG file (see the module docstring for what is supported and checked)."""
     limits = limits or ImageLimits()
@@ -305,6 +318,8 @@ def decode_png(
         offset += ph * (stride + 1)
         rows = _unfilter(block.reshape(ph, stride + 1), bpp, location)
         image[y0::dy, x0::dx] = _unpack(rows, pw, depth, samples)
+    if _wide:
+        return _to_rgba16(image, depth, ctype, palette, transparency, location)
     return _to_rgba(image, depth, ctype, palette, transparency, location)
 
 
@@ -470,6 +485,41 @@ def _to_rgba(
     if transparency is not None:
         channels += 1
     return DecodedImage(_readonly(out), "png", depth, channels, has_alpha)
+
+
+def _to16(values: np.ndarray, depth: int) -> np.ndarray:
+    if depth == 16:
+        return values.astype(np.uint16)
+    return (values.astype(np.uint32) * 65535 // (2**depth - 1)).astype(np.uint16)
+
+
+def _to_rgba16(image, depth, ctype, palette, transparency, location) -> np.ndarray:
+    """16-bit RGBA of decoded samples (palettes are 8-bit: scaled exactly)."""
+    height, width, _ = image.shape
+    out = np.empty((height, width, 4), dtype=np.uint16)
+    if ctype == 3:
+        rgba8 = _to_rgba(image, depth, ctype, palette, transparency, location).pixels
+        return (rgba8.astype(np.uint16) * 257).astype(np.uint16)
+    if ctype in (0, 4):
+        gray = _to16(image[..., 0], depth)
+        out[..., 0] = out[..., 1] = out[..., 2] = gray
+        if ctype == 4:
+            out[..., 3] = _to16(image[..., 1], depth)
+        elif transparency is not None:
+            (key,) = struct.unpack(">H", transparency)
+            out[..., 3] = np.where(image[..., 0] == key, 0, 65535)
+        else:
+            out[..., 3] = 65535
+    else:
+        out[..., :3] = _to16(image[..., :3], depth)
+        if ctype == 6:
+            out[..., 3] = _to16(image[..., 3], depth)
+        elif transparency is not None:
+            key = np.array(struct.unpack(">HHH", transparency), dtype=np.uint16)
+            out[..., 3] = np.where(np.all(image[..., :3] == key, axis=-1), 0, 65535)
+        else:
+            out[..., 3] = 65535
+    return out
 
 
 def _readonly(array: np.ndarray) -> np.ndarray:

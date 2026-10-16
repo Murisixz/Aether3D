@@ -1776,6 +1776,13 @@ class Scene:
         """Add a PNG/JPEG texture (see ``MaterialLibrary.add_image_texture``)."""
         return self._materials.add_image_texture(name, path, **options)
 
+    def add_painted_texture(
+        self, name: str | None = None, width: int = 1024, height=None, **options
+    ):
+        """Add a painted (layered, editable) texture: see
+        :meth:`~aether3d.materials.MaterialLibrary.add_painted_texture`."""
+        return self._materials.add_painted_texture(name, width, height, **options)
+
     def add_procedural_texture(self, name: str | None, graph: Any):
         """Add a procedural texture from a node graph (see docs/MATERIALS.md)."""
         return self._materials.add_procedural_texture(name, graph)

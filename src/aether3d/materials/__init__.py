@@ -36,11 +36,13 @@ from .material import (
     TextureBinding,
     material_schema,
 )
+from .painted import BLEND_MODES, Layer, PaintedTexture
 from .presets import preset_info, preset_names
 from .textures import IMAGE_CACHE, ImageTexture, ProceduralTexture, Texture
 
 __all__ = [
     "ALPHA_MODES",
+    "BLEND_MODES",
     "COORDINATES",
     "IMAGE_CACHE",
     "MODELS",
@@ -50,8 +52,10 @@ __all__ = [
     "DecodedImage",
     "ImageLimits",
     "ImageTexture",
+    "Layer",
     "Material",
     "MaterialLibrary",
+    "PaintedTexture",
     "ProceduralTexture",
     "Texture",
     "TextureBinding",
