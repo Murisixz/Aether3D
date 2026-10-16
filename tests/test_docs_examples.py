@@ -322,3 +322,54 @@ def test_feedback_documents_in_the_docs_are_valid():
                 jsonschema.validate(data, evaluation_schema())
                 found += 1
     assert found >= 3
+
+
+# --------------------------------------------------------------------------- #
+# Advanced modeling and sculpting (0.13.0)
+# --------------------------------------------------------------------------- #
+
+
+def assert_printed(source: str, out: str) -> None:
+    """Each ``print(...)  # expected`` line of an example printed what its comment says
+    (the comment may go on after the value: ``# solid: closed, ...``)."""
+    expected = [
+        line.split("  # ", 1)[1].strip()
+        for line in source.splitlines()
+        if line.lstrip().startswith("print(") and "  # " in line
+    ]
+    printed = out.strip().splitlines()
+    assert len(printed) == len(expected), (printed, expected)
+    for got, want in zip(printed, expected, strict=True):
+        assert want == got or want.startswith((got + ":", got + " (")), (got, want)
+
+
+def test_modeling_bevel_example(capsys):
+    doc = ROOT / "docs/MODELING.md"
+    source = python_block(doc, "from aether3d.editing import EditableMesh\n\nm = EditableMesh()")
+    exec(compile(source, "MODELING.md", "exec"), {})
+    assert_printed(source, capsys.readouterr().out)
+
+
+@pytest.mark.parametrize("doc", ["docs/MODELING.md", "README.md"])
+def test_sculpting_quick_start(doc, capsys):
+    source = python_block(
+        ROOT / doc, "from aether3d import Scene, create_sphere\n\nscene = Scene()\nhead"
+    )
+    namespace: dict = {}
+    exec(compile(source, doc, "exec"), namespace)
+    assert_printed(source, capsys.readouterr().out)
+    assert namespace["s"].result.changed
+
+
+def test_sculpt_script_example():
+    from aether3d import create_sphere, run_sculpt_script
+
+    text = (ROOT / "docs/MODELING.md").read_text(encoding="utf-8")
+    block = re.search(r'```json\n(\{\n  "format": "aether3d.sculpt-script".*?)\n```', text, re.S)
+    scene = Scene()
+    scene.add_object("Head", mesh=create_sphere(1.0, 64, 32))
+    out = run_sculpt_script(scene, json.loads(block.group(1)))
+    entry = out["sculpts"][0]
+    assert entry["commit"]["changed"]
+    assert entry["operations"][-1]["report"]["summary"]["tier"] == "solid"
+    assert scene.history.entries[-1].label == "Shape the head"

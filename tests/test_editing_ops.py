@@ -311,20 +311,31 @@ def test_bevel_on_subdivided_surface_merges_corner_into_chamfer():
 def test_bevel_errors_leave_mesh_untouched():
     g = grid(2, 2, 2)
     before = snapshot(g)
-    inner = next(iter(g.select_edges(nearest=(0, 0.5, 0)).edges))
-    with pytest.raises(EditError, match="BEVEL_UNSUPPORTED_VERTEX"):
-        g.bevel_edges([inner], 0.1)  # its end vertex lies on the open boundary
     boundary = next(iter(g.boundary_edges().edges))
     with pytest.raises(EditError, match="NOT_MANIFOLD"):
         g.bevel_edges([boundary], 0.1)
     assert snapshot(g) == before
+    # Since 0.13 an end vertex on an open boundary is supported if its faces form one
+    # fan; two fans meeting at a vertex (a bowtie) are still refused.
+    b = EditableMesh()
+    ids = [
+        b.create_vertex(p).data["vertex"]
+        for p in [(0, 0, 0), (1, -1, 0), (1, 0, 0), (1, 1, 0), (-1, 1, 0), (-1, 0, 0), (-1, -1, 0)]
+    ]
+    v, a1, a2, a3, b1, b2, b3 = ids
+    for loop in ([v, a1, a2], [v, a2, a3], [v, b1, b2], [v, b2, b3]):
+        b.create_face(loop)
+    before = snapshot(b)
+    with pytest.raises(EditError, match="BEVEL_UNSUPPORTED_VERTEX"):
+        b.bevel_edges([b.edge_between(v, a2)], 0.1)
+    assert snapshot(b) == before
     m = box(2)
     before = snapshot(m)
     for w in (1.0, 1.5, 5.0):  # faces are 2 wide: they collapse at w = 1
         with pytest.raises(EditError, match="BEVEL_WIDTH_TOO_LARGE"):
             m.bevel_edges(m.select_all(), w)
-    with pytest.raises(EditError, match="UNSUPPORTED_OPERATION"):
-        m.bevel_edges([0], 0.1, segments=3)
+    with pytest.raises(ValidationError):  # (segments > 1 is supported since 0.13)
+        m.bevel_edges([0], 0.1, segments=0)
     assert snapshot(m) == before
 
 

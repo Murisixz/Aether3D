@@ -153,6 +153,7 @@ def _check_schema(kind: str) -> dict[str, Any]:
         "max_clipped_fraction": {"type": "number", "minimum": 0, "maximum": 1},
         "max_black_fraction": {"type": "number", "minimum": 0, "maximum": 1},
         "min_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+        "tier": {"enum": list(expectations.MESH_TIERS), "default": "closed"},
     }
     for key in spec["fields"]:
         if key == "region":

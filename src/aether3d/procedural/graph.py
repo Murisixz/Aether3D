@@ -262,6 +262,16 @@ class ProceduralGeometry:
 
         return SourceEditSession(self)
 
+    def sculpt_source(self):
+        """Sculpt the stored base mesh (a :class:`~aether3d.sculpt.session.SourceSculptSession`);
+        ``commit()`` updates it and every user regenerates with its modifiers.
+
+        Only for ``mesh`` sources (use :meth:`convert_source_to_mesh` first).
+        """
+        from ..sculpt.session import SourceSculptSession
+
+        return SourceSculptSession(self)
+
     # -- evaluation ------------------------------------------------------------
 
     def evaluate(self, *, upto: str | int | None = None, overrides: dict | None = None) -> Mesh:

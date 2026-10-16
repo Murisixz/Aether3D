@@ -53,11 +53,11 @@ Contents:
 | Scene plans | `scene.execute_plan(plan)`: the whole plan is one step, however many objects it makes or changes; a plan with `chunk_size` is one step per chunk, after a checkpoint `plan:KEY:before` ([SCENE_PLANS.md](SCENE_PLANS.md)) (0.11.0) |
 | Cameras and lights | every parameter (`obj.camera.fov = 35`, `obj.light.configure(...)`), the active camera |
 | World and settings | background, ambient light, the environment and its fields, render settings, the scene's name |
-| Meshes | `obj.mesh = ...`, committed edit sessions (`obj.edit_mesh()`, with `scope="shared"` too) |
+| Meshes | `obj.mesh = ...`, committed edit sessions (`obj.edit_mesh()`, with `scope="shared"` too), committed sculpt sessions (`obj.sculpt()`: "Sculpt mesh of 'Head'"; 0.13.0) |
 | Materials | create (presets too), every parameter, model, name, texture bindings and their options, remove, assign (whole objects and face groups), `convert_appearances` |
 | Textures | add (images, procedural graphs), name, sampler settings, graph and node parameters, embed and extract, remove |
 | Procedural geometry | parameters and rules (scene and geometry), geometry nodes, sources (and `edit_source()` commits), modifiers (add, set, move, remove), assigning nodes to objects, `bake()`, `procedural.undo()` |
-| Scripts | a scene, edit or procedural script is one step |
+| Scripts | a scene, edit, procedural or sculpt script is one step |
 | Command line | every command that changes a project, when the project keeps a history (see [Command line](#command-line)) |
 
 These are the properties a future animation system would animate (transforms,
@@ -74,7 +74,7 @@ parameters). The history records them under stable, id-based paths:
   with any change).
 - Spatial queries ([SPATIAL.md](SPATIAL.md)): they only read the scene; they make
   no step and leave `scene.revision` unchanged.
-- The edits inside an open edit session. They have their own undo (see
+- The edits inside an open edit or sculpt session. They have their own undo (see
   [Other undo systems](#other-undo-systems)); committing the session is one step.
 - Changes made while recording is disabled (see [Limits and memory](#limits-and-memory)).
 
@@ -302,11 +302,12 @@ $ aether3d history verify castle.aether        # replay on a copy: exact?
 
 ## Scripts
 
-- **One step per script.** A scene script, an edit script or a procedural script is
-  one transaction. Applied whole or not at all, it is one undo step.
-- **Labels.** All three formats accept an optional `"label"` that names the step,
-  as do the `label=` arguments of `run_scene_script`, `run_edit_script` and
-  `run_procedural_script`. Without one, the label describes the script ("Scene
+- **One step per script.** A scene, edit, procedural or sculpt script is one
+  transaction. Applied whole or not at all, it is one undo step (a sculpt script's
+  commits to several objects included).
+- **Labels.** All four formats accept an optional `"label"` that names the step,
+  as do the `label=` arguments of `run_scene_script`, `run_edit_script`,
+  `run_procedural_script` and `run_sculpt_script`. Without one, the label describes the script ("Scene
   script (3 operations)"); on the command line, it is the command and the script's
   file name.
 
@@ -341,6 +342,12 @@ its descendants in one step.
   in the session. Committing is one step of the scene's history. A session opened
   before an undo that replaced its object's mesh refuses to commit
   (`STALE_SESSION`).
+- **Sculpt sessions** (`obj.sculpt()`, 0.13.0) work the same way: each stroke, mask
+  change, remesh or symmetrize is one step of the session's own sparse journal (exact
+  undo, bounded by `max_history` and `max_history_bytes`); `commit()` is one step of the
+  scene's history, refused with `STALE_SESSION` if the object's mesh changed meanwhile
+  and with `BELOW_VALIDITY_TIER` if a `require`d tier is not met (nothing changes). See
+  [MODELING.md](MODELING.md#history).
 - **The procedural system's own `undo()`/`redo()`** remain, for compatibility:
   they restore procedural definitions only, step by step. Each call is itself a
   step of the scene's history ("Undo procedural change"), so the two stay

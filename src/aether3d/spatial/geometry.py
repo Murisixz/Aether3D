@@ -187,9 +187,10 @@ def triangles_intersect(
     A separating axis among the two normals and the nine edge cross products
     proves a pair disjoint. Every other pair is decided constructively: two
     triangles meet exactly when an edge of one crosses the other (their
-    intersection is a segment whose ends lie on edges) or, for touching and
-    coplanar pairs, when a vertex-triangle or edge-edge distance is zero --
-    within ``TOUCH`` times the coordinates' scale, the rounding of exact contacts.
+    intersection is a segment whose ends lie on edges; decided by exact
+    orientation predicates, :mod:`aether3d.spatial.predicates`) or, for touching
+    pairs, when a vertex-triangle or edge-edge distance is zero -- within
+    ``TOUCH`` times the coordinates' scale, the rounding of exact contacts.
     Degenerate triangles (segments, points) are handled the same way.
     """
     n = a1.shape[0]
@@ -212,6 +213,10 @@ def triangles_intersect(
         t1 = (a1[rows], b1[rows], c1[rows])
         t2 = (a2[rows], b2[rows], c2[rows])
         hit = np.zeros(rows.size, dtype=bool)
+        # Exact orientation predicates: a float ray-triangle test misfires on nearly
+        # parallel planes (its determinant is then all rounding).
+        from .predicates import segment_crosses_triangle
+
         for (p, q), tri in (
             ((t1[0], t1[1]), t2),
             ((t1[1], t1[2]), t2),
@@ -220,7 +225,7 @@ def triangles_intersect(
             ((t2[1], t2[2]), t1),
             ((t2[2], t2[0]), t1),
         ):
-            hit |= segment_triangle_points(p, q, *tri)[0]
+            hit |= segment_crosses_triangle(p, q, *tri)
         rest = np.flatnonzero(~hit)
         if rest.size:
             d, _, _ = triangle_distances_raw(*(x[rest] for x in (*t1, *t2)))
@@ -448,6 +453,35 @@ def triangle_distances_raw(a1, b1, c1, a2, b2, c2):
             d2, q1, q2 = segment_distances(s1, e1, s2, e2)
             keep(d2, q1, q2)
     return np.sqrt(best), p1, p2
+
+
+def component_labels(triangles: np.ndarray, vertex_count: int) -> np.ndarray:
+    """Connected-component label (``0 .. k - 1``, in order of each component's lowest
+    vertex) of every vertex of a triangle mesh; unused vertices get ``-1``."""
+    t = np.asarray(triangles, dtype=np.int64).reshape(-1, 3)
+    labels = np.full(vertex_count, -1, dtype=np.int64)
+    if not len(t):
+        return labels
+    u = np.concatenate([t[:, 0], t[:, 1]])
+    v = np.concatenate([t[:, 1], t[:, 2]])
+    parent = np.arange(vertex_count, dtype=np.int64)
+    while True:
+        pu, pv = parent[u], parent[v]
+        differ = pu != pv
+        if not differ.any():
+            break
+        np.minimum.at(
+            parent, np.maximum(pu[differ], pv[differ]), np.minimum(pu[differ], pv[differ])
+        )
+        while True:  # pointer jumping: every vertex points at its root
+            up = parent[parent]
+            if np.array_equal(up, parent):
+                break
+            parent = up
+    used = np.unique(t)
+    roots, inverse = np.unique(parent[used], return_inverse=True)
+    labels[used] = inverse.reshape(-1)
+    return labels
 
 
 def component_representatives(positions: np.ndarray, triangles: np.ndarray) -> np.ndarray:

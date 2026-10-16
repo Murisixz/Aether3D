@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..errors import FeedbackError
+from ..sculpt.validate import TIERS
 from ._doc import BAD, Doc, join
 from .views import parse_view_spec
 
@@ -126,7 +127,15 @@ CHECKS: dict[str, dict[str, Any]] = {
         "summary": "the view's near and far planes cut none of the objects (default: every "
         "visible object with geometry)",
     },
+    "mesh_validity": {
+        "fields": ("objects", "tier"),
+        "required": ("objects",),
+        "summary": "each object's mesh (a group: its parts' meshes) reaches the validity "
+        "tier: valid, manifold, closed (default: manifold and watertight) or solid (also "
+        "no self-intersection and a positive volume, tested exactly)",
+    },
 }
+MESH_TIERS = TIERS
 RELATION_PREDICATES = (
     "above",
     "below",
@@ -433,6 +442,8 @@ def _parse_field(doc: Doc, kind: str, key: str, value: Any, ptr: str, views: dic
         return doc.number(value, ptr, lo=0.0)
     if key == "max_tilt":
         return doc.number(value, ptr, lo=0.0, hi=180.0)
+    if key == "tier":
+        return doc.enum(value, ptr, MESH_TIERS)
     if key == "axis":
         v = doc.vector(value, ptr, nonzero=True)
         return BAD if v is BAD else list(v)

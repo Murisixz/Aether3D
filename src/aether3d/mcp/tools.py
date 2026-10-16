@@ -869,15 +869,49 @@ def run_script(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
         from ..rendering.script import run_scene_script
 
         data = run_scene_script(scene, script, base_dir=session.base_dir())
+    elif kind == "aether3d.sculpt-script":
+        from ..sculpt.script import run_sculpt_script
+
+        data = run_sculpt_script(scene, script)
     else:
         raise ToolError(
             "INVALID_ARGUMENT",
             f"unknown script format {kind!r}",
-            hint="aether3d.edit-script, aether3d.procedural-script or aether3d.scene-script "
-            "(objects, materials and placement: use execute_scene_plan)",
+            hint="aether3d.edit-script, aether3d.procedural-script, aether3d.scene-script or "
+            "aether3d.sculpt-script (objects, materials and placement: use execute_scene_plan)",
         )
     data = {"format": kind, **data, "scene": scene_status(session)}
     return ToolOutput(data)
+
+
+MAX_INSPECT_TRIANGLES = 2_000_000
+"""Largest mesh inspect_mesh tests for self-intersections."""
+
+
+def inspect_mesh(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
+    from ..errors import ObjectNotFoundError
+    from ..sculpt.validate import object_report
+
+    scene = session.require_scene()
+    ref = args["object"]
+    try:
+        obj = scene.get(ref)
+    except ObjectNotFoundError:
+        try:
+            obj = scene.get_by_name(ref)
+        except ObjectNotFoundError:
+            raise ToolError("NOT_FOUND", f"no object with id or name {ref!r}") from None
+    if obj.mesh is None:
+        raise ToolError("INVALID_ARGUMENT", f"object {obj.name!r} has no mesh")
+    tested = bool(args.get("self_intersections", False))
+    if tested and obj.mesh.triangle_count > MAX_INSPECT_TRIANGLES:
+        raise ToolError(
+            "RESOURCE_LIMIT",
+            f"the self-intersection test is limited to {MAX_INSPECT_TRIANGLES} triangles",
+            hint="inspect without self_intersections, or use aether3d sculpt check",
+        )
+    report = object_report(obj, self_intersections=tested)
+    return ToolOutput({**report, "scene": scene_status(session)})
 
 
 def diagnostics(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
@@ -926,6 +960,8 @@ def capabilities(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
                 "aether3d://guide",
                 "aether3d://schema/scene-plan",
                 "aether3d://examples/{name}",
+                "aether3d://sculpt/guide",
+                "aether3d://schema/sculpt-script",
             ],
             "conventions": "+Z up, right-handed, meters; objects face -Y; rotation_euler in "
             "degrees (XYZ); colors are sRGB '#rrggbb'",
@@ -990,6 +1026,34 @@ def capabilities(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
             "path_samples": config.max_path_samples,
             "path_tracing": config.allow_path_tracing,
             "tool_timeout": config.tool_timeout,
+        }
+    elif topic == "sculpt":
+        from ..sculpt.brushes import AUTOMASKS, FALLOFFS, KINDS
+        from ..sculpt.script import FORMAT_ID, LIMIT_KEYS, OPERATIONS
+        from ..sculpt.validate import TIERS
+
+        data = {
+            "script_format": {"format": FORMAT_ID, "version": 1},
+            "schema_resource": "aether3d://schema/sculpt-script",
+            "guide_resource": "aether3d://sculpt/guide",
+            "brushes": list(KINDS),
+            "falloffs": list(FALLOFFS),
+            "automask": list(AUTOMASKS),
+            "operations": list(OPERATIONS),
+            "validity_tiers": list(TIERS),
+            "limits": list(LIMIT_KEYS),
+            "unsupported": {
+                "quad remeshing": "not offered: remesh (isotropic triangles) and "
+                "voxel_remesh are what exist",
+                "multiresolution sculpting": "not offered (no subdivision levels with "
+                "displacement)",
+            },
+            "tips": [
+                "brush radius and dyntopo detail are in world units; strokes follow the "
+                "surface (project: nearest) unless told otherwise",
+                "require a tier (e.g. 'closed') so a broken result is refused, not committed",
+                "inspect_mesh measures validity; observe_scene shows the result",
+            ],
         }
     elif topic == "feedback":
         from ..feedback import ACTIONS, CHECKS, STOP_REASONS
@@ -1299,12 +1363,14 @@ TOOLS: tuple[ToolSpec, ...] = (
     ),
     ToolSpec(
         "run_script",
-        "Run an edit, procedural or scene script",
+        "Run an edit, procedural, scene or sculpt script",
         "Run one of the engine's JSON scripts atomically (one undo step): "
-        "aether3d.edit-script (polygon mesh editing: extrude, bevel, ... on an object), "
-        "aether3d.procedural-script (procedural definitions), aether3d.scene-script "
-        "(cameras, lights, materials and textures in detail). For creating and placing "
-        "objects use execute_scene_plan.",
+        "aether3d.edit-script (polygon mesh editing: extrude, bevel, bridge, knife, ... on an "
+        "object), aether3d.procedural-script (procedural definitions), aether3d.scene-script "
+        "(cameras, lights, materials and textures in detail), aether3d.sculpt-script (brush "
+        "strokes, masks, dynamic topology, remeshing, symmetrize; schema: resource "
+        "aether3d://schema/sculpt-script, guide: aether3d://sculpt/guide). For creating and "
+        "placing objects use execute_scene_plan.",
         _schema(
             {
                 "script": {
@@ -1315,6 +1381,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                                 "aether3d.edit-script",
                                 "aether3d.procedural-script",
                                 "aether3d.scene-script",
+                                "aether3d.sculpt-script",
                             ]
                         }
                     },
@@ -1324,6 +1391,25 @@ TOOLS: tuple[ToolSpec, ...] = (
             ("script",),
         ),
         run_script,
+    ),
+    ToolSpec(
+        "inspect_mesh",
+        "Inspect a mesh's validity",
+        "Validity tier (valid < manifold < closed < solid) and quality of one object's mesh, "
+        "in world units: counts, boundary and non-manifold edges and vertices, winding, "
+        "degenerate triangles, components, Euler characteristic, volume, edge lengths, "
+        "smallest angle; self_intersections=true adds the exact self-intersection test "
+        "(needed for 'solid'). Findings have stable codes. Read-only.",
+        _schema(
+            {
+                "object": {"type": "string", "minLength": 1, "description": "id or name"},
+                "self_intersections": {"type": "boolean", "default": False},
+            },
+            ("object",),
+        ),
+        inspect_mesh,
+        read_only=True,
+        idempotent=True,
     ),
     ToolSpec(
         "diagnostics",
@@ -1348,7 +1434,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         "Capabilities",
         "What this engine and server offer: overview (tools, conventions, scene), plan, "
         "primitives, modifiers, materials (models, presets), queries, limits, gpu, feedback "
-        "(checks, correction actions, views, safety classes).",
+        "(checks, correction actions, views, safety classes), sculpt (brushes, operations, "
+        "validity tiers, script limits).",
         _schema(
             {
                 "topic": {
@@ -1362,6 +1449,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                         "limits",
                         "gpu",
                         "feedback",
+                        "sculpt",
                     ],
                     "default": "overview",
                 }

@@ -295,6 +295,34 @@ Full guide: [EDITING.md](EDITING.md).
 - Face groups: `set_group(faces, group)`; query with `face_group(f)`,
   `has_groups` and `select(..., group=k)`. New faces inherit their source
   face's group.
+- Advanced modeling (0.13, [MODELING.md](MODELING.md)): `bevel_edges(edges, width,
+  segments=1, profile=0.5)`; `bisect(point, normal, faces=, clear=, fill=, threshold=,
+  space=)`; `knife_project(points, direction, faces=, closed=, through=, space=)`;
+  `fill_holes(edges=None, mode=, max_sides=)`; `bridge_edge_loops(edges, segments=,
+  twist=)`; `slide_edges(edges, factor, even=, correct_uvs=)`, `slide_vertex(vertex,
+  toward, factor)`; `dissolve_vertices`, `dissolve_faces`, `limited_dissolve(angle=,
+  faces=, delimit=)`; `connect_vertex_path`, `connect_vertices`; `extrude_edges(edges,
+  offset)`, `spin(faces, angle, steps, axis=, center=, merge=)`, `add_lathe(profile,
+  segments=, angle=, smooth=)`; `shrinkwrap(vertices, target, mode=, direction=, offset=,
+  max_distance=)`; `set_auto_smooth(angle=)`, `recalculate_normals(inside=)`,
+  `set_weighted_normals(mode=, weight=)`; `cleanup(...)` with a report.
+
+## Sculpting
+
+Brush strokes, masks, dynamic topology, remeshing and symmetrize on a sculpt mesh, with
+validity tiers and JSON scripts ([MODELING.md](MODELING.md)). Since 0.13.0.
+
+| Name | Description |
+| --- | --- |
+| `obj.sculpt() -> SculptSession` | A session on an object's mesh (procedural objects: `PROCEDURAL_OBJECT`). Delegates to its `mesh` (`s.stroke(...)`); `commit(scope="object"\|"shared", close=True, check=True, require=None) -> SculptCommit`, `discard()`, `closed`, `result`. A context manager: commits on success, discards on exception. One commit is one step of `scene.history`. |
+| `geometry.sculpt_source() -> SourceSculptSession` | The same on a procedural geometry's stored base mesh (its modifiers stay); `commit(check=True, require=None)` |
+| `SculptCommit` | `mesh`, `objects`, `changed`, `report` (`MeshReport`), `operations`, `diagnostics`, `to_dict()` |
+| `SculptMesh` | `SculptMesh.from_mesh(mesh)`, `to_mesh()`; operations (atomic, undoable, each returns a `SculptResult`): `stroke(stroke)`, `set_mask(value=1, *, vertices, sphere, box, groups, mode)`, `invert_mask()`, `clear_mask()`, `remesh(target_length, *, iterations=5, flips="valence", relax=0.5, project=True)`, `voxel_remesh(voxel_size, *, mode="solid", thickness=None, max_voxels=None)`, `symmetrize(axis="x", *, direction="+", mode="auto", tolerance=None)`; `undo()`, `redo()`, `history`, `history_nbytes`, `can_undo`, `can_redo`; queries `vertex_count`, `triangle_count`, `positions()`, `triangles()`, `mask()`, `bounds()`, `vertex_normals(ids)`, `raycast(origin, direction)`, `nearest_point(point)`, `vertices_in_sphere(center, radius)`; `world_matrix`; `should_stop` (a callable polled between dabs, passes and voxel batches: true stops with `CANCELLED`, rolled back); `max_history`, `max_history_bytes` |
+| `SculptResult` | `operation`, `data`, `timings`, `diagnostics`, `to_dict()` |
+| `Brush`, `Brush.from_dict(d)`, `KINDS`, `FALLOFFS` | brush settings (validated): `kind`, `radius` (world units), `strength`, `direction`, `falloff`, `hardness`, `spacing`, `normal`, `normal_radius`, `falloff_shape`, `geodesic`, `front_faces_only`, `automask`, `use_mask`, `symmetry`, `pressure`, `smooth_method`, `poisson_ratio`, `dyntopo` |
+| `Stroke`, `Stroke.from_dict(d)` | a brush and its path (`path`, `space`, `project`, `view`, `resample`); `to_dict()` |
+| `check_mesh(positions, triangles, *, self_intersections=False, welded=False) -> MeshReport` | validity: `summary` (counts, flags, `tier`, volume, edge lengths, smallest angle), `diagnostics` (stable codes), `not_evaluated`, `status`, `ok`, `to_dict()`; `TIERS` = `("valid", "manifold", "closed", "solid")` |
+| `aether3d.run_sculpt_script(scene, script, *, label=None)` | apply an `aether3d.sculpt-script` atomically (one undo step); `aether3d.sculpt.check_script(script)`; `aether3d.sculpt.schema.sculpt_script_schema()` |
 
 ## Procedural geometry
 
@@ -545,6 +573,8 @@ All deliberate errors derive from `AetherError`.
 | `UnsupportedFeatureError` | `ValueError` | A conversion cannot represent some content faithfully; `.diagnostics` lists every item |
 | `ResourceLimitError` | `ValueError` | Input exceeds an `ImportLimits` limit |
 | `EditError` | `ValueError` | An editing operation cannot be applied; nothing changed. `.code` (stable), `.elements` (offending ids by kind), `.hint` |
+| `SculptError` | `EditError` | A sculpt operation or commit cannot be carried out (`VOXEL_NOT_WATERTIGHT`, `REMESH_TOO_DENSE`, `BELOW_VALIDITY_TIER`, `CANCELLED`, `STALE_SESSION`, ...; see [MODELING.md](MODELING.md)); nothing changed. `.code`, `.hint` |
+| `SculptScriptError` | `ValueError` | A sculpt script is malformed or a step failed (`INVALID_SCRIPT`, `INVALID_ARGUMENT`, `BUDGET_EXCEEDED`, or the step's own code); nothing changed. `.code`, `.location` (e.g. `sculpts[0].operations[2]`), `.details`, `to_dict()` |
 | `ScriptError` | `ValueError` | An edit or procedural script is malformed, or a step failed. `.code`, `.location` (e.g. `edits[0].operations[3]`), `.details` |
 | `RenderError` | `ValueError` | A camera, light, appearance, world or render setting is invalid, or rendering failed (including GPU problems: `GPU_UNAVAILABLE`, `GPU_ADAPTER_NOT_FOUND`, `GPU_DEVICE_LOST`, ...; see [GPU.md](GPU.md#errors-diagnostics-and-debugging)); nothing changed and no file was written. `.code` (stable), `.location`, `.hint`, `.details` |
 | `ProceduralError` | `ValueError` | A procedural definition, parameter or evaluation is invalid; nothing changed. `.code` (stable), `.location` (e.g. `geometry[Tower].modifiers[Row].params.count`), `.hint`, `.details` |

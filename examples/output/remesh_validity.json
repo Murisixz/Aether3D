@@ -1,0 +1,184 @@
+{
+  "aether3d": "0.13.0",
+  "quick": false,
+  "voxel_size": 0.025,
+  "target_length": 0.03,
+  "stages": {
+    "input": {
+      "tier": "closed",
+      "triangles": 9952,
+      "components": 3,
+      "self_intersecting_pairs": 409,
+      "volume": 3.0345609388087365,
+      "min_angle_degrees": 3.73,
+      "triangles_below_20_degrees": 0.2315,
+      "triangles_below_30_degrees": 0.4164,
+      "edge_length_mean": 0.0527,
+      "edge_length_cv": 1.0816,
+      "valence_6": 0.9325
+    },
+    "dyntopo": {
+      "tier": "closed",
+      "triangles": 12840,
+      "components": 3,
+      "self_intersecting_pairs": 927,
+      "volume": 3.1075235672729793,
+      "min_angle_degrees": 3.04,
+      "triangles_below_20_degrees": 0.1377,
+      "triangles_below_30_degrees": 0.2156,
+      "edge_length_mean": 0.0467,
+      "edge_length_cv": 1.0608,
+      "valence_6": 0.7196
+    },
+    "voxel": {
+      "tier": "solid",
+      "triangles": 71728,
+      "components": 1,
+      "self_intersecting_pairs": 0,
+      "volume": 2.6766760041608344,
+      "min_angle_degrees": 0.47,
+      "triangles_below_20_degrees": 0.2401,
+      "triangles_below_30_degrees": 0.3852,
+      "edge_length_mean": 0.0244,
+      "edge_length_cv": 0.4049,
+      "valence_6": 0.6213,
+      "grid": [
+        119,
+        115,
+        74
+      ]
+    },
+    "isotropic": {
+      "tier": "solid",
+      "triangles": 41290,
+      "components": 1,
+      "self_intersecting_pairs": 0,
+      "volume": 2.674538285135288,
+      "min_angle_degrees": 26.75,
+      "triangles_below_20_degrees": 0.0,
+      "triangles_below_30_degrees": 0.0003,
+      "edge_length_mean": 0.0298,
+      "edge_length_cv": 0.1115,
+      "valence_6": 0.8342,
+      "operations": {
+        "splits": 2440,
+        "collapses": 17659,
+        "flips": 6520,
+        "relaxed": 218338
+      },
+      "distance_to_voxel_surface_max": 1.0755383178308227e-07
+    },
+    "union_volume_monte_carlo": {
+      "volume": 2.677718042322253,
+      "standard_error": 0.009465743174155675
+    }
+  },
+  "seconds": {
+    "dyntopo": 1.521,
+    "voxel_remesh": 3.569,
+    "isotropic_remesh": 13.131
+  },
+  "render": {
+    "backend": {
+      "name": "gpu",
+      "requested": "auto",
+      "api": "wgpu",
+      "versions": {
+        "wgpu": "0.32.0",
+        "wgpu_native": "29.0.1.1"
+      },
+      "adapter": {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "vendor": "NVIDIA",
+        "vendor_id": 4318,
+        "device_id": 10400,
+        "type": "discrete",
+        "backend": "vulkan",
+        "driver": "615.78.08",
+        "software": false
+      },
+      "antialiasing": {
+        "msaa": 4,
+        "supersample": 1,
+        "samples_per_pixel": 4
+      },
+      "shadows": {
+        "lights": null,
+        "map_size": 2048,
+        "bias": 0.5,
+        "normal_offset": 0.5,
+        "pcf_radius": 1,
+        "maps": [
+          {
+            "light": "Key",
+            "id": "6f495125-6084-49b1-b7be-f0a612135027",
+            "map_size": 2048,
+            "texel_size": 0.0019402683689072966,
+            "extent": [
+              3.9736696195221435,
+              3.9736696195221435,
+              3.491656440825122
+            ],
+            "depth_range": 3.491656440825122
+          },
+          {
+            "light": "Fill",
+            "id": "322086a2-4640-4951-b59f-7c69fca6aac2",
+            "map_size": 2048,
+            "texel_size": 0.0016117395614228015,
+            "extent": [
+              3.3008426217938975,
+              3.3008426217938975,
+              3.7280015761187055
+            ],
+            "depth_range": 3.7280015761187055
+          }
+        ]
+      },
+      "device_created": true,
+      "device_init_seconds": 0.3506678260018816,
+      "resources": {
+        "mesh_uploads": 1,
+        "mesh_upload_bytes": 667680,
+        "mesh_cache": {
+          "meshes": 1,
+          "bytes": 667680,
+          "budget": 1073741824,
+          "uploads": 1,
+          "upload_bytes": 667680,
+          "hits": 0,
+          "evictions": 0
+        },
+        "materials": 4,
+        "textured_materials": 0,
+        "texture_bindings": 0,
+        "texture_program_instructions": 0,
+        "material_data_bytes": 1660,
+        "images": 0,
+        "texel_uploads": 1,
+        "texel_upload_bytes": 256,
+        "texel_upload_seconds": 7.12750043021515e-05,
+        "texel_pool": {
+          "images": 0,
+          "bytes": 256,
+          "uploads": 1,
+          "upload_bytes": 256
+        },
+        "target_bytes": 99219456,
+        "targets_allocated": true,
+        "frame_buffer_bytes": 2364,
+        "frame_buffers_kept": true,
+        "frame_buffer_writes": 8,
+        "frame_buffer_bytes_written": 2364,
+        "color_format": "rgba32float",
+        "pipelines": 5
+      }
+    },
+    "size": [
+      720,
+      600
+    ]
+  },
+  "failures": []
+}

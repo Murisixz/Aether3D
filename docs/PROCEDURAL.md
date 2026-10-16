@@ -189,7 +189,13 @@ outward-facing.
 ### `mirror`
 
 `axes` (`x`…`xyz`, applied in X, Y, Z order), `origin` (a point on every
-plane), `merge` (true), `merge_threshold` (1e-4), `mirror_u`, `mirror_v`.
+plane), `merge` (true), `merge_threshold` (1e-4), `mirror_u`, `mirror_v`,
+`bisect` (false), `bisect_flip` (false).
+
+With `bisect`, the geometry is first cut at each plane with the editing
+engine's bisect and only the positive side (with `bisect_flip`, the negative
+side) is kept, so geometry crossing the plane no longer overlaps its copy
+([MODELING.md](MODELING.md#procedural-creases-and-mirror-bisect)).
 
 Each axis adds a reflected, re-wound copy of the current geometry. With
 `merge`:
@@ -243,7 +249,7 @@ consistently wound; a vertex whose normal is undefined fails with
 
 ### `subdivision`
 
-`levels` (0–6), `shade_smooth`.
+`levels` (0–6), `shade_smooth`, `crease` (0–10, default 0).
 
 This is Catmull–Clark subdivision:
 
@@ -257,16 +263,20 @@ This is Catmull–Clark subdivision:
 Each step turns every n-gon into n quads: a cube becomes 24 quads at level 1,
 with its corners at ±5/9. UVs are interpolated linearly within each face, so
 UV seams are kept. Sharp edges are carried to the corresponding sub-edges as
-shading information (subdivision itself has no creases). The input must be
-edge-manifold and consistently wound.
+shading information. With `crease` > 0 they are also semi-sharp creases
+(DeRose, Kass and Truong 1998): sharp for `crease` levels (boundary rules),
+blended for fractions; 0 keeps the smooth result of earlier versions bit for
+bit. The input must be edge-manifold and consistently wound.
 
 ### `bevel`
 
-`width`, `limit` (`all`, `angle`, `sharp`), `angle` (degrees; default 30).
+`width`, `limit` (`all`, `angle`, `sharp`), `angle` (degrees; default 30),
+`segments` (1-64, default 1), `profile` (0.01-0.99, default 0.5).
 
-This is the mesh editing engine's chamfer bevel ([EDITING.md](EDITING.md)),
-applied to the selected edges with the same geometry, attribute and error
-rules. Error codes such as `BEVEL_WIDTH_TOO_LARGE` or
+This is the mesh editing engine's bevel ([EDITING.md](EDITING.md)): a chamfer,
+or with `segments` > 1 a rounded strip whose cross-section is a superellipse
+`profile` ([MODELING.md](MODELING.md#rounded-bevels)), applied to the selected
+edges with the same geometry, attribute and error rules. Error codes such as `BEVEL_WIDTH_TOO_LARGE` or
 `BEVEL_UNSUPPORTED_VERTEX` pass through unchanged. `limit="angle"` selects
 edges whose two faces meet at `angle` degrees or more; `sharp` selects edges
 marked sharp, for example a cylinder's cap rims. If no edges match, the
@@ -610,15 +620,14 @@ Diagnostics (results that are valid but noteworthy):
   not reported, for example an array with overlapping copies, or a mirror of
   geometry that spans the plane, which *is* reported as `MIRROR_OVERLAP`.
   Boolean operands should not overlap themselves.
-- **Mirror has no bisect.** Geometry crossing a mirror plane is mirrored
-  whole. Cut it first (for example with a boolean intersection) to keep one
-  side.
-- **Subdivision** has no edge creases or weights, and UVs are subdivided
-  linearly per face rather than smoothed.
-- **Bevel** is a single-segment chamfer with the editing engine's topology
-  rules: manifold edges only; vertices with three or more bevelled edges need
-  a planar corner. It is the slowest modifier on large meshes (see the
-  benchmarks).
+- **Mirror without `bisect`** mirrors geometry crossing a plane whole
+  (`MIRROR_OVERLAP`); set `bisect` to cut it first.
+- **Subdivision** creases apply one sharpness to every edge marked sharp
+  (no per-edge weights), and UVs are subdivided linearly per face rather than
+  smoothed.
+- **Bevel** follows the editing engine's topology rules (manifold edges; each
+  vertex one fan, possibly open). It is the slowest modifier on large meshes
+  (see the benchmarks).
 - **Boolean** results are triangulated (polygons are not rebuilt). Inputs
   must be closed solids, and the operation needs `manifold3d`.
 - **Instancing:** evaluated meshes are shared per node and resolved inputs.

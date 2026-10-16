@@ -8,15 +8,20 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.12.0 (visual feedback and automatic corrections).** Aether3D provides:
+> **Status: v0.13.0 (advanced modeling and sculpting).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
 > - standards-compliant **glTF 2.0 / GLB import and export**;
 > - structured **geometry inspection**;
 > - a programmable **polygon modeling engine** (selection, transforms,
->   extrude, inset, bevel, loop cuts, subdivision, merging, splitting,
->   validation, undo);
+>   extrude, inset, rounded multi-segment bevels, loop cuts, knife and bisect,
+>   bridges and hole filling, slides, dissolves, sweeps, shrinkwrap, normals
+>   tools, cleanup, subdivision, merging, splitting, validation, undo);
+> - **sculpting**: 15 brushes with masks, symmetry and pressure as data, dynamic
+>   topology, isotropic and voxel remeshing, symmetrize and exact validity tiers,
+>   from Python, JSON scripts, the CLI and MCP -- one stroke one undo step, a
+>   million-vertex mesh in interactive time;
 > - a **non-destructive procedural geometry engine**: parametric primitives,
 >   modifier stacks (transform, mirror, array, solidify, Catmull–Clark
 >   subdivision, bevel, solid booleans), typed parameters with safe
@@ -164,6 +169,44 @@ See [docs/EDITING.md](docs/EDITING.md).
 [`examples/minecraft_hero.py`](examples/minecraft_hero.py) models a blocky
 hero and sword entirely with editing operations, validates them, exports a
 GLB, and checks it with the Khronos validator and, optionally, Blender.
+
+### Advanced modeling and sculpting
+
+```python
+from aether3d import Scene, create_sphere
+
+scene = Scene()
+head = scene.add_object("Head", mesh=create_sphere(1.0, 64, 32))
+with head.sculpt() as s:  # one undo step when the block ends
+    s.voxel_remesh(0.04)  # an even base without poles
+    s.remesh(0.045, iterations=3)
+    s.stroke(
+        {
+            "brush": {"kind": "clay", "radius": 0.25, "strength": 0.3, "symmetry": "x"},
+            "path": [[0.3, -0.9, 0.3], [0.5, -0.8, 0.4]],
+        }
+    )
+print(s.result.report.summary["tier"])  # solid: closed, outward, no self-intersection
+```
+
+- **Modeling tools.** Rounded bevels with profiles, knife and bisect cuts, bridges and
+  hole filling, slides, dissolves, sweeps, shrinkwrap and normals tools, each an
+  atomic, undoable `EditableMesh` operation that refuses what it cannot do exactly.
+- **Sculpting.** Draw, clay, inflate, flatten, scrape, pinch, crease, layer, grab,
+  elastic (Kelvinlets), snake hook, twist, smooth and mask brushes; masks, automasking,
+  symmetry and pressure as data; brush settings in world units under any transform.
+- **Topology on demand.** Dynamic topology that keeps UVs, seams, groups and hard edges;
+  isotropic remeshing; voxel remeshing that fuses overlapping parts; symmetrize.
+- **Measured validity.** Tiers (`valid` < `manifold` < `closed` < `solid`) decided with
+  exact predicates; `require=` refuses a result below its tier before anything changes.
+- **For agents.** Sculpt scripts (atomic, with limits), `aether3d sculpt`, the MCP tools
+  `run_script` and `inspect_mesh`, and the visual feedback check `mesh_validity`.
+
+See [docs/MODELING.md](docs/MODELING.md) and the examples
+[`hard_surface.py`](examples/hard_surface.py),
+[`organic_sculpt.py`](examples/organic_sculpt.py),
+[`remesh_validity.py`](examples/remesh_validity.py) and
+[`mcp_sculpt_agent.py`](examples/mcp_sculpt_agent.py) (renders in `examples/output/`).
 
 ### Procedural geometry
 
@@ -416,12 +459,13 @@ pip install -e ".[mcp]"
 claude mcp add aether3d -- aether3d mcp serve --workspace "$PWD"   # Claude Code
 ```
 
-The server gives MCP clients 20 tools -- `execute_scene_plan`, `spatial_query`,
+The server gives MCP clients 21 tools -- `execute_scene_plan`, `spatial_query`,
 `render_preview` (the GPU rasterizer when it works, the CPU one otherwise, and it says
-which), `history`, `scene_save`, `export_scene`, the visual feedback tools
-(`observe_scene`, `diagnose_scene`, `propose_corrections`, `apply_corrections`,
-`feedback_loop`), ... -- plus the plan and feedback guides, their JSON Schemas and
-example plans as resources. It speaks stdio only, keeps every file inside the
+which), `history`, `scene_save`, `export_scene`, `run_script` (edit, procedural, scene and
+sculpt scripts), `inspect_mesh`, the visual feedback tools (`observe_scene`,
+`diagnose_scene`, `propose_corrections`, `apply_corrections`, `feedback_loop`), ... --
+plus the plan, feedback and sculpting guides, their JSON Schemas and example plans as
+resources. It speaks stdio only, keeps every file inside the
 workspace, and never runs code from its arguments.
 
 ![An agent's castle: built with two mistakes, found by spatial queries, fixed, undone, redone, previewed and exported over MCP](examples/output/mcp_castle_agent.png)
@@ -596,6 +640,8 @@ $ aether3d export world.aether world.glb       # .aether (or .gltf) -> .glb / .g
 $ aether3d import model.gltf model.aether      # add --allow-lossy to drop unsupported content
 $ aether3d topology world.aether --object Crate --json     # polygon topology + validation
 $ aether3d edit world.aether script.json --json            # declarative JSON edit script
+$ aether3d sculpt run head.aether shape.json --json        # sculpt script (atomic, one undo step)
+$ aether3d sculpt check head.aether --require closed       # validity tiers (exit 3 if below)
 $ aether3d procedural run castle.aether build.json         # declarative procedural script
 $ aether3d procedural set castle.aether tower_count=8      # change parameters (validated)
 $ aether3d procedural inspect castle.aether --evaluate     # parameters, nodes, stacks
@@ -736,6 +782,7 @@ see [docs/PERFORMANCE.md](docs/PERFORMANCE.md#phase-3-native-kernels-rust).
 | [docs/GLTF.md](docs/GLTF.md) | glTF 2.0 import/export: features, axis conversion, limitations, safety |
 | [docs/INSPECTION.md](docs/INSPECTION.md) | Geometry inspection reports and diagnostic codes |
 | [docs/EDITING.md](docs/EDITING.md) | Mesh editing: topology, ids, sessions, operations, scripts, limitations |
+| [docs/MODELING.md](docs/MODELING.md) | Advanced modeling and sculpting: bevels, cuts, bridges, slides, sweeps; the sculpt mesh, brushes, strokes, masks, symmetry, dynamic topology, remeshing, symmetrize, validity tiers, scripts, CLI, MCP, history, design, performance, limitations |
 | [docs/PROCEDURAL.md](docs/PROCEDURAL.md) | Procedural geometry: parameters, expressions, modifiers, caching, scripts, CLI, limitations |
 | [docs/RENDERING.md](docs/RENDERING.md) | Cameras, lights, the CPU renderer: pipeline, conventions, shading model, API, CLI, verification, performance, limitations |
 | [docs/GPU.md](docs/GPU.md) | The GPU backend: installation, adapters, pipeline, antialiasing, shadows, memory, CPU/GPU differences, benchmarks, debugging, the backend decision |

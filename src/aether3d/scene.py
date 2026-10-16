@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from .procedural import ProceduralGeometry, ProceduralSystem
     from .rendering import RenderResult
     from .rendering.framing import Framing
+    from .sculpt.session import SculptSession
     from .spatial import (
         CameraRay,
         Containment,
@@ -892,6 +893,26 @@ class SceneObject:
                 "obj.geometry.edit_source(), or obj.bake() it first",
             )
         return EditSession(self, weld=weld, quads=quads)
+
+    def sculpt(self) -> SculptSession:
+        """Start a :class:`~aether3d.sculpt.SculptSession` on this object's mesh.
+
+        Brush strokes, masks and remeshing work on a sculpt mesh; ``commit()`` assigns
+        the result as one step of the scene's history (to this object only, unless
+        ``scope="shared"``). See ``docs/MODELING.md``.
+        """
+        from .errors import SculptError
+        from .sculpt.session import SculptSession
+
+        self._require_scene()
+        if self._geometry is not None:
+            raise SculptError(
+                "PROCEDURAL_OBJECT",
+                f"object {self._name!r} is procedural; its mesh is regenerated from its geometry",
+                hint="sculpt the base mesh with obj.geometry.sculpt_source(), or obj.bake() it "
+                "first",
+            )
+        return SculptSession(self)
 
     # -- misc --------------------------------------------------------------
 

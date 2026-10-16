@@ -3,7 +3,10 @@
 Aether3D 0.3.0 adds a programmable polygon-modeling engine: create, select,
 transform and reshape vertices, edges and faces from Python or from JSON
 scripts on the command line, then commit the result back to a scene object
-as an ordinary immutable `Mesh`.
+as an ordinary immutable `Mesh`. Version 0.13.0 adds advanced modeling
+operators (rounded bevels, cuts, bridges, slides, sweeps, normals tools) and a
+separate sculpting system (brushes, dynamic topology, remeshing): see
+[MODELING.md](MODELING.md).
 
 ```python
 from aether3d import Scene
@@ -238,7 +241,7 @@ the offending `elements`, and a `hint`.
 | --- | --- | --- |
 | `extrude_faces(faces, distance \| offset=, mode="region"\|"individual")` | **Region:** each connected group moves along its area-weighted normal (or by `offset`), with walls along its outline. **Individual:** every face is extruded on its own. Extruded faces keep their ids. `data["side_faces"]` are the walls; `data["vertices"]` maps old boundary vertices to their new copies. Works on open surfaces too. A closed shell has no outline, so it is moved (`EXTRUDE_WITHOUT_BOUNDARY`). | `ZERO_EXTRUSION`, `DEGENERATE_RESULT` (e.g. an offset parallel to a wall), `INCONSISTENT_WINDING`, `NOT_MANIFOLD` |
 | `inset_faces(faces, thickness, depth=, mode="individual"\|"region")` | Shrinks faces inward by `thickness`, measured perpendicular to each edge within the face (mitred corners), and fills the border with quads. `depth` then moves the inset faces along their normal. Region mode insets only the outline of each connected group. | `INSET_TOO_LARGE` (a face would invert, fold or self-intersect, or an edge would reverse), `UNSUPPORTED_TOPOLOGY` (closed shell; an outline touching itself) |
-| `bevel_edges(edges, width)` | Chamfer: in every adjacent face the new edge is parallel to the old one at perpendicular distance `width`. Mitres where two bevelled edges share a face; corners slide along unbevelled edges. Holes at corners where three or more points meet are filled (e.g. the triangle at a fully bevelled box corner); degenerate corners merge into the chamfer. `data["faces"]` are the chamfers, `data["corner_faces"]` the fills. | `NOT_MANIFOLD`, `BEVEL_UNSUPPORTED_VERTEX` (open boundary, non-manifold fan, fewer than 3 edges), `BEVEL_WIDTH_TOO_LARGE`, `UNSUPPORTED_OPERATION` (`segments > 1`) |
+| `bevel_edges(edges, width, segments=1, profile=0.5)` | In every adjacent face the new edge is parallel to the old one at perpendicular distance `width`. Mitres where two bevelled edges share a face; corners slide along unbevelled edges. `segments=1` is a chamfer; more segments make a rounded strip whose cross-section is a superellipse `profile` (0.5 circular, 0.25 straight, toward 1 square; see [MODELING.md](MODELING.md#rounded-bevels)). Corners: profiles shared along bevelled paths, merged into the face they lie in, planar polygons, grid patches where every edge of a vertex is bevelled (sphere octants on box corners), else fans; flat corners subdivide both sides (no T-junctions). Vertices may lie on an open boundary (one manifold fan). `data["faces"]` are the strips, `data["corner_faces"]` the corners. | `NOT_MANIFOLD`, `BEVEL_UNSUPPORTED_VERTEX` (non-manifold or several fans, fewer than 3 edges), `BEVEL_WIDTH_TOO_LARGE` |
 | `subdivide_faces(faces, cuts=1)` | Shape-preserving. Quads become a `(cuts+1)²` grid (bilinear); triangles become `(cuts+1)²` triangles (barycentric); larger polygons become a fan of quads around their center (`cuts=1` only). Shared edges are split once and neighbours gain the new vertices. `data["faces"]` maps each face to its pieces. | `UNSUPPORTED_TOPOLOGY` (n-gon with `cuts > 1`) |
 | `loop_cut(edge, cuts=1, factor=)` | Cuts new edge loops across the ring of quads through `edge` (see `edge_ring`). The ring stops at boundaries and non-quads, whose faces simply gain the vertices; closed rings wrap around. With `cuts=1`, `factor` is measured from the lower-id vertex of `edge`. `data["edges"]` are the new loops. | `NO_QUAD_RING`, `NON_ORIENTABLE_RING` (a Möbius ring), `UNSUPPORTED_TOPOLOGY` (the ring crosses a quad twice) |
 | `merge_vertices(vertices, at="center"\|"keep"\|xyz, keep=)` | Merges into one vertex; the survivor is `keep`, or the lowest id. Faces that collapse below 3 vertices are deleted; merged corner attributes are averaged. Zero-area, duplicate or non-manifold results are reported as diagnostics. | `MERGE_INVALID_FACE` (a face would use the vertex twice, e.g. opposite quad corners), `TOO_FEW_ELEMENTS` |
@@ -253,6 +256,27 @@ the offending `elements`, and a `hint`.
 | `triangulate_faces(faces=None)` | Ear clipping that keeps winding and handles concave and collinear vertices; the first triangle keeps the id | `TRIANGULATION_FAILED` |
 | `flip_faces(faces)` | Reverses winding and negates stored normals | |
 | `set_smooth(faces, smooth)`, `set_sharp(edges, sharp)` | Shading controls (see below) | |
+
+### Advanced modeling operations (0.13)
+
+These are described in detail, with their geometry and refusal rules, in
+[MODELING.md](MODELING.md).
+
+| Operation | Behaviour and ids | Fails cleanly with |
+| --- | --- | --- |
+| `bisect(point, normal, faces=, clear="none"\|"front"\|"back", fill=False, threshold=, space=)` | Cuts faces with a plane. Each vertex is classified once (on the plane within `threshold`), crossed edges are split, and each face is split by its chord. Concave faces crossed more than twice are triangulated first (`BISECT_TRIANGULATED`). `clear` deletes one side, and `fill` closes the cut. `data`: `cut_vertices`, `cut_edges`, `front`, `back`, `fill_faces`. | `ValidationError` (zero normal, `fill` without `clear`) |
+| `knife_project(points, direction, faces=, closed=False, through=True, space=)` | Cuts along a polyline swept along `direction`. Paths through a face split it, and the polyline's corners inside faces become vertices. Cuts that end inside a face are not applied (`KNIFE_PARTIAL_CUT`). `through=False` cuts only faces whose front faces the cut. | `KNIFE_INVALID_CUT` (crossing paths, invalid pieces) |
+| `fill_holes(edges=None, mode="auto"\|"ngon"\|"fan"\|"triangulate", max_sides=0)` | Closes boundary loops: a polygon, a fan, or Liepa's minimum-weight triangulation (up to 64 vertices). `"auto"` picks a polygon for planar, simple loops. | `NOT_BOUNDARY`, `FILL_NOT_SIMPLE`, `FILL_TOO_LARGE`, `AMBIGUOUS_BOUNDARY` |
+| `bridge_edge_loops(edges, segments=1, twist=0)` | Joins two boundary loops or chains with quads, or with triangles when the vertex counts differ. The pairing minimizes the rung lengths. | `NOT_BOUNDARY`, `BRIDGE_NEEDS_TWO_LOOPS`, `BRIDGE_LOOPS_TOUCH`, `BRIDGE_SEGMENTS_NEED_EQUAL_COUNTS`, `NON_MANIFOLD_RESULT` |
+| `slide_edges(edges, factor, even=False, correct_uvs=True)`, `slide_vertex(vertex, toward, factor)` | Moves chains of edges (or one vertex) along the edges leaving them. UVs follow exactly along the rails. | `SLIDE_NOT_A_CHAIN`, `SLIDE_NO_RAIL`, `SLIDE_FOLDS_FACE`, `NOT_ADJACENT` |
+| `dissolve_vertices(vertices)`, `dissolve_faces(faces)`, `limited_dissolve(angle=5, faces=, delimit=)` | Removes vertices and merges the faces around each; merges regions into their outline; dissolves nearly coplanar edges and straight-run vertices without crossing groups, seams or sharp edges | `DISSOLVE_INVALID_FACE` |
+| `connect_vertex_path(vertices)`, `connect_vertices(vertices)` | Splits the faces between consecutive (or paired) vertices | `CONNECT_NO_SHARED_FACE`, `AMBIGUOUS_CONNECTION` |
+| `extrude_edges(edges, offset)` | Walls from boundary edges, wound like their faces | `NOT_BOUNDARY`, `ZERO_EXTRUSION` |
+| `spin(faces, angle, steps, axis=, center=, merge=True)` | Sweeps a region around an axis. A merged full turn closes the sweep (a torus from a disc). | `SPIN_NEEDS_ONE_REGION`, `SPIN_WITHOUT_BOUNDARY` |
+| `add_lathe(profile, segments=32, angle=360, smooth=True)` | Builds a surface of revolution from `(radius, height)` points, with UVs | `ValidationError` |
+| `shrinkwrap(vertices, target, mode="nearest"\|"project", direction=, offset=, max_distance=)` | Moves vertices onto a `Mesh` or another scene object (exact closest point, or the first hit along a direction) | `SHRINKWRAP_MISSED` (diagnostic), `EMPTY_TARGET` |
+| `set_auto_smooth(angle=30)`, `recalculate_normals(inside=False)`, `set_weighted_normals(mode=, weight=50)` | Marks creases sharp by angle; makes winding consistent and outward (signed volume, or a reported heuristic for open pieces); writes custom normals weighted toward large faces | `NON_ORIENTABLE`, `ORIENTATION_HEURISTIC` (diagnostics), `NO_NORMAL_LAYER` |
+| `cleanup(merge_distance=, zero_length=True, duplicates=True, loose=True, fix_winding=False, fill_holes=False)` | Explicit repairs with an auditable report (`data["report"]`). Zero-area faces and non-manifold edges are counted, never guessed at. | `CLEANUP_UNRESOLVED` (diagnostic) |
 
 ## Attributes: UVs and normals
 
@@ -452,10 +476,10 @@ linear in the size of what it touches. Highlights for a 316x316 grid slab
 
 ## Limitations
 
-- **Bevel** is single-segment (chamfer) only. It needs manifold edges whose
-  vertices have closed, consistently wound fans of at least 3 edges, so
-  bevelling at open boundaries is not supported. Where two faces disagree on a
-  slide position, their average is used (`BEVEL_UNEVEN_WIDTH`).
+- **Bevel** needs manifold edges whose vertices have one consistently wound
+  fan (closed, or open at a boundary) of at least 3 edges. Where two faces
+  disagree on a slide position, their average is used (`BEVEL_UNEVEN_WIDTH`).
+  There is no width clamping: a width that would fold a face is refused.
 - **N-gons are not persisted.** `.aether` and glTF store triangles. Committing
   triangulates, and the next session rebuilds quads (`quads=True`) where
   triangle pairs are coplanar and attribute-consistent. Non-planar quads and
@@ -464,9 +488,10 @@ linear in the size of what it touches. Highlights for a 316x316 grid slab
   (hand-authored) normals survive only where geometry is untouched.
 - **Extrusion side walls get degenerate UVs** (reported); no automatic UV
   unwrapping.
-- **No self-intersection test** between different faces, and no automatic
-  repair operations. Problems are reported, not fixed.
+- **No self-intersection test** between different faces in `validate()`.
+  Repairs are explicit (`cleanup` reports what it changed); nothing is repaired
+  automatically.
 - **`merge_by_distance` and `move_along_normals`** use plain distances and
   vertex normals. There is no "even thickness" option.
-- **No edge slide, knife, bridge, spin, fill, or rounded bevels** in this
-  stage.
+- **Knife cuts that end inside a face** are not applied: a polygon cannot hold
+  a dangling edge (`KNIFE_PARTIAL_CUT`).

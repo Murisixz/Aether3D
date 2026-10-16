@@ -660,3 +660,112 @@ One measured change: the image statistics reduced the last axis of 8-bit images
 (`max`/`any` over RGB), which NumPy does slowly; elementwise operations over the three
 channels give the same results, 2.5 times faster on the room's render (9.31 -> 3.71 ms).
 
+## Advanced modeling and sculpting (0.13.0)
+
+Stage 13 added no native kernel and no GPU code. The design record
+([research/2026-10-stage13/DESIGN.md](../research/2026-10-stage13/DESIGN.md)) measured
+prototypes first and chose NumPy, data-oriented, for sculpting, dynamic topology and
+remeshing, and Python on the editing engine for the modeling operators. The measurements
+(`benchmarks/bench_sculpt.py`, saved as `benchmarks/results/stage13-sculpt.json`; the
+same file's `baseline` group on `main` 35e5a23 before the stage is
+`benchmarks/results/stage13-baseline.json`) run every group and size in its own process,
+on UV spheres of about 10k, 100k and 1M vertices (an i9-12900H laptop, Python 3.14, NumPy 2.5; commit 5323c44):
+
+| | 10k vertices | 100k | 1M |
+| --- | ---: | ---: | ---: |
+| mesh (vertices / triangles) | 10,011 / 19,320 | 101,025 / 199,808 | 1,001,820 / 1,996,568 |
+| `SculptMesh.from_mesh` | 0.01 s | 0.16 s | 1.89 s |
+| commit after one dab (`to_mesh`) | 1.06 ms | 9.52 ms | 99.9 ms |
+| commit after a dynamic-topology dab | 1.67 ms | 18.6 ms | 188 ms |
+| one `draw` dab, radius 0.03 (vertices moved) | 0.74 ms (2) | 1.53 ms (26) | 2.68 ms (249) |
+| one `draw` dab, radius 0.1 (vertices moved) | 1.39 ms (26) | 2.33 ms (271) | 7.30 ms (2,715) |
+| one `draw` dab, radius 0.3 (vertices moved) | 1.86 ms (241) | 6.62 ms (2,562) | 44.9 ms (23,675) |
+| 100-dab `draw` stroke, radius 0.1, per dab | 0.92 ms | 1.57 ms | 6.54 ms |
+| 100-dab `clay` stroke, radius 0.1, per dab | 0.78 ms | 1.46 ms | 5.57 ms |
+| 100-dab `smooth` stroke, radius 0.1, per dab | 2.80 ms | 6.00 ms | 21.1 ms |
+| 100-dab `grab` stroke, radius 0.1, per dab | 0.26 ms | 0.95 ms | 6.77 ms |
+| undo of a 100-dab stroke | 1.28 ms | 4.05 ms | 23.5 ms |
+| commit after a 100-dab stroke | 1.46 ms | 12.5 ms | 121 ms |
+| journal of four strokes | 0.4 MiB | 3.1 MiB | 27.4 MiB |
+| symmetry none: per dab | 0.93 ms | 1.63 ms | 6.68 ms |
+| symmetry x: per dab | 1.45 ms | 2.96 ms | 12.5 ms |
+| symmetry xy: per dab | 2.04 ms | 4.66 ms | 19.3 ms |
+| dynamic topology, brush scaled to the density: per dab (radius) | 13.3 ms (0.15) | 16.0 ms (0.0466) | 20.1 ms (0.0148) |
+| dynamic topology, radius 0.15: per dab | 13.2 ms | 85.7 ms | 870 ms |
+| ... triangles before -> after 30 dabs | 19,320 -> 20,136 | 199,808 -> 206,958 | 1,996,568 -> 2,064,030 |
+| ... undo | 3.08 ms | 16.3 ms | 137 ms |
+| isotropic `remesh` (iterations) | 1.77 s (3) | 27.39 s (3) | 199 s (1) |
+| `check_mesh` | 0.04 s | 0.49 s | 6.11 s |
+| `check_mesh` with the exact self-intersection test | 0.36 s | 3.78 s | 47.56 s |
+| peak memory, MiB (dab / stroke / remesh / validity) | 61 / 61 / 166 / 89 | 139 / 138 / 544 / 239 | 886 / 885 / 3440 / 1702 |
+
+Voxel remeshing of the 100k sphere:
+
+| Voxel remesh of the 100k sphere | voxel size | triangles out | time | result | peak MiB |
+| --- | ---: | ---: | ---: | --- | ---: |
+| about 10k triangles | 0.06 | 10,436 | 3.92 s | closed | 416 |
+| about 100k triangles | 0.019 | 104,348 | 5.58 s | closed | 460 |
+| about 1M triangles | 0.006 | 1,047,020 | 14.39 s | closed | 1224 |
+
+The modeling operators on the editing engine:
+
+| Modeling operator (`EditableMesh`) | 10k faces | 100k faces |
+| --- | ---: | ---: |
+| 3-segment bevel of a latitude ring (edges) | 69.3 ms (140) | 411 ms (448) |
+| `bisect` | 93.3 ms | 1.39 s |
+| `bisect` with `clear` and `fill` | 165 ms | 2.12 s |
+| `knife_project` across the top | 204 ms | 2.00 s |
+| `cleanup` | 61.0 ms | 775 ms |
+| `recalculate_normals` | 76.6 ms | 881 ms |
+| peak memory, MiB | 104 | 656 |
+
+Against what 0.12 offered for the same work (the editing API: select the vertices in a
+sphere, move them along their normals with no falloff, commit):
+
+| Against 0.12 (same machine) | 0.12 (editing API) | 0.13 (sculpt mesh) | factor |
+| --- | ---: | ---: | ---: |
+| open a 100k-vertex mesh | 12.43 s | 0.16 s | 76x |
+| a dab of radius 0.1 at the pole (3,137 / 3,137 vertices moved) | 66.9 ms | 7.33 ms | 9x |
+| commit it | 3.56 s | 15.8 ms | 226x |
+
+Measured choices:
+
+- **The voxel band is scattered from the triangles.** A first version asked a BVH for
+  each grid point's nearest triangle; each triangle now measures the grid points of its
+  own box instead, and a scatter keeps the minimum per point (lowest triangle id among
+  ties). The same surfaces (equal band points, triangle counts and volumes) at 3.7-4.5
+  times the speed: 28.3 s -> 6.2 s for a 65k-triangle sphere at a voxel size giving 377k
+  triangles, 138 s -> 37 s for a 517k-triangle one giving 1.5M. Narrowing the band from
+  2 to 1.75 voxels (what marching cubes needs: every corner of a crossed cell lies within
+  `sqrt(3)` voxels of the surface; the output is bit for bit the same, tested) and
+  scattering minima instead of sorting each batch brought these to 4.8 s and 26.8 s.
+- **Collapses choose their independent sets in rounds.** One pass that kept each
+  candidate whose priority (its length) was the smallest around it collapsed only 48 of
+  13,536 short edges of a dense sphere: neighbouring candidates have nearly equal
+  lengths, so few win. Validity is now checked for every candidate first, and the set is
+  chosen in Luby-style rounds with scrambled priorities: 640 collapses in the first pass,
+  and 1,938 of the sphere's 9,024 triangles left after ten passes, against 7,926 after
+  twelve before.
+- **Exact predicates cost little.** `orient3d` takes 19.2 ms per 200,000 random rows,
+  3.3 times a plain float determinant (5.8 ms): Shewchuk's static filter decides almost
+  every row in float64, and the rational fallback (29 microseconds per row) runs only for
+  nearly coplanar configurations -- where a float answer can be wrong.
+- **Strokes read the mesh's extent from the chunk boxes.** The extent (for the mirror
+  planes' tolerance and ray offsets) came from a copy of every vertex: 41 of the 45 ms of a
+  one-dab stroke at 1M. The chunk boxes hold every vertex of a triangle and are tight
+  between operations; a one-dab stroke at 1M now takes 2.7 ms.
+- **Isotropic remeshing runs on a detached copy.** Its whole-mesh passes journaled every
+  element they touched, the replaced rows stayed in the arrays, and each check
+  materialized every candidate's neighbourhood at once: 471 s and a 9.3 GB peak for one
+  iteration at 1M, 43.3 s and 1,155 MiB for three at 100k (the same benchmark at commit
+  b2232f8: `benchmarks/results/stage13-sculpt-b2232f8.json`). The passes now run on a
+  compact copy that records nothing (compacted again when dead rows pile up), the
+  collapse, flip and UV re-sampling checks run in batches -- each on the candidates the
+  cheaper checks left, with the cached triangle cross products -- and projections search
+  within twice the split length first. The batched checks and the bounded projection
+  give the same remesh, bit for bit (compared in one process with the previous passes);
+  the compact copy renumbers the vertices, which changes which of the equally valid
+  independent sets the scrambled priorities pick, so the result is another valid remesh
+  of the same quality (the tests check validity and quality, not ids). The mesh is
+  replaced once, as one journaled step: 199 s and 3.4 GB at 1M, 27.4 s and 544 MiB at
+  100k.

@@ -291,3 +291,111 @@ def triangle_bounds(positions: np.ndarray, triangles: np.ndarray) -> tuple[np.nd
         np.minimum(lo, corner, out=lo)
         np.maximum(hi, corner, out=hi)
     return lo, hi
+
+
+def morton_codes(points: np.ndarray, lo: np.ndarray | None = None, hi: np.ndarray | None = None):
+    """63-bit Morton (Z-order) codes of points quantized to 2^21 cells per axis of the
+    box ``lo``..``hi`` (default: the points' bounds)."""
+    p = np.asarray(points, dtype=np.float64)
+    if len(p) == 0:
+        return np.zeros(0, dtype=np.uint64)
+    lo = p.min(axis=0) if lo is None else np.asarray(lo, dtype=np.float64)
+    hi = p.max(axis=0) if hi is None else np.asarray(hi, dtype=np.float64)
+    span = np.where(hi - lo > 0, hi - lo, 1.0)
+    q = np.clip((p - lo) / span * (2**21 - 1), 0, 2**21 - 1).astype(np.uint64)
+
+    def spread(x: np.ndarray) -> np.ndarray:
+        x = x & np.uint64(0x1FFFFF)
+        x = (x | (x << np.uint64(32))) & np.uint64(0x1F00000000FFFF)
+        x = (x | (x << np.uint64(16))) & np.uint64(0x1F0000FF0000FF)
+        x = (x | (x << np.uint64(8))) & np.uint64(0x100F00F00F00F00F)
+        x = (x | (x << np.uint64(4))) & np.uint64(0x10C30C30C30C30C3)
+        return (x | (x << np.uint64(2))) & np.uint64(0x1249249249249249)
+
+    return spread(q[:, 0]) | (spread(q[:, 1]) << np.uint64(1)) | (spread(q[:, 2]) << np.uint64(2))
+
+
+def build_bvh_morton(lo: np.ndarray, hi: np.ndarray, leaf_size: int = 8) -> BVH:
+    """A BVH over primitive bounds built from the Morton order of their centroids, each
+    node's range split at its middle (a linear BVH). Leaf boxes are reduced once and
+    inner boxes merged bottom-up, so building costs one sort and O(n): several times
+    faster than :func:`build_bvh`'s binned SAH, with looser boxes. Used where builds are
+    frequent and queries few (sculpting, projections); the renderers keep the SAH tree."""
+    dtype = np.float32 if lo.dtype == np.float32 and hi.dtype == np.float32 else np.float64
+    lo = np.ascontiguousarray(lo, dtype=dtype)
+    hi = np.ascontiguousarray(hi, dtype=dtype)
+    n = lo.shape[0]
+    if n == 0:
+        return build_bvh(lo, hi, leaf_size)
+    centroid = (lo.astype(np.float64) + hi) * 0.5
+    order = np.argsort(morton_codes(centroid), kind="stable").astype(np.int64)
+    del centroid
+    # Topology: ranges split at their middle, level by level (integers only).
+    levels: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []  # (ids, start, end)
+    act_id = np.zeros(1, dtype=np.int64)
+    act_start = np.zeros(1, dtype=np.int64)
+    act_end = np.array([n], dtype=np.int64)
+    nodes = 1
+    child_pairs: list[tuple[np.ndarray, np.ndarray]] = []
+    while True:
+        levels.append((act_id, act_start, act_end))
+        size = act_end - act_start
+        split = size > leaf_size
+        if not split.any():
+            break
+        sid = np.flatnonzero(split)
+        kids = nodes + 2 * np.arange(sid.size, dtype=np.int64)
+        nodes += 2 * sid.size
+        child_pairs.append((act_id[sid], kids))
+        mid = act_start[sid] + size[sid] // 2
+        act_id = np.concatenate([kids, kids + 1])
+        act_start = np.concatenate([act_start[sid], mid])
+        act_end = np.concatenate([mid, act_end[sid]])
+    child = np.full((nodes, 2), -1, dtype=np.int64)
+    for parents, kids in child_pairs:
+        child[parents, 0] = kids
+        child[parents, 1] = kids + 1
+    first = np.zeros(nodes, dtype=np.int64)
+    count = np.zeros(nodes, dtype=np.int64)
+    node_lo = np.empty((nodes, 3), dtype=dtype)
+    node_hi = np.empty((nodes, 3), dtype=dtype)
+    # Leaves: one reduction over the primitives in Morton order.
+    leaf_ids, leaf_start, leaf_end = [], [], []
+    for ids, start, end in levels:
+        leaf = (end - start) <= leaf_size
+        leaf_ids.append(ids[leaf])
+        leaf_start.append(start[leaf])
+        leaf_end.append(end[leaf])
+    leaf_ids_a = np.concatenate(leaf_ids)
+    leaf_start_a = np.concatenate(leaf_start)
+    leaf_end_a = np.concatenate(leaf_end)
+    by_start = np.argsort(leaf_start_a, kind="stable")
+    leaf_ids_a, leaf_start_a, leaf_end_a = (
+        leaf_ids_a[by_start],
+        leaf_start_a[by_start],
+        leaf_end_a[by_start],
+    )
+    first[leaf_ids_a] = leaf_start_a
+    count[leaf_ids_a] = leaf_end_a - leaf_start_a
+    node_lo[leaf_ids_a] = np.minimum.reduceat(lo[order], leaf_start_a, axis=0)
+    node_hi[leaf_ids_a] = np.maximum.reduceat(hi[order], leaf_start_a, axis=0)
+    # Inner nodes, deepest level first: the union of their children.
+    for parents, kids in reversed(child_pairs):
+        node_lo[parents] = np.minimum(node_lo[kids], node_lo[kids + 1])
+        node_hi[parents] = np.maximum(node_hi[kids], node_hi[kids + 1])
+    inner = child[:, 0] >= 0
+    child_lo = np.full((nodes, 2, 3), np.inf, dtype=dtype)
+    child_hi = np.full((nodes, 2, 3), -np.inf, dtype=dtype)
+    child_lo[inner] = node_lo[child[inner]]
+    child_hi[inner] = node_hi[child[inner]]
+    return BVH(
+        child,
+        child_lo,
+        child_hi,
+        first,
+        count,
+        order,
+        node_lo[0].astype(np.float64),
+        node_hi[0].astype(np.float64),
+        len(levels) - 1,
+    )

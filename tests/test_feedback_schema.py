@@ -92,6 +92,7 @@ EXPECTATIONS = {
             "min_coverage": 0.2,
         },
         {"check": "camera_clipping", "view": "close", "objects": "Lamp", "id": "clip"},
+        {"check": "mesh_validity", "objects": {"tags": ["furniture"]}, "tier": "solid"},
     ],
     "acceptance": {"max_errors": 0, "max_warnings": 3, "require_vision": False},
     "defaults": True,

@@ -1,0 +1,48 @@
+{
+  "label": "stage13-baseline",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.12.0",
+    "switches": {
+      "AETHER3D_EDITING_BULK": true,
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.11.1",
+      "reason": "loaded"
+    },
+    "git": "35e5a23",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "baseline": {
+      "vertices_10k": 10011,
+      "triangles_10k": 19320,
+      "editable_from_mesh_10k_s": 0.713,
+      "editable_to_mesh_10k_s": 0.17,
+      "vertices_100k": 101025,
+      "triangles_100k": 199808,
+      "editable_from_mesh_100k_s": 12.429,
+      "editable_to_mesh_100k_s": 1.904,
+      "api_dab_100k_vertices_moved": 3137,
+      "api_dab_100k_ms": 66.894,
+      "api_dab_100k_commit_ms": 3560.053,
+      "subdivision_input_faces": 9800,
+      "subdivision_l1_ms": 8.342,
+      "subdivision_l2_ms": 35.196,
+      "query_triangles": 1996568,
+      "closest_point_first_ms": 9546.039,
+      "closest_point_warm_ms": 1.443,
+      "peak_rss_mib": 1404.8
+    }
+  }
+}

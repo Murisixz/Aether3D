@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 from .bevel import BevelMixin
+from .bevel_round import RoundBevelMixin
+from .bridge import FillMixin
+from .cleanup import CleanupMixin
+from .conform import ConformMixin
 from .core import MeshCore
+from .cut import CutMixin, KnifeMixin
 from .extrude import ExtrudeMixin
 from .selection import SelectionMixin
+from .shading import ShadingMixin
+from .slide import SlideMixin
 from .subdivide import SubdivideMixin
+from .sweep import SweepMixin
 from .topology import TopologyMixin
 from .transform import TransformMixin
 from .validation import TopologyReport, validate
@@ -18,6 +26,15 @@ class EditableMesh(
     TopologyMixin,
     ExtrudeMixin,
     BevelMixin,
+    RoundBevelMixin,
+    CutMixin,
+    KnifeMixin,
+    FillMixin,
+    SlideMixin,
+    CleanupMixin,
+    ShadingMixin,
+    SweepMixin,
+    ConformMixin,
     SubdivideMixin,
     MeshCore,
 ):

@@ -359,7 +359,7 @@ def test_village_example_on_the_gpu(tmp_path, gpu):
 def test_mcp_client_example_runs(tmp_path):
     pytest.importorskip("mcp")
     result = _run_example("mcp_client.py", str(tmp_path), "--backend", "cpu")
-    assert "20 tools" in result.stdout and "on the CPU: preview.png" in result.stdout
+    assert "21 tools" in result.stdout and "on the CPU: preview.png" in result.stdout
     assert (tmp_path / "preview.png").read_bytes().startswith(b"\x89PNG")
     assert len(Scene.load(tmp_path / "courtyard.aether")) == 44
 
@@ -427,5 +427,64 @@ def test_committed_feedback_outputs():
         with image.open(EXAMPLES / "output" / name) as png:
             assert png.size == size and png.info["Software"].startswith("Aether3D ")
     for name in ("feedback_room", "feedback_composition", "mcp_feedback_agent"):
+        report = json.loads((EXAMPLES / "output" / f"{name}.json").read_text())
+        assert report["failures"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", report["aether3d"])
+
+
+# --------------------------------------------------------------------------- #
+# Stage 13: modeling and sculpting
+# --------------------------------------------------------------------------- #
+
+
+def test_hard_surface_example_runs(tmp_path):
+    _run_example("hard_surface.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "hard_surface.json").read_text())
+    assert report["failures"] == []
+    assert {p["tier"] for p in report["parts"].values()} == {"solid"}
+    used = {op["operation"] for op in report["operations"]}
+    assert {"bevel_edges", "knife_project", "bridge_edge_loops", "bisect", "spin"} <= used
+    assert _decode(tmp_path / "hard_surface.png").shape == (300, 800, 3)
+
+
+def test_organic_sculpt_example_runs(tmp_path):
+    _run_example("organic_sculpt.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "organic_sculpt.json").read_text())
+    assert report["failures"] == [] and report["sculpt"]["tier"] == "solid"
+    assert report["symmetry_error"]["max"] == 0.0  # mirrored, so exactly symmetric
+    assert _decode(tmp_path / "organic_sculpt.png").shape == (320, 960, 3)
+
+
+def test_remesh_validity_example_runs(tmp_path):
+    _run_example("remesh_validity.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "remesh_validity.json").read_text())
+    stages = report["stages"]
+    assert report["failures"] == []
+    assert stages["input"]["self_intersecting_pairs"] > 0 and stages["input"]["components"] == 3
+    assert stages["voxel"]["tier"] == stages["isotropic"]["tier"] == "solid"
+    assert stages["isotropic"]["min_angle_degrees"] > 15
+    assert _decode(tmp_path / "remesh_validity.png").shape == (300, 1080, 3)
+
+
+def test_mcp_sculpt_agent_example_runs(tmp_path):
+    pytest.importorskip("mcp")
+    _run_example("mcp_sculpt_agent.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "mcp_sculpt_agent.json").read_text())
+    assert report["failures"] == [] and report["final"]["accepted"]
+    assert report["refused"]["code"] == "VOXEL_NOT_WATERTIGHT"
+    assert report["history"][1] == "Sculpt the bust"
+
+
+def test_committed_sculpting_outputs():
+    """The Stage 13 examples' committed results: Aether3D renders and reports."""
+    image = pytest.importorskip("PIL.Image")
+    for name, size in (
+        ("hard_surface.png", (1600, 600)),
+        ("organic_sculpt.png", (1920, 640)),
+        ("remesh_validity.png", (2160, 600)),
+        ("mcp_sculpt_agent.png", (720 + 8 + 720, 720)),
+    ):
+        with image.open(EXAMPLES / "output" / name) as png:
+            assert png.size == size and png.info["Software"].startswith("Aether3D ")
+    for name in ("hard_surface", "organic_sculpt", "remesh_validity", "mcp_sculpt_agent"):
         report = json.loads((EXAMPLES / "output" / f"{name}.json").read_text())
         assert report["failures"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", report["aether3d"])
