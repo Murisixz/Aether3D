@@ -32,6 +32,9 @@ Quick start::
         "objects": {"wall": {"mesh": "@block", "grid": {"count": [20, 1, 5], "spacing": 1}}},
     })
 
+    # Visual feedback (docs/FEEDBACK.md): what a render shows, measured per object
+    obs = scene.observe(width=640, height=360)
+
 Everything listed in ``__all__`` is the supported public API.
 """
 
@@ -51,6 +54,7 @@ from .errors import (
     AssetFormatError,
     DetachedObjectError,
     EditError,
+    FeedbackError,
     HierarchyError,
     HistoryError,
     MaterialError,
@@ -129,6 +133,7 @@ __all__ = [
     "Environment",
     "ExportResult",
     "Expr",
+    "FeedbackError",
     "HierarchyError",
     "ImageTexture",
     "ImportLimits",

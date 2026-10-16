@@ -2245,6 +2245,19 @@ class Scene:
 
         return execute_plan(self, plan, **options)
 
+    def observe(self, view: Any = None, **options: Any) -> Any:
+        """Render a view and measure what it shows: an :class:`aether3d.feedback.Observation`
+        (per-object visible pixels, bounds, depth, occlusion; image statistics; images).
+
+        ``view`` is a view specification (``None``: the active camera; ``{"preset": "top"}``,
+        ``{"focus": {"objects": "Lamp"}}``, ...); ``options`` as
+        :func:`aether3d.feedback.observe` takes them (``width``, ``height``, ``backend``,
+        ``focus``, ``occlusion``, ...). Never changes the scene. See docs/FEEDBACK.md.
+        """
+        from .feedback import observe
+
+        return observe(self, view, **options)
+
     def describe(self, *, include_hidden: bool = True) -> dict[str, Any]:
         """A compact JSON summary of the scene's objects and their placement (see
         :func:`aether3d.spatial.describe`)."""

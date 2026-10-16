@@ -326,3 +326,50 @@ class PlanError(AetherError, ValueError):
             "details": self.details,
             "issues": self.issues,
         }
+
+
+class FeedbackError(AetherError, ValueError):
+    """A visual-feedback request cannot be carried out; the scene is unchanged.
+
+    Raised for observations (views, budgets), expectations documents, vision evaluations,
+    correction proposals and feedback loops (see ``docs/FEEDBACK.md``). ``code`` is a stable
+    identifier (e.g. ``"INVALID_VIEW"``, ``"INVALID_DOCUMENT"``, ``"STALE_OBSERVATION"``,
+    ``"REVISION_MISMATCH"``, ``"NOT_ALLOWED"``, ``"UNSUPPORTED_ACTION"``), ``location`` a
+    JSON pointer into the offending document (``/checks/2/objects``) or the name of the
+    offending argument, ``hint`` an actionable suggestion and ``details`` structured
+    context. ``issues`` lists every problem found when a document is checked as a whole
+    (this error is the first of them).
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        location: str | None = None,
+        *,
+        hint: str | None = None,
+        details: dict | None = None,
+        issues: list[dict] | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.location = location
+        self.hint = hint
+        self.details = dict(details or {})
+        self.issues = list(issues or [])
+        text = f"[{code}] " + (f"{location}: " if location else "") + message
+        if hint:
+            text += f". Hint: {hint}"
+        if len(self.issues) > 1:
+            text += f" (and {len(self.issues) - 1} more problem(s))"
+        super().__init__(text)
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "location": self.location,
+            "hint": self.hint,
+            "details": self.details,
+            "issues": self.issues,
+        }
