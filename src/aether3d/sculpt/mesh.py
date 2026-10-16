@@ -267,6 +267,7 @@ def _validity(summary: dict, triangles: np.ndarray, vertex_count: int) -> dict:
 
     labels = component_labels(triangles, vertex_count)
     keys = (
+        "tier",
         "closed",
         "edge_manifold",
         "vertex_manifold",
