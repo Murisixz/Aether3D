@@ -1,11 +1,13 @@
 """The tools of the Aether3D MCP server: schemas, descriptions and implementations.
 
-Fifteen tools cover the engine. Building and editing go through one tool,
+Twenty tools cover the engine. Building and editing go through one tool,
 ``execute_scene_plan``: a whole scene (thousands of objects) is one call, one atomic step
 of the history. The others open and save projects, inspect the scene compactly, run the
 Stage 10 spatial queries, render previews and images, use the history, export, run the
 existing JSON scripts (mesh editing, procedural, scene setup), report diagnostics and
-describe the engine's capabilities.
+describe the engine's capabilities; the Stage 12 tools (:mod:`.feedback`) observe the
+rendered scene, diagnose it against expectations, and propose, apply and verify
+corrections, alone or in a loop.
 
 Tool implementations are plain synchronous functions ``(session, arguments, context) ->
 ToolOutput``; :mod:`.server` runs them in a worker thread, one at a time, with
@@ -55,6 +57,7 @@ class ToolContext:
 class ToolOutput:
     data: dict[str, Any]
     image: bytes | None = None  # a PNG, sent as image content
+    images: list[bytes] = field(default_factory=list)  # more PNGs, in order, after it
 
 
 @dataclass(frozen=True)
@@ -988,6 +991,31 @@ def capabilities(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
             "path_tracing": config.allow_path_tracing,
             "tool_timeout": config.tool_timeout,
         }
+    elif topic == "feedback":
+        from ..feedback import ACTIONS, CHECKS, STOP_REASONS
+        from ..feedback.checks import BASES
+        from ..feedback.views import PRESETS
+
+        data = {
+            "workflow": "observe_scene -> look at the image -> diagnose_scene (expectations, "
+            "your evaluations) -> propose_corrections -> apply_corrections (verified, undone "
+            "if it does not help); or feedback_loop. Guide: aether3d://feedback/guide",
+            "checks": {k: v["summary"] for k, v in CHECKS.items()},
+            "actions": {k: v["summary"] for k, v in ACTIONS.items()},
+            "views": ["camera", "virtual", "focus", *(f"preset:{p}" for p in PRESETS)],
+            "bases": list(BASES),
+            "safety": {
+                "safe": "exact repair of a stated expectation; applied automatically",
+                "verify": "kept only if verification shows improvement and no regression",
+                "approval": "subjective or ambiguous; never applied without approve",
+            },
+            "stop_reasons": list(STOP_REASONS),
+            "schemas": [
+                "aether3d://schema/expectations",
+                "aether3d://schema/vision-evaluation",
+                "aether3d://schema/corrections",
+            ],
+        }
     else:  # gpu
         data = {"gpu": session.gpu()}
     return ToolOutput({"topic": topic, **data})
@@ -1319,7 +1347,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         "capabilities",
         "Capabilities",
         "What this engine and server offer: overview (tools, conventions, scene), plan, "
-        "primitives, modifiers, materials (models, presets), queries, limits, gpu.",
+        "primitives, modifiers, materials (models, presets), queries, limits, gpu, feedback "
+        "(checks, correction actions, views, safety classes).",
         _schema(
             {
                 "topic": {
@@ -1332,6 +1361,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                         "queries",
                         "limits",
                         "gpu",
+                        "feedback",
                     ],
                     "default": "overview",
                 }
@@ -1343,6 +1373,14 @@ TOOLS: tuple[ToolSpec, ...] = (
     ),
 )
 
+
+def _with_feedback(tools: tuple[ToolSpec, ...]) -> tuple[ToolSpec, ...]:
+    from .feedback import specs
+
+    return tools + specs()
+
+
+TOOLS = _with_feedback(TOOLS)
 TOOL_INDEX = {spec.name: spec for spec in TOOLS}
 
 

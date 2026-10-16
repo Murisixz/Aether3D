@@ -8,8 +8,9 @@ Commands: ``new``, ``validate``, ``inspect``, ``geometry``, ``import``,
 ``list``), ``object`` (``set``, ``remove``), ``scene`` (``set``, ``run``),
 ``gpu`` (``info``), ``material`` (``list``, ``presets``, ``schema``,
 ``create``, ``set``, ``assign``, ``texture``, ``inspect``, ``validate``,
-``remove``, ``convert-colors``, ``preview``) and ``texture`` (``list``,
-``add``, ``procedural``, ``set``, ``inspect``, ``preview``, ``remove``).
+``remove``, ``convert-colors``, ``preview``), ``texture`` (``list``,
+``add``, ``procedural``, ``set``, ``inspect``, ``preview``, ``remove``) and
+``feedback`` (``observe``, ``check``, ``correct``, ``loop``, ``schema``).
 
 Every command accepts ``--json`` to emit a single machine-readable JSON
 object on stdout, both on success (``"ok": true``) and on failure
@@ -19,8 +20,9 @@ object on stdout, both on success (``"ok": true``) and on failure
 * ``1`` -- the command failed (invalid file, missing file, unsupported content, ...)
 * ``2`` -- invalid command-line usage
 * ``3`` -- ``geometry``/``topology``/``procedural validate``/``material validate``
-  completed but found error-severity problems, or ``gpu info --check`` found
-  that GPU rendering does not work
+  completed but found error-severity problems, ``gpu info --check`` found
+  that GPU rendering does not work, or ``feedback check``/``feedback loop`` ended
+  with the expectations not met
 
 Commands that read a scene accept native ``.aether`` projects as well as
 ``.glb``/``.gltf`` files (which are imported in memory).
@@ -92,8 +94,12 @@ def _command_error(exc: BaseException, path: Path) -> CommandError:
 
     if isinstance(exc, ProceduralError):
         return CommandError("ProceduralError", exc.message, exc.location, _procedural_details(exc))
-    from .errors import MaterialError, QueryError, RenderError
+    from .errors import FeedbackError, MaterialError, QueryError, RenderError
 
+    if isinstance(exc, FeedbackError):
+        from ._cli_feedback import _error
+
+        return _error(exc)
     if isinstance(exc, (MaterialError, QueryError, RenderError)):
         return CommandError(type(exc).__name__, exc.message, exc.location, _procedural_details(exc))
     if isinstance(exc, AetherError):
@@ -1841,6 +1847,7 @@ def cmd_mcp_serve(args: argparse.Namespace) -> CommandOutput:
         allow_path_tracing=not args.no_path_tracing,
         gpu_adapter=args.gpu_adapter,
         max_reply_bytes=args.max_reply_kib * 1024,
+        feedback_backend=args.feedback_backend,
     )
     logging.getLogger("aether3d.mcp").info(
         "aether3d %s MCP server, workspace %s%s",
@@ -1887,6 +1894,13 @@ def _add_mcp_parsers(sub) -> None:
         default=256,
         metavar="N",
         help="largest reply of a read-only tool, in KiB (default 256)",
+    )
+    p.add_argument(
+        "--feedback-backend",
+        default="auto",
+        choices=["auto", "gpu", "cpu"],
+        help="how the visual-feedback tools render observations (default auto: the GPU "
+        "rasterizer when one works, else the CPU one)",
     )
     p.add_argument(
         "--log-level",
@@ -2032,10 +2046,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_bake.set_defaults(handler=cmd_procedural_bake)
 
     _add_render_parsers(sub, common, lossy, writing)
+    from ._cli_feedback import add_feedback_parsers
     from ._cli_materials import add_material_parsers
 
     add_material_parsers(sub, common, lossy, writing)
     _add_plan_parsers(sub, common, writing)
+    add_feedback_parsers(sub, common, lossy, writing)
     _add_mcp_parsers(sub)
     return parser
 
