@@ -78,7 +78,7 @@ class BevelMixin:
 
         def inward(f: int, a: int, b: int) -> np.ndarray:
             """Unit vector inside face f perpendicular to its directed edge a -> b."""
-            d = poly.unit(np.cross(normal(f), self._pos[b] - self._pos[a]))
+            d = poly.unit(poly.cross3(normal(f), self._pos[b] - self._pos[a]))
             if d is None:
                 raise EditError(
                     "DEGENERATE_INPUT", f"face {f} has a zero-length edge", elements={"faces": [f]}

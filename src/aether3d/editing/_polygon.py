@@ -7,6 +7,7 @@ order (counter-clockwise when seen from the front, i.e. against the normal).
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
 
@@ -32,6 +33,14 @@ def newell_normal(points: np.ndarray) -> np.ndarray:
 
 def polygon_area(points: np.ndarray) -> float:
     return float(np.linalg.norm(newell_normal(points)) / 2.0)
+
+
+def cross3(a: Any, b: Any) -> np.ndarray:
+    """``np.cross(a, b)`` of two float64 3-vectors: the same operations (each product
+    rounded, then the difference: ``a1 b2 - a2 b1``, ...), without its per-call cost."""
+    a0, a1, a2 = float(a[0]), float(a[1]), float(a[2])
+    b0, b1, b2 = float(b[0]), float(b[1]), float(b[2])
+    return np.array([a1 * b2 - a2 * b1, a2 * b0 - a0 * b2, a0 * b1 - a1 * b0])
 
 
 def unit(v: np.ndarray) -> np.ndarray | None:

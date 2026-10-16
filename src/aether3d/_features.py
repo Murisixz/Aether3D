@@ -89,3 +89,10 @@ NATIVE = register(
     "use the native kernels of aether3d-native when it is installed (aether3d/_native.py: "
     "ray traversal, transform hierarchies, PNG filters); 0 uses the NumPy implementations",
 )
+
+EDITING_BULK = register(
+    "AETHER3D_EDITING_BULK",
+    True,
+    "build an EditableMesh's faces, edges and corners from a Mesh in bulk with NumPy "
+    "(editing/core.py, MeshCore._bulk_faces); 0 adds one face at a time",
+)
