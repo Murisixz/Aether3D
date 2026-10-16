@@ -67,6 +67,7 @@ from .errors import (
     QueryError,
     RenderError,
     ResourceLimitError,
+    SculptError,
     UnsupportedFeatureError,
     ValidationError,
 )
@@ -172,6 +173,7 @@ __all__ = [
     "SceneGeometryReport",
     "SceneObject",
     "ScriptError",
+    "SculptError",
     "Transaction",
     "ShadowSettings",
     "Selection",

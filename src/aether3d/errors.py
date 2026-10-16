@@ -121,6 +121,15 @@ class EditError(AetherError, ValueError):
         }
 
 
+class SculptError(EditError):
+    """A sculpting operation (a stroke, a mask change, a remesh) cannot be applied;
+    nothing was changed.
+
+    Like :class:`EditError` (which it extends): a stable ``code``, the offending
+    ``elements`` (``"vertices"``, ``"triangles"``) and a ``hint``.
+    """
+
+
 class RenderError(AetherError, ValueError):
     """A camera, light, appearance, render setting or render request is invalid, or rendering
     failed; nothing was changed and no file was written.

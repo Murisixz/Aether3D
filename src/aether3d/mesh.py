@@ -141,6 +141,60 @@ class Mesh:
             return (0,) if self.triangle_count else ()
         return tuple(int(g) for g in np.unique(self._groups))
 
+    @classmethod
+    def _from_arrays(
+        cls,
+        positions: np.ndarray,
+        triangles: np.ndarray,
+        normals: np.ndarray | None = None,
+        uvs: np.ndarray | None = None,
+        groups: np.ndarray | None = None,
+    ) -> Mesh:
+        """A mesh sharing (not copying) arrays that are already in the mesh's dtypes and
+        read-only -- such as another mesh's -- and validating the rest as usual. Sculpt
+        commits reuse the triangles, UVs and groups of the mesh they started from."""
+
+        def shared(a: np.ndarray | None, dtype, cols: int | None) -> bool:
+            return (
+                a is not None
+                and isinstance(a, np.ndarray)
+                and a.dtype == dtype
+                and not a.flags.writeable
+                and a.flags.c_contiguous
+                and (cols is None or (a.ndim == 2 and a.shape[1] == cols))
+            )
+
+        mesh = cls.__new__(cls)
+        mesh._positions = _attribute(positions, 3, "positions", None)
+        n = mesh._positions.shape[0]
+        if normals is None:
+            mesh._normals = None
+        elif shared(normals, POSITION_DTYPE, 3) and normals.shape[0] == n:
+            mesh._normals = normals
+        else:
+            mesh._normals = _attribute(normals, 3, "normals", n)
+        if uvs is None:
+            mesh._uvs = None
+        elif shared(uvs, POSITION_DTYPE, 2) and uvs.shape[0] == n:
+            mesh._uvs = uvs
+        else:
+            mesh._uvs = _attribute(uvs, 2, "uvs", n)
+        if shared(triangles, INDEX_DTYPE, 3) and (triangles.size == 0 or int(triangles.max()) < n):
+            mesh._triangles = triangles
+        else:
+            mesh._triangles = cls._validate_triangles(triangles, n)
+        if groups is None:
+            mesh._groups = None
+        elif (
+            shared(groups, GROUP_DTYPE, None)
+            and groups.ndim == 1
+            and groups.shape[0] == mesh._triangles.shape[0]
+        ):
+            mesh._groups = groups
+        else:
+            mesh._groups = mesh._validate_groups(groups)
+        return mesh
+
     def with_groups(self, groups: Any | None) -> Mesh:
         """A copy of this mesh (sharing its arrays) with other face groups."""
         mesh = Mesh.__new__(Mesh)
