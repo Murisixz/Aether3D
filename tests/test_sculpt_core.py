@@ -553,3 +553,21 @@ def test_commit_reports_validity():
     assert "self_intersecting_pairs" in report.summary
     assert check_mesh(obj.mesh.positions, obj.mesh.triangles).summary["closed"]
     assert math.isfinite(report.summary["min_angle_degrees"])
+
+
+def test_sculpted_meshes_persist_and_round_trip_through_gltf(tmp_path):
+    from aether3d import Scene, export_gltf, import_gltf
+
+    scene = Scene()
+    ball = scene.add_object("Ball", mesh=create_sphere(1.0, 32, 16))
+    with ball.sculpt() as s:
+        s.stroke({"brush": {"kind": "draw", "radius": 0.4, "strength": 0.3}, "path": [[0, 0, 1]]})
+        s.voxel_remesh(0.08)
+    sculpted = ball.mesh
+    scene.save(tmp_path / "ball.aether")
+    again = Scene.load(tmp_path / "ball.aether").get_by_name("Ball").mesh
+    assert again == sculpted
+    export_gltf(scene, tmp_path / "ball.glb")
+    imported = import_gltf(tmp_path / "ball.glb").scene.get_by_name("Ball").mesh
+    assert np.array_equal(imported.positions, sculpted.positions)
+    assert np.array_equal(imported.triangles, sculpted.triangles)

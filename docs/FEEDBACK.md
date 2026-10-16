@@ -148,6 +148,7 @@ An expectations document states what the scene must satisfy, as checks:
 | `upright` | each object's local `axis` (default +Z) is within `max_tilt` degrees (default 2) of world +Z |
 | `material` | each object uses the material (by name or id) |
 | `camera_clipping` | the view's near and far planes cut none of the objects (default: every visible object) |
+| `mesh_validity` | each object's mesh (a group: its parts' meshes) reaches the validity `tier` (`valid`, `manifold`, `closed` -- the default --, or `solid`, which runs the exact self-intersection test; [MODELING.md](MODELING.md#validity)); below it: `MESH_BELOW_TIER` (basis `geometry`, exact) with the counts. Never corrected: corrections do not edit meshes (0.13.0) |
 
 Every check takes `id`, `severity` (`"error"`, default, or `"warning"`), `label`, and
 `fix`: `move` (`"objects"`, `"against"`, `"support"` or `"none"`: which side a correction

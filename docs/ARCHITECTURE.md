@@ -48,13 +48,36 @@ Aether3D/
 │   │   ├── transform.py   Local/world transforms, mirroring, normal transforms
 │   │   ├── topology.py    Create/delete/merge/split/dissolve/triangulate
 │   │   ├── extrude.py     Region/individual extrusion and inset
-│   │   ├── bevel.py       Edge chamfer
+│   │   ├── bevel.py       Edge chamfer and bevel_edges (dispatch)
+│   │   ├── bevel_round.py Multi-segment bevels: profiles, open fans, corner patches
+│   │   ├── cut.py         bisect and knife_project
+│   │   ├── bridge.py      Boundary loops, fill_holes (Liepa), bridge_edge_loops
+│   │   ├── slide.py       Edge and vertex slides
+│   │   ├── cleanup.py     Dissolves, connections, cleanup reports
+│   │   ├── shading.py     Auto smooth, consistent outward normals, weighted normals
+│   │   ├── sweep.py       Edge extrusion, spin, lathe
+│   │   ├── conform.py     Shrinkwrap
 │   │   ├── subdivide.py   Subdivision and loop cuts
 │   │   ├── normals.py     Shading model and corner-normal recomputation
 │   │   ├── validation.py  Polygon-level topology validation
 │   │   ├── session.py     EditSession: commit/discard on a scene object
 │   │   ├── script.py      Declarative JSON edit scripts (CLI, future MCP)
 │   │   └── _polygon.py    Newell normals, ear clipping, simplicity, affine fits
+│   ├── sculpt/            Sculpting (see docs/MODELING.md)
+│   │   ├── mesh.py        SculptMesh: welded geometry, render attributes, chunks,
+│   │   │                  incremental normals, the journal, sculpt operations, commit
+│   │   ├── brushes.py     Brush settings and validation, falloffs, Kelvinlets
+│   │   ├── stroke.py      Strokes: paths, dabs, projection, symmetry, each brush's dab
+│   │   ├── geodesic.py    Surface distances (fast iterative method) for geodesic falloff
+│   │   ├── topology.py    Journaled topology changes: splits, collapses, flips, relaxation
+│   │   ├── remesh.py      Isotropic remeshing and dynamic topology per dab
+│   │   ├── voxel.py       Voxel remeshing: narrow-band distances, signs, marching cubes
+│   │   ├── symmetry.py    Symmetrize by cutting and mirroring
+│   │   ├── validate.py    check_mesh, validity tiers, welds, self-intersections
+│   │   ├── session.py     SculptSession and SourceSculptSession: commits to the scene
+│   │   ├── script.py      Declarative JSON sculpt scripts
+│   │   ├── schema.py      Their JSON Schema (fuzzed against the executor)
+│   │   └── guide.md       The guide for agents (an MCP resource)
 │   ├── procedural/        Non-destructive procedural geometry (see docs/PROCEDURAL.md)
 │   │   ├── polymesh.py    PolyMesh: immutable CSR polygon mesh flowing through stacks
 │   │   ├── params.py      Parameters, safe expressions (Expr), rules, schemas
@@ -117,6 +140,8 @@ Aether3D/
 │   │   ├── types.py       Regions (Box/AABB, Sphere) and result types with to_dict()
 │   │   ├── geometry.py    Exact kernels: closest points, triangle intersection and distance,
 │   │   │                  separating axes, winding numbers, components, BVH box queries
+│   │   ├── predicates.py  Exact orientation predicates (float filters, rational fallback)
+│   │   ├── surface.py     TriangleSurface: exact nearest points and ray casts on one mesh
 │   │   ├── index.py       SpatialIndex: world-space geometry per scene revision (cached on the scene)
 │   │   ├── rays.py        All-hits traversal of the Stage 8 BVH, shared-edge merging,
 │   │   │                  rendered surfaces (the path tracer's pass-through rules)
@@ -164,6 +189,7 @@ Aether3D/
 │   ├── cli.py             `aether3d` command-line interface
 │   ├── _cli_materials.py  `aether3d material` and `aether3d texture`
 │   ├── _cli_feedback.py   `aether3d feedback`
+│   ├── _cli_sculpt.py     `aether3d sculpt`
 │   └── __main__.py        `python -m aether3d`
 ├── tests/                 pytest suite, one file per module
 │   └── data/              Khronos samples (pinned), v0.1.0/v0.4.0/v0.7.0 projects, reference renders
@@ -819,4 +845,36 @@ Key decisions:
   (renders are deterministic), diagnoses too; after a correction the retained render world
   and the spatial index update only what changed. Work inside an open transaction (a
   preview) is never cached.
+
+## Advanced modeling and sculpting (v0.13.0)
+
+The editing engine gains production modeling operators, and `aether3d.sculpt` a
+sculpting system on its own data structure. See [MODELING.md](MODELING.md) and the design
+record [research/2026-10-stage13/DESIGN.md](../research/2026-10-stage13/DESIGN.md). Key
+decisions:
+
+- **One language per subsystem, measured first.** Topological operators are Python on
+  the editing engine (few elements, rich bookkeeping, its journal and scripts for free);
+  sculpting, dynamic topology and remeshing are data-oriented NumPy (a dab is a
+  vectorized pass over its neighbourhood; topology passes decide every candidate at
+  once with independent sets); predicates are float filters with an exact rational
+  fallback. No native code, no GPU code and no dependency was added: the measured
+  workloads run in interactive time.
+- **A sculpt mesh separate from the editing mesh.** `SculptMesh` keeps welded geometry
+  in growable arrays and render attributes (UVs, normals, normal groups) per corner, so a
+  seam never splits a brush's effect and a commit rewrites only what changed. Triangles
+  live in Morton-ordered chunks with boxes: a dab's cost follows its neighbourhood.
+- **Journals, not snapshots.** Every write goes through journaled primitives: sparse
+  position and mask records, topology records, or (for whole-mesh replacements) a
+  reference to the previous arrays. Failures roll back, undo is exact, redo replays.
+- **Exact where it decides.** In/out and crossing decisions use exact orientation
+  predicates; the shared triangle-triangle test now decides with them too (a float
+  determinant misfired on nearly parallel triangles). Validity is measured and tiered;
+  `solid` requires the exact self-intersection test.
+- **Features first.** Dynamic topology and remeshing split along but never collapse
+  across boundaries, UV seams, hard edges, group borders or masked vertices, and
+  interpolate UVs exactly on splits; a destructive voxel remesh says what it drops.
+- **Same contract for agents.** Sculpt scripts are data, atomic and limited, with a
+  schema fuzzed against the executor; the CLI, the MCP server and the visual feedback
+  checks reuse the same validation (tiers, structured errors).
 

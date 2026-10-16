@@ -1,0 +1,421 @@
+{
+  "label": "stage 13 before the performance changes (b2232f8; rebuilt from the run's log)",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.13.0",
+    "switches": {
+      "AETHER3D_EDITING_BULK": true,
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.11.1",
+      "reason": "loaded"
+    },
+    "git": "b2232f8",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "baseline": {
+      "vertices_10k": 10011,
+      "triangles_10k": 19320,
+      "editable_from_mesh_10k_s": 0.7,
+      "editable_to_mesh_10k_s": 0.168,
+      "vertices_100k": 101025,
+      "triangles_100k": 199808,
+      "editable_from_mesh_100k_s": 12.399,
+      "editable_to_mesh_100k_s": 1.832,
+      "api_dab_100k_vertices_moved": 3137,
+      "api_dab_100k_ms": 65.129,
+      "api_dab_100k_commit_ms": 3415.602,
+      "subdivision_input_faces": 9800,
+      "subdivision_l1_ms": 7.888,
+      "subdivision_l2_ms": 32.963,
+      "query_triangles": 1996568,
+      "closest_point_first_ms": 7737.284,
+      "closest_point_warm_ms": 1.284,
+      "peak_rss_mib": 1437.9
+    },
+    "convert:10k": {
+      "vertices": 10011,
+      "triangles": 19320,
+      "from_mesh_s": 0.0142,
+      "to_mesh_unchanged_ms": 0.001,
+      "to_mesh_after_dab_ms": 1.045,
+      "to_mesh_after_topology_ms": 1.559,
+      "peak_rss_mib": 63.1
+    },
+    "convert:100k": {
+      "vertices": 101025,
+      "triangles": 199808,
+      "from_mesh_s": 0.1589,
+      "to_mesh_unchanged_ms": 0.003,
+      "to_mesh_after_dab_ms": 9.418,
+      "to_mesh_after_topology_ms": 19.188,
+      "peak_rss_mib": 209.1
+    },
+    "convert:1m": {
+      "vertices": 1001820,
+      "triangles": 1996568,
+      "from_mesh_s": 1.9162,
+      "to_mesh_unchanged_ms": 0.027,
+      "to_mesh_after_dab_ms": 101.398,
+      "to_mesh_after_topology_ms": 187.272,
+      "peak_rss_mib": 1079.2
+    },
+    "dab:10k": {
+      "vertices": 9662,
+      "r0.03_moved": 2,
+      "r0.03_ms": 1.207,
+      "r0.1_moved": 26,
+      "r0.1_ms": 1.834,
+      "r0.3_moved": 241,
+      "r0.3_ms": 2.303,
+      "peak_rss_mib": 60.9
+    },
+    "dab:100k": {
+      "vertices": 99906,
+      "r0.03_moved": 26,
+      "r0.03_ms": 5.634,
+      "r0.1_moved": 271,
+      "r0.1_ms": 6.379,
+      "r0.3_moved": 2562,
+      "r0.3_ms": 10.751,
+      "peak_rss_mib": 138.3
+    },
+    "dab:1m": {
+      "vertices": 998286,
+      "r0.03_moved": 249,
+      "r0.03_ms": 45.215,
+      "r0.1_moved": 2715,
+      "r0.1_ms": 49.746,
+      "r0.3_moved": 23675,
+      "r0.3_ms": 85.936,
+      "peak_rss_mib": 885.3
+    },
+    "stroke:10k": {
+      "vertices": 9662,
+      "draw_100_dabs_ms": 91.9,
+      "draw_ms_per_dab": 0.919,
+      "draw_stages_ms": {
+        "query": 19.676,
+        "deform": 7.017,
+        "apply": 18.05
+      },
+      "draw_undo_ms": 1.281,
+      "clay_100_dabs_ms": 78.517,
+      "clay_ms_per_dab": 0.785,
+      "clay_stages_ms": {
+        "query": 16.387,
+        "deform": 7.468,
+        "apply": 18.032
+      },
+      "clay_undo_ms": 1.338,
+      "smooth_100_dabs_ms": 282.532,
+      "smooth_ms_per_dab": 2.825,
+      "smooth_stages_ms": {
+        "query": 17.146,
+        "deform": 207.905,
+        "apply": 20.131
+      },
+      "smooth_undo_ms": 1.321,
+      "grab_100_dabs_ms": 25.928,
+      "grab_ms_per_dab": 0.259,
+      "grab_stages_ms": {
+        "query": 0.223,
+        "deform": 0.081,
+        "apply": 20.2
+      },
+      "grab_undo_ms": 0.962,
+      "commit_after_stroke_ms": 1.478,
+      "journal_bytes": 428368,
+      "peak_rss_mib": 60.6
+    },
+    "stroke:100k": {
+      "vertices": 99906,
+      "draw_100_dabs_ms": 162.162,
+      "draw_ms_per_dab": 1.622,
+      "draw_stages_ms": {
+        "query": 38.026,
+        "deform": 12.888,
+        "apply": 43.838
+      },
+      "draw_undo_ms": 4.036,
+      "clay_100_dabs_ms": 148.576,
+      "clay_ms_per_dab": 1.486,
+      "clay_stages_ms": {
+        "query": 37.519,
+        "deform": 13.489,
+        "apply": 44.652
+      },
+      "clay_undo_ms": 3.679,
+      "smooth_100_dabs_ms": 606.878,
+      "smooth_ms_per_dab": 6.069,
+      "smooth_stages_ms": {
+        "query": 39.088,
+        "deform": 463.49,
+        "apply": 49.737
+      },
+      "smooth_undo_ms": 3.683,
+      "grab_100_dabs_ms": 97.409,
+      "grab_ms_per_dab": 0.974,
+      "grab_stages_ms": {
+        "query": 0.533,
+        "deform": 0.135,
+        "apply": 80.263
+      },
+      "grab_undo_ms": 2.552,
+      "commit_after_stroke_ms": 12.275,
+      "journal_bytes": 3203288,
+      "peak_rss_mib": 138.2
+    },
+    "stroke:1m": {
+      "vertices": 998286,
+      "draw_100_dabs_ms": 694.49,
+      "draw_ms_per_dab": 6.945,
+      "draw_stages_ms": {
+        "query": 161.873,
+        "deform": 59.405,
+        "apply": 256.608
+      },
+      "draw_undo_ms": 23.592,
+      "clay_100_dabs_ms": 603.608,
+      "clay_ms_per_dab": 6.036,
+      "clay_stages_ms": {
+        "query": 154.68,
+        "deform": 62.637,
+        "apply": 261.262
+      },
+      "clay_undo_ms": 23.108,
+      "smooth_100_dabs_ms": 2149.057,
+      "smooth_ms_per_dab": 21.491,
+      "smooth_stages_ms": {
+        "query": 153.892,
+        "deform": 1616.126,
+        "apply": 266.409
+      },
+      "smooth_undo_ms": 23.112,
+      "grab_100_dabs_ms": 721.218,
+      "grab_ms_per_dab": 7.212,
+      "grab_stages_ms": {
+        "query": 1.569,
+        "deform": 0.63,
+        "apply": 594.685
+      },
+      "grab_undo_ms": 15.575,
+      "commit_after_stroke_ms": 121.666,
+      "journal_bytes": 28685336,
+      "peak_rss_mib": 885.5
+    },
+    "symmetry:10k": {
+      "vertices": 9662,
+      "sym_none_ms_per_dab": 0.904,
+      "sym_x_ms_per_dab": 1.429,
+      "sym_xy_ms_per_dab": 1.944,
+      "peak_rss_mib": 61.4
+    },
+    "symmetry:100k": {
+      "vertices": 99906,
+      "sym_none_ms_per_dab": 1.719,
+      "sym_x_ms_per_dab": 3.06,
+      "sym_xy_ms_per_dab": 4.584,
+      "peak_rss_mib": 138.5
+    },
+    "symmetry:1m": {
+      "vertices": 998286,
+      "sym_none_ms_per_dab": 7.343,
+      "sym_x_ms_per_dab": 12.985,
+      "sym_xy_ms_per_dab": 19.316,
+      "peak_rss_mib": 885.5
+    },
+    "dyntopo:10k": {
+      "triangles_before": 19320,
+      "detail": 0.02142582205425742,
+      "ms_per_dab": 13.46,
+      "topology": {
+        "splits": 584,
+        "collapses": 176,
+        "flips": 418,
+        "relaxed": 13779
+      },
+      "triangles_after": 20136,
+      "stages_ms": {
+        "query": 6.98,
+        "deform": 3.597,
+        "apply": 9.552,
+        "topology": 369.548
+      },
+      "commit_ms": 3.074,
+      "undo_ms": 3.033,
+      "peak_rss_mib": 69.0
+    },
+    "dyntopo:100k": {
+      "triangles_before": 199808,
+      "detail": 0.006676808683760398,
+      "ms_per_dab": 92.16,
+      "topology": {
+        "splits": 5236,
+        "collapses": 1661,
+        "flips": 4517,
+        "relaxed": 135990
+      },
+      "triangles_after": 206958,
+      "stages_ms": {
+        "query": 36.462,
+        "deform": 14.714,
+        "apply": 57.321,
+        "topology": 2620.927
+      },
+      "commit_ms": 28.542,
+      "undo_ms": 17.195,
+      "peak_rss_mib": 238.7
+    },
+    "dyntopo:1m": {
+      "triangles_before": 1996568,
+      "detail": 0.002113523656000068,
+      "ms_per_dab": 897.52,
+      "topology": {
+        "splits": 49240,
+        "collapses": 15509,
+        "flips": 42553,
+        "relaxed": 1334960
+      },
+      "triangles_after": 2064030,
+      "stages_ms": {
+        "query": 255.635,
+        "deform": 107.376,
+        "apply": 506.858,
+        "topology": 25934.406
+      },
+      "commit_ms": 283.831,
+      "undo_ms": 136.14,
+      "peak_rss_mib": 1380.7
+    },
+    "remesh:10k": {
+      "triangles_before": 19320,
+      "edge_mean_before": 0.04285164410851484,
+      "seconds": 2.393,
+      "iterations": 3,
+      "triangles_after": 17326,
+      "edge_cv_after": 0.1805,
+      "operations": {
+        "splits": 4497,
+        "collapses": 5494,
+        "flips": 2693,
+        "relaxed": 52182
+      },
+      "peak_rss_mib": 174.9
+    },
+    "remesh:100k": {
+      "triangles_before": 199808,
+      "edge_mean_before": 0.013353617367520797,
+      "seconds": 43.333,
+      "iterations": 3,
+      "triangles_after": 171666,
+      "edge_cv_after": 0.1628,
+      "operations": {
+        "splits": 44671,
+        "collapses": 58742,
+        "flips": 27142,
+        "relaxed": 536744
+      },
+      "peak_rss_mib": 1154.6
+    },
+    "remesh:1m": {
+      "triangles_before": 1996568,
+      "edge_mean_before": 0.004227047312000136,
+      "seconds": 471.284,
+      "iterations": 1,
+      "triangles_after": 2173958,
+      "edge_cv_after": 0.2036,
+      "operations": {
+        "splits": 431270,
+        "collapses": 342575,
+        "flips": 313784,
+        "relaxed": 2166894
+      },
+      "peak_rss_mib": 9271.8
+    },
+    "voxel:10k": {
+      "input_triangles": 199808,
+      "voxel_size": 0.06,
+      "seconds": 3.814,
+      "output_triangles": 10436,
+      "band_points": 12163,
+      "tier": "closed",
+      "closed": true,
+      "peak_rss_mib": 415.6
+    },
+    "voxel:100k": {
+      "input_triangles": 199808,
+      "voxel_size": 0.019,
+      "seconds": 5.532,
+      "output_triangles": 104348,
+      "band_points": 121873,
+      "tier": "closed",
+      "closed": true,
+      "peak_rss_mib": 459.2
+    },
+    "voxel:1m": {
+      "input_triangles": 199808,
+      "voxel_size": 0.006,
+      "seconds": 14.06,
+      "output_triangles": 1047020,
+      "band_points": 1221646,
+      "tier": "closed",
+      "closed": true,
+      "peak_rss_mib": 1224.3
+    },
+    "validity:10k": {
+      "triangles": 19320,
+      "check_s": 0.046,
+      "check_with_self_intersections_s": 0.347,
+      "tier": "solid",
+      "peak_rss_mib": 89.2
+    },
+    "validity:100k": {
+      "triangles": 199808,
+      "check_s": 0.486,
+      "check_with_self_intersections_s": 3.788,
+      "tier": "solid",
+      "peak_rss_mib": 238.5
+    },
+    "validity:1m": {
+      "triangles": 1996568,
+      "check_s": 5.999,
+      "check_with_self_intersections_s": 47.592,
+      "tier": "solid",
+      "peak_rss_mib": 1700.3
+    },
+    "modeling:10k": {
+      "faces": 9800,
+      "bevel_edges": 140,
+      "bevel_3_segments_ms": 70.243,
+      "bisect_ms": 91.321,
+      "bisect_fill_ms": 162.219,
+      "knife_project_ms": 201.246,
+      "cleanup_ms": 60.474,
+      "recalculate_normals_ms": 75.221,
+      "peak_rss_mib": 103.2
+    },
+    "modeling:100k": {
+      "faces": 100352,
+      "bevel_edges": 448,
+      "bevel_3_segments_ms": 403.8,
+      "bisect_ms": 1404.19,
+      "bisect_fill_ms": 2122.537,
+      "knife_project_ms": 1970.789,
+      "cleanup_ms": 761.726,
+      "recalculate_normals_ms": 869.239,
+      "peak_rss_mib": 656.5
+    }
+  }
+}

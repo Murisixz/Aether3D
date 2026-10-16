@@ -111,9 +111,10 @@ problem; a plan with problems gives every problem, as in [SCENE_PLANS.md](SCENE_
 | `render_image` | an image file in the workspace (`.png`, linear `.hdr`/`.pfm`); `backend: "path"` or `"gpu_path"` path traces, within the server's sample budget |
 | `history` | `list`, `undo`, `redo` (`steps`), `checkpoint`, `goto`, `remove_checkpoint` (`name`) |
 | `export_scene` | a `.glb` or `.gltf` file (`allow_lossy`, `bake_textures`, `overwrite`) |
-| `run_script` | one of the engine's JSON scripts, atomically: edit scripts (polygon editing), procedural scripts, scene scripts |
+| `run_script` | one of the engine's JSON scripts, atomically: edit scripts (polygon editing), procedural scripts, scene scripts, sculpt scripts (strokes, masks, dynamic topology, remeshing, symmetrize; [MODELING.md](MODELING.md#sculpt-scripts)) |
+| `inspect_mesh` | **inspect** (read-only, 0.13.0): one object's validity tier (`valid` < `manifold` < `closed` < `solid`) and quality in world units -- counts, boundary and non-manifold edges and vertices, winding, degenerate triangles, components, Euler characteristic, volume, edge lengths, smallest angle; `self_intersections: true` adds the exact test (needed for `solid`; meshes up to 2,000,000 triangles) |
 | `diagnostics` | checks with stable codes: `geometry`, `procedural`, `materials`, `history` |
-| `capabilities` | what the engine offers, by `topic`: `overview`, `plan`, `primitives`, `modifiers`, `materials`, `queries`, `limits`, `gpu`, `feedback` |
+| `capabilities` | what the engine offers, by `topic`: `overview`, `plan`, `primitives`, `modifiers`, `materials`, `queries`, `limits`, `gpu`, `feedback`, `sculpt` |
 | `observe_scene` | **inspect**: render views (`view`, `views`: the active camera, a scene camera, a virtual camera, a close-up framed on objects, presets `top`/`front`/`iso`/...) and return the images as image content (`images`: `image`, `annotated` with numbered markers, `ids`, `depth`; `crops`), with measured facts per object (pixels, bounds, depth, border contact; for `focus` objects frustum, projected bounds, clipping and, with `occlusion`, what covers them) and for the image (coverage, luminance, black and clipped fractions). Nothing is added to the scene |
 | `diagnose_scene` | **inspect**: check the scene against `expectations` (kept for later calls) and default render checks, with your own visual `evaluations` grounded in the render's object index; findings with codes, magnitudes, regions and their basis |
 | `propose_corrections` | **propose**: typed corrections for the findings, each with its compiled scene plan or script, rationale, expected effect and safety (`safe`, `verify`, `approval`); `preview` applies them in a transaction, re-renders and rolls back |
@@ -165,6 +166,8 @@ way (`TIMEOUT`).
 | `aether3d://scene/objects/{ref}` | one object, by id or name |
 | `aether3d://render/last-preview` | the last preview (PNG) |
 | `aether3d://feedback/guide` | the visual feedback guide for agents (Markdown) |
+| `aether3d://sculpt/guide` | the sculpting guide for agents (Markdown): brushes, strokes, masks, symmetry, dynamic topology, remeshing, validity tiers, scripts |
+| `aether3d://schema/sculpt-script` | the sculpt script format's JSON Schema |
 | `aether3d://schema/expectations`, `.../vision-evaluation`, `.../corrections` | the JSON Schemas of expectations, vision evaluations and correction actions |
 | `aether3d://observations/{id}`, `aether3d://observations/{id}/{kind}` | an observation's measured facts (JSON), its images (`image`, `annotated`, `ids`, `depth`; PNG) |
 
@@ -217,6 +220,12 @@ The server treats every argument, plan, path and imported file as untrusted.
 - [`examples/mcp_castle_agent.py`](../examples/mcp_castle_agent.py): an agent's whole loop
   as tool calls -- build a castle with two deliberate mistakes, find them with spatial
   queries, fix them, undo and redo, preview, save, export, reopen.
+- [`examples/mcp_sculpt_agent.py`](../examples/mcp_sculpt_agent.py): an agent sculpts a
+  bust over MCP -- a refused script (structured error, nothing changed), a sculpt script
+  with symmetric strokes and `require: "solid"`, `inspect_mesh`, then `observe_scene`
+  and `diagnose_scene` with a `mesh_validity` expectation find the chin sunk into the
+  pedestal, and a verified correction raises it: 18 tool calls in about 4.4 s on the CPU
+  rasterizer.
 
 On the machine of [the benchmark](SCENE_PLANS.md#performance) (i9-12900H, Python 3.14), a
 trivial tool call takes about 1.2 ms over stdio, and a plan of 10,000 objects about 9 ms

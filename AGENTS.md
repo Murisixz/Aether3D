@@ -12,7 +12,10 @@ apply to agents too.
 - Architecture and module boundaries: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Public API: [docs/API.md](docs/API.md). File format: [docs/FILE_FORMAT.md](docs/FILE_FORMAT.md).
 - glTF interchange: [docs/GLTF.md](docs/GLTF.md). Geometry reports: [docs/INSPECTION.md](docs/INSPECTION.md).
-- Mesh editing: [docs/EDITING.md](docs/EDITING.md) (topology, ids, sessions, operations, scripts).
+- Mesh editing: [docs/EDITING.md](docs/EDITING.md) (topology, ids, sessions, operations, scripts);
+  advanced modeling and sculpting: [docs/MODELING.md](docs/MODELING.md) (bevels, cuts,
+  bridges, sweeps; brushes, dynamic topology, remeshing, symmetrize, validity tiers,
+  sculpt scripts).
 - Procedural geometry: [docs/PROCEDURAL.md](docs/PROCEDURAL.md) (parameters, expressions, modifiers,
   caching, transactions, scripts).
 - Cameras, lights and rendering: [docs/RENDERING.md](docs/RENDERING.md) (conventions, pipeline,
@@ -133,6 +136,28 @@ apply to agents too.
     Hardware ray queries were prototyped outside the package
     (`research/2026-10-modernization/hw_pathtrace/`) and deferred; see
     docs/PERFORMANCE.md (Phase 5) before reopening that question.
+
+- Sculpting (`sculpt/`):
+  - **Every change goes through the journal.** Write sculpt mesh state only through the
+    journaled primitives (`_move`, `_set_mask`, `apply_topology`, `_replace`) inside a
+    `@sculpt_operation`; an operation that raises is rolled back, and `undo()` must give
+    back the previous state bit for bit (`tests/test_sculpt_core.py`,
+    `tests/test_sculpt_topology.py` compare raw arrays).
+  - **Validate before changing.** Check every argument (types, ranges, finiteness) before
+    the first write and raise `ValidationError` or `SculptError` with a stable code; the
+    sculpt-script fuzz test (`tests/test_sculpt_schema.py`) feeds mutated scripts to the
+    executor and fails on any other exception. A new setting needs its checker, the JSON
+    Schema (`sculpt/schema.py`) and docs.
+  - **Topology changes keep features.** Splits, collapses, flips and relaxation never
+    cross boundaries, UV seams, hard edges, face-group borders or masked vertices; new
+    vertices interpolate UVs within each face. Check validity (closed, manifold,
+    oriented, no self-intersection) after every new topology pass in tests.
+  - **Decide sides exactly.** Use `spatial/predicates.py` (`orient3d`,
+    `segment_crosses_triangle`) for in/out and crossing decisions; never a float
+    determinant near zero.
+  - **Measure what you report.** Remeshers and dynamic topology report counts and
+    statistics computed on the result; validity tiers are measured (`solid` only with the
+    exact self-intersection test). Never call a result valid without checking it.
 
 - Operations history (`history.py`):
   - **Every change of a scene is recorded.** A new public method that changes the
@@ -310,6 +335,16 @@ apply to agents too.
 - `aether3d topology PROJECT --object NAME --elements --json` lists element ids, positions and
   face loops; ids from a fresh session are deterministic for the same mesh.
 
+- Sculpt with a session (`with obj.sculpt() as s: s.stroke({...})`) or a sculpt script
+  (`aether3d sculpt run PROJECT script.json`, MCP `run_script` with format
+  `aether3d.sculpt-script`): brush radius and dynamic-topology detail are world units,
+  strokes snap to the surface by default, `"symmetry": "x"` mirrors across the object's
+  local plane. Give each sculpt a `"require"` tier (`closed`, or `solid` for the exact
+  self-intersection test) so a broken result is refused instead of committed; run
+  `voxel_remesh` then `remesh` for an even base before fine strokes. Measure with
+  `aether3d sculpt check --require TIER` or MCP `inspect_mesh`; look with
+  `observe_scene` and check with a `mesh_validity` expectation. Read the guide
+  `aether3d://sculpt/guide` and match on error `code` and `location`.
 - Build or change procedural geometry with `scene.procedural` (Python) or
   `aether3d procedural run PROJECT script.json` (JSON). Read `aether3d procedural types --json`
   for schemas, wrap related changes in one `batch()`/script, and match on

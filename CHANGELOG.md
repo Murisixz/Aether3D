@@ -4,6 +4,101 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.13.0: advanced modeling and sculpting
+
+Aether3D gains the modeling tools of a production polygon editor and a sculpting system
+built for scripts and agents: brushes with masks, symmetry and pressure as data, dynamic
+topology, isotropic and voxel remeshing, symmetrize, exact validity checks with tiers --
+each operation atomic, undoable and refused with a structured error before it changes
+anything ([docs/MODELING.md](docs/MODELING.md)). Every subsystem's language was chosen
+after measuring prototypes (the design record:
+[research/2026-10-stage13/DESIGN.md](research/2026-10-stage13/DESIGN.md)): Python for
+the topological operators, data-oriented NumPy for sculpting, dynamic topology and
+remeshing; no new native code was needed for the measured workloads.
+
+Measured on the development machine (i9-12900H laptop, Python 3.14, NumPy 2.5;
+`benchmarks/bench_sculpt.py`, saved as `benchmarks/results/stage13-sculpt.json`; the full
+tables are in [docs/MODELING.md](docs/MODELING.md#performance) and
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md)), on spheres of about 10k, 100k and 1M
+vertices:
+
+- a 100-dab `draw` stroke: 0.9, 1.6 and 6.5 ms per dab; mirrored in x, up to 1.9 times that;
+- a dynamic-topology dab with a brush covering the same number of vertices: 13.3, 16.0 and
+  20.1 ms (the work follows the brush, not the mesh);
+- committing a dab: 1.1, 9.5 and 100 ms; undoing a 100-dab stroke: 1.3, 4.1 and 24 ms;
+- against the 0.12 editing API on the 100k sphere: opening it for sculpting 76 times
+  faster (0.16 s), the same 3,137-vertex dab 9 times (7.3 ms), committing it 226 times
+  (16 ms);
+- isotropic remeshing: 1.8 s and 27 s for three iterations at 10k and 100k, 199 s for one
+  at 1M; voxel remeshing of the 100k sphere into 10k, 100k and 1M triangles: 3.9, 5.6 and
+  14 s; the exact self-intersection test: 0.4, 3.8 and 48 s.
+
+### Added
+
+- **Modeling** (`EditableMesh` operations, each also in JSON edit scripts):
+  multi-segment `bevel_edges(segments=, profile=)` (superellipse profiles, corner
+  patches where three or more bevelled edges meet, open fans); `bisect` (with
+  `clear`/`fill`); `knife_project`; `fill_holes` (polygon, fan, or Liepa's minimum-weight
+  triangulation); `bridge_edge_loops` (segments, twist); `slide_edges`, `slide_vertex`;
+  `dissolve_vertices`, `dissolve_faces`, `limited_dissolve`; `connect_vertex_path`,
+  `connect_vertices`; `extrude_edges`, `spin`, `add_lathe`; `shrinkwrap`;
+  `set_auto_smooth`, `recalculate_normals`, `set_weighted_normals`; `cleanup` with an
+  auditable report.
+- **Procedural**: Catmull-Clark subdivision `crease` (DeRose et al. 1998 semi-sharp
+  creases); mirror `bisect`.
+- **Sculpting** (`aether3d.sculpt`, `obj.sculpt()`, `geometry.sculpt_source()`):
+  `SculptMesh` (welded geometry and render attributes, Morton chunks, incremental
+  normals, a sparse undo journal, commit that recomputes only touched normal groups);
+  15 brushes (`draw`, `inflate`, `clay`, `flatten`, `fill`, `scrape`, `pinch`, `crease`,
+  `layer`, `grab`, `elastic` -- regularized Kelvinlets --, `snake_hook`, `twist`,
+  `smooth` with Laplacian, Taubin and relax methods, `mask`); falloff curves, projected
+  and geodesic falloff, front faces only; masks, automasking (topology, face groups,
+  boundaries); symmetry on any of x, y, z; pressure per path point; world-unit
+  settings under any transform; one stroke is one undo step, rolled back on any failure.
+- **Dynamic topology** per brush (`dyntopo`): red-green splits, collapses as
+  independent sets with link and fold checks, Delaunay flips, tangential relaxation;
+  UVs interpolated exactly on splits; seams, hard edges, group borders and boundaries
+  kept.
+- **Remeshing**: `remesh()` (isotropic, Botsch-Kobbelt, with projection onto the
+  starting surface and feature preservation) and `voxel_remesh()` (exact narrow-band
+  signed distances in 8^3 blocks, pseudo-normal signs, overlapping parts fused,
+  cavities, shells for open meshes, marching cubes from a generated crack-free table).
+  Quad remeshing is not offered.
+- **Symmetrize**: exact copy of paired vertices, or cut-and-mirror for different
+  topologies (`mode="auto"` picks).
+- **Validity**: `check_mesh()` with tiers `valid` < `manifold` < `closed` < `solid`;
+  `commit(require=...)` refuses results below a tier (`BELOW_VALIDITY_TIER`); exact
+  orientation predicates (`aether3d.spatial.predicates`: Shewchuk's filters, rational
+  fallback).
+- **Sculpt scripts** (`aether3d.sculpt-script` v1, `run_sculpt_script`): atomic, one
+  undo step, with limits (`max_dabs`, `max_triangles`, `max_seconds`), locations and
+  hints in errors, a JSON Schema; **CLI** `aether3d sculpt run | check | schema`;
+  **MCP** `run_script` accepts sculpt scripts, the new read-only tool `inspect_mesh`,
+  resources `aether3d://sculpt/guide` and `aether3d://schema/sculpt-script`,
+  capabilities topic `sculpt`; **visual feedback** check `mesh_validity`.
+- `SculptMesh.should_stop`: cancellation polled between dabs, passes and voxel batches
+  (rolled back).
+- Examples, all rendered by Aether3D: `hard_surface.py`, `organic_sculpt.py`,
+  `remesh_validity.py`, `mcp_sculpt_agent.py`.
+- Spatial: `TriangleSurface` (exact nearest points and ray casts on one mesh),
+  `build_bvh_morton` (linear BVH for large meshes), `component_labels`.
+
+### Fixed
+
+- `triangles_intersect` (spatial `overlaps`, `distance`, self-intersection checks): its
+  constructive step used a float ray-triangle test whose determinant is all rounding
+  for nearly parallel triangles, and reported intersections between disjoint triangles
+  (found on marching-cubes triangles one cell apart). It now uses exact predicates.
+- GPU shadows with three or more shadowed lights failed with a wgpu validation error
+  (shadow passes between the first and the last carried timestamp writes without an
+  index) on adapters with timestamp queries, lavapipe included.
+
+### Changed
+
+- `bevel_edges` accepts open fans (an edge ending on a boundary) and `segments > 1`;
+  `segments=0` is a `ValidationError`.
+- The MCP server has 21 tools (`inspect_mesh`).
+
 ## 0.12.0: visual feedback and automatic corrections
 
 Aether3D now closes the loop between what a scene should be and what its renders show:

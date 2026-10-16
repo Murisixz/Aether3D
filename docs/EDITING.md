@@ -3,7 +3,10 @@
 Aether3D 0.3.0 adds a programmable polygon-modeling engine: create, select,
 transform and reshape vertices, edges and faces from Python or from JSON
 scripts on the command line, then commit the result back to a scene object
-as an ordinary immutable `Mesh`.
+as an ordinary immutable `Mesh`. Version 0.13.0 adds advanced modeling
+operators (rounded bevels, cuts, bridges, slides, sweeps, normals tools) and a
+separate sculpting system (brushes, dynamic topology, remeshing): see
+[MODELING.md](MODELING.md).
 
 ```python
 from aether3d import Scene

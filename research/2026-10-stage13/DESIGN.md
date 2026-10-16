@@ -178,3 +178,31 @@ and bookkeeping timed separately) on 10k, 100k and 1M vertices; symmetry; dynami
 topology; isotropic and voxel remeshing; multi-segment bevel; peak memory per group (in
 its own process). Medians after warm-up, GC paused during timed runs, machine and
 versions recorded, as `bench_engine.py` does.
+
+## 9. Outcome (written after the implementation)
+
+The languages stayed as decided: no native, GPU or C++ code was added; sculpting,
+dynamic topology and remeshing are NumPy, the modeling operators Python on the editing
+engine. What measurement changed on the way (details in docs/PERFORMANCE.md, "Advanced
+modeling and sculpting"):
+
+- **Voxel band.** Asking a BVH for each grid point's nearest triangle was replaced by
+  exact distances scattered from the triangles into the blocks: the same surfaces at
+  3.7-4.5 times the speed; the band then narrowed from 2 to 1.75 voxels with
+  bit-identical output.
+- **Collapses.** One pass keeping the length-priority minima collapsed 48 of 13,536 short
+  edges; checking validity first and choosing the set in Luby-style rounds collapsed 640.
+- **Isotropic remeshing.** Whole-mesh passes journaled everything and kept replaced rows
+  (1M, one iteration: 471 s, 9.3 GB). The passes now run on a detached compact copy with
+  batched checks and replace the mesh once (199 s, 3.4 GB).
+- **Strokes.** Reading the mesh's extent copied every vertex (41 of 45 ms for a one-dab
+  stroke at 1M); the chunk boxes give it (2.7 ms).
+- **Exactness beyond the plan.** The shared triangle-triangle test decided crossings with
+  a float ray-triangle determinant that misfires on nearly parallel triangles (found on
+  marching-cubes output); it now uses the exact predicates.
+- **Symmetrize** gained a cut-and-mirror mode when projecting unpaired vertices proved
+  unable to copy a feature (no vertex can be added that way).
+
+Results: `benchmarks/results/stage13-sculpt.json` (commit 5323c44), summarized in
+docs/MODELING.md, "Performance". Not done: multiresolution sculpting; quad remeshing is
+deliberately not offered.
