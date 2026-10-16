@@ -1,0 +1,116 @@
+{
+ "sphere100k camera": {
+  "sw": {
+   "hit/miss same as f64 ref": 1.0,
+   "same triangle as ref (both hit)": 1.0,
+   "t rel diff median": 4.293753949137275e-08,
+   "t rel diff p99.99": 3.593438158380249e-07,
+   "hits": 886244,
+   "ref hits": 886244
+  },
+  "hw": {
+   "hit/miss same as f64 ref": 1.0,
+   "same triangle as ref (both hit)": 1.0,
+   "t rel diff median": 2.5592664038858316e-08,
+   "t rel diff p99.99": 3.6008420585001645e-07,
+   "hits": 886244,
+   "ref hits": 886244
+  },
+  "sw vs hw same (inst, prim)": 1.0
+ },
+ "sphere100k bounce": {
+  "sw": {
+   "hit/miss same as f64 ref": 1.0,
+   "same triangle as ref (both hit)": 1.0,
+   "t rel diff median": 5.638271115598698e-08,
+   "t rel diff p99.99": 0.0006936518341322081,
+   "hits": 443636,
+   "ref hits": 443636
+  },
+  "hw": {
+   "hit/miss same as f64 ref": 1.0,
+   "same triangle as ref (both hit)": 1.0,
+   "t rel diff median": 4.424377271329244e-08,
+   "t rel diff p99.99": 0.00048095169106365674,
+   "hits": 443636,
+   "ref hits": 443636
+  },
+  "sw vs hw same (inst, prim)": 1.0
+ },
+ "cubes400 camera": {
+  "sw": {
+   "hit/miss same as f64 ref": 0.999992,
+   "same triangle as ref (both hit)": 0.999997,
+   "t rel diff median": 3.510351743338868e-08,
+   "t rel diff p99.99": 2.1831274868439393e-07,
+   "hits": 1760564,
+   "ref hits": 1760548
+  },
+  "hw": {
+   "hit/miss same as f64 ref": 0.999992,
+   "same triangle as ref (both hit)": 0.999998,
+   "t rel diff median": 1.574919476154112e-08,
+   "t rel diff p99.99": 1.1452182148882458e-07,
+   "hits": 1760564,
+   "ref hits": 1760548
+  },
+  "sw vs hw same (inst, prim)": 0.999994
+ },
+ "cubes400 bounce": {
+  "sw": {
+   "hit/miss same as f64 ref": 1.0,
+   "same triangle as ref (both hit)": 1.0,
+   "t rel diff median": 4.998425124618514e-08,
+   "t rel diff p99.99": 5.684991274502323e-05,
+   "hits": 1017727,
+   "ref hits": 1017727
+  },
+  "hw": {
+   "hit/miss same as f64 ref": 1.0,
+   "same triangle as ref (both hit)": 1.0,
+   "t rel diff median": 3.9599235705636654e-08,
+   "t rel diff p99.99": 0.00017772885489219272,
+   "hits": 1017727,
+   "ref hits": 1017727
+  },
+  "sw vs hw same (inst, prim)": 1.0
+ },
+ "sphere1m camera": {
+  "sw": {
+   "hit/miss same as f64 ref": 1.0,
+   "same triangle as ref (both hit)": 0.999986,
+   "t rel diff median": 4.253754566315268e-08,
+   "t rel diff p99.99": 3.452488732081104e-07,
+   "hits": 886312,
+   "ref hits": 886312
+  },
+  "hw": {
+   "hit/miss same as f64 ref": 1.0,
+   "same triangle as ref (both hit)": 0.999986,
+   "t rel diff median": 2.5794058177822912e-08,
+   "t rel diff p99.99": 3.49677436243644e-07,
+   "hits": 886312,
+   "ref hits": 886312
+  },
+  "sw vs hw same (inst, prim)": 1.0
+ },
+ "sphere1m bounce": {
+  "sw": {
+   "hit/miss same as f64 ref": 1.0,
+   "same triangle as ref (both hit)": 0.999982,
+   "t rel diff median": 5.6419531955710475e-08,
+   "t rel diff p99.99": 0.00035149441318492073,
+   "hits": 443589,
+   "ref hits": 443589
+  },
+  "hw": {
+   "hit/miss same as f64 ref": 1.0,
+   "same triangle as ref (both hit)": 0.999982,
+   "t rel diff median": 4.420256548087782e-08,
+   "t rel diff p99.99": 0.00033917388607762784,
+   "hits": 443589,
+   "ref hits": 443589
+  },
+  "sw vs hw same (inst, prim)": 1.0
+ }
+}

@@ -29,6 +29,9 @@ apply to agents too.
   errors, idempotency, chunks, limits, performance); the MCP server for AI agents:
   [docs/MCP.md](docs/MCP.md) (tools, resources, Claude Code, security).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
+- Performance: [docs/PERFORMANCE.md](docs/PERFORMANCE.md) (how to measure with
+  `benchmarks/bench_engine.py`, the correctness guards, implementation switches, the record
+  of every phase of the performance modernization).
 
 ## Conventions to preserve
 
@@ -45,7 +48,10 @@ apply to agents too.
 - Editing: mutate an `EditableMesh` only through the journaled primitives in
   `editing/core.py`; new operations are `@operation` methods that validate first and raise
   `EditError` with a stable code (never leave a partial edit; never approximate an operation).
-  Run `tests/test_editing_robustness.py` after touching topology code.
+  Run `tests/test_editing_robustness.py` after touching topology code. Building in bulk
+  (`MeshCore._bulk_faces`, behind `AETHER3D_EDITING_BULK`) must give the tables adding one
+  face at a time gives, in the same insertion and iteration orders, sharing one Python int
+  per id (`tests/test_editing_bulk.py` compares them, and their memory).
 - Procedural: modifiers are pure functions `PolyMesh -> PolyMesh` registered in
   `procedural/modifiers.py` with a `ParamSpec` schema; never mutate inputs (arrays are
   read-only), raise `ProceduralError` with a stable code instead of returning damaged
@@ -56,7 +62,9 @@ apply to agents too.
 - Rendering: images are produced by Aether3D's own code (`rendering/`). Never shell out to Blender
   or another renderer to make an image; Blender may only be used for optional external checks.
   Backends consume a `RenderScene` from `extract_render_scene` and must not touch scene objects.
-  Rendering must never modify the scene or bake procedural geometry.
+  Rendering must never modify the scene or bake procedural geometry. A `RenderScene` is
+  immutable: its arrays may be shared with later frames (the retained render world makes them
+  read-only), so backends never write into them.
 - Cameras and lights look along local -Y with +Z up; user colors are display sRGB and lighting is
   linear; keep per-vertex/per-sample math explicit (no BLAS) so results stay bitwise reproducible.
   Validate new shading or projection code against `tests/render_reference.py` (an independent ray
@@ -119,6 +127,9 @@ apply to agents too.
   - **Honest reports.** It runs on the adapter's shader cores with software BVH
     traversal: never claim hardware ray tracing, and report `"device": "gpu"` with the
     adapter. Without a usable GPU it fails with a `GPU_*` error, never a silent CPU render.
+    Hardware ray queries were prototyped outside the package
+    (`research/2026-10-modernization/hw_pathtrace/`) and deferred; see
+    docs/PERFORMANCE.md (Phase 5) before reopening that question.
 
 - Operations history (`history.py`):
   - **Every change of a scene is recorded.** A new public method that changes the
@@ -138,8 +149,8 @@ apply to agents too.
 - Spatial queries (`spatial/`):
   - **Read-only.** Queries never change a scene, record history or bump `scene.revision`
     (`test_queries_are_deterministic_and_change_nothing` runs every query). The index is a
-    weak cache keyed by the scene and its revision; do not add invalidation hooks, add
-    state to the history instead.
+    cache kept on the scene (`Scene._derived()`) and keyed by its revision; do not add
+    invalidation hooks, add state to the history instead.
   - **Exact or labeled.** Report facts decided on triangles; anything that rests on boxes
     or sampling must say so (`exact=False`, `"bounds"`, `visible_from`'s samples). Never
     call a box overlap a collision.
@@ -181,6 +192,43 @@ apply to agents too.
     the machine; a render reports the backend that drew it, never a GPU for a CPU image.
   - Test tools through a real server process (`tests/test_mcp.py` uses the SDK client and
     raw JSON-RPC).
+
+- Performance work:
+  - **Measure first and after** with `benchmarks/bench_engine.py` (`--compare` against a
+    saved run on the same machine); never report an improvement that was not measured end
+    to end.
+  - **Caches derived from a scene live in `Scene._derived()`**, keyed by `scene.revision`
+    or the history's own bookkeeping. Never key a module-level dictionary by a scene: a
+    cache entry that refers to its scene keeps it alive (`tests/test_scene_lifecycle.py`).
+  - **Incremental caches follow the change journal.** `scene.history._changes_since(revision)`
+    names the parts changed after a revision (`None`: recompute everything). Every scene
+    change must go through the history (`_touch` before writing) or such caches go stale.
+    Inside an open operation (`history.in_progress`) changes are not journaled yet: compute
+    without the cache and keep nothing. A journaled aspect a cache does not know must make it
+    recompute everything (`rendering/retained.py` is the model; its tests compare it with the
+    full extraction along random edits, `tests/test_retained_world.py`).
+  - **Identical results.** A cached or faster path must give exactly what the path it
+    replaces gives (`tests/parity.py`); `tests/test_invariants.py` checks identity, undo,
+    redo and cache coherence against a fresh copy of the scene along random edit chains.
+  - **Switchable replacements.** A new implementation of something that works keeps the
+    old one behind a switch (`aether3d/_features.py`, documented in docs/PERFORMANCE.md)
+    with a test comparing the two, until it has proven itself.
+  - **Native kernels** (`native/`, the optional `aether3d-native` package; loaded by
+    `aether3d/_native.py`):
+    - **NumPy stays the reference.** Every kernel has a NumPy implementation in the
+      package that runs without it (or with `AETHER3D_NATIVE=0`); `import aether3d` must
+      never require the native package.
+    - **Bitwise the same.** A kernel performs the NumPy code's operations in its order:
+      no fused multiply-adds, no `target-cpu`, no fast-math, no reassociation.
+      `tests/test_native.py` compares each kernel with NumPy bit for bit on random and
+      adversarial inputs; run the suite with and without the package.
+    - **Safe at the boundary.** Check every array (type, contiguity, size) and every
+      index a kernel follows and raise `ValueError`, never read out of bounds; release
+      the GIL while computing; keep no reference to Python objects.
+    - **One calling convention.** Changing a kernel's signature or meaning bumps `ABI` in
+      both `native/src/lib.rs` and `_native.py` (a mismatched package is not used).
+    - Lint the crate with `cargo fmt --check` and `cargo clippy --release -- -D warnings`
+      in `native/` (CI does).
 
 ## Using Aether3D from an agent
 

@@ -289,8 +289,8 @@ class ExtrudeMixin:
                     "a face in the region has zero area",
                     elements={"faces": [f1, f2]},
                 )
-            d1 = poly.unit(np.cross(n1, self._pos[v] - self._pos[p]))
-            d2 = poly.unit(np.cross(n2, self._pos[n] - self._pos[v]))
+            d1 = poly.unit(poly.cross3(n1, self._pos[v] - self._pos[p]))
+            d2 = poly.unit(poly.cross3(n2, self._pos[n] - self._pos[v]))
             m = poly.unit(d1 + d2) if d1 is not None and d2 is not None else None
             if m is None or float(np.dot(m, d1)) < 1e-3:
                 raise EditError(

@@ -37,3 +37,6 @@ tools/gltf-validator/node_modules/
 minecraft_hero_output/
 examples/output/mcp_workspace/
 examples/output/mcp_castle_workspace/
+
+# The native crate (native/): build products
+native/target/

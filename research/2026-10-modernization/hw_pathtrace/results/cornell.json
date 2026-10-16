@@ -1,0 +1,156 @@
+{
+ "scene": "cornell",
+ "size": [
+  640,
+  640
+ ],
+ "samples": 256,
+ "settings": {
+  "width": 640,
+  "height": 640,
+  "path": {
+   "samples": 256,
+   "bounces": 8
+  }
+ },
+ "triangles": 36,
+ "instances": 8,
+ "meshes": 8,
+ "pass_through": true,
+ "cull": 0,
+ "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU (NVIDIA, 615.78.08)",
+ "host_vs_python": {
+  "values_bitwise_equal": 1.0,
+  "planes_bitwise_equal": 22,
+  "max_abs_difference": 0.0
+ },
+ "image": {
+  "mean_luminance_sw": 0.2919665575027466,
+  "mean_luminance_hw": 0.2919665575027466,
+  "mean_bias": 0.0,
+  "rms_difference": 8.902033580421345e-06,
+  "rms_sample_noise": 0.013514997862266126,
+  "difference_over_noise": 0.0006586781345541921,
+  "pixels_bitwise_equal": 0.06654296875,
+  "pixels_within_0.1%": 0.99981201171875,
+  "pixels_within_1%": 0.9999658203125,
+  "max_abs_difference": 0.004211217164993286,
+  "center_same_instance": 0.9991552734375,
+  "center_depth_rel_diff_median": 0.0,
+  "center_depth_rel_diff_max": 4.363895129699813e-07
+ },
+ "timings": {
+  "sw": {
+   "upload_ms": 0.23,
+   "as_build_ms": 0.0,
+   "trace_ms": 8992.26,
+   "trace_gpu_ms": 8622.83,
+   "center_ms": 3.04,
+   "readback_ms": 10.83,
+   "total_ms": 9006.38,
+   "runs": 2,
+   "trace_ms_all": [
+    9025.98,
+    8958.55
+   ],
+   "compile_ms": 9.3,
+   "fallbacks": 0,
+   "rays": {
+    "camera": 104857600,
+    "bounce": 274894285,
+    "shadow": 236117101,
+    "ao": 0,
+    "center": 409600,
+    "through": 121155,
+    "limited": 0
+   }
+  },
+  "hw": {
+   "upload_ms": 0.28,
+   "as_build_ms": 0.81,
+   "trace_ms": 7762.6,
+   "trace_gpu_ms": 7421.01,
+   "center_ms": 2.44,
+   "readback_ms": 10.58,
+   "total_ms": 7776.7,
+   "runs": 2,
+   "trace_ms_all": [
+    7821.38,
+    7703.81
+   ],
+   "compile_ms": 8.7,
+   "fallbacks": 16981,
+   "rays": {
+    "camera": 104857600,
+    "bounce": 274894303,
+    "shadow": 236117114,
+    "ao": 0,
+    "center": 409600,
+    "through": 121157,
+    "limited": 0
+   }
+  },
+  "python_warm": {
+   "wall_s": 9.4441,
+   "render_scene_s": {
+    "setup": 0.00191,
+    "bvh": 0.00106,
+    "upload": 0.00067,
+    "trace": 9.36558,
+    "center": 0.00435,
+    "readback": 0.0073,
+    "compile": 0.0
+   },
+   "rays": 616278586,
+   "mrays_per_s": 65.76
+  },
+  "end_to_end_ms": {
+   "python_measured": 9444.1,
+   "sw_composed": 9072.6,
+   "hw_composed": 7841.8,
+   "cpu_side_ms": 66.2,
+   "of_which_bvh_ms": 1.1
+  },
+  "speedup": {
+   "trace_wall": 1.158,
+   "trace_gpu": 1.162,
+   "end_to_end": 1.157
+  }
+ },
+ "rays": {
+  "camera": {
+   "rays": 409600,
+   "hits_sw": 409600,
+   "hits_hw": 409600,
+   "same_triangle": 1.0,
+   "differ": 0,
+   "differ_same_point": 0,
+   "differ_hit_sw_only": 0,
+   "differ_hit_hw_only": 0,
+   "differ_elsewhere": 0,
+   "same_triangle_t_rel_diff_median": 0.0,
+   "same_triangle_t_rel_diff_p99": 1.8404440993435855e-07,
+   "same_triangle_t_rel_diff_max": 4.076409823028371e-07
+  },
+  "bounce": {
+   "rays": 409600,
+   "hits_sw": 317013,
+   "hits_hw": 317013,
+   "same_triangle": 1.0,
+   "differ": 0,
+   "differ_same_point": 0,
+   "differ_hit_sw_only": 0,
+   "differ_hit_hw_only": 0,
+   "differ_elsewhere": 0,
+   "same_triangle_t_rel_diff_median": 6.058196788671921e-08,
+   "same_triangle_t_rel_diff_p99": 1.931652150233276e-06,
+   "same_triangle_t_rel_diff_max": 0.0031908198725432158
+  },
+  "any_hit": {
+   "rays": 409600,
+   "occluded_sw": 25670,
+   "occluded_hw": 25670,
+   "same_verdict": 1.0
+  }
+ }
+}

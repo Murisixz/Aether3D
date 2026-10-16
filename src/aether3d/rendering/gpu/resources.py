@@ -52,6 +52,9 @@ MAX_GPU_INSTANCES = 2**24 - 1
 """Object indices travel through a float32 target, exact up to 2**24."""
 
 ALIGN = 256  # buffer offsets (storage binding and query resolve alignment)
+COUNTERS = 2  # after the per-instance counts: non-finite pixels, covered pixels
+OUTPUTS = frozenset({"image", "linear", "depth", "object_index", "coverage"})
+"""Every per-pixel output of a GPU render (``render(outputs=...)`` selects some)."""
 
 
 def _align(value: int, alignment: int = ALIGN) -> int:
@@ -363,7 +366,7 @@ class OutputLayout:
         linear = _align(image + 4 * n)
         aux = _align(linear + 12 * n)
         counts = _align(aux + 12 * n)
-        queries = _align(counts + 4 * max(1, instances))
+        queries = _align(counts + 4 * (max(1, instances) + COUNTERS))
         total = _align(queries + 8 * max(1, timestamps))
         return cls(width, height, instances, timestamps, image, linear, aux, counts, queries, total)
 
@@ -373,12 +376,22 @@ class OutputLayout:
             "image": 4 * n,
             "linear": 12 * n,
             "aux": 12 * n,
-            "counts": 4 * max(1, self.instances),
+            "counts": 4 * (max(1, self.instances) + COUNTERS),
             "queries": 8 * max(1, self.timestamps),
         }
 
-    def decode(self, raw: np.ndarray) -> dict[str, np.ndarray]:
-        """Copy the outputs out of the mapped bytes ``raw`` (uint8) into NumPy arrays."""
+    def regions(self, outputs: frozenset[str]) -> list[str]:
+        """The regions holding ``outputs`` (and always the counts and timestamps)."""
+        names = ["image"]
+        if "linear" in outputs:
+            names.append("linear")
+        if outputs & {"depth", "object_index", "coverage"}:
+            names.append("aux")
+        return [*names, "counts", "queries"]
+
+    def decode(self, raw: np.ndarray, outputs: frozenset[str] = OUTPUTS) -> dict[str, Any]:
+        """Copy ``outputs`` out of the mapped bytes ``raw`` (uint8) into NumPy arrays; the
+        others are ``None``. The counts and counters are always decoded."""
         h, w = self.height, self.width
         sizes = self.sizes()
 
@@ -386,18 +399,30 @@ class OutputLayout:
             start = getattr(self, name)
             return raw[start : start + sizes[name]]
 
-        image = part("image").reshape(h, w, 4)[..., :3].copy()
-        linear = part("linear").view(np.float32).reshape(h, w, 3).copy()
-        aux = part("aux").view(np.float32).reshape(h, w, 3)
-        return {
-            "image": image,
-            "linear": linear,
-            "depth": aux[..., 0].copy(),
-            "object_index": aux[..., 1].copy().view(np.int32),
-            "coverage": aux[..., 2].copy(),
-            "counts": part("counts").view(np.uint32)[: self.instances].astype(np.int64),
+        counts = part("counts").view(np.uint32)
+        slots = max(1, self.instances)
+        found: dict[str, Any] = {
+            "image": part("image").reshape(h, w, 4)[..., :3].copy(),
+            "linear": None,
+            "depth": None,
+            "object_index": None,
+            "coverage": None,
+            "counts": counts[: self.instances].astype(np.int64),
+            "nonfinite_pixels": int(counts[slots]),
+            "covered_pixels": int(counts[slots + 1]),
             "timestamps": part("queries").view(np.uint64)[: self.timestamps].copy(),
         }
+        if "linear" in outputs:
+            found["linear"] = part("linear").view(np.float32).reshape(h, w, 3).copy()
+        if outputs & {"depth", "object_index", "coverage"}:
+            aux = part("aux").view(np.float32).reshape(h, w, 3)
+            if "depth" in outputs:
+                found["depth"] = aux[..., 0].copy()
+            if "object_index" in outputs:
+                found["object_index"] = aux[..., 1].copy().view(np.int32)
+            if "coverage" in outputs:
+                found["coverage"] = aux[..., 2].copy()
+        return found
 
 
 @dataclass
@@ -553,6 +578,101 @@ class TargetCache:
         )
 
 
+class FrameBuffers:
+    """The per-frame data buffers (instances, materials, lights, uniforms), kept between
+    renders and updated in place.
+
+    Each named slot holds a GPU buffer and a copy of what it contains. A render's data
+    is compared with that copy (as 32-bit words) and only the changed ranges are
+    written, merged when they are close (``MERGE_WORDS``) and with few writes per
+    render (``MAX_WRITES``; beyond, one write spans them all). A buffer grows when
+    the data no longer fits and shrinks when it would be more than four times too
+    large. Bindings name the data's exact size, so the shaders see exactly this
+    render's data. ``AETHER3D_GPU_PERSISTENT_BUFFERS=0`` creates fresh buffers for
+    every render instead.
+
+    Uploading the very array a slot last received, unchanged since (it is read-only: data
+    kept between frames, ``RenderScene.shared_cache``), skips the comparison.
+    """
+
+    MERGE_WORDS = 64  # changed ranges closer than 256 bytes are written together
+    MAX_WRITES = 32
+
+    def __init__(self, context: GPUContext) -> None:
+        self.context = context
+        self.slots: dict[str, tuple[Any, np.ndarray, int]] = {}  # name: (buffer, copy, usage)
+        self.sources: dict[str, np.ndarray] = {}  # name: the read-only array last uploaded
+        self.writes = 0
+        self.bytes_written = 0
+        self.allocations = 0
+
+    def clear(self) -> None:
+        for buffer, _, _ in self.slots.values():
+            buffer.destroy()
+        self.slots.clear()
+        self.sources.clear()
+
+    def stats(self) -> dict[str, int]:
+        return {
+            "buffers": len(self.slots),
+            "bytes": int(sum(b.size for b, _, _ in self.slots.values())),
+            "writes": self.writes,
+            "bytes_written": self.bytes_written,
+            "allocations": self.allocations,
+        }
+
+    def upload(self, name: str, data: np.ndarray, usage: int) -> tuple[Any, int]:
+        """The slot ``name``'s buffer holding ``data``, and the data's size in bytes."""
+        usage |= self.context.wgpu.BufferUsage.COPY_DST
+        found = self.slots.get(name)
+        if found is not None and self.sources.get(name) is data and found[2] == usage:
+            return found[0], data.nbytes  # the same unchanged array: already in the buffer
+        self.sources.pop(name, None)
+        result = self._write(name, data, usage)
+        if not data.flags.writeable:
+            self.sources[name] = data
+        return result
+
+    def _write(self, name: str, data: np.ndarray, usage: int) -> tuple[Any, int]:
+        words = np.ascontiguousarray(data).reshape(-1).view(np.uint32)
+        size = words.size * 4
+        found = self.slots.get(name)
+        if found is not None:
+            buffer, copy, slot_usage = found
+            if slot_usage != usage or buffer.size < size or buffer.size > 4 * _align(size):
+                buffer.destroy()
+                found = None
+        if found is None:
+            buffer = self.context.device.create_buffer(
+                label=f"aether3d-{name}", size=_align(max(size, 4)), usage=usage
+            )
+            self.allocations += 1
+            self.context.queue.write_buffer(buffer, 0, words)
+            self.writes += 1
+            self.bytes_written += size
+            self.slots[name] = (buffer, words.copy(), usage)
+            return buffer, size
+        n = min(copy.size, words.size)
+        changed = np.flatnonzero(copy[:n] != words[:n])
+        ranges: list[tuple[int, int]] = []
+        if changed.size:
+            gaps = np.flatnonzero(np.diff(changed) > self.MERGE_WORDS)
+            starts = np.concatenate(([changed[0]], changed[gaps + 1]))
+            ends = np.concatenate((changed[gaps] + 1, [changed[-1] + 1]))
+            ranges = list(zip(starts.tolist(), ends.tolist(), strict=True))
+            if len(ranges) > self.MAX_WRITES:
+                ranges = [(ranges[0][0], ranges[-1][1])]
+        if words.size > copy.size:
+            ranges.append((copy.size, words.size))
+        for start, end in ranges:
+            self.context.queue.write_buffer(buffer, 4 * start, words[start:end])
+            self.writes += 1
+            self.bytes_written += 4 * (end - start)
+        if ranges or words.size != copy.size:
+            self.slots[name] = (buffer, words.copy(), usage)
+        return buffer, size
+
+
 # --------------------------------------------------------------------------- #
 # Packed per-frame data (exact WGSL layouts)
 # --------------------------------------------------------------------------- #
@@ -573,22 +693,24 @@ def draw_order(
     into alpha-tested and depth-only ranges (:func:`shadow_draws`).
     """
 
-    def winding(i: int) -> bool:
-        return rs.instances[i].mirrored if cull != "none" else False
-
-    def alpha(i: int) -> bool:
-        return bool(masked[i]) if masked is not None else False
-
-    indices = [i for i in range(len(rs.instances)) if keep is None or keep[i]]
-    keyed = sorted(indices, key=lambda i: (rs.instances[i].mesh, winding(i), alpha(i), i))
+    arrays = rs.instance_arrays
+    n = len(rs.instances)
+    mesh = arrays.mesh
+    winding = arrays.mirrored if cull != "none" else np.zeros(n, dtype=bool)
+    alpha = np.zeros(n, dtype=bool) if masked is None else np.asarray(masked, dtype=bool)
+    indices = np.arange(n, dtype=np.int64) if keep is None else np.flatnonzero(keep)
+    # Sorted by (mesh, winding, alpha, index): lexsort's last key is the primary one.
+    order = indices[np.lexsort((indices, alpha[indices], winding[indices], mesh[indices]))]
     draws: list[tuple[int, bool, int, int]] = []
-    for position, index in enumerate(keyed):
-        mesh, mirrored = rs.instances[index].mesh, winding(index)
-        if draws and draws[-1][0] == mesh and draws[-1][1] == mirrored:
-            draws[-1] = (mesh, mirrored, draws[-1][2], draws[-1][3] + 1)
-        else:
-            draws.append((mesh, mirrored, position, 1))
-    return np.array(keyed, dtype=np.int64), draws
+    if order.size:
+        m, w = mesh[order], winding[order]
+        starts = np.flatnonzero(np.concatenate(([True], (m[1:] != m[:-1]) | (w[1:] != w[:-1]))))
+        counts = np.diff(np.append(starts, order.size))
+        draws = [
+            (int(m[a]), bool(w[a]), int(a), int(c))
+            for a, c in zip(starts.tolist(), counts.tolist(), strict=True)
+        ]
+    return order.astype(np.int64, copy=False), draws
 
 
 def shadow_draws(
@@ -625,22 +747,21 @@ def pack_instances(rs: RenderScene, order: np.ndarray, eye: np.ndarray) -> np.nd
     if n == 0:
         return data
     words = data.view(np.uint32)
-    instances = [rs.instances[i] for i in order]
-    world = np.stack([inst.world for inst in instances])
-    model = world[:, :3, :4].copy()
+    arrays = rs.instance_arrays
+    model = arrays.world[order, :3, :4]
     model[:, :, 3] -= eye  # camera-relative, in float64 before rounding to float32
     data[:, 0:12] = model.reshape(n, 12)
-    normal = np.stack([inst.normal_matrix for inst in instances])
+    normal = arrays.normal_matrix[order]
     for row in range(3):
         data[:, 4 * (3 + row) : 4 * (3 + row) + 3] = normal[:, row]
-    data[:, 24:27] = np.stack([inst.base_color for inst in instances])
-    data[:, 27] = [inst.specular for inst in instances]
-    data[:, 28] = [inst.shininess for inst in instances]
+    data[:, 24:27] = arrays.base_color[order]
+    data[:, 27] = arrays.specular[order]
+    data[:, 28] = arrays.shininess[order]
     has_normals = np.array([m.normals is not None for m in rs.meshes], dtype=bool)
     has_uvs = np.array([m.uvs is not None for m in rs.meshes], dtype=bool)
     has_groups = np.array([m.groups is not None for m in rs.meshes], dtype=bool)
-    mesh = np.fromiter((inst.mesh for inst in instances), dtype=np.int64, count=n)
-    mirrored = np.fromiter((inst.mirrored for inst in instances), dtype=bool, count=n)
+    mesh = arrays.mesh[order]
+    mirrored = arrays.mirrored[order]
     words[:n, 29] = (
         np.where(mirrored, MIRRORED, 0)
         | np.where(has_normals[mesh], HAS_NORMALS, 0)

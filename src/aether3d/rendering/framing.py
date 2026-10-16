@@ -59,8 +59,15 @@ class Framing:
 
 def target_points(scene: Scene, targets: Any = None) -> np.ndarray:
     """World-space vertices of ``targets`` (objects, ids or names), or of every visible mesh."""
+    from .. import _features
     from .scene_data import _find_object, world_matrices
 
+    if targets is None and _features.enabled("AETHER3D_RETAINED_RENDER_WORLD"):
+        from .retained import retained_target_points
+
+        found = retained_target_points(scene)  # a rendered scene keeps them
+        if found is not None:
+            return found
     worlds = world_matrices(scene)
     if targets is None:
         objects = [o for o in scene if o.visible and o.camera is None and o.light is None]

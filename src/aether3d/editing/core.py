@@ -34,6 +34,7 @@ from typing import Any
 
 import numpy as np
 
+from .. import _features
 from ..diagnostics import INFO, Diagnostic
 from ..errors import EditError, ValidationError
 from ..mesh import Mesh
@@ -332,14 +333,23 @@ class MeshCore:
         nor = mesh.normals.astype(np.float64) if mesh.normals is not None else None
         source = mesh.triangles
         groups = mesh.groups
-        for t in np.flatnonzero(~degenerate):
-            corners = {}
+        if _features.enabled("AETHER3D_EDITING_BULK"):
+            kept = np.flatnonzero(~degenerate)
+            corners_of = {}
             if uv is not None:
-                corners[UV] = [tuple(uv[i]) for i in source[t]]
+                corners_of[UV] = uv[source[kept]]
             if nor is not None:
-                corners[NORMAL] = [tuple(nor[i]) for i in source[t]]
-            group = int(groups[t]) if groups is not None else 0
-            em._new_face([int(v) for v in tris[t]], corners, smooth=False, group=group)
+                corners_of[NORMAL] = nor[source[kept]]
+            em._bulk_faces(tris[kept], corners_of, None if groups is None else groups[kept])
+        else:
+            for t in np.flatnonzero(~degenerate):
+                corners = {}
+                if uv is not None:
+                    corners[UV] = [tuple(uv[i]) for i in source[t]]
+                if nor is not None:
+                    corners[NORMAL] = [tuple(nor[i]) for i in source[t]]
+                group = int(groups[t]) if groups is not None else 0
+                em._new_face([int(v) for v in tris[t]], corners, smooth=False, group=group)
         if degenerate.any():
             em.source_diagnostics.append(
                 Diagnostic(
@@ -358,6 +368,102 @@ class MeshCore:
             em._join_pairs(set(em._faces), 1.0)
         em._dirty_faces.clear()
         return em
+
+    def _bulk_faces(
+        self,
+        loops: np.ndarray,
+        corners: dict[str, np.ndarray],
+        groups: np.ndarray | None,
+    ) -> None:
+        """``_new_face(loop, corners, smooth=False, group=...)`` for every row of ``loops``
+        (``(n, k)`` vertex ids, ``k >= 3`` distinct per row), in order, into a mesh without
+        faces yet: the same ids, tables and insertion orders, computed with NumPy.
+
+        Edges get ids in order of first use; each edge's faces are listed in face order;
+        each vertex's edge set receives its edge ids in increasing order, as one face after
+        the other adds them (so even iteration orders match). ``corners`` maps every layer
+        to ``(n, k, dim)`` values.
+        """
+        if self._faces or self._edge_by_pair or self._journal is not None:
+            raise AssertionError("internal error: bulk faces go into an empty mesh")
+        n, k = loops.shape
+        if n == 0:
+            return
+        # One Python int per id, shared by every table that holds it (as building one face
+        # at a time shares them): the tables cost what they cost before, not a copy per use.
+        vertex = list(range(self._nv)).__getitem__
+        first = self._next_face
+        fids = list(range(first, first + n))
+        flat = list(map(vertex, loops.reshape(-1).tolist()))
+        self._faces.update(zip(fids, (flat[i : i + k] for i in range(0, n * k, k)), strict=True))
+        del flat
+        # The edges of every loop, (loop[j], loop[j + 1]) as (lower, higher) vertex id.
+        nxt = np.roll(loops, -1, axis=1)
+        lo = np.minimum(loops, nxt).reshape(-1)
+        hi = np.maximum(loops, nxt).reshape(-1)
+        del nxt
+        keys = lo * np.int64(max(self._nv, 1)) + hi
+        unique, first_use, inverse = np.unique(keys, return_index=True, return_inverse=True)
+        del keys
+        by_first = np.argsort(first_use, kind="stable")
+        rank = np.empty(len(unique), dtype=np.int64)
+        rank[by_first] = np.arange(len(unique), dtype=np.int64)
+        edge_of = rank[inverse.reshape(-1)]  # each loop edge's edge, 0 = first used
+        del unique, inverse, rank
+        m = len(by_first)
+        e0 = self._next_edge
+        eids = list(range(e0, e0 + m))
+        ends_lo = lo[first_use[by_first]]
+        ends_hi = hi[first_use[by_first]]
+        del lo, hi, first_use, by_first
+        pairs = list(
+            zip(
+                map(vertex, ends_lo.tolist()),
+                map(vertex, ends_hi.tolist()),
+                strict=True,
+            )
+        )
+        self._edge_by_pair.update(zip(pairs, eids, strict=True))
+        self._edge_verts.update(zip(eids, pairs, strict=True))
+        del pairs
+        # Each edge's faces, in face order.
+        order = np.argsort(edge_of, kind="stable")
+        cuts = np.zeros(m + 1, dtype=np.int64)
+        np.cumsum(np.bincount(edge_of, minlength=m), out=cuts[1:])
+        del edge_of
+        faces = list(map(fids.__getitem__, (order // k).tolist()))
+        del order
+        cut = cuts.tolist()
+        self._edge_faces.update(
+            zip(eids, (faces[cut[i] : cut[i + 1]] for i in range(m)), strict=True)
+        )
+        del faces, cut, cuts
+        # Each vertex's edges, in increasing id (creation) order.
+        ends = np.concatenate((ends_lo, ends_hi))
+        owners = np.concatenate((np.arange(m), np.arange(m)))
+        del ends_lo, ends_hi
+        by_vertex = np.lexsort((owners, ends))
+        vertex_sorted = ends[by_vertex]
+        edge_sorted = list(map(eids.__getitem__, owners[by_vertex].tolist()))
+        del ends, owners, by_vertex
+        starts = np.flatnonzero(np.concatenate(([True], vertex_sorted[1:] != vertex_sorted[:-1])))
+        bounds = np.append(starts, len(vertex_sorted)).tolist()
+        vertex_edges = self._vert_edges
+        for j, v in enumerate(vertex_sorted[starts].tolist()):
+            vertex_edges[v].update(edge_sorted[bounds[j] : bounds[j + 1]])
+        del edge_sorted, vertex_sorted
+        # Corner values (tuples of Python floats), smoothness, groups.
+        for name, layer in self._layers.items():
+            values = list(map(tuple, corners[name].reshape(n * k, layer.dim).tolist()))
+            layer.data.update(
+                zip(fids, (values[i * k : (i + 1) * k] for i in range(n)), strict=True)
+            )
+            del values
+        self._smooth.update(dict.fromkeys(fids, False))
+        self._group.update(zip(fids, [0] * n if groups is None else groups.tolist(), strict=True))
+        self._dirty_faces.update(fids)
+        self._next_face = first + n
+        self._next_edge = e0 + m
 
     def _bulk_vertices(self, positions: np.ndarray) -> None:
         n = len(positions)

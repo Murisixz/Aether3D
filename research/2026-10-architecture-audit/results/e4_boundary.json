@@ -1,0 +1,39 @@
+{
+ "empty loop ns": 3.7,
+ "pure Python function": {
+  "noop ns": 13.8,
+  "add3(float, float, float) ns": 30.3
+ },
+ "CPython C API (METH_NOARGS / METH_FASTCALL)": {
+  "noop ns": 11.8,
+  "add3(float, float, float) ns": 28.0
+ },
+ "Cython 3.3 def": {
+  "noop ns": 10.9,
+  "add3(float, float, float) ns": 25.9
+ },
+ "nanobind 3.1": {
+  "noop ns": 11.2,
+  "add3(float, float, float) ns": 30.5
+ },
+ "PyO3 0.30": {
+  "noop ns": 13.2,
+  "add3(float, float, float) ns": 26.9
+ },
+ "cffi 2.1 API mode (compiled)": {
+  "noop ns": 57.9,
+  "add3(float, float, float) ns": 79.3
+ },
+ "cffi 2.1 ABI mode (dlopen)": {
+  "noop ns": 77.4,
+  "add3(float, float, float) ns": 168.4
+ },
+ "ctypes": {
+  "noop ns": 80.2,
+  "add3(float, float, float) ns": 463.9
+ },
+ "Numba 0.68 njit dispatch": {
+  "noop ns": 25.0,
+  "add3(float, float, float) ns": 115.5
+ }
+}

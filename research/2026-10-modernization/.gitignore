@@ -1,0 +1,3 @@
+# Build products and scratch output of the prototypes (rebuild with the README's commands)
+target/
+__pycache__/

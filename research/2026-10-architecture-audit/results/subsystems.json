@@ -1,0 +1,27 @@
+{
+ "bytes_per_object_incl_history": 934,
+ "read_position_ns": 28,
+ "read_world_matrix_us": 10.64,
+ "set_position_us": 4.02,
+ "set_position_in_tx_us": 3.46,
+ "save_s": 0.424,
+ "file_mb": 5.26,
+ "load_s": 0.454,
+ "export_glb_s": 0.08,
+ "glb_mb": 1.37,
+ "spatial_first_query_after_edit_ms": 6.4,
+ "spatial_warm_raycast_ms": 6.07,
+ "gpu_frame_unchanged_ms": 111.1,
+ "gpu_frame_one_object_moved_ms": 114.6,
+ "gpu_stage_ms": {
+  "evaluate": 0.6,
+  "textures": 17.1,
+  "extract": 47.9,
+  "init": 0.0,
+  "upload": 26.3,
+  "prepare": 0.3,
+  "gpu": 3.1,
+  "readback": 7.8,
+  "total": 105.9
+ }
+}

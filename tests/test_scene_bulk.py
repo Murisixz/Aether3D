@@ -258,3 +258,81 @@ def test_create_many_scales_linearly():
     build(500)  # warm up
     small, large = min(build(2_000) for _ in range(2)), min(build(16_000) for _ in range(2))
     assert large < 16 * small + 0.05, (small, large)  # 8x the objects: well under 64x
+
+
+def test_batched_ids_are_random_version_4_uuids_in_their_format():
+    import uuid
+
+    from aether3d.scene import new_object_id, new_object_ids
+
+    ids = new_object_ids(5000)
+    assert len(set(ids)) == 5000 and new_object_ids(0) == []
+    for text in ids[:500] + [new_object_id()]:
+        parsed = uuid.UUID(text)
+        assert parsed.version == 4 and parsed.variant == uuid.RFC_4122
+        assert str(parsed) == text  # lowercase, 8-4-4-4-12
+
+
+def test_batch_transform_checks_accept_exactly_what_the_per_record_checks_accept():
+    import math
+    import random
+    from collections import namedtuple
+
+    import numpy as np
+
+    from aether3d.errors import ValidationError
+    from aether3d.scene import NewObject, _finite3, _valid_transforms
+
+    def per_record(records) -> bool:
+        try:
+            for rec in records:
+                _finite3(rec.position, "p")
+                _finite3(rec.scale, "s")
+                q = rec.rotation
+                if (
+                    not isinstance(q, tuple)
+                    or len(q) != 4
+                    or not all(type(v) is float and math.isfinite(v) for v in q)
+                    or abs(sum(v * v for v in q) - 1.0) > 1e-9
+                ):
+                    return False
+        except ValidationError:
+            return False
+        return True
+
+    rng = random.Random(4)
+    Vec = namedtuple("Vec", "x y z")
+    near = math.sqrt(1.0 + 1e-9)  # a quaternion right at the tolerance
+    oddities = [
+        ("position", [0.0, 0.0, 0.0]),
+        ("position", (0.0, 0.0)),
+        ("position", (0, 0.0, 0.0)),
+        ("position", (np.float64(1.0), 0.0, 0.0)),
+        ("position", (math.nan, 0.0, 0.0)),
+        ("scale", (math.inf, 1.0, 1.0)),
+        ("scale", Vec(1.0, 1.0, 1.0)),  # a tuple subclass: accepted one by one
+        ("rotation", (0.0, 0.0, 0.0, 1.0 + 2e-9)),
+        ("rotation", (0.0, 0.0, 0.0, near)),
+        ("rotation", (0.0, 0.0, 0.0, 1.0, 0.0)),
+    ]
+    for trial in range(200):
+        records = []
+        for k in range(rng.randrange(1, 6)):
+            q = [rng.gauss(0, 1) for _ in range(4)]
+            n = math.sqrt(sum(v * v for v in q))
+            records.append(
+                NewObject(
+                    f"o{k}",
+                    position=tuple(rng.uniform(-9, 9) for _ in range(3)),
+                    rotation=tuple(v / n for v in q),
+                    scale=(rng.uniform(0.1, 3), 1.0, -2.0),
+                )
+            )
+        if trial % 2:
+            field, value = rng.choice(oddities)
+            setattr(records[rng.randrange(len(records))], field, value)
+        fast = _valid_transforms(records)
+        assert not fast or per_record(records), records  # never accepts an invalid batch
+        assert fast == per_record(records) or isinstance(
+            next((r.scale for r in records if type(r.scale) is not tuple), None), Vec
+        )

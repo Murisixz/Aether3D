@@ -212,7 +212,8 @@ def rendered_scene(index: SpatialIndex, entries: list[Entry]):
     rs = index._render_scene
     ids = {e.obj.id: e for e in entries}
     instances = tuple(i for i in rs.instances if i.object_id in ids)
-    ps = PathScene(replace(rs, instances=instances))
+    # (arrays=None: the instance arrays of the whole scene would not match these instances)
+    ps = PathScene(replace(rs, instances=instances, arrays=None))
     found = (ps, [ids[i.object_id] for i in instances])
     if len(index._rendered) >= 4:
         index._rendered.pop(next(iter(index._rendered)))

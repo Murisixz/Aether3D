@@ -51,6 +51,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from ... import _native
 from .bvh import BVH, LEAF_SIZE, build_bvh, triangle_bounds
 
 if TYPE_CHECKING:
@@ -271,34 +272,7 @@ class SceneAccel:
         t_blas = time.perf_counter() - t0
         # Instances: world bounds (the 8 corners of the mesh box through the world matrix),
         # inverse affine maps; singular or non-finite instances cannot be hit.
-        n_inst = len(rs.instances)
-        to_object = np.zeros((n_inst, 3, 4))
-        inst_lo = np.full((n_inst, 3), np.inf)
-        inst_hi = np.full((n_inst, 3), -np.inf)
-        usable = np.zeros(n_inst, dtype=bool)
-        for k, inst in enumerate(rs.instances):
-            blas = mesh_blas[inst.mesh]
-            m = inst.world
-            if blas.bvh.order.size == 0 or not np.all(np.isfinite(m)):
-                continue
-            linear = m[:3, :3]
-            det = float(np.linalg.det(linear))
-            if not np.isfinite(det) or abs(det) < 1e-300:
-                continue
-            inverse = np.linalg.inv(linear)
-            to_object[k, :, :3] = inverse
-            to_object[k, :, 3] = -inverse @ m[:3, 3]
-            lo, hi = blas.bvh.lo, blas.bvh.hi
-            corners = np.array(
-                [[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])]
-            )
-            world = corners @ linear.T + m[:3, 3]
-            if not np.all(np.isfinite(world)):
-                continue
-            # One ulp outward (see _closed): a ray parallel to a face exactly in its plane.
-            inst_lo[k] = np.nextafter(world.min(axis=0), -np.inf)
-            inst_hi[k] = np.nextafter(world.max(axis=0), np.inf)
-            usable[k] = True
+        to_object, inst_lo, inst_hi, usable = _instance_spaces(rs, mesh_blas)
         ids = np.flatnonzero(usable)
         top = build_bvh(inst_lo[ids], inst_hi[ids])
         slot_inst = ids[top.order]
@@ -356,7 +330,7 @@ class SceneAccel:
         )
         skipped = sum(b.skipped for b in mesh_blas)
         accel.info = {
-            "instances": n_inst,
+            "instances": len(rs.instances),
             "instances_traced": int(ids.size),
             "meshes": len(mesh_blas),
             "triangles": int(tri_base),
@@ -383,30 +357,9 @@ class SceneAccel:
         skip_tri: np.ndarray | None = None,
     ) -> Hits:
         """Nearest hit in ``(tmin, tmax)`` of every ray (``direction`` need not be unit)."""
-        n = origin.shape[0]
-        out = Hits(
-            np.full(n, np.inf),
-            np.full(n, -1, dtype=np.int64),
-            np.full(n, -1, dtype=np.int64),
-            np.zeros((n, 3)),
-        )
-        tmin_a = np.broadcast_to(np.asarray(tmin, dtype=np.float64), (n,))
-        tmax_a = np.broadcast_to(np.asarray(tmax, dtype=np.float64), (n,))
         t0 = time.perf_counter()
-        for s in range(0, n, BATCH):
-            sl = slice(s, min(n, s + BATCH))
-            self._trace(
-                origin[sl],
-                direction[sl],
-                tmin_a[sl],
-                tmax_a[sl],
-                None if skip_inst is None else skip_inst[sl],
-                None if skip_tri is None else skip_tri[sl],
-                out,
-                sl,
-                any_hit=False,
-            )
-        self.traced.rays += n
+        out = self._run(origin, direction, tmin, tmax, skip_inst, skip_tri, any_hit=False)
+        self.traced.rays += origin.shape[0]
         self.traced.seconds += time.perf_counter() - t0
         return out
 
@@ -420,6 +373,16 @@ class SceneAccel:
         skip_tri: np.ndarray | None = None,
     ) -> np.ndarray:
         """Whether anything lies in ``(tmin, tmax)`` along each ray (any-hit query)."""
+        t0 = time.perf_counter()
+        out = self._run(origin, direction, tmin, tmax, skip_inst, skip_tri, any_hit=True)
+        self.traced.shadow_rays += origin.shape[0]
+        self.traced.seconds += time.perf_counter() - t0
+        return out.inst >= 0
+
+    def _run(self, origin, direction, tmin, tmax, skip_inst, skip_tri, any_hit: bool) -> Hits:
+        """The hits of every ray: with the native kernel when it is available
+        (``aether3d._native``; the same arithmetic, bitwise the same hits and statistics),
+        otherwise with the NumPy traversal below, a batch of ``BATCH`` rays at a time."""
         n = origin.shape[0]
         out = Hits(
             np.full(n, np.inf),
@@ -429,7 +392,47 @@ class SceneAccel:
         )
         tmin_a = np.broadcast_to(np.asarray(tmin, dtype=np.float64), (n,))
         tmax_a = np.broadcast_to(np.asarray(tmax, dtype=np.float64), (n,))
-        t0 = time.perf_counter()
+        native = _native.module()
+        if native is not None:
+            skip = skip_tri is not None  # (the NumPy traversal skips only with both)
+            iterations, visits, tests = native.trace(
+                self.child,
+                self.child_lo,
+                self.child_hi,
+                self.kind,
+                self.first,
+                self.count,
+                self.v0,
+                self.v1,
+                self.v2,
+                self.tri_prim,
+                self.slot_inst,
+                self.inst_lo,
+                self.inst_hi,
+                self.inst_root,
+                self.to_object,
+                self.root_lo,
+                self.root_hi,
+                int(self.stack_size),
+                np.ascontiguousarray(origin, dtype=np.float64),
+                np.ascontiguousarray(direction, dtype=np.float64),
+                np.ascontiguousarray(tmin_a),
+                np.ascontiguousarray(tmax_a),
+                np.ascontiguousarray(skip_inst, dtype=np.int64) if skip else None,
+                np.ascontiguousarray(skip_tri, dtype=np.int64) if skip else None,
+                out.t,
+                out.inst,
+                out.prim,
+                out.b,
+                any_hit,
+                BATCH,
+                _native.threads(),
+            )
+            stats = self.traced
+            stats.iterations += iterations
+            stats.node_visits += visits
+            stats.triangle_tests += tests
+            return out
         for s in range(0, n, BATCH):
             sl = slice(s, min(n, s + BATCH))
             self._trace(
@@ -441,11 +444,9 @@ class SceneAccel:
                 None if skip_tri is None else skip_tri[sl],
                 out,
                 sl,
-                any_hit=True,
+                any_hit=any_hit,
             )
-        self.traced.shadow_rays += n
-        self.traced.seconds += time.perf_counter() - t0
-        return out.inst >= 0
+        return out
 
     # -- the traversal loop ---------------------------------------------------------------
 
@@ -629,6 +630,60 @@ class SceneAccel:
 
     def stats(self) -> dict:
         return {**self.info, "traversal": self.traced.to_dict()}
+
+
+def _box_corners(blas: MeshBLAS) -> np.ndarray:
+    """The 8 corners of a BLAS's bounds (float32, as its bounds), x-major."""
+    lo, hi = blas.bvh.lo, blas.bvh.hi
+    return np.array(
+        [[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])]
+    )
+
+
+def _instance_spaces(
+    rs: RenderScene, mesh_blas: list[MeshBLAS]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """World -> object maps and world bounds of every instance, and which can be traced.
+
+    Singular, non-finite or empty instances cannot be hit. Every quantity is computed
+    for all instances at once with exactly the per-instance operations: one LAPACK
+    determinant and inverse per 3x3, ``-inverse @ translation`` as a matrix-vector
+    product, and the 8 box corners times the transposed linear part as one matrix
+    product per instance (``np.matmul`` runs the same BLAS call for each matrix of a
+    stack), so the results are bitwise those of a loop over the instances.
+    """
+    n = len(rs.instances)
+    to_object = np.zeros((n, 3, 4))
+    inst_lo = np.full((n, 3), np.inf)
+    inst_hi = np.full((n, 3), -np.inf)
+    usable = np.zeros(n, dtype=bool)
+    if n == 0:
+        return to_object, inst_lo, inst_hi, usable
+    worlds = np.stack([inst.world for inst in rs.instances])
+    mesh_of = np.fromiter((inst.mesh for inst in rs.instances), dtype=np.int64, count=n)
+    nonempty = np.array([b.bvh.order.size > 0 for b in mesh_blas], dtype=bool)
+    candidates = np.flatnonzero(nonempty[mesh_of] & np.all(np.isfinite(worlds), axis=(1, 2)))
+    if candidates.size == 0:
+        return to_object, inst_lo, inst_hi, usable
+    linear = worlds[candidates, :3, :3]
+    det = np.linalg.det(linear)
+    regular = np.isfinite(det) & (np.abs(det) >= 1e-300)
+    candidates, linear = candidates[regular], linear[regular]
+    if candidates.size == 0:
+        return to_object, inst_lo, inst_hi, usable
+    inverse = np.linalg.inv(linear)
+    translation = worlds[candidates, :3, 3]
+    to_object[candidates, :, :3] = inverse
+    to_object[candidates, :, 3] = np.matmul(-inverse, translation[:, :, None])[:, :, 0]
+    corners = np.stack([_box_corners(b) for b in mesh_blas])[mesh_of[candidates]]
+    world = np.matmul(corners, linear.transpose(0, 2, 1)) + translation[:, None, :]
+    finite = np.all(np.isfinite(world), axis=(1, 2))
+    rows = candidates[finite]
+    # One ulp outward (see _closed): a ray parallel to a face exactly in its plane.
+    inst_lo[rows] = np.nextafter(world[finite].min(axis=1), -np.inf)
+    inst_hi[rows] = np.nextafter(world[finite].max(axis=1), np.inf)
+    usable[rows] = True
+    return to_object, inst_lo, inst_hi, usable
 
 
 def _ray_setup(d: np.ndarray):

@@ -1,0 +1,141 @@
+{
+ "10000": {
+  "numpy (Aether3D algorithm, flat arrays)": {
+   "median_ms": 1.908,
+   "min_ms": 1.87,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "pure Python": {
+   "median_ms": 29.677,
+   "min_ms": 28.843,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "Numba 0.68": {
+   "median_ms": 0.143,
+   "min_ms": 0.141,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "Cython 3.3": {
+   "median_ms": 0.09,
+   "min_ms": 0.087,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "C gcc -O3 (no FMA contraction)": {
+   "median_ms": 0.127,
+   "min_ms": 0.12,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "C clang -O3 (no FMA contraction)": {
+   "median_ms": 0.103,
+   "min_ms": 0.101,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "C gcc -O3 FMA contraction allowed": {
+   "median_ms": 0.114,
+   "min_ms": 0.111,
+   "bitwise_equal": false,
+   "max_abs_diff": 2.2737367544323206e-13
+  },
+  "Rust 1.99 (release, LTO)": {
+   "median_ms": 0.108,
+   "min_ms": 0.106,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "Zig 0.17 ReleaseFast": {
+   "median_ms": 0.105,
+   "min_ms": 0.103,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "Go 1.27 (cgo c-shared)": {
+   "median_ms": 0.221,
+   "min_ms": 0.207,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "C# .NET 10 Native AOT (x86-64-v3)": {
+   "median_ms": 0.204,
+   "min_ms": 0.202,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  }
+ },
+ "100000": {
+  "numpy (Aether3D algorithm, flat arrays)": {
+   "median_ms": 32.4,
+   "min_ms": 31.402,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "Numba 0.68": {
+   "median_ms": 2.086,
+   "min_ms": 2.052,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "Cython 3.3": {
+   "median_ms": 1.448,
+   "min_ms": 1.324,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "C gcc -O3 (no FMA contraction)": {
+   "median_ms": 1.878,
+   "min_ms": 1.767,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "C clang -O3 (no FMA contraction)": {
+   "median_ms": 1.602,
+   "min_ms": 1.564,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "C gcc -O3 FMA contraction allowed": {
+   "median_ms": 1.705,
+   "min_ms": 1.672,
+   "bitwise_equal": false,
+   "max_abs_diff": 3.410605131648481e-13
+  },
+  "Rust 1.99 (release, LTO)": {
+   "median_ms": 1.709,
+   "min_ms": 1.646,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "Zig 0.17 ReleaseFast": {
+   "median_ms": 1.671,
+   "min_ms": 1.615,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "Go 1.27 (cgo c-shared)": {
+   "median_ms": 2.762,
+   "min_ms": 2.676,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  },
+  "C# .NET 10 Native AOT (x86-64-v3)": {
+   "median_ms": 2.565,
+   "min_ms": 2.431,
+   "bitwise_equal": true,
+   "max_abs_diff": 0.0
+  }
+ },
+ "ctypes_noop_call_ns": {
+  "C gcc -O3 (no FMA contraction)": 98,
+  "C clang -O3 (no FMA contraction)": 99,
+  "C gcc -O3 FMA contraction allowed": 99,
+  "Rust 1.99 (release, LTO)": 99,
+  "Zig 0.17 ReleaseFast": 98,
+  "Go 1.27 (cgo c-shared)": 129,
+  "C# .NET 10 Native AOT (x86-64-v3)": 101
+ }
+}

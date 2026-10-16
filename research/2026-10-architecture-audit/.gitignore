@@ -1,0 +1,17 @@
+# Build products and generated inputs of the experiments (rebuild with the README's commands)
+*.so
+*.o
+*.dll
+*.dylib
+target/
+bin/
+obj/
+out/
+build/
+nbbuild/
+data/
+__pycache__/
+world_cy.c
+cy_mod.c
+cffi_api_mod.c
+report/aether3d-architecture-audit.html

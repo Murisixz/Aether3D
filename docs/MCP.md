@@ -103,7 +103,7 @@ problem; a plan with problems gives every problem, as in [SCENE_PLANS.md](SCENE_
 | `execute_scene_plan` | build or change the scene with one [plan](SCENE_PLANS.md): one undo step, all or nothing (`mode`, `expected_revision`, `timeout`, `max_results`) |
 | `check_scene_plan` | check a plan without changing anything (`dry_run: true` applies and rolls back, reporting exactly what it would make) |
 | `spatial_query` | one `request` or a batch of `requests` ([SPATIAL.md](SPATIAL.md)); object lists may be selectors; answers keep at most `max_results` entries (default 100) |
-| `render_preview` | a quick image, returned as image content: the GPU rasterizer when it works, the CPU rasterizer otherwise (`backend`: `auto`, `gpu`, `cpu`; `width`, `height`, `camera`, `frame`, `shadows`, `save_to`) |
+| `render_preview` | a quick image, returned as image content: the GPU rasterizer when it works, the CPU rasterizer otherwise (`backend`: `auto`, `gpu`, `cpu`; `width`, `height`, `camera`, `frame`, `shadows`, `save_to`). Only the image is read back from the GPU, and it is encoded for speed (zlib level 1) |
 | `render_image` | an image file in the workspace (`.png`, linear `.hdr`/`.pfm`); `backend: "path"` or `"gpu_path"` path traces, within the server's sample budget |
 | `history` | `list`, `undo`, `redo` (`steps`), `checkpoint`, `goto`, `remove_checkpoint` (`name`) |
 | `export_scene` | a `.glb` or `.gltf` file (`allow_lossy`, `bake_textures`, `overwrite`) |

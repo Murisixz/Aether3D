@@ -1,0 +1,160 @@
+{
+  "label": "phase0-baseline",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.11.0",
+    "git": "41c3466",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "core": {
+      "plan_create_10k_ms": 89.104,
+      "plan_create_per_object_us": 8.91,
+      "add_object_per_object_us": 24.033,
+      "set_position_in_transaction_us": 3.132,
+      "set_position_alone_us": 3.114,
+      "read_position_ns": 31.2,
+      "read_world_matrix_us": 11.446,
+      "world_matrices_10k_ms": 8.046,
+      "undo_redo_plan_10k_ms": 2.417,
+      "bytes_per_object_with_history": 935,
+      "peak_rss_mib": 121.7
+    },
+    "queries": {
+      "raycast_first_ms": 245.622,
+      "raycast_warm_ms": 7.385,
+      "raycast_after_edit_ms": 242.685,
+      "overlaps_first_ms": 49.296,
+      "overlaps_warm_ms": 0.346,
+      "nearest_warm_ms": 5.443,
+      "peak_rss_mib": 101.1
+    },
+    "extract": {
+      "extract_unchanged_ms": 69.082,
+      "extract_one_moved_ms": 69.649,
+      "extract_all_moved_ms": 72.345,
+      "extract_camera_moved_ms": 71.94,
+      "peak_rss_mib": 108.1
+    },
+    "frame": {
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "unchanged_wall_ms": 115.52,
+      "unchanged_stages_ms": {
+        "evaluate": 0.586,
+        "textures": 16.529,
+        "extract": 49.421,
+        "init": 0.031,
+        "upload": 27.929,
+        "prepare": 0.373,
+        "gpu": 4.357,
+        "readback": 8.009,
+        "total": 110.505
+      },
+      "unchanged_gpu_passes_ms": {
+        "scene": 1.548,
+        "finalize": 0.224
+      },
+      "one_moved_wall_ms": 113.442,
+      "one_moved_stages_ms": {
+        "evaluate": 0.58,
+        "textures": 16.603,
+        "extract": 49.208,
+        "init": 0.029,
+        "upload": 27.12,
+        "prepare": 0.371,
+        "gpu": 4.221,
+        "readback": 7.574,
+        "total": 108.639
+      },
+      "one_moved_gpu_passes_ms": {
+        "scene": 1.502,
+        "finalize": 0.18
+      },
+      "all_moved_wall_ms": 116.182,
+      "all_moved_stages_ms": {
+        "evaluate": 0.591,
+        "textures": 16.405,
+        "extract": 51.286,
+        "init": 0.031,
+        "upload": 28.08,
+        "prepare": 0.415,
+        "gpu": 4.139,
+        "readback": 6.673,
+        "total": 111.194
+      },
+      "all_moved_gpu_passes_ms": {
+        "scene": 1.501,
+        "finalize": 0.18
+      },
+      "camera_moved_wall_ms": 117.345,
+      "camera_moved_stages_ms": {
+        "evaluate": 0.613,
+        "textures": 17.535,
+        "extract": 52.669,
+        "init": 0.031,
+        "upload": 28.555,
+        "prepare": 0.394,
+        "gpu": 4.008,
+        "readback": 6.22,
+        "total": 113.047
+      },
+      "camera_moved_gpu_passes_ms": {
+        "scene": 1.499,
+        "finalize": 0.179
+      },
+      "peak_rss_mib": 534.1
+    },
+    "raytrace": {
+      "blas_build_100k_tris_ms": 267.858,
+      "closest_camera_mrays_s": 0.308,
+      "closest_bounce_mrays_s": 0.107,
+      "any_bounce_mrays_s": 0.108,
+      "peak_rss_mib": 171.1
+    },
+    "editing": {
+      "from_mesh_attributes_tris": 16128,
+      "from_mesh_attributes_s": 0.844,
+      "from_mesh_topology_tris": 199808,
+      "from_mesh_topology_s": 0.702,
+      "extrude_region_ms": 5.546,
+      "inset_500_faces_ms": 125.198,
+      "bevel_edge_ms": 1.173,
+      "subdivide_quads_ms": 112.559,
+      "bevel_all_edges_faces": 2048,
+      "bevel_all_edges_ms": 660.72,
+      "to_mesh_ms": 32.887,
+      "peak_rss_mib": 321.0
+    },
+    "images": {
+      "png_decode_1080p_ms": 311.491,
+      "png_decode_mpix_s": 6.66,
+      "png_encode_1080p_level6_ms": 595.311,
+      "png_encode_1080p_level1_ms": 309.405,
+      "peak_rss_mib": 272.4
+    },
+    "io": {
+      "save_10k_s": 0.4624,
+      "file_mb": 5.26,
+      "load_10k_s": 0.4525,
+      "export_glb_10k_s": 0.0867,
+      "peak_rss_mib": 156.3
+    },
+    "memory": {
+      "objects": 100000,
+      "plan_s": 1.049,
+      "first_raycast_s": 2.68,
+      "rss_after_mib": 301.65234375,
+      "peak_rss_mib": 311.2
+    },
+    "lifecycle": {
+      "cycles": 12,
+      "scenes_still_alive": 0,
+      "rss_growth_mib": 13.0,
+      "peak_rss_mib": 64.6
+    }
+  }
+}

@@ -158,12 +158,13 @@ scene.render(backend="path")  -> rendering/renderer.py
   design: the same estimator, constants, random numbers and scene data, with
   the GPU rasterizer's material code. Every GPU image can therefore be
   checked against the CPU's, path for path.
-- **Native acceleration was considered, not added.** Profiles show
-  traversal taking 58–67% of render time (the three benchmark scenes, one
-  process). Compiled kernels (for example with numba, BSD-licensed) could
-  make it much faster. But even infinitely fast traversal would make renders
-  at most 2.4–3 times faster, and compiled kernels would add a second code
-  path to verify and a large optional dependency. Left for a later stage.
+- **Native acceleration: optional and exact (since 0.11.1).** Profiles (0.8)
+  showed traversal taking 58–67% of render time (the three benchmark scenes,
+  one process), and a compiled kernel would be a second code path to verify.
+  The optional `aether3d-native` package (Rust) performs exactly the NumPy
+  traversal's operations, so hits and images are bitwise the same, and traces
+  7–10 times faster per thread; without it the NumPy traversal runs
+  ([PERFORMANCE.md](PERFORMANCE.md#phase-3-native-kernels-rust)).
 - **BVH, not grids or k-d trees.** Binned-SAH BVHs build fast, adapt to
   uneven geometry (a castle's thin walls and detailed towers), work naturally
   with instancing (one BVH per mesh, one over instances) and are the structure
@@ -648,7 +649,9 @@ is the fallback you choose.
   statistics are computed as on the CPU.
 - **On the RTX 4060 of the development machine,** the kernel runs on the
   shader cores through Vulkan. Traversal is software; the RT cores are not
-  used.
+  used. (A prototype with hardware ray queries in this kernel made the
+  showcase renders only 1.04–1.65 times faster: see
+  [PERFORMANCE.md](PERFORMANCE.md#phase-5-hardware-ray-tracing-prototype-deferred).)
 
 **The same paths as the CPU.** The kernel draws exactly the CPU path
 tracer's random numbers: SplitMix64 computed in pairs of 32-bit integers,
@@ -739,6 +742,9 @@ the GPU.
 - **Where it could go faster:** a wavefront design (one kernel per stage,
   sorting by material) would trade the single state-machine kernel's
   divergence and register pressure for more passes. It is not implemented.
+  Hardware ray queries alone do not change much: measured in a prototype of
+  this kernel, they remove 10–42% of its GPU time and make these renders
+  1.04–1.65 times faster end to end (PERFORMANCE.md, Phase 5).
 
 ## Performance
 

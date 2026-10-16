@@ -32,6 +32,11 @@ How it works (see ``docs/HISTORY.md``):
   images, procedural evaluations) are keyed by immutable content, so they stay
   valid; undo and redo bump ``scene.revision``, ``scene.materials.version`` and
   ``scene.procedural.revision`` like any other change.
+* **Change journal.** Caches derived from the whole scene (the retained render
+  world) ask what changed since the revision they were computed at
+  (:meth:`History._changes_since`): the parts each revision changed -- commits,
+  undo and redo alike -- are kept for the last :data:`JOURNAL_ENTRIES` revisions,
+  once a cache has asked. Older than that, the cache recomputes everything.
 
 Undo and redo never record themselves; a new change after undoing discards the
 undone steps (the redo branch).
@@ -40,7 +45,10 @@ undone steps (the redo branch).
 from __future__ import annotations
 
 import contextlib
+import math
+import struct
 import sys
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -60,6 +68,13 @@ DEFAULT_MAX_BYTES = 256 * 2**20
 STRICT = False
 """Testing aid: check the scene's invariants after every reversal, and fail on
 changes recorded outside an operation (an internal error)."""
+
+JOURNAL_ENTRIES = 256
+"""Revisions the change journal keeps (:meth:`History._changes_since`)."""
+
+JOURNAL_CHANGES = 1 << 16
+"""Changed parts the change journal keeps at most, over all its revisions (a plan that
+creates more objects than this is followed by a full recomputation anyway)."""
 
 # Fix-ups after restoring states.
 _NAMES = "names"  # rebuild the scene's name index
@@ -84,7 +99,24 @@ def recording(value: Any, fields: Iterable[str]) -> Any:
 
 
 def _same(a: Any, b: Any) -> bool:
-    return a is b or a == b
+    """Whether a part's state is unchanged: equal, and also in the signs of its zeros (0.0 ==
+    -0.0, but a change from one to the other changes renders and query results, so the
+    history records it like any other change)."""
+    return a is b or (a == b and _identical(a, b))
+
+
+def _identical(a: Any, b: Any) -> bool:
+    """``a == b`` (given), also for the signs of zeros in floats, tuples, lists and dicts."""
+    if isinstance(a, float):
+        # Equal floats differ only as 0.0 and -0.0.
+        return (
+            a != 0.0 or not isinstance(b, float) or math.copysign(1.0, a) == math.copysign(1.0, b)
+        )
+    if isinstance(a, (tuple, list)):
+        return all(map(_identical, a, b))
+    if isinstance(a, dict):
+        return all(_identical(v, b[k]) for k, v in a.items())
+    return True
 
 
 def _same_items(a: tuple, b: tuple) -> bool:
@@ -152,12 +184,24 @@ class _Attr(Aspect):
         return f"{self.root}.{self.name}" if self.root else super().path(target)
 
 
+_TRANSFORM_BITS = struct.Struct("<10d")
+
+
 class _Transform(Aspect):
     __slots__ = ()
 
     def capture(self, obj: SceneObject) -> tuple:
         t = obj._transform
         return (t._position, t._rotation, t._scale)
+
+    def same(self, a: tuple, b: tuple) -> bool:
+        # (_same, with the ten floats compared as bytes: setting a transform to its value
+        # is common, and must stay cheap)
+        return a is b or (
+            a == b
+            and _TRANSFORM_BITS.pack(*a[0], *a[1], *a[2])
+            == _TRANSFORM_BITS.pack(*b[0], *b[1], *b[2])
+        )
 
     def apply(self, obj: SceneObject, state: tuple) -> None:
         t = obj._transform
@@ -652,6 +696,10 @@ class History:
         self._payload_bytes = 0
         self._small_bytes = 0
         self._revision = 0
+        # The change journal: (revision, ((aspect, target), ...)) for the latest revisions,
+        # kept once a derived cache asks for it (_changes_since).
+        self._journal: deque[tuple[int, tuple[tuple[Aspect, Any], ...]]] | None = None
+        self._journal_changes = 0
         self.dropped = 0
         """Steps discarded so far to respect :attr:`max_entries` and :attr:`max_bytes`."""
 
@@ -725,6 +773,7 @@ class History:
         if not changes:
             return None
         self._revision += 1
+        self._note(changes)
         self._discard_redo()
         if not self._enabled:
             return None
@@ -736,6 +785,43 @@ class History:
         self._current = step.serial
         self._trim()
         return step
+
+    def _note(self, changes: list[_Change]) -> None:
+        """Journal the parts ``changes`` changed, under the revision just reached (only
+        what changed: never the states, which may be large and are the steps' to keep)."""
+        journal = self._journal
+        if journal is None:
+            return
+        parts = tuple([(c.aspect, c.target) for c in changes])
+        journal.append((self._revision, parts))
+        self._journal_changes += len(parts)
+        while len(journal) > JOURNAL_ENTRIES or self._journal_changes > JOURNAL_CHANGES:
+            self._journal_changes -= len(journal.popleft()[1])
+
+    def _changes_since(self, revision: int) -> list[tuple[Aspect, Any]] | None:
+        """The parts changed after ``revision`` -- ``(aspect, target)`` pairs, oldest
+        first, a part once per revision that changed it -- or ``None`` when the journal
+        does not reach back to ``revision`` (the caller recomputes everything).
+
+        The first call starts the journal. Changes made inside an operation are not in
+        it until the operation ends (like :attr:`revision`): callers must not keep what
+        they compute from a scene while ``in_progress``.
+        """
+        journal = self._journal
+        if journal is None:
+            self._journal = deque()
+            return [] if revision == self._revision else None
+        if revision == self._revision:
+            return []
+        if revision > self._revision or not journal or journal[0][0] > revision + 1:
+            return None
+        start = len(journal)
+        while start > 0 and journal[start - 1][0] > revision:
+            start -= 1
+        out: list[tuple[Aspect, Any]] = []
+        for k in range(start, len(journal)):
+            out.extend(journal[k][1])
+        return out
 
     def _restore_frame(self, frame: _Frame) -> None:
         """Roll back a failed operation: no net change, so no revision changes either."""
@@ -1053,6 +1139,7 @@ class History:
                 target.append(step)
                 self._current = step.serial if forward else step.parent
                 self._revision += 1
+                self._note(step.changes)
                 moved.append(step)
         except BaseException:
             # All or nothing: put back the steps already moved.
@@ -1062,6 +1149,7 @@ class History:
                 source.append(step)
                 self._current = step.parent if forward else step.serial
                 self._revision += 1
+                self._note(step.changes)
             raise
         return [self._entry(s) for s in moved]
 

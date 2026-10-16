@@ -574,16 +574,26 @@ class TopologyMixin:
         """Join qualifying triangle pairs within ``pool``; returns the resulting quads."""
         tris = {f for f in pool if len(self._faces[f]) == 3}
         candidates = []
+        normals: dict[int, np.ndarray | None] = {}  # each triangle's, computed once
+
+        def normal(f: int) -> np.ndarray | None:
+            n = normals.get(f, normals)
+            if n is normals:
+                n = normals[f] = self._face_normal_vec(f)
+            return n  # type: ignore[return-value]
+
         for e in sorted(
             {self._edge_by_pair[k] for f in tris for k in self._loop_edges(self._faces[f])}
         ):
             fs = self._edge_faces[e]
             if len(fs) != 2 or not (fs[0] in tris and fs[1] in tris):
                 continue
-            n0, n1 = self._face_normal_vec(fs[0]), self._face_normal_vec(fs[1])
+            n0, n1 = normal(fs[0]), normal(fs[1])
             if n0 is None or n1 is None:
                 continue
-            angle = float(np.degrees(np.arccos(np.clip(np.dot(n0, n1), -1, 1))))
+            # (unit normals: their dot product is finite; min/max clip it like np.clip)
+            cosine = max(-1.0, min(1.0, float(np.dot(n0, n1))))
+            angle = float(np.degrees(np.arccos(cosine)))
             if angle > max_angle or not self._attributes_agree_across(e):
                 continue
             quad = self._joined_loop(e)

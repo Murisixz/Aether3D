@@ -21,19 +21,22 @@ so they all render exactly the same content.
 
 from __future__ import annotations
 
+import itertools
 import math
+import operator
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from .. import _features, _native
 from ..diagnostics import INFO, WARNING, Diagnostic
 from ..errors import AetherError, RenderError
 from ..mesh import Mesh
 from .camera import Camera, CameraFrame, frame_from_matrix
 from .color import to_linear
-from .materials import RenderMaterial, resolve_materials
+from .materials import MaterialCache, RenderMaterial, resolve_materials
 from .settings import Appearance, Environment
 
 if TYPE_CHECKING:
@@ -113,6 +116,40 @@ class RenderCamera:
 
 
 @dataclass(frozen=True)
+class InstanceArrays:
+    """The fields of every instance as arrays: row ``k`` holds ``RenderScene.instances[k]``'s
+    values, exactly. Backends pack these instead of visiting instances one by one."""
+
+    world: np.ndarray  # (n, 4, 4) float64
+    normal_matrix: np.ndarray  # (n, 3, 3) float64
+    mirrored: np.ndarray  # (n,) bool
+    mesh: np.ndarray  # (n,) int64
+    base_color: np.ndarray  # (n, 3) float64
+    specular: np.ndarray  # (n,) float64
+    shininess: np.ndarray  # (n,) float64
+    material: np.ndarray  # (n,) int64
+    has_groups: np.ndarray  # (n,) bool: the instance has face-group materials
+
+    @classmethod
+    def gather(cls, instances: tuple[RenderInstance, ...]) -> InstanceArrays:
+        """The arrays of ``instances`` (render scenes built without them)."""
+        n = len(instances)
+        return cls(
+            world=np.array([i.world for i in instances], dtype=np.float64).reshape(n, 4, 4),
+            normal_matrix=np.array([i.normal_matrix for i in instances], dtype=np.float64).reshape(
+                n, 3, 3
+            ),
+            mirrored=np.fromiter((i.mirrored for i in instances), dtype=bool, count=n),
+            mesh=np.fromiter((i.mesh for i in instances), dtype=np.int64, count=n),
+            base_color=np.array([i.base_color for i in instances], dtype=np.float64).reshape(n, 3),
+            specular=np.fromiter((i.specular for i in instances), dtype=np.float64, count=n),
+            shininess=np.fromiter((i.shininess for i in instances), dtype=np.float64, count=n),
+            material=np.fromiter((i.material for i in instances), dtype=np.int64, count=n),
+            has_groups=np.fromiter((bool(i.group_materials) for i in instances), bool, count=n),
+        )
+
+
+@dataclass(frozen=True)
 class RenderScene:
     meshes: tuple[RenderMesh, ...]
     instances: tuple[RenderInstance, ...]
@@ -124,11 +161,44 @@ class RenderScene:
     timings: dict[str, float] = field(default_factory=dict)
     materials: tuple[RenderMaterial, ...] = ()
     environment: Environment | None = None  # scene.world.environment (path tracer)
+    arrays: InstanceArrays | None = field(default=None, repr=False, compare=False)
+    cache: dict[str, Any] | None = field(default=None, repr=False, compare=False)
+
+    def shared_cache(self) -> dict[str, Any] | None:
+        """A dict where backends may keep work between frames, or ``None``.
+
+        The retained render world gives the render scenes it returns one dict, shared by
+        later frames while their instances, meshes and materials are the same objects. Keep
+        in it only results that depend on those alone, or key them by the other inputs
+        (the camera, settings). Other render scenes -- from the full extraction, or derived
+        with :func:`dataclasses.replace` -- get ``None``.
+        """
+        cache = self.cache
+        if (
+            cache is None
+            or cache.get("instances") is not self.instances
+            or cache.get("meshes") is not self.meshes
+            or cache.get("materials") is not self.materials
+        ):
+            return None
+        return cache
+
+    @property
+    def instance_arrays(self) -> InstanceArrays:
+        """The instances' fields as arrays (:class:`InstanceArrays`)."""
+        if self.arrays is not None:
+            return self.arrays
+        arrays = InstanceArrays.gather(self.instances)
+        object.__setattr__(self, "arrays", arrays)
+        return arrays
 
     @property
     def triangle_count(self) -> int:
         """Triangles to render, counting every instance."""
-        return sum(int(self.meshes[i.mesh].triangles.shape[0]) for i in self.instances)
+        if not self.instances:
+            return 0
+        per_mesh = np.array([m.triangles.shape[0] for m in self.meshes], dtype=np.int64)
+        return int(per_mesh[self.instance_arrays.mesh].sum())
 
 
 def _mat4_mul(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -156,6 +226,13 @@ def _mat4_mul_many(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return out
 
 
+_TRANSFORM = operator.attrgetter("_transform")
+_POSITION = operator.attrgetter("_position")
+_ROTATION = operator.attrgetter("_rotation")
+_SCALE = operator.attrgetter("_scale")
+_chain = itertools.chain.from_iterable
+
+
 def _local_matrices(objects: list[SceneObject]) -> np.ndarray:
     """``(n, 4, 4)`` local matrices, bitwise equal to ``obj.local_matrix`` for each object.
 
@@ -165,10 +242,15 @@ def _local_matrices(objects: list[SceneObject]) -> np.ndarray:
     evaluated for all objects at once.
     """
     n = len(objects)
-    transforms = [obj._transform for obj in objects]
-    position = np.array([t._position for t in transforms], dtype=np.float64).reshape(n, 3)
-    rotation = np.array([t._rotation for t in transforms], dtype=np.float64).reshape(n, 4)
-    scale = np.array([t._scale for t in transforms], dtype=np.float64).reshape(n, 3)
+    transforms = list(map(_TRANSFORM, objects))
+    position = np.fromiter(_chain(map(_POSITION, transforms)), np.float64, 3 * n).reshape(n, 3)
+    rotation = np.fromiter(_chain(map(_ROTATION, transforms)), np.float64, 4 * n).reshape(n, 4)
+    scale = np.fromiter(_chain(map(_SCALE, transforms)), np.float64, 3 * n).reshape(n, 3)
+    native = _native.module()
+    if native is not None:  # the same arithmetic (aether3d-native)
+        m = np.empty((n, 4, 4), dtype=np.float64)
+        native.local_matrices(position, rotation, scale, m)
+        return m
     x, y, z, w = rotation.T
     r = np.empty((n, 3, 3), dtype=np.float64)
     r[:, 0, 0] = 1 - 2 * (y * y + z * z)
@@ -193,9 +275,21 @@ def world_matrices(scene: Scene) -> dict[str, np.ndarray]:
     Computed for all objects at once, one hierarchy level at a time, with the
     same arithmetic as ``obj.local_matrix`` and :func:`_mat4_mul`.
     """
+    if _features.enabled("AETHER3D_RETAINED_RENDER_WORLD"):  # a rendered scene keeps them
+        from .retained import retained_world_matrices
+
+        found = retained_world_matrices(scene)
+        if found is not None:
+            return found
+    objects, world = _world_stack(scene)
+    return {obj.id: world[k] for k, obj in enumerate(objects)}
+
+
+def _world_stack(scene: Scene) -> tuple[list[SceneObject], np.ndarray]:
+    """The objects in depth-first order and their world matrices, ``(n, 4, 4)``."""
     objects = list(scene)  # depth-first: parents first
     if not objects:
-        return {}
+        return objects, np.zeros((0, 4, 4))
     world = _local_matrices(objects)
     index = {obj.id: k for k, obj in enumerate(objects)}
     parent = np.full(len(objects), -1, dtype=np.int64)
@@ -204,10 +298,24 @@ def world_matrices(scene: Scene) -> dict[str, np.ndarray]:
         if obj.parent is not None:
             parent[k] = index[obj.parent.id]
             depth[k] = depth[parent[k]] + 1
-    for level in range(1, int(depth.max()) + 1):
+    return objects, _world_from_local(world, parent, depth)
+
+
+def _world_from_local(local: np.ndarray, parent: np.ndarray, depth: np.ndarray) -> np.ndarray:
+    """World matrices of objects in depth-first order (parents first) from their local
+    matrices: ``world[parent] @ local`` with :func:`_mat4_mul_many`'s sums, one hierarchy
+    level at a time (or in one native pass, with the same arithmetic). ``local`` may be
+    returned, updated in place."""
+    native = _native.module()
+    if native is not None and len(local):
+        world = np.empty_like(local)
+        native.world_matrices(np.ascontiguousarray(local), np.ascontiguousarray(parent), world)
+        return world
+    world = local
+    for level in range(1, int(depth.max(initial=0)) + 1):
         rows = np.flatnonzero(depth == level)
         world[rows] = _mat4_mul_many(world[parent[rows]], world[rows])
-    return {obj.id: world[k] for k, obj in enumerate(objects)}
+    return world
 
 
 def normal_matrix(linear: np.ndarray) -> np.ndarray | None:
@@ -298,29 +406,154 @@ def extract_render_scene(
     default_lights: bool = True,
     aspect: float = 16 / 9,
 ) -> RenderScene:
-    """Collect everything needed to render ``scene`` from ``camera`` (read-only)."""
+    """Collect everything needed to render ``scene`` from ``camera`` (read-only).
+
+    Since 0.11.1 the scene's retained render world (:mod:`.retained`) brings what an
+    earlier extraction computed up to date with the changes made since, and returns
+    exactly the render scene the full walk below returns; the full walk runs when it
+    cannot (inside an open operation, with ``AETHER3D_RETAINED_RENDER_WORLD=0``, ...).
+    """
+    if _features.enabled("AETHER3D_RETAINED_RENDER_WORLD"):
+        from .retained import retained_render_scene
+
+        rs = retained_render_scene(scene, camera, default_lights=default_lights, aspect=aspect)
+        if rs is not None:
+            return rs
+    return _extract_full(scene, camera, default_lights=default_lights, aspect=aspect)
+
+
+def _render_camera(
+    camera: SceneObject, world: np.ndarray, aspect: float
+) -> tuple[RenderCamera, list[Diagnostic]]:
+    """The render camera of the camera object ``camera`` with world matrix ``world``."""
+    frame, frame_diags = frame_from_matrix(world, f"objects[{camera.name}]")
+    diagnostics = list(frame_diags)
+    render_camera = RenderCamera(camera.id, camera.name, camera.camera, frame)
+    if camera.camera.aspect_ratio is not None and not math.isclose(
+        camera.camera.aspect_ratio, aspect, rel_tol=1e-3
+    ):
+        diagnostics.append(
+            Diagnostic(
+                "ASPECT_MISMATCH",
+                INFO,
+                f"the image aspect {aspect:.4g} differs from the camera's aspect_ratio "
+                f"{camera.camera.aspect_ratio:.4g}; the {camera.camera.fov_axis} field of "
+                "view is kept and the other extent adapts (pixels stay square)",
+                f"objects[{camera.name}].camera.aspect_ratio",
+            )
+        )
+    return render_camera, diagnostics
+
+
+def _light(
+    obj: SceneObject,
+    world: np.ndarray,
+    finite: bool,
+    position: int,
+    ordered: list[tuple[int, Diagnostic]],
+) -> RenderLight | None:
+    """The render light of the visible light object ``obj`` (``None``: it is ignored, and
+    ``ordered`` gets the diagnostic saying why)."""
+    light = obj.light
+    radiance = to_linear(light.color) * light.intensity
+    if not finite:
+        raise RenderError(
+            "NONFINITE_TRANSFORM", "world matrix is not finite", f"objects[{obj.name}]"
+        )
+    if light.type == "point":
+        return RenderLight(
+            obj.id,
+            obj.name,
+            "point",
+            radiance,
+            world[:3, 3].copy(),
+            None,
+            light.range,
+            light.falloff,
+            radius=light.radius,
+        )
+    direction = -world[:3, 1]
+    length = float(np.linalg.norm(direction))
+    if not length > 1e-12:
+        ordered.append(
+            (
+                position,
+                Diagnostic(
+                    "LIGHT_DIRECTION_UNDEFINED",
+                    WARNING,
+                    f"light {obj.name!r} has zero scale along its forward axis; it is ignored",
+                    f"objects[{obj.name}]",
+                ),
+            )
+        )
+        return None
+    return RenderLight(
+        obj.id,
+        obj.name,
+        "directional",
+        radiance,
+        None,
+        direction / length,
+        None,
+        "none",
+        angle=light.angle,
+    )
+
+
+def _evaluated_mesh(obj: SceneObject) -> Mesh | None:
+    """``obj.mesh`` -- for procedural objects, their current evaluation (cached)."""
+    try:
+        return obj.mesh
+    except AetherError as exc:
+        code = getattr(exc, "code", type(exc).__name__)
+        raise RenderError(
+            "GEOMETRY_EVALUATION_FAILED",
+            f"the geometry of {obj.name!r} could not be evaluated: [{code}] "
+            + getattr(exc, "message", str(exc)),
+            f"objects[{obj.name}]",
+            hint="fix or disable the failing procedural definition, or hide the object "
+            "(obj.visible = False)",
+            details={"error": exc.to_dict() if hasattr(exc, "to_dict") else {"message": str(exc)}},
+        ) from None
+
+
+def _nonfinite_mesh_object(obj: SceneObject) -> RenderError:
+    return RenderError(
+        "NONFINITE_TRANSFORM",
+        f"the world matrix of {obj.name!r} is not finite",
+        f"objects[{obj.name}]",
+        hint="check for extreme scales in the object's hierarchy",
+    )
+
+
+def _zero_scale(obj: SceneObject) -> Diagnostic:
+    return Diagnostic(
+        "ZERO_WORLD_SCALE",
+        WARNING,
+        f"object {obj.name!r} has a singular world transform (zero scale); "
+        "it collapses and is not rendered",
+        f"objects[{obj.name}]",
+    )
+
+
+def _extract_full(
+    scene: Scene,
+    camera: SceneObject | RenderCamera,
+    *,
+    default_lights: bool = True,
+    aspect: float = 16 / 9,
+) -> RenderScene:
+    """The full extraction: walks every object of the scene (the reference the retained
+    render world is compared with, and what runs when it cannot)."""
     start = time.perf_counter()
     diagnostics: list[Diagnostic] = []
-    worlds = world_matrices(scene)
+    objects, stack = _world_stack(scene)
+    finite_world = np.all(np.isfinite(stack), axis=(1, 2)).tolist()
     if isinstance(camera, RenderCamera):
         render_camera = camera
     else:
-        frame, frame_diags = frame_from_matrix(worlds[camera.id], f"objects[{camera.name}]")
-        diagnostics += frame_diags
-        render_camera = RenderCamera(camera.id, camera.name, camera.camera, frame)
-        if camera.camera.aspect_ratio is not None and not math.isclose(
-            camera.camera.aspect_ratio, aspect, rel_tol=1e-3
-        ):
-            diagnostics.append(
-                Diagnostic(
-                    "ASPECT_MISMATCH",
-                    INFO,
-                    f"the image aspect {aspect:.4g} differs from the camera's aspect_ratio "
-                    f"{camera.camera.aspect_ratio:.4g}; the {camera.camera.fov_axis} field of "
-                    "view is kept and the other extent adapts (pixels stay square)",
-                    f"objects[{camera.name}].camera.aspect_ratio",
-                )
-            )
+        render_camera, camera_diags = _render_camera(camera, stack[objects.index(camera)], aspect)
+        diagnostics += camera_diags
 
     meshes: list[RenderMesh] = []
     mesh_index: dict[int, int] = {}
@@ -328,95 +561,31 @@ def extract_render_scene(
     candidates: list[tuple[SceneObject, Mesh, np.ndarray, int]] = []  # mesh objects, in order
     ordered: list[tuple[int, Diagnostic]] = []  # loop diagnostics, by object position
     evaluate_time = 0.0
-    for position, obj in enumerate(scene):
-        loc = f"objects[{obj.name}]"
-        world = worlds[obj.id]
+    for position, obj in enumerate(objects):
+        world = stack[position]
         if obj.light is not None:
             if not obj.visible:
                 continue
-            light = obj.light
-            radiance = to_linear(light.color) * light.intensity
-            if not np.all(np.isfinite(world)):
-                raise RenderError("NONFINITE_TRANSFORM", "world matrix is not finite", loc)
-            if light.type == "point":
-                lights.append(
-                    RenderLight(
-                        obj.id,
-                        obj.name,
-                        "point",
-                        radiance,
-                        world[:3, 3].copy(),
-                        None,
-                        light.range,
-                        light.falloff,
-                        radius=light.radius,
-                    )
-                )
-            else:
-                direction = -world[:3, 1]
-                length = float(np.linalg.norm(direction))
-                if not length > 1e-12:
-                    ordered.append(
-                        (
-                            position,
-                            Diagnostic(
-                                "LIGHT_DIRECTION_UNDEFINED",
-                                WARNING,
-                                f"light {obj.name!r} has zero scale along its forward axis; "
-                                "it is ignored",
-                                loc,
-                            ),
-                        )
-                    )
-                    continue
-                lights.append(
-                    RenderLight(
-                        obj.id,
-                        obj.name,
-                        "directional",
-                        radiance,
-                        None,
-                        direction / length,
-                        None,
-                        "none",
-                        angle=light.angle,
-                    )
-                )
+            light = _light(obj, world, finite_world[position], position, ordered)
+            if light is not None:
+                lights.append(light)
             continue
         if obj.camera is not None or not obj.visible:
             continue
         if obj._mesh is None and obj._geometry is None:  # (no evaluation here)
             continue
         t0 = time.perf_counter()
-        try:
-            mesh = obj.mesh  # procedural objects: the current evaluation (cached)
-        except AetherError as exc:
-            code = getattr(exc, "code", type(exc).__name__)
-            raise RenderError(
-                "GEOMETRY_EVALUATION_FAILED",
-                f"the geometry of {obj.name!r} could not be evaluated: [{code}] "
-                + getattr(exc, "message", str(exc)),
-                loc,
-                hint="fix or disable the failing procedural definition, or hide the object "
-                "(obj.visible = False)",
-                details={
-                    "error": exc.to_dict() if hasattr(exc, "to_dict") else {"message": str(exc)}
-                },
-            ) from None
+        mesh = _evaluated_mesh(obj)  # procedural objects: the current evaluation (cached)
         evaluate_time += time.perf_counter() - t0
         if mesh is None or mesh.triangle_count == 0:
             continue
-        if not np.all(np.isfinite(world)):
-            raise RenderError(
-                "NONFINITE_TRANSFORM",
-                f"the world matrix of {obj.name!r} is not finite",
-                loc,
-                hint="check for extreme scales in the object's hierarchy",
-            )
+        if not finite_world[position]:
+            raise _nonfinite_mesh_object(obj)
         candidates.append((obj, mesh, world, position))
 
     # Normal matrices, determinants and colors of all mesh objects at once.
-    linear = np.array([c[2][:3, :3] for c in candidates], dtype=np.float64).reshape(-1, 3, 3)
+    candidate_worlds = stack[[c[3] for c in candidates]].reshape(-1, 4, 4)
+    linear = np.ascontiguousarray(candidate_worlds[:, :3, :3])
     normal, valid, det = normal_matrices(linear)
     material_table, object_materials = resolve_materials(
         scene,
@@ -425,25 +594,16 @@ def extract_render_scene(
             for k, (obj, mesh, _, position) in enumerate(candidates)
             if valid[k]
         ],
+        _material_cache(scene),
     )
     ordered += material_table.diagnostics
     material_iter = iter(object_materials)
     colors: dict[tuple, np.ndarray] = {}
     instances: list[RenderInstance] = []
+    columns: tuple[list, list, list, list, list, list] = ([], [], [], [], [], [])
     for k, (obj, mesh, world, position) in enumerate(candidates):
         if not valid[k]:
-            ordered.append(
-                (
-                    position,
-                    Diagnostic(
-                        "ZERO_WORLD_SCALE",
-                        WARNING,
-                        f"object {obj.name!r} has a singular world transform (zero scale); "
-                        "it collapses and is not rendered",
-                        f"objects[{obj.name}]",
-                    ),
-                )
-            )
+            ordered.append((position, _zero_scale(obj)))
             continue
         key = id(mesh)
         if key not in mesh_index:
@@ -454,25 +614,84 @@ def extract_render_scene(
         if base is None:
             base = colors[appearance.color] = to_linear(appearance.color)
         default_material, group_materials = next(material_iter)
-        instances.append(
-            RenderInstance(
-                obj.id,
-                obj.name,
-                mesh_index[key],
-                world,
-                normal[k],
-                bool(det[k] < 0.0),
-                base.copy(),
-                appearance.specular,
-                appearance.shininess,
-                default_material,
-                tuple(sorted(group_materials.items())),
-            )
+        instance = RenderInstance(
+            obj.id,
+            obj.name,
+            mesh_index[key],
+            world,
+            normal[k],
+            bool(det[k] < 0.0),
+            base.copy(),
+            appearance.specular,
+            appearance.shininess,
+            default_material,
+            tuple(sorted(group_materials.items())),
         )
-    diagnostics += [d for _, d in sorted(ordered, key=lambda item: item[0])]
+        instances.append(instance)
+        for column, value in zip(
+            columns,
+            (
+                k,
+                instance.mesh,
+                instance.base_color,
+                instance.specular,
+                instance.shininess,
+                instance.material,
+            ),
+            strict=True,
+        ):
+            column.append(value)
+    rows, mesh_of, base_colors, speculars, shininesses, defaults = columns
+    count = len(rows)
+    arrays = InstanceArrays(
+        world=candidate_worlds[rows].reshape(count, 4, 4),
+        normal_matrix=normal[rows].reshape(count, 3, 3),
+        mirrored=(det[rows] < 0.0).reshape(count),
+        mesh=np.array(mesh_of, dtype=np.int64),
+        base_color=np.array(base_colors, dtype=np.float64).reshape(count, 3),
+        specular=np.array(speculars, dtype=np.float64),
+        shininess=np.array(shininesses, dtype=np.float64),
+        material=np.array(defaults, dtype=np.int64),
+        has_groups=np.array([bool(i.group_materials) for i in instances], dtype=bool),
+    )
+    return _finish(
+        scene,
+        meshes=tuple(meshes),
+        instances=tuple(instances),
+        lights=lights,
+        camera=render_camera,
+        diagnostics=diagnostics,
+        ordered=ordered,
+        materials=tuple(material_table.materials),
+        arrays=arrays,
+        default_lights=default_lights,
+        evaluate_time=evaluate_time,
+        texture_time=material_table.texture_seconds,
+        start=start,
+    )
 
+
+def _finish(
+    scene: Scene,
+    *,
+    meshes: tuple[RenderMesh, ...],
+    instances: tuple[RenderInstance, ...],
+    lights: list[RenderLight],
+    camera: RenderCamera,
+    diagnostics: list[Diagnostic],
+    ordered: list[tuple[int, Diagnostic]],
+    materials: tuple[RenderMaterial, ...],
+    arrays: InstanceArrays,
+    default_lights: bool,
+    evaluate_time: float,
+    texture_time: float,
+    start: float,
+    cache: dict[str, Any] | None = None,
+) -> RenderScene:
+    """The render scene: diagnostics in object order, then the scene-wide ones."""
+    diagnostics += [d for _, d in sorted(ordered, key=lambda item: item[0])]
     if not lights and default_lights:
-        lights.append(default_light(render_camera.frame))
+        lights.append(default_light(camera.frame))
         diagnostics.append(
             Diagnostic(
                 "DEFAULT_LIGHTING",
@@ -500,21 +719,34 @@ def extract_render_scene(
     world_settings = scene.world
     total = time.perf_counter() - start
     return RenderScene(
-        meshes=tuple(meshes),
-        instances=tuple(instances),
+        meshes=meshes,
+        instances=instances,
         lights=tuple(lights),
-        camera=render_camera,
+        camera=camera,
         background=to_linear(world_settings.background),
         ambient=to_linear(world_settings.ambient_color) * world_settings.ambient_intensity,
         diagnostics=tuple(diagnostics),
         timings={
             "evaluate": evaluate_time,
-            "textures": material_table.texture_seconds,
-            "extract": total - evaluate_time - material_table.texture_seconds,
+            "textures": texture_time,
+            "extract": total - evaluate_time - texture_time,
         },
-        materials=tuple(material_table.materials),
+        materials=materials,
         environment=world_settings.environment.copy(),
+        arrays=arrays,
+        cache=cache,
     )
+
+
+def _material_cache(scene: Scene) -> MaterialCache | None:
+    """The scene's material cache (kept with its derived caches), unless switched off."""
+    if not _features.enabled("AETHER3D_MATERIAL_CACHE"):
+        return None
+    derived = scene._derived()
+    cache = derived.get("render_materials")
+    if cache is None:
+        cache = derived["render_materials"] = MaterialCache()
+    return cache
 
 
 def default_light(frame: CameraFrame) -> RenderLight:

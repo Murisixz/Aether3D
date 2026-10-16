@@ -1,0 +1,16 @@
+[package]
+name = "hwpt"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+description = "Phase 5 prototype: Aether3D's GPU path tracer replayed in a Rust wgpu host, software traversal or hardware ray queries"
+
+[dependencies]
+# MIT OR Apache-2.0; MIT OR Apache-2.0 OR Zlib (pollster: Apache-2.0 OR MIT)
+wgpu = "=30.0.1"
+pollster = "0.4"
+bytemuck = "1"
+
+[profile.release]
+opt-level = 3

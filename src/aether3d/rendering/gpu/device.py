@@ -526,7 +526,7 @@ class GPUContext:
 
     def __init__(self, wgpu: Any, info: AdapterInfo, adapter: Any, device: Any) -> None:
         from .materials import TexturePool
-        from .resources import MeshCache, TargetCache, UtilityBuffers
+        from .resources import FrameBuffers, MeshCache, TargetCache, UtilityBuffers
         from .shaders import ShaderLibrary
 
         self.wgpu = wgpu
@@ -548,6 +548,7 @@ class GPUContext:
         self.targets = TargetCache(self)
         self.utility = UtilityBuffers(self)
         self.textures = TexturePool(self)
+        self.frame_buffers = FrameBuffers(self)
 
     # -- state --------------------------------------------------------------------------
 
@@ -568,7 +569,14 @@ class GPUContext:
 
     def release(self) -> None:
         """Free every GPU resource of this context and destroy the device."""
-        for part in (self.meshes, self.textures, self.targets, self.utility, self.shaders):
+        for part in (
+            self.meshes,
+            self.textures,
+            self.targets,
+            self.utility,
+            self.frame_buffers,
+            self.shaders,
+        ):
             with suppress(Exception):  # best effort while tearing down
                 part.clear()
         with suppress(Exception):

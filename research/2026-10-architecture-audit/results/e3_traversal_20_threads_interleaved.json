@@ -1,0 +1,56 @@
+{
+ "sphere 100k tris | camera 640x480": {
+  "C (gcc)": 43.2,
+  "Rust": 30.2,
+  "Zig": 32.7,
+  "Go": 16.6,
+  "C# AOT": 21.6,
+  "Numba": 28.9,
+  "parity": true
+ },
+ "sphere 100k tris | bounce (diffuse)": {
+  "C (gcc)": 10.4,
+  "Rust": 8.1,
+  "Zig": 9.6,
+  "Go": 3.5,
+  "C# AOT": 3.0,
+  "Numba": 9.0,
+  "parity": true
+ },
+ "400 cube instances | camera 640x480": {
+  "C (gcc)": 56.1,
+  "Rust": 36.7,
+  "Zig": 40.5,
+  "Go": 17.8,
+  "C# AOT": 29.8,
+  "Numba": 40.9,
+  "parity": true
+ },
+ "400 cube instances | bounce (diffuse)": {
+  "C (gcc)": 49.6,
+  "Rust": 39.7,
+  "Zig": 45.8,
+  "Go": 17.5,
+  "C# AOT": 21.3,
+  "Numba": 47.7,
+  "parity": true
+ },
+ "sphere 1M tris | camera 640x480": {
+  "C (gcc)": 32.0,
+  "Rust": 23.5,
+  "Zig": 25.0,
+  "Go": 13.5,
+  "C# AOT": 15.1,
+  "Numba": 21.7,
+  "parity": true
+ },
+ "sphere 1M tris | bounce (diffuse)": {
+  "C (gcc)": 6.3,
+  "Rust": 4.9,
+  "Zig": 5.4,
+  "Go": 2.5,
+  "C# AOT": 2.1,
+  "Numba": 4.9,
+  "parity": true
+ }
+}

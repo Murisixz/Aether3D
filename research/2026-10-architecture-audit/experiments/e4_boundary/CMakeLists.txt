@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.15)
+project(nb_mod LANGUAGES CXX)
+find_package(Python 3.14 COMPONENTS Interpreter Development.Module REQUIRED)
+execute_process(COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
+find_package(nanobind CONFIG REQUIRED)
+nanobind_add_module(nb_mod NB_STATIC nb_mod.cpp)

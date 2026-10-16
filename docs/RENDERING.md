@@ -111,6 +111,7 @@ output:      exposure → clamp → sRGB transfer function → 8 bits → PNG (o
 | `rendering/settings.py` | `Appearance`, `World`, `RenderSettings`, `RenderLimits` |
 | `rendering/color.py` | sRGB ↔ linear transfer functions, color parsing |
 | `rendering/scene_data.py` | `RenderScene` extraction (backend-independent) |
+| `rendering/retained.py` | the retained render world: extraction kept up to date between renders |
 | `rendering/raster.py` | clipping, fixed-point rasterization, visibility buffer |
 | `rendering/cpu.py` | the CPU backend: geometry, raster, shading, resolve |
 | `rendering/renderer.py` | `render()` and `RenderResult` |
@@ -121,6 +122,16 @@ output:      exposure → clamp → sRGB transfer function → 8 bits → PNG (o
 Rendering never modifies the scene. Extraction reads objects, transforms and
 the *current evaluated* procedural meshes (through the procedural cache), and
 everything after extraction works on immutable `RenderScene` data.
+
+Since 0.11.1 extraction is retained between renders (`rendering/retained.py`):
+what it computed for a scene is kept with the scene and updated from the
+history's change journal, so a frame where nothing changed, or one object moved,
+does not visit every object again. The render scene is exactly the one a full
+walk of the scene gives; the full walk runs inside open operations and
+transactions, when the scene fails to render (it reports the error), and with
+`AETHER3D_RETAINED_RENDER_WORLD=0`. A procedural object's mesh is evaluated again
+after any procedural or geometry change; between them it is reused (evaluations
+are deterministic, so a new evaluation of unchanged definitions is the same mesh).
 
 ## Coordinate conventions
 
@@ -431,7 +442,7 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
 | `scene.cameras`, `scene.lights`, `scene.active_camera` | Lookup and active camera (settable) |
 | `scene.world` | `World`: `background`, `ambient_color`, `ambient_intensity`, and `environment` (the path tracer's `Environment`: `"ambient"`, `"uniform"` or `"sky"`) |
 | `scene.render_settings` | `RenderSettings`: `width`, `height`, `samples`, `exposure`, `cull`, `default_lights`; saved with the project |
-| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows, path, ao, tonemap, progress)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md); `backend="path"`, `"gpu_path"`, `path`, `ao` and `progress` in [RENDER_QUALITY.md](RENDER_QUALITY.md). `tonemap` applies to every backend. Returns a `RenderResult`. |
+| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows, path, ao, tonemap, progress, outputs)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md); `backend="path"`, `"gpu_path"`, `path`, `ao` and `progress` in [RENDER_QUALITY.md](RENDER_QUALITY.md). `tonemap` applies to every backend. `outputs` (since 0.11.1) chooses the per-pixel outputs to return (default: all; the image always comes): the GPU backend reads back only those, which makes small renders and previews faster ([GPU.md](GPU.md)); the others are `None`, and the CPU renderer and path tracers return every output anyway. Returns a `RenderResult`. |
 | `obj.camera`, `obj.light`, `obj.kind` | Components (`Camera`/`Light` or `None`); `"mesh"`, `"procedural"`, `"camera"`, `"light"` or `"empty"`. An object holds at most one of mesh, camera and light. |
 | `obj.appearance`, `obj.color`, `obj.visible` | Appearance and render visibility |
 | `obj.material`, `obj.group_materials`, `scene.create_material(...)`, `scene.assign_material(...)`, `scene.materials` | Materials and textures ([MATERIALS.md](MATERIALS.md)) |
@@ -460,7 +471,7 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
 | `color` | The output transform: working space, exposure, tone mapper, encoding |
 | `passes` | Path tracer only: `beauty`, `direct`, `indirect`, `albedo`, `normal`, `depth`, `ao`, `sample_count`, `variance` (empty for the rasterizers) |
 | `save(path)` | Atomic write: `.png`, or `.hdr`/`.pfm` (linear, unclipped) |
-| `png_bytes()`, `pixel(x, y)`, `to_dict()` | Encoded PNG, one pixel, JSON-compatible report |
+| `png_bytes(compression=6)`, `pixel(x, y)`, `to_dict()` | Encoded PNG (zlib level 0-9: 1 encodes several times faster, a few percent larger), one pixel, JSON-compatible report |
 
 `stats` holds:
 - counts: `instances`, `meshes`, `lights`, `triangles`, `culled_backface`,

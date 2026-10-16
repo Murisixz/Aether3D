@@ -49,6 +49,19 @@ def gpu() -> GPU:
     return GPU(adapter, status["selected"])
 
 
+def pytest_sessionstart(session):
+    """``AETHER3D_REQUIRE_NATIVE=1`` (CI jobs that build ``native/``): the native kernels must
+    be installed and used, or the run fails instead of falling back to NumPy."""
+    if os.environ.get("AETHER3D_REQUIRE_NATIVE") == "1":
+        from aether3d import _native
+
+        status = _native.status()
+        if not status["enabled"]:
+            pytest.exit(
+                f"AETHER3D_REQUIRE_NATIVE=1, but the native kernels are not used: {status}", 1
+            )
+
+
 @pytest.fixture(autouse=True)
 def strict_history(monkeypatch):
     """Every test runs with the history's strict checks: a change recorded outside an
@@ -56,3 +69,15 @@ def strict_history(monkeypatch):
     from aether3d import history
 
     monkeypatch.setattr(history, "STRICT", True)
+
+
+@pytest.fixture(autouse=True)
+def strict_render_world(monkeypatch):
+    """An unexpected error of the retained render world fails the test, instead of being
+    covered by the full extraction it falls back to; GPU frames check the data they kept
+    or updated between frames against a computation from scratch."""
+    from aether3d.rendering import retained
+    from aether3d.rendering.gpu import renderer as gpu_renderer
+
+    monkeypatch.setattr(retained, "STRICT", True)
+    monkeypatch.setattr(gpu_renderer, "VERIFY_KEPT", True)

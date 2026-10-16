@@ -1,0 +1,15 @@
+{"scene": "sphere100k", "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU", "as_build_ms": 1.498, "sw_pipeline_ms": 1.3, "hw_pipeline_ms": 0.3}
+{"scene": "sphere100k", "rays": "camera", "n": 2073600, "kernel": "sw", "median_ms": 3.2501, "min_ms": 3.2277, "max_ms": 3.2719, "mrays_per_s": 638.0}
+{"scene": "sphere100k", "rays": "camera", "n": 2073600, "kernel": "hw", "median_ms": 0.4510, "min_ms": 0.4494, "max_ms": 0.4518, "mrays_per_s": 4597.7}
+{"scene": "sphere100k", "rays": "bounce", "n": 886244, "kernel": "sw", "median_ms": 5.9581, "min_ms": 5.9437, "max_ms": 5.9637, "mrays_per_s": 148.7}
+{"scene": "sphere100k", "rays": "bounce", "n": 886244, "kernel": "hw", "median_ms": 0.3959, "min_ms": 0.3940, "max_ms": 0.3967, "mrays_per_s": 2238.7}
+{"scene": "cubes400", "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU", "as_build_ms": 0.660, "sw_pipeline_ms": 1.3, "hw_pipeline_ms": 0.3}
+{"scene": "cubes400", "rays": "camera", "n": 2073600, "kernel": "sw", "median_ms": 2.8930, "min_ms": 2.8611, "max_ms": 2.9228, "mrays_per_s": 716.8}
+{"scene": "cubes400", "rays": "camera", "n": 2073600, "kernel": "hw", "median_ms": 0.4470, "min_ms": 0.4456, "max_ms": 0.4480, "mrays_per_s": 4638.8}
+{"scene": "cubes400", "rays": "bounce", "n": 1760576, "kernel": "sw", "median_ms": 2.8009, "min_ms": 2.7560, "max_ms": 2.8096, "mrays_per_s": 628.6}
+{"scene": "cubes400", "rays": "bounce", "n": 1760576, "kernel": "hw", "median_ms": 0.3724, "min_ms": 0.3695, "max_ms": 0.3764, "mrays_per_s": 4727.0}
+{"scene": "sphere1m", "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU", "as_build_ms": 8.707, "sw_pipeline_ms": 1.4, "hw_pipeline_ms": 0.3}
+{"scene": "sphere1m", "rays": "camera", "n": 2073600, "kernel": "sw", "median_ms": 4.2385, "min_ms": 4.2322, "max_ms": 4.2434, "mrays_per_s": 489.2}
+{"scene": "sphere1m", "rays": "camera", "n": 2073600, "kernel": "hw", "median_ms": 0.5098, "min_ms": 0.5076, "max_ms": 0.5101, "mrays_per_s": 4067.8}
+{"scene": "sphere1m", "rays": "bounce", "n": 886312, "kernel": "sw", "median_ms": 9.2711, "min_ms": 9.2646, "max_ms": 9.2807, "mrays_per_s": 95.6}
+{"scene": "sphere1m", "rays": "bounce", "n": 886312, "kernel": "hw", "median_ms": 0.6129, "min_ms": 0.6122, "max_ms": 0.6147, "mrays_per_s": 1446.0}

@@ -1,0 +1,16 @@
+{
+ "submit_and_wait_roundtrip_us": 98.55650023382623,
+ "create_buffer_with_data_1.28MB_us": 386.52450166409835,
+ "write_buffer_full_1.28MB_us": 236.537500313716,
+ "write_buffer_1_records_separate_us": 3.3144988265121356,
+ "write_buffer_1_records_one_range_us": 2.8239992388989776,
+ "write_buffer_10_records_separate_us": 28.10200021485798,
+ "write_buffer_10_records_one_range_us": 3.146999006276019,
+ "write_buffer_100_records_separate_us": 296.3899987662444,
+ "write_buffer_100_records_one_range_us": 5.972999133518897,
+ "gpu_rebase_10k_submit_and_wait_us": 103.19149987481069,
+ "gpu_rebase_10k_kernel_us (timestamps)": 4.352,
+ "gpu hi/lo rebase: max abs error vs float64 (m)": 9.536306606605649e-07,
+ "current CPU path (f64 subtract, then round to f32): max abs error (m)": 9.536306606605649e-07,
+ "naive float32 world - eye: max abs error (m)": 0.0077434980776160955
+}

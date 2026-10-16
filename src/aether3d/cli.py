@@ -945,6 +945,8 @@ def cmd_render(args: argparse.Namespace) -> CommandOutput:
             path=path_options,
             ao=ao,
             tonemap=args.tonemap,
+            # .hdr/.pfm hold linear light; a PNG needs the image (the GPU reads back no more)
+            outputs=("image",) if output.suffix.lower() == ".png" else ("image", "linear"),
         )
         written = result.save(output)
     except RenderError as exc:

@@ -1,0 +1,189 @@
+{
+  "label": "phase1",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.11.0",
+    "switches": {
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true
+    },
+    "git": "cae96a1",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "core": {
+      "plan_create_10k_ms": 72.881,
+      "plan_create_per_object_us": 7.288,
+      "add_object_per_object_us": 22.771,
+      "set_position_in_transaction_us": 3.035,
+      "set_position_alone_us": 3.228,
+      "read_position_ns": 31.9,
+      "read_world_matrix_us": 11.424,
+      "world_matrices_10k_ms": 7.874,
+      "undo_redo_plan_10k_ms": 2.438,
+      "bytes_per_object_with_history": 935,
+      "peak_rss_mib": 122.4
+    },
+    "queries": {
+      "raycast_first_ms": 63.274,
+      "raycast_warm_ms": 2.778,
+      "raycast_after_edit_ms": 59.354,
+      "overlaps_first_ms": 26.834,
+      "overlaps_warm_ms": 0.374,
+      "nearest_warm_ms": 5.66,
+      "peak_rss_mib": 103.6
+    },
+    "extract": {
+      "extract_unchanged_ms": 54.495,
+      "extract_one_moved_ms": 54.036,
+      "extract_all_moved_ms": 56.346,
+      "extract_camera_moved_ms": 55.477,
+      "peak_rss_mib": 109.3
+    },
+    "frame": {
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "unchanged_wall_ms": 71.785,
+      "unchanged_stages_ms": {
+        "evaluate": 0.508,
+        "textures": 11.22,
+        "extract": 41.253,
+        "init": 0.027,
+        "upload": 2.46,
+        "prepare": 0.408,
+        "gpu": 4.506,
+        "readback": 6.064,
+        "total": 67.678
+      },
+      "unchanged_gpu_passes_ms": {
+        "scene": 1.552,
+        "finalize": 0.224
+      },
+      "one_moved_wall_ms": 71.883,
+      "one_moved_stages_ms": {
+        "evaluate": 0.518,
+        "textures": 11.43,
+        "extract": 41.149,
+        "init": 0.026,
+        "upload": 2.617,
+        "prepare": 0.383,
+        "gpu": 4.243,
+        "readback": 5.832,
+        "total": 67.676
+      },
+      "one_moved_gpu_passes_ms": {
+        "scene": 1.503,
+        "finalize": 0.18
+      },
+      "all_moved_wall_ms": 75.542,
+      "all_moved_stages_ms": {
+        "evaluate": 0.534,
+        "textures": 11.041,
+        "extract": 42.889,
+        "init": 0.027,
+        "upload": 2.988,
+        "prepare": 0.39,
+        "gpu": 4.49,
+        "readback": 6.292,
+        "total": 70.63
+      },
+      "all_moved_gpu_passes_ms": {
+        "scene": 1.501,
+        "finalize": 0.18
+      },
+      "camera_moved_wall_ms": 75.125,
+      "camera_moved_stages_ms": {
+        "evaluate": 0.508,
+        "textures": 11.225,
+        "extract": 42.238,
+        "init": 0.027,
+        "upload": 3.132,
+        "prepare": 0.4,
+        "gpu": 4.305,
+        "readback": 7.623,
+        "total": 70.803
+      },
+      "camera_moved_gpu_passes_ms": {
+        "scene": 1.502,
+        "finalize": 0.179
+      },
+      "unchanged_image_only_wall_ms": 67.71,
+      "unchanged_image_only_stages_ms": {
+        "evaluate": 0.52,
+        "textures": 11.421,
+        "extract": 42.407,
+        "init": 0.027,
+        "upload": 2.48,
+        "prepare": 0.445,
+        "gpu": 2.454,
+        "readback": 2.616,
+        "total": 63.919
+      },
+      "one_moved_image_only_wall_ms": 68.171,
+      "one_moved_image_only_stages_ms": {
+        "evaluate": 0.511,
+        "textures": 11.412,
+        "extract": 42.444,
+        "init": 0.029,
+        "upload": 2.668,
+        "prepare": 0.418,
+        "gpu": 2.608,
+        "readback": 2.778,
+        "total": 64.165
+      },
+      "preview_640x360_png_ms": 76.565,
+      "peak_rss_mib": 538.5
+    },
+    "raytrace": {
+      "blas_build_100k_tris_ms": 244.578,
+      "closest_camera_mrays_s": 0.326,
+      "closest_bounce_mrays_s": 0.116,
+      "any_bounce_mrays_s": 0.118,
+      "peak_rss_mib": 173.0
+    },
+    "editing": {
+      "from_mesh_attributes_tris": 16128,
+      "from_mesh_attributes_s": 0.857,
+      "from_mesh_topology_tris": 199808,
+      "from_mesh_topology_s": 0.696,
+      "extrude_region_ms": 5.648,
+      "inset_500_faces_ms": 127.746,
+      "bevel_edge_ms": 1.146,
+      "subdivide_quads_ms": 113.358,
+      "bevel_all_edges_faces": 2048,
+      "bevel_all_edges_ms": 674.386,
+      "to_mesh_ms": 33.731,
+      "peak_rss_mib": 321.9
+    },
+    "images": {
+      "png_decode_1080p_ms": 320.915,
+      "png_decode_mpix_s": 6.46,
+      "png_encode_1080p_level6_ms": 484.846,
+      "png_encode_1080p_level1_ms": 173.089,
+      "peak_rss_mib": 121.7
+    },
+    "io": {
+      "save_10k_s": 0.46,
+      "file_mb": 5.26,
+      "load_10k_s": 0.4561,
+      "export_glb_10k_s": 0.0861,
+      "peak_rss_mib": 157.3
+    },
+    "memory": {
+      "objects": 100000,
+      "plan_s": 0.861,
+      "first_raycast_s": 0.805,
+      "rss_after_mib": 313.62109375,
+      "peak_rss_mib": 374.9
+    },
+    "lifecycle": {
+      "cycles": 12,
+      "scenes_still_alive": 0,
+      "rss_growth_mib": 10.1,
+      "peak_rss_mib": 65.2
+    }
+  }
+}
