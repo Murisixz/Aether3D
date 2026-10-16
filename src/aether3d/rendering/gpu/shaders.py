@@ -141,8 +141,8 @@ class ShaderLibrary:
             {"binding": 7, "visibility": fragment, "buffer": storage},  # texels
         ]
         if name == "mesh":
-            # positions, normals, indices, uvs, face groups
-            entries = [{"binding": b, "visibility": vertex, "buffer": storage} for b in range(5)]
+            # positions, normals, indices, uvs, face groups, corner tangents
+            entries = [{"binding": b, "visibility": vertex, "buffer": storage} for b in range(6)]
         elif name == "frame":
             entries = [
                 {"binding": 0, "visibility": vertex | fragment, "buffer": uniform},
@@ -204,7 +204,7 @@ class ShaderLibrary:
             ]
         elif name == "pathtrace-mesh":
             compute = wgpu.ShaderStage.COMPUTE
-            entries = [{"binding": b, "visibility": compute, "buffer": storage} for b in range(5)]
+            entries = [{"binding": b, "visibility": compute, "buffer": storage} for b in range(6)]
         else:  # pragma: no cover - internal misuse
             raise ValueError(name)
         return device.create_bind_group_layout(label=f"aether3d-{name}", entries=entries)

@@ -76,6 +76,13 @@ class RenderTexture:
         return self.coordinates == "uv"
 
     @property
+    def mikktspace(self) -> bool:
+        """A UV normal map read in the MikkTSpace basis (see ``rendering/tangents.py``)."""
+        from .tangents import uv_aligned
+
+        return self.coordinates == "uv" and uv_aligned(self.transform)
+
+    @property
     def key(self) -> tuple:
         """Bindings with equal keys evaluate to equal values (shared work)."""
         return (

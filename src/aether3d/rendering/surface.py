@@ -18,11 +18,14 @@ Texture coordinates (per binding, :class:`~aether3d.materials.TextureBinding`):
   triangle's geometric normal on that axis, so no projection is mirrored --
   blended with weights ``|n_axis|^blend`` of the surface normal.
 
-Normal maps are tangent-space maps (+X right, +Y up the image, as glTF):
-the tangent frame of a projection is derived per triangle from its corner
-positions and texture coordinates (the classic UV-gradient construction),
-then made orthonormal against the interpolated surface normal
-(Gram-Schmidt). Triplanar normal maps blend the three perturbed normals.
+Normal maps are tangent-space maps (+X right, +Y up the image, as glTF). A map read
+through the mesh's UVs (with at most a uniform scale and an offset) uses the
+MikkTSpace basis (:mod:`aether3d.rendering.tangents`): interpolated corner tangent T
+and normal N, ``B = sign * cross(N, T)``, ``n = normalize(x T + y B + z N)``. Other
+projections derive their tangent frame per triangle from its corner positions and
+texture coordinates (the classic UV-gradient construction), made orthonormal against
+the interpolated surface normal (Gram-Schmidt). Triplanar normal maps blend the three
+perturbed normals.
 Back faces flip the final normal (as glTF's sample viewer does for
 double-sided materials).
 
@@ -45,6 +48,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -79,6 +83,7 @@ class ShadeContext:
     perspective: bool
     step_x: float  # d(xn) per sample column
     step_y: float  # d(yn) per sample row (negative: rows go down)
+    frames: Any = None  # MikkTSpace corner frames, built on first use (see world_frames)
 
 
 @dataclass
@@ -281,6 +286,66 @@ def _tangent_frame(
     return t, bitangent * handed[:, None], valid
 
 
+def world_frames(ctx: ShadeContext) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """World-space MikkTSpace frames of every triangle corner of the render, built once:
+    ``(tangents (T, 3, 3) unit, signs (T, 3), normals (T, 3, 3) unit outward)`` and which
+    triangles have them (``(T,)`` bool: meshes with UVs)."""
+    if ctx.frames is not None:
+        return ctx.frames
+    from .tangents import corner_tangents
+
+    total = ctx.TRI.shape[0]
+    tan = np.zeros((total, 3, 3))
+    sign = np.ones((total, 3))
+    nrm = np.zeros((total, 3, 3))
+    ok = np.zeros(total, dtype=bool)
+    start = 0
+    for inst in ctx.rs.instances:
+        mesh = ctx.rs.meshes[inst.mesh]
+        count = mesh.triangles.shape[0]
+        sl = slice(start, start + count)
+        start += count
+        t = corner_tangents(mesh)
+        if t is None:
+            continue
+        lin = inst.world[:3, :3]
+        v = t[..., :3].astype(np.float64) @ lin.T
+        length = np.linalg.norm(v, axis=2, keepdims=True)
+        tan[sl] = np.divide(v, length, out=np.zeros_like(v), where=length > 1e-300)
+        flip = -1.0 if inst.mirrored else 1.0
+        sign[sl] = np.where(t[..., 3] < 0, -1.0, 1.0) * flip
+        tri = mesh.triangles.astype(np.int64)
+        if mesh.normals is not None:
+            n = mesh.normals.astype(np.float64)[tri] @ inst.normal_matrix.T
+        else:
+            p = mesh.positions.astype(np.float64)[tri] @ lin.T
+            g = np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0]) * flip
+            n = np.repeat(g[:, None, :], 3, axis=1)
+        length = np.linalg.norm(n, axis=2, keepdims=True)
+        nrm[sl] = np.divide(n, length, out=np.zeros_like(n), where=length > 1e-300)
+        ok[sl] = True
+    ctx.frames = (tan, sign, nrm, ok)
+    return ctx.frames
+
+
+def mikk_normal(
+    ctx: ShadeContext, s: Samples, rgba: np.ndarray, strength: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """The normal mapped in the MikkTSpace basis (see the module docstring) and where the
+    basis exists (non-zero tangent)."""
+    tan, sign, nrm, ok = world_frames(ctx)
+    t = np.einsum("nk,nkc->nc", s.b, tan[s.tri])
+    n = np.einsum("nk,nkc->nc", s.b, nrm[s.tri])
+    w = np.where((s.b * sign[s.tri]).sum(axis=1) < 0.0, -1.0, 1.0)
+    b = w[:, None] * np.cross(n, t)
+    tn = rgba[:, :3] * 2.0 - 1.0
+    tn[:, :2] *= strength
+    mapped = t * tn[:, 0:1] + b * tn[:, 1:2] + n * tn[:, 2:3]
+    length = np.linalg.norm(mapped, axis=1, keepdims=True)
+    valid = ok[s.tri] & (np.linalg.norm(t, axis=1) > 1e-12) & (length[:, 0] > 1e-12)
+    return np.where(valid[:, None], mapped / np.maximum(length, 1e-300), s.normal), valid
+
+
 def perturbed_normal(
     ctx: ShadeContext, s: Samples, rt: RenderTexture, projs: list[Projection], strength: float
 ) -> np.ndarray:
@@ -292,8 +357,13 @@ def perturbed_normal(
         if not keep.any():
             continue
         sub = s.subset(keep)
-        t, b, valid = _tangent_frame(ctx, sub, proj.corners[keep], sub.normal)
         rgba = texture_rgba(rt, proj, keep)
+        if rt.coordinates == "uv" and rt.mikktspace:
+            mapped, _ = mikk_normal(ctx, sub, rgba, strength)
+            w = 1.0 if proj.weight is None else proj.weight[keep, None]
+            out[keep] += mapped * w
+            continue
+        t, b, valid = _tangent_frame(ctx, sub, proj.corners[keep], sub.normal)
         tn = rgba[:, :3] * 2.0 - 1.0
         tn[:, :2] *= strength
         mapped = t * tn[:, 0:1] + b * tn[:, 1:2] + sub.normal * tn[:, 2:3]

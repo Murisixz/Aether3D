@@ -53,6 +53,7 @@ const PROJ_XZ: u32 = 2u;
 const PROJ_YZ: u32 = 3u;
 const PROJ_VOLUME: u32 = 4u;
 const BINDING_IMAGE: u32 = 4096u;  // bit 12: the texture is an image (its alpha is opacity)
+const BINDING_MIKK: u32 = 8192u;  // bit 13: a UV normal map read in the MikkTSpace basis
 
 const TRIPLANAR_EPSILON: f32 = 1e-4;
 const MIN_ROUGHNESS: f32 = 0.045;
@@ -115,6 +116,9 @@ struct VertexOut {
   @location(11) @interpolate(flat) uv01: vec4<f32>,
   @location(12) @interpolate(flat) uv2: vec2<f32>,
   @location(13) @interpolate(flat) material: u32,
+  // The interpolated MikkTSpace tangent (world, not renormalized) and its sign, for UV normal
+  // maps (zero otherwise).
+  @location(15) @interpolate(perspective, centroid) tangent: vec4<f32>,
 };
 
 fn build_vertex(vertex: u32, instance: u32, view_proj: mat4x4<f32>) -> VertexOut {
@@ -170,6 +174,10 @@ fn build_vertex(vertex: u32, instance: u32, view_proj: mat4x4<f32>) -> VertexOut
   }
   out.material = triangle_material(instance, group);
   out.instance = instance;
+  out.tangent = vec4<f32>(0.0);
+  if ((inst.flags & INSTANCE_HAS_UVS) != 0u && needs_tangents(out.material)) {
+    out.tangent = world_tangent(inst, mesh_tangent(3u * triangle + corner));
+  }
   return out;
 }
 
@@ -747,6 +755,8 @@ struct SurfaceInput {
   uv1: vec2<f32>,
   uv2: vec2<f32>,
   normal: vec3<f32>,  // outward unit shading normal (world)
+  vnormal: vec3<f32>,  // the interpolated outward normal, not renormalized (MikkTSpace N)
+  tangent: vec4<f32>,  // the interpolated MikkTSpace tangent and its sign (zero: none)
 };
 
 struct Corners {
@@ -890,6 +900,31 @@ fn tangent_frame(c: Corners, s: SurfaceInput, n: vec3<f32>) -> Frame3 {
   return Frame3(t, bitangent * handed, valid);
 }
 
+// Whether a material's normal map is read in the MikkTSpace basis (a UV binding).
+fn needs_tangents(m: u32) -> bool {
+  let sb = slot_binding(m, SLOT_NORMAL);
+  if (sb == NO_BINDING) {
+    return false;
+  }
+  return (word(header(HEADER_BINDINGS) + sb * BINDING_WORDS) & BINDING_MIKK) != 0u;
+}
+
+// The MikkTSpace pixel-shader transform (rendering/tangents.py): interpolated T and N,
+// B = sign * cross(N, T), n = normalize(x T + y B + z N).
+fn mikk_normal(rgba: vec4<f32>, s: SurfaceInput, strength: f32) -> vec3<f32> {
+  var tn = rgba.xyz * 2.0 - 1.0;
+  tn = vec3<f32>(tn.xy * strength, tn.z);
+  let t = s.tangent.xyz;
+  let n = s.vnormal;
+  let b = select(1.0, -1.0, s.tangent.w < 0.0) * cross(n, t);
+  let mapped = t * tn.x + b * tn.y + n * tn.z;
+  let len = length(mapped);
+  if (length(t) > 1e-12 && len > 1e-12) {
+    return mapped / len;
+  }
+  return s.normal;
+}
+
 fn mapped_normal(rgba: vec4<f32>, frame: Frame3, n: vec3<f32>, strength: f32) -> vec3<f32> {
   var tn = rgba.xyz * 2.0 - 1.0;
   tn = vec3<f32>(tn.xy * strength, tn.z);
@@ -968,8 +1003,12 @@ fn evaluate_surface(m: u32, s: SurfaceInput, has_uvs: bool, alpha_only: bool) ->
         let c = interpolate(corners, s);
         let value = run_program(first, count, c.p, c.dx, c.dy);
         if (slot == SLOT_NORMAL) {
-          let frame = tangent_frame(corners, s, s.normal);
-          normal = normal + mapped_normal(value, frame, s.normal, wordf(mb + 13u)) * w;
+          if ((word(b) & BINDING_MIKK) != 0u) {
+            normal = normal + mikk_normal(value, s, wordf(mb + 13u)) * w;
+          } else {
+            let frame = tangent_frame(corners, s, s.normal);
+            normal = normal + mapped_normal(value, frame, s.normal, wordf(mb + 13u)) * w;
+          }
         } else {
           rgba = rgba + value * w;
         }

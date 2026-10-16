@@ -1016,39 +1016,36 @@ def _json(values: dict[str, Any]) -> dict[str, Any]:
     return {k: list(v) if isinstance(v, tuple) else v for k, v in values.items()}
 
 
-def vertex_tangents(mesh: Any) -> np.ndarray | None:
-    """Per-vertex tangents ``(N, 4)`` for glTF's TANGENT attribute (``None`` without UVs/normals).
+def split_for_tangents(mesh: Any) -> tuple[Any, np.ndarray]:
+    """``mesh`` with a vertex per distinct (vertex, MikkTSpace tangent) and those per-vertex
+    tangents ``(V, 4)``: glTF's TANGENT is per vertex, while MikkTSpace gives every corner its
+    own (they differ where a vertex joins mirrored or separately mapped UV islands)."""
+    from ..mesh import Mesh
+    from ..uv.mikktspace import mesh_tangents
 
-    Each triangle's tangent and bitangent come from its UV gradients (as the
-    renderer computes them); vertices average the tangents of their triangles,
-    orthonormalized against the vertex normal, with the handedness in ``w`` so
-    that ``cross(normal, tangent) * w`` points toward increasing ``v`` in
-    Aether3D's uv space (up the image, glTF's +Y of normal maps).
-    """
-    if mesh.uvs is None or mesh.normals is None or mesh.triangle_count == 0:
-        return None
-    p = mesh.positions.astype(np.float64)
-    uv = mesh.uvs.astype(np.float64)
-    t = mesh.triangles.astype(np.int64)
-    e1, e2 = p[t[:, 1]] - p[t[:, 0]], p[t[:, 2]] - p[t[:, 0]]
-    d1, d2 = uv[t[:, 1]] - uv[t[:, 0]], uv[t[:, 2]] - uv[t[:, 0]]
-    det = d1[:, 0] * d2[:, 1] - d2[:, 0] * d1[:, 1]
-    ok = np.abs(det) > 1e-20
-    inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)[:, None]
-    tri_t = (e1 * d2[:, 1:2] - e2 * d1[:, 1:2]) * inv
-    tri_b = (e2 * d1[:, 0:1] - e1 * d2[:, 0:1]) * inv
-    tangent = np.zeros_like(p)
-    bitangent = np.zeros_like(p)
-    for k in range(3):
-        np.add.at(tangent, t[:, k], tri_t)
-        np.add.at(bitangent, t[:, k], tri_b)
-    n = mesh.normals.astype(np.float64)
-    tangent = tangent - n * (tangent * n).sum(axis=1, keepdims=True)
-    length = np.linalg.norm(tangent, axis=1, keepdims=True)
-    # Vertices without a usable UV gradient get any tangent perpendicular to the normal.
-    helper = np.where(np.abs(n[:, :1]) < 0.9, [[1.0, 0.0, 0.0]], [[0.0, 1.0, 0.0]])
-    fallback = np.cross(n, helper)
-    fallback /= np.maximum(np.linalg.norm(fallback, axis=1, keepdims=True), 1e-300)
-    tangent = np.where(length > 1e-12, tangent / np.maximum(length, 1e-300), fallback)
-    w = np.where((np.cross(n, tangent) * bitangent).sum(axis=1) < 0.0, -1.0, 1.0)
-    return np.concatenate([tangent, w[:, None]], axis=1)
+    corner = mesh_tangents(mesh)  # (T, 3, 4) float32
+    tri = mesh.triangles.astype(np.int64).reshape(-1)
+    bits = np.ascontiguousarray(corner.reshape(-1, 4)).view(np.uint32)
+    key = np.concatenate([tri[:, None].astype(np.uint64), bits.astype(np.uint64)], axis=1)
+    _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
+    inverse = inverse.reshape(-1)
+    if first.shape[0] == mesh.vertex_count and np.array_equal(
+        np.sort(tri[first]), np.arange(mesh.vertex_count)
+    ):
+        tangents = np.zeros((mesh.vertex_count, 4), dtype=np.float32)
+        tangents[tri[first]] = corner.reshape(-1, 4)[first]
+        return mesh, tangents
+    order = np.argsort(first, kind="stable")
+    rank = np.empty(order.shape[0], dtype=np.int64)
+    rank[order] = np.arange(order.shape[0])
+    new_index = rank[inverse]
+    src_corner = first[order]
+    src_vertex = tri[src_corner]
+    split = Mesh(
+        mesh.positions[src_vertex],
+        new_index.reshape(-1, 3),
+        normals=mesh.normals[src_vertex],
+        uvs=mesh.uvs[src_vertex],
+        groups=mesh.groups,
+    )
+    return split, corner.reshape(-1, 4)[src_corner].astype(np.float32)

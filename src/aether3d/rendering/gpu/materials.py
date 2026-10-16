@@ -70,6 +70,7 @@ COORDINATES = {"uv": 0, "object": 1, "world": 2}
 PROJECTIONS = {"triplanar": 0, "xy": 1, "xz": 2, "yz": 3, "volume": 4}
 CHANNELS = {"rgb": 0, "r": 1, "g": 2, "b": 3, "a": 4, "luminance": 5}
 BINDING_IMAGE = 4096
+BINDING_MIKK = 8192
 WRAPS = {"repeat": 0, "clamp": 1, "mirror": 2}
 OP_IMAGE = 16
 
@@ -92,6 +93,7 @@ CONSTANTS = {
     "MATERIAL_DOUBLE_SIDED": MATERIAL_DOUBLE_SIDED,
     "MATERIAL_TEXTURED": MATERIAL_TEXTURED,
     "BINDING_IMAGE": BINDING_IMAGE,
+    "BINDING_MIKK": BINDING_MIKK,
     "OP_IMAGE": OP_IMAGE,
 }
 """Constants shared with ``wgsl/material.wgsl`` (a test checks the shader uses the same values)."""
@@ -284,6 +286,7 @@ def _binding_record(rt: RenderTexture, program: _Program) -> np.ndarray:
     flags = COORDINATES[rt.coordinates] | (PROJECTIONS[rt.projection] << 4)
     flags |= CHANNELS[rt.channel] << 8
     flags |= BINDING_IMAGE if rt.kind == "image" else 0
+    flags |= BINDING_MIKK if rt.slot == "normal" and rt.mikktspace else 0
     record[0] = flags
     record[1] = program.first
     record[2] = program.count

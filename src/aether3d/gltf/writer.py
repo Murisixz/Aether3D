@@ -21,7 +21,7 @@ import numpy as np
 
 from .._fileio import write_atomic
 from .._version import __version__
-from ..diagnostics import WARNING, Diagnostic
+from ..diagnostics import INFO, WARNING, Diagnostic
 from ..errors import UnsupportedFeatureError, ValidationError
 from ..mesh import Mesh
 from . import axes
@@ -141,6 +141,23 @@ def _export_mesh(
             )
         )
         return None
+    tangent = None
+    if tangents and mesh.normals is not None and mesh.uvs is not None:
+        from .materials import split_for_tangents
+
+        before = mesh.vertex_count
+        mesh, tangent = split_for_tangents(mesh)
+        if mesh.vertex_count > before:
+            diagnostics.append(
+                Diagnostic(
+                    "VERTICES_SPLIT_FOR_TANGENTS",
+                    INFO,
+                    "vertices whose corners have different MikkTSpace tangents (mirrored UVs, "
+                    "UV seams of one position) were duplicated for glTF's per-vertex TANGENT",
+                    location,
+                    mesh.vertex_count - before,
+                )
+            )
     attributes = {
         "POSITION": buffers.add(
             axes.vectors_to_gltf(mesh.positions), FLOAT, "VEC3", ARRAY_BUFFER, True
@@ -181,15 +198,14 @@ def _export_mesh(
         attributes["TEXCOORD_0"] = buffers.add(
             axes.flip_uvs(mesh.uvs), FLOAT, "VEC2", ARRAY_BUFFER, False
         )
-    if tangents and "NORMAL" in attributes:
-        from .materials import vertex_tangents
-
-        tangent = vertex_tangents(mesh)
-        if tangent is not None:
-            xyz = axes.vectors_to_gltf(tangent[:, :3].astype(np.float32)).astype(np.float64)
-            xyz /= np.maximum(np.linalg.norm(xyz, axis=1, keepdims=True), 1e-30)
-            values = np.concatenate([xyz, tangent[:, 3:]], axis=1).astype(np.float32)
-            attributes["TANGENT"] = buffers.add(values, FLOAT, "VEC4", ARRAY_BUFFER, False)
+    if tangent is not None and "NORMAL" in attributes:
+        # MikkTSpace on Aether3D's V-up UVs gives glTF's tangent and sign directly (the axes
+        # change is a rotation; flipping V for TEXCOORD_0 is accounted for by the sign
+        # convention: bitangent = cross(normal, tangent) * w points up the image).
+        xyz = axes.vectors_to_gltf(tangent[:, :3].astype(np.float32)).astype(np.float64)
+        xyz /= np.maximum(np.linalg.norm(xyz, axis=1, keepdims=True), 1e-30)
+        values = np.concatenate([xyz, tangent[:, 3:]], axis=1).astype(np.float32)
+        attributes["TANGENT"] = buffers.add(values, FLOAT, "VEC4", ARRAY_BUFFER, False)
     # 65535 is reserved as the primitive-restart value for 16-bit indices.
     if mesh.vertex_count <= 65535:
         indices, component = mesh.triangles.astype(np.uint16), UNSIGNED_SHORT

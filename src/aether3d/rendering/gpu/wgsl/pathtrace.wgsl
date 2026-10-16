@@ -533,6 +533,8 @@ struct Inter {
   uv1: vec2<f32>,
   uv2: vec2<f32>,
   has_uvs: bool,
+  vn: vec3<f32>,     // interpolated normal, not renormalized (MikkTSpace N), outward
+  tan: vec4<f32>,    // interpolated MikkTSpace tangent and sign (zero: none)
 };
 
 fn bary_derivative(e1: vec3<f32>, e2: vec3<f32>, dp: vec3<f32>) -> vec3<f32> {
@@ -610,6 +612,7 @@ fn interaction(
   let rec = instances[h.inst];
   let tv = triangle_vertices(it.mesh_tri);
   it.ns = it.ng;
+  it.vn = it.ng;
   if ((rec.flags & INSTANCE_HAS_NORMALS) != 0u) {
     let n = h.b.x * safe_normalize(world_normal(rec, mesh_normal(tv.x)))
       + h.b.y * safe_normalize(world_normal(rec, mesh_normal(tv.y)))
@@ -617,6 +620,7 @@ fn interaction(
     let len = length(n);
     if (len > 1e-6) {
       it.ns = n / len;
+      it.vn = n;
     }
   }
   it.toward = select(-1.0, 1.0, dot(it.ng, d) < 0.0);
@@ -654,11 +658,19 @@ fn interaction(
     it.uv2 = mesh_uv(tv.z);
   }
   it.material = triangle_material_of(h.inst, it.mesh_tri);
+  it.tan = vec4<f32>(0.0);
+  if (it.has_uvs && needs_tangents(it.material)) {
+    let c3 = 3u * it.mesh_tri;
+    let t0 = world_tangent(rec, mesh_tangent(c3));
+    let t1 = world_tangent(rec, mesh_tangent(c3 + 1u));
+    let t2 = world_tangent(rec, mesh_tangent(c3 + 2u));
+    it.tan = h.b.x * t0 + h.b.y * t1 + h.b.z * t2;
+  }
   return it;
 }
 
 fn surface_input(it: Inter) -> SurfaceInput {
-  return SurfaceInput(it.inst, it.b, it.dbdx, it.dbdy, it.p0, it.p1, it.p2, it.uv0, it.uv1, it.uv2, it.ns);
+  return SurfaceInput(it.inst, it.b, it.dbdx, it.dbdy, it.p0, it.p1, it.p2, it.uv0, it.uv1, it.uv2, it.ns, it.vn, it.tan);
 }
 
 // Ray origins off a surface along n (Waechter and Binder 2019): a fixed number of float
@@ -1397,7 +1409,7 @@ fn on_nee(st: ptr<function, State>) {
           let tv = triangle_vertices(mesh_tri);
           uv = array<vec2<f32>, 3>(mesh_uv(tv.x), mesh_uv(tv.y), mesh_uv(tv.z));
         }
-        let s = SurfaceInput(inst, bary, vec3<f32>(0.0), vec3<f32>(0.0), c.p0, c.p1, c.p2, uv[0], uv[1], uv[2], normal);
+        let s = SurfaceInput(inst, bary, vec3<f32>(0.0), vec3<f32>(0.0), c.p0, c.p1, c.p2, uv[0], uv[1], uv[2], normal, normal, vec4<f32>(0.0));
         (*st).em_masked = (mflags & MATERIAL_MASK) != 0u;
         (*st).em_cutoff = wordf(material_base(m) + 5u);
         request_eval(st, m, s, has_uvs, false);

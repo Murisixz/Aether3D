@@ -54,7 +54,7 @@ class Mesh:
     ``Mesh``. Flat ``(N*3,)`` inputs are accepted and reshaped.
     """
 
-    __slots__ = ("_positions", "_triangles", "_normals", "_uvs", "_groups")
+    __slots__ = ("_positions", "_triangles", "_normals", "_uvs", "_groups", "_derived")
 
     def __init__(
         self,
@@ -202,6 +202,23 @@ class Mesh:
         mesh._normals, mesh._uvs = self._normals, self._uvs
         mesh._groups = None if groups is None else mesh._validate_groups(groups)
         return mesh
+
+    def _derived_get(self, key: str) -> Any:
+        """Cached data derived from this (immutable) mesh, such as its tangents."""
+        try:
+            derived = self._derived
+        except AttributeError:
+            return None
+        return None if derived is None else derived.get(key)
+
+    def _derived_set(self, key: str, value: Any) -> None:
+        try:
+            derived = self._derived
+        except AttributeError:
+            derived = None
+        if derived is None:
+            derived = self._derived = {}
+        derived[key] = value
 
     @property
     def vertex_count(self) -> int:
