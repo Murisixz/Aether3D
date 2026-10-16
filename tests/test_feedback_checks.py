@@ -406,7 +406,34 @@ def test_default_checks_label_heuristics_and_penetrations_as_such():
     assert over and over[0].basis == "heuristic" and over[0].severity == "warning"
     pen = [f for f in d.findings if f.code == "POSSIBLE_PENETRATION"]
     assert pen and pen[0].severity == "info"
+    assert not pen[0].exact  # decided on triangles, but its depth is a bound from boxes
     assert d.accepted  # warnings and info do not block the default acceptance
+
+
+def test_the_default_scan_takes_groups_as_objects_and_does_not_repeat_stated_checks():
+    scene = room()
+    # A lamp of three parts, made to interpenetrate (its pole runs into its base and shade).
+    lamp = scene.add_object("Lamp", position=(2.0, 0.0, 0.0))
+    scene.add_cube("Base", scale=(0.4, 0.4, 0.1), position=(0, 0, 0.05), parent=lamp)
+    scene.add_cube("Pole", scale=(0.06, 0.06, 1.5), position=(0, 0, 0.8), parent=lamp)
+    scene.add_cube("Shade", scale=(0.5, 0.5, 0.3), position=(0, 0, 1.45), parent=lamp)
+    assert len(scene.overlaps(objects=["Base", "Pole", "Shade"])) == 2  # they do intersect
+    d = diagnose(scene, defaults=True)
+    assert not [f for f in d.findings if f.code.startswith("POSSIBLE_")]
+    # A crate pushed into the lamp's pole: one finding, naming the lamp, not its parts.
+    scene.add_cube("Crate", size=0.4, position=(2.15, 0.0, 0.6))
+    d = diagnose(scene, defaults=True)
+    pen = [f for f in d.findings if f.code == "POSSIBLE_PENETRATION"]
+    assert [sorted(s["name"] for s in f.subjects) for f in pen] == [["Crate", "Lamp"]]
+    # A stated check that reports the pair: the default scan does not repeat it.
+    d = diagnose(
+        scene, {"check": "no_overlap", "objects": "Crate", "against": "Lamp"}, defaults=True
+    )
+    assert [f.code for f in d.findings if any(s["name"] == "Crate" for s in f.subjects)] == [
+        "INTERSECTION"
+    ]
+    scan = next(c for c in d.checks if c.id == "defaults/penetrations")
+    assert scan.measured["reported_by_stated_checks"] == 1
 
 
 def test_diagnosis_is_deterministic_and_changes_nothing():

@@ -1436,10 +1436,25 @@ class Diagnoser:
             )
             self.results.append(result)
             return
-        objs = [self.scene._objects[obs.instances[int(k)]["id"]] for k in visible]
+        # A group of parts takes part as one object, as when a check selects it: its parts
+        # (a lamp's pole in its shade) are not reported against each other.
+        unit = _PartUnits()
+        objs = list(
+            dict.fromkeys(unit(self.scene._objects[obs.instances[int(k)]["id"]]) for k in visible)
+        )
+        # What a stated placement check already reports is not repeated.
+        stated = [
+            {unit(self.scene._objects[i]).id for i in f.subject_ids if i in self.scene._objects}
+            for f in self.findings
+            if f.kind in ("no_overlap", "rests_on") and not f.check.startswith("defaults/")
+        ]
         found = self.penetrations(objs, None, DEFAULT_TOLERANCE, True, exact_depth=False)
+        repeated = 0
         for pair in found["pairs"]:
             a, b = pair["a"], pair["b"]
+            if any({a.id, b.id} <= ids for ids in stated):
+                repeated += 1
+                continue
             depth = None if pair["kind"] == "contained" else pair["separation"][0]["distance"]
             self.add(
                 result,
@@ -1450,6 +1465,8 @@ class Diagnoser:
                     + (f" (at most {depth:.4g} m deep along an axis)" if depth is not None else ""),
                     [_ref(a, "subject"), _ref(b, "other")],
                     severity="info",
+                    # The intersection is decided exactly; its depth is a bound from boxes.
+                    exact=depth is None,
                     evidence={
                         "separations": pair.get("separation"),
                         "contained": pair.get("contained"),
@@ -1462,9 +1479,29 @@ class Diagnoser:
         result.measured = {
             "intersecting_pairs": found["intersecting"],
             "contacts": found["contacts"],
+            "reported_by_stated_checks": repeated,
         }
         result.status = "pass"  # informational
         self.results.append(result)
+
+
+class _PartUnits:
+    """The object a visible part stands for in the default scan: its parent when that is a
+    group of parts -- no child of it has children of its own (a chair of boards, a lamp, a
+    tower of blocks) -- else the part itself. Deeper groups (a castle of towers, a village
+    of houses) are scanned at the level of their groups of parts."""
+
+    def __init__(self) -> None:
+        self._flat: dict[str, bool] = {}
+
+    def __call__(self, obj: SceneObject) -> SceneObject:
+        parent = obj.parent
+        if parent is None:
+            return obj
+        flat = self._flat.get(parent.id)
+        if flat is None:
+            flat = self._flat[parent.id] = not any(c.children for c in parent.children)
+        return parent if flat else obj
 
 
 def _bounds(obs: Observation, instance: Any) -> tuple[int, int, int, int] | None:

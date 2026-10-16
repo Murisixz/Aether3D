@@ -55,7 +55,10 @@ Checks: `exists`, `visible`, `framing`, `rests_on`, `no_overlap`, `inside_region
 **Only stated rules are checked.** A floating lamp is a problem only if a `rests_on`
 check says it must rest; an intersection is an error only under `no_overlap`. Default
 checks always run: a black or empty image is an error; render warnings, heuristic
-exposure and penetrations among visible objects are reported as warnings or info.
+exposure and penetrations among visible objects are reported as warnings or info. A
+group (an object with children: a chair of boards, a prefab of blocks) is one object for
+the checks that select it, and the default scan takes each group of parts as one object,
+so a chair's legs are not reported against its seat.
 
 ## Findings: what is fact and what is judgment
 
