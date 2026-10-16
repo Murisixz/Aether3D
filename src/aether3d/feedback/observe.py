@@ -175,9 +175,11 @@ def image_statistics(
     """Coverage, luminance and clipping statistics of a rendered image."""
     n = index.size
     covered = index >= 0
-    peak = image.max(axis=-1)
+    r, g, b = image[..., 0], image[..., 1], image[..., 2]
+    # Elementwise over the channels: reducing the last axis of uint8 is ~15x slower here.
+    peak = np.maximum(np.maximum(r, g), b)
     black = peak <= BLACK_LEVEL
-    clipped = (image == 255).any(axis=-1)
+    clipped = (r == 255) | (g == 255) | (b == 255)
     stats: dict[str, Any] = {
         "pixels": int(n),
         "coverage": float(np.count_nonzero(covered)) / n,
