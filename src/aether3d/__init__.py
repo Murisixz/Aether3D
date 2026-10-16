@@ -68,6 +68,7 @@ from .errors import (
     RenderError,
     ResourceLimitError,
     SculptError,
+    TexturingError,
     UnsupportedFeatureError,
     ValidationError,
 )
@@ -176,6 +177,7 @@ __all__ = [
     "ScriptError",
     "SculptScriptError",
     "SculptError",
+    "TexturingError",
     "Transaction",
     "ShadowSettings",
     "Selection",

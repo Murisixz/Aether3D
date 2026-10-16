@@ -15,7 +15,7 @@ from typing import Any
 
 from . import _features
 
-ABI = 1
+ABI = 2
 """The calling convention this version of Aether3D expects (``aether3d_native.ABI``)."""
 
 _loaded: list[Any] = []  # [module or None, reason], once loading was tried

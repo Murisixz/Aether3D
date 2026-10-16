@@ -914,6 +914,79 @@ class SceneObject:
             )
         return SculptSession(self)
 
+    # -- UV maps (docs/TEXTURING.md) ------------------------------------------
+
+    def _uv_mesh(self) -> Mesh:
+        from .errors import TexturingError
+
+        self._require_scene()
+        if self._geometry is not None:
+            raise TexturingError(
+                "PROCEDURAL_OBJECT",
+                f"object {self._name!r} is procedural; its mesh is regenerated from its geometry",
+                f"objects[{self._name}]",
+                hint="bake it first (obj.bake())",
+            )
+        if self._mesh is None:
+            raise TexturingError(
+                "NOT_A_MESH_OBJECT", f"object {self._name!r} has no mesh", f"objects[{self._name}]"
+            )
+        return self._mesh
+
+    def _set_uv_mesh(self, mesh: Mesh, label: str) -> None:
+        with self._edit(DATA, f"{label} of {self._name!r}"):
+            self._mesh = mesh
+
+    def unwrap(self, **options: Any) -> dict[str, Any]:
+        """New UVs for this object's mesh (:func:`aether3d.uv.unwrap`; options as there), as
+        one step of the scene's history. Returns the report, with ``diagnostics``."""
+        from . import uv
+
+        result = uv.unwrap(self._uv_mesh(), **options)
+        self._set_uv_mesh(result.mesh, "Unwrap UVs")
+        return {**result.report, "diagnostics": [d.to_dict() for d in result.diagnostics]}
+
+    def project_uvs(self, kind: str, **options: Any) -> dict[str, Any]:
+        """UVs by projection (:func:`aether3d.uv.project`: ``"planar"``, ``"box"``,
+        ``"cylindrical"``, ``"spherical"``), as one step of the scene's history."""
+        from . import uv
+
+        result = uv.project(self._uv_mesh(), kind, **options)
+        self._set_uv_mesh(result.mesh, f"Project UVs ({kind})")
+        return {**result.report, "diagnostics": [d.to_dict() for d in result.diagnostics]}
+
+    def edit_uvs(self, operation: str, **options: Any) -> dict[str, Any]:
+        """An island operation on this object's UVs, as one step of the scene's history:
+        ``"transform"``, ``"align"``, ``"normalize"``, ``"texel_density"``, ``"pack"`` or
+        ``"stitch"`` (the functions of :mod:`aether3d.uv`, with their options)."""
+        from . import uv
+        from .errors import TexturingError
+
+        ops = {
+            "transform": uv.transform_islands,
+            "align": uv.align_islands,
+            "normalize": uv.normalize_islands,
+            "texel_density": uv.set_texel_density,
+            "pack": uv.pack_islands,
+            "stitch": uv.stitch,
+        }
+        fn = ops.get(operation)
+        if fn is None:
+            raise TexturingError(
+                "INVALID_ARGUMENT",
+                f"unknown UV operation {operation!r} (use {', '.join(ops)})",
+                "operation",
+            )
+        result = fn(self._uv_mesh(), **options)
+        self._set_uv_mesh(result.mesh, f"Edit UVs ({operation})")
+        return {**result.report, "diagnostics": [d.to_dict() for d in result.diagnostics]}
+
+    def uv_report(self, **options: Any) -> dict[str, Any]:
+        """UV diagnostics of this object's mesh (:func:`aether3d.uv.uv_report`)."""
+        from . import uv
+
+        return uv.uv_report(self._uv_mesh(), **options)
+
     # -- misc --------------------------------------------------------------
 
     def _edit(self, aspect: Aspect, label: str) -> Any:

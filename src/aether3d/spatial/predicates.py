@@ -177,3 +177,13 @@ def _segments_meet_2d(p1, q1, p2, q2) -> np.ndarray:
     return (
         proper | on(p2, q2, p1, d1) | on(p2, q2, q1, d2) | on(p1, q1, p2, d3) | on(p1, q1, q2, d4)
     )
+
+
+def segments_meet_2d(p1, q1, p2, q2) -> np.ndarray:
+    """Whether each pair of closed 2D segments ``p1 q1`` and ``p2 q2`` meets, exactly."""
+    return _segments_meet_2d(
+        np.asarray(p1, dtype=np.float64),
+        np.asarray(q1, dtype=np.float64),
+        np.asarray(p2, dtype=np.float64),
+        np.asarray(q2, dtype=np.float64),
+    )

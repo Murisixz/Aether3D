@@ -337,6 +337,45 @@ class PlanError(AetherError, ValueError):
         }
 
 
+class TexturingError(AetherError, ValueError):
+    """A UV, texture-painting or baking operation cannot be carried out; nothing was changed
+    and no file was written.
+
+    ``code`` is a stable identifier (e.g. ``"NO_UVS"``, ``"CHART_NOT_A_DISK"``,
+    ``"ATLAS_FULL"``, ``"INVALID_STROKE"``, ``"BAKE_TOO_LARGE"``), ``location`` names the
+    offending element or argument, ``hint`` suggests how to proceed and ``details`` carries
+    structured context (counts, limits).
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        location: str | None = None,
+        *,
+        hint: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.location = location
+        self.hint = hint
+        self.details = dict(details or {})
+        text = f"[{code}] " + (f"{location}: " if location else "") + message
+        if hint:
+            text += f". Hint: {hint}"
+        super().__init__(text)
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "location": self.location,
+            "hint": self.hint,
+            "details": self.details,
+        }
+
+
 class FeedbackError(AetherError, ValueError):
     """A visual-feedback request cannot be carried out; the scene is unchanged.
 
