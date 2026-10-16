@@ -1,4 +1,4 @@
-"""Edge bevel (chamfer).
+"""Edge bevel: chamfers and rounded bevels.
 
 Geometry
 --------
@@ -17,43 +17,65 @@ original one at perpendicular distance ``width`` inside the face:
   when that polygon would be flat-degenerate and only one bevelled edge
   reaches the vertex -- merged into the chamfer face.
 
-Supported topology: bevelled edges must have exactly two faces, and every
-vertex they touch must have a closed, manifold, consistently wound fan of
-faces (so open boundaries are not supported). Only single-segment (chamfer)
-bevels are implemented. Widths that would fold or invert faces raise
-``BEVEL_WIDTH_TOO_LARGE``; nothing is changed in any error case.
+That is the single-segment bevel of edges whose vertices all have closed,
+manifold, consistently wound fans, and this module implements it exactly as
+Aether3D 0.3-0.12 did. With ``segments > 1`` (a strip of faces across each edge,
+shaped by a superellipse ``profile``) or vertices on an open boundary, the
+general algorithm of :mod:`aether3d.editing.bevel_round` runs: the same point
+requests and rebuilt faces, strips between per-vertex profiles, and corners
+closed by merging, polygons, grid patches or fans. Widths that would fold or
+invert faces raise ``BEVEL_WIDTH_TOO_LARGE``; nothing is changed in any error
+case.
 """
 
 from __future__ import annotations
+
+import math
 
 import numpy as np
 
 from ..diagnostics import INFO, Diagnostic
 from ..errors import EditError, ValidationError
 from . import _polygon as poly
+from .bevel_round import MAX_SEGMENTS
 from .core import Elements, Selection, operation
 
 
 class BevelMixin:
     @operation
-    def bevel_edges(self, edges: Elements, width: float, *, segments: int = 1):
-        """Chamfer edges by ``width`` (see the module documentation for the exact geometry).
+    def bevel_edges(
+        self,
+        edges: Elements,
+        width: float,
+        *,
+        segments: int = 1,
+        profile: float = 0.5,
+    ):
+        """Bevel edges by ``width``: a chamfer (``segments=1``) or a rounded strip of
+        ``segments`` faces whose cross-section follows a superellipse ``profile``.
 
-        ``data["faces"]`` are the new chamfer faces, ``data["corner_faces"]``
-        the polygons filling vertex corners, and ``data["vertices"]`` the new
-        vertices.
+        In every face next to a bevelled edge the new boundary runs parallel to the
+        edge at perpendicular distance ``width`` (see the module documentation).
+        ``profile`` shapes the cross-section as Blender's does: 0.5 is a circular arc
+        (exact where the two faces meet at a right angle), 0.25 a straight chamfer,
+        values toward 1 approach the original sharp corner and values toward 0 are
+        concave. Vertices may lie on an open boundary (their fan of faces must be one
+        manifold chain). ``data["faces"]`` are the strip faces (the chamfers when
+        ``segments=1``), ``data["corner_faces"]`` the faces filling vertex corners and
+        ``data["vertices"]`` the new vertices.
         """
         eids = self._elements(edges, "edges")
         w = float(width)
-        if not w > 0:
-            raise ValidationError("width must be > 0")
-        if segments != 1:
-            raise EditError(
-                "UNSUPPORTED_OPERATION",
-                "only single-segment (chamfer) bevels are implemented",
-                hint="use segments=1",
-            )
-        bevelled = set(eids)
+        if not (w > 0 and math.isfinite(w)):
+            raise ValidationError("width must be a finite number > 0")
+        if isinstance(segments, bool) or not isinstance(segments, (int, np.integer)):
+            raise ValidationError(f"segments must be an integer, got {segments!r}")
+        n = int(segments)
+        if not 1 <= n <= MAX_SEGMENTS:
+            raise ValidationError(f"segments must be between 1 and {MAX_SEGMENTS}, got {n}")
+        shape = float(profile)
+        if not 0.0 < shape < 1.0:
+            raise ValidationError(f"profile must be strictly between 0 and 1, got {profile!r}")
         for e in eids:
             if len(self._edge_faces[e]) != 2:
                 raise EditError(
@@ -61,9 +83,18 @@ class BevelMixin:
                     f"edge {e} has {len(self._edge_faces[e])} faces; bevelled edges need exactly 2",
                     elements={"edges": [e]},
                 )
+        vertices = sorted({v for e in eids for v in self._edge_verts[e]})
+        fans = {v: self._vertex_fan(v) for v in vertices}
+        if n == 1 and all(closed for _fan, closed in fans.values()):
+            return self._bevel_chamfer(eids, w, {v: fan for v, (fan, _) in fans.items()})
+        return self._bevel_general(eids, w, n, shape, fans)
+
+    def _bevel_chamfer(self, eids: list[int], w: float, fans: dict) -> dict:
+        """The single-segment bevel of edges whose vertices all have closed fans (the
+        algorithm of Aether3D 0.3-0.12, unchanged)."""
+        bevelled = set(eids)
         edge_ends = {e: self._edge_verts[e] for e in eids}  # edges disappear while rebuilding
         vertices = sorted({v for e in eids for v in edge_ends[e]})
-        fans = {v: self._closed_fan(v) for v in vertices}
         normal_cache: dict[int, np.ndarray] = {}
 
         def normal(f: int) -> np.ndarray:

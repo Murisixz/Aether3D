@@ -878,13 +878,30 @@ def catmull_clark(mesh: PolyMesh) -> PolyMesh:
 class BevelModifier(ModifierType):
     name = "bevel"
     description = (
-        "Chamfers edges with the mesh editing engine's bevel (same geometry, attribute and "
-        "topology rules): `limit` selects all edges, edges whose faces meet at `angle` degrees "
-        "or more, or edges marked sharp."
+        "Bevels edges with the mesh editing engine's bevel (same geometry, attribute and "
+        "topology rules): a chamfer, or with `segments` > 1 a rounded strip shaped by "
+        "`profile` (0.5: circular arc). `limit` selects all edges, edges whose faces meet at "
+        "`angle` degrees or more, or edges marked sharp."
     )
     params = (
         ParamSpec(
             "width", "float", 0.05, min=1e-9, max=1e6, description="chamfer width within each face"
+        ),
+        ParamSpec(
+            "segments",
+            "int",
+            1,
+            min=1,
+            max=64,
+            description="faces across each bevelled edge (1: a chamfer)",
+        ),
+        ParamSpec(
+            "profile",
+            "float",
+            0.5,
+            min=0.01,
+            max=0.99,
+            description="shape of the cross-section: 0.5 circular, 0.25 straight, toward 1 square",
         ),
         ParamSpec(
             "limit", "enum", "angle", choices=("all", "angle", "sharp"), description="which edges"
@@ -929,7 +946,12 @@ class BevelModifier(ModifierType):
                 )
             ]
         try:
-            result = em.bevel_edges(sorted(edges), values["width"])
+            result = em.bevel_edges(
+                sorted(edges),
+                values["width"],
+                segments=values["segments"],
+                profile=values["profile"],
+            )
         except EditError as exc:
             raise ProceduralError(
                 exc.code,

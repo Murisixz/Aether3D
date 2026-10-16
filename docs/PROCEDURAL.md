@@ -262,11 +262,13 @@ edge-manifold and consistently wound.
 
 ### `bevel`
 
-`width`, `limit` (`all`, `angle`, `sharp`), `angle` (degrees; default 30).
+`width`, `limit` (`all`, `angle`, `sharp`), `angle` (degrees; default 30),
+`segments` (1-64, default 1), `profile` (0.01-0.99, default 0.5).
 
-This is the mesh editing engine's chamfer bevel ([EDITING.md](EDITING.md)),
-applied to the selected edges with the same geometry, attribute and error
-rules. Error codes such as `BEVEL_WIDTH_TOO_LARGE` or
+This is the mesh editing engine's bevel ([EDITING.md](EDITING.md)): a chamfer,
+or with `segments` > 1 a rounded strip whose cross-section is a superellipse
+`profile` ([MODELING.md](MODELING.md#rounded-bevels)), applied to the selected
+edges with the same geometry, attribute and error rules. Error codes such as `BEVEL_WIDTH_TOO_LARGE` or
 `BEVEL_UNSUPPORTED_VERTEX` pass through unchanged. `limit="angle"` selects
 edges whose two faces meet at `angle` degrees or more; `sharp` selects edges
 marked sharp, for example a cylinder's cap rims. If no edges match, the
@@ -615,10 +617,9 @@ Diagnostics (results that are valid but noteworthy):
   side.
 - **Subdivision** has no edge creases or weights, and UVs are subdivided
   linearly per face rather than smoothed.
-- **Bevel** is a single-segment chamfer with the editing engine's topology
-  rules: manifold edges only; vertices with three or more bevelled edges need
-  a planar corner. It is the slowest modifier on large meshes (see the
-  benchmarks).
+- **Bevel** follows the editing engine's topology rules (manifold edges; each
+  vertex one fan, possibly open). It is the slowest modifier on large meshes
+  (see the benchmarks).
 - **Boolean** results are triangulated (polygons are not rebuilt). Inputs
   must be closed solids, and the operation needs `manifold3d`.
 - **Instancing:** evaluated meshes are shared per node and resolved inputs.

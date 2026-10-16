@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .bevel import BevelMixin
+from .bevel_round import RoundBevelMixin
 from .core import MeshCore
 from .extrude import ExtrudeMixin
 from .selection import SelectionMixin
@@ -18,6 +19,7 @@ class EditableMesh(
     TopologyMixin,
     ExtrudeMixin,
     BevelMixin,
+    RoundBevelMixin,
     SubdivideMixin,
     MeshCore,
 ):
