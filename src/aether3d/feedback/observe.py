@@ -255,43 +255,68 @@ class Observation:
         obj = _resolve(self.scene, ref)
         return self._by_id.get(obj.id)
 
+    def instances_of(self, ref: Any) -> list[int]:
+        """The rendered instances an object stands for: its own and, for a group (an object
+        with children: a prefab, an imported hierarchy), its visible descendants'."""
+        return [
+            self._by_id[o.id] for o in parts_of(_resolve(self.scene, ref)) if o.id in self._by_id
+        ]
+
     # -- per-object facts ----------------------------------------------------
 
-    def pixel_record(self, instance: int) -> dict[str, Any]:
-        """What the image shows of one rendered instance (no geometry needed)."""
+    def pixel_record(self, instance: int | list[int], obj: Any = None) -> dict[str, Any]:
+        """What the image shows of one rendered instance, or of several as one object (a
+        group; ``obj`` names it) -- no geometry needed."""
         s = self.stats
-        row = self.instances[instance]
-        n = int(s.pixels[instance])
+        rows = [instance] if isinstance(instance, (int, np.integer)) else list(instance)
+        n = int(sum(int(s.pixels[k]) for k in rows))
+        if obj is not None:
+            ident = {"id": obj.id, "name": obj.name}
+        else:
+            ident = {"id": self.instances[rows[0]]["id"], "name": self.instances[rows[0]]["name"]}
         out: dict[str, Any] = {
-            "id": row["id"],
-            "name": row["name"],
+            **ident,
             "rendered": True,
             "visible_pixels": n,
-            "visible_samples": int(row.get("visible_samples", 0)),
+            "visible_samples": int(
+                sum(int(self.instances[k].get("visible_samples", 0)) for k in rows)
+            ),
             "pixel_fraction": n / (self.width * self.height),
         }
-        if n:
-            x0, y0, x1, y1 = (int(a[instance]) for a in (s.x0, s.y0, s.x1, s.y1))
+        if len(rows) > 1:
+            out["parts"] = len(rows)
+        seen = [k for k in rows if s.pixels[k] > 0]
+        if seen:
+            x0, y0 = min(int(s.x0[k]) for k in seen), min(int(s.y0[k]) for k in seen)
+            x1, y1 = max(int(s.x1[k]) for k in seen), max(int(s.y1[k]) for k in seen)
+            weights = [int(s.pixels[k]) for k in seen]
+            cx = sum(float(s.cx[k]) * w for k, w in zip(seen, weights, strict=True)) / n
+            cy = sum(float(s.cy[k]) * w for k, w in zip(seen, weights, strict=True)) / n
             out["screen_bounds"] = [x0, y0, x1, y1]
-            out["center"] = [round(float(s.cx[instance]), 3), round(float(s.cy[instance]), 3)]
+            out["center"] = [round(cx, 3), round(cy, 3)]
             out["touches_border"] = {
                 "left": x0 == 0,
                 "top": y0 == 0,
                 "right": x1 == self.width,
                 "bottom": y1 == self.height,
             }
-            if not math.isnan(float(s.dmin[instance])):
-                out["depth_range"] = [float(s.dmin[instance]), float(s.dmax[instance])]
-            out["luminance"] = round(float(s.luminance[instance]), 6)
+            depths = [k for k in seen if not math.isnan(float(s.dmin[k]))]
+            if depths:
+                out["depth_range"] = [
+                    min(float(s.dmin[k]) for k in depths),
+                    max(float(s.dmax[k]) for k in depths),
+                ]
+            lum = sum(float(s.luminance[k]) * w for k, w in zip(seen, weights, strict=True)) / n
+            out["luminance"] = round(lum, 6)
         return out
 
     def record(self, ref: Any, *, geometry: bool = True, occlusion: bool = False) -> dict[str, Any]:
         """Everything this observation knows about one object: its pixels and, while the
         scene is still at this observation's revision, its geometry in this view."""
         obj = _resolve(self.scene, ref)
-        instance = self._by_id.get(obj.id)
-        if instance is not None:
-            out = self.pixel_record(instance)
+        instances = self.instances_of(obj)
+        if instances:
+            out = self.pixel_record(instances, obj)
         else:
             out = {
                 "id": obj.id,
@@ -560,10 +585,12 @@ def geometry_in_view(obs: Observation, obj: SceneObject, *, occlusion: bool) -> 
     from ..spatial.queries import objects_in_view
 
     index = get_index(obs.scene)
-    if obj.id in index.failed:
-        return {"error": index.failed[obj.id].to_dict()}
-    entry = index.by_id.get(obj.id)
-    if entry is None:
+    parts = parts_of(obj)
+    for part in parts:
+        if part.id in index.failed:
+            return {"error": index.failed[part.id].to_dict()}
+    entries = [index.by_id[p.id] for p in parts if p.id in index.by_id]
+    if not entries:
         return None
     view = _view(obs)
     try:
@@ -572,27 +599,64 @@ def geometry_in_view(obs: Observation, obj: SceneObject, *, occlusion: bool) -> 
             camera=obs.view.target,
             width=obs.width,
             height=obs.height,
-            objects=[obj.id],
+            objects=[e.obj.id for e in entries],
             include_hidden=True,
         )
     except QueryError as exc:
         return {"error": exc.to_dict()}
-    frustum = matches[0].visibility if matches else "outside"
-    pts = entry.points
-    rel = pts - view.eye
-    depth = rel @ view.forward
+    kinds = [m.visibility for m in matches]
+    if not kinds:
+        frustum = "outside"
+    elif len(kinds) == len(entries) and all(k == "inside" for k in kinds):
+        frustum = "inside"
+    else:
+        frustum = "partial"
+    pts = np.concatenate([e.points for e in entries])
+    depth = (pts - view.eye) @ view.forward
+    lo = np.min(np.array([e.box[0] for e in entries]), axis=0)
+    hi = np.max(np.array([e.box[1] for e in entries]), axis=0)
     out: dict[str, Any] = {
         "frustum": frustum,
         "depth_extent": [float(depth.min()), float(depth.max())],
-        "world_bounds": {
-            "min": [float(v) for v in entry.box[0]],
-            "max": [float(v) for v in entry.box[1]],
-        },
+        "world_bounds": {"min": [float(v) for v in lo], "max": [float(v) for v in hi]},
     }
-    extent = _projected_extent(view, entry)
-    out.update(extent)
+    if len(entries) > 1:
+        out["parts"] = len(entries)
+    out.update(_merged_extent(view, [_projected_extent(view, e) for e in entries]))
     if occlusion and obj.visible:
         out["occlusion"] = footprint_occlusion(obs, obj)
+    return out
+
+
+def parts_of(obj: SceneObject) -> list[SceneObject]:
+    """The objects whose geometry ``obj`` stands for: itself and, for a group, its visible
+    descendants (cameras and lights excluded) -- a prefab of blocks is one object."""
+    out = [obj] if obj.camera is None and obj.light is None else []
+    for d in obj.iter_descendants():
+        if d.camera is None and d.light is None and d.visible:
+            out.append(d)
+    return out
+
+
+def _merged_extent(view: Any, extents: list[dict[str, Any]]) -> dict[str, Any]:
+    if len(extents) == 1:
+        return extents[0]
+    boxes = [e["projected_bounds"] for e in extents if e.get("projected_bounds")]
+    out: dict[str, Any] = {
+        "near_clipped": any(e["near_clipped"] for e in extents),
+        "far_clipped": any(e["far_clipped"] for e in extents),
+    }
+    if not boxes:
+        out["projected_bounds"], out["in_frame_fraction"] = None, 0.0
+        return out
+    x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+    x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+    out["projected_bounds"] = [x0, y0, x1, y1]
+    area = max(x1 - x0, 1e-9) * max(y1 - y0, 1e-9)
+    ix = max(0.0, min(x1, view.width) - max(x0, 0.0))
+    iy = max(0.0, min(y1, view.height) - max(y0, 0.0))
+    out["in_frame_fraction"] = round(min(1.0, ix * iy / area), 6)
+    out["projected_center"] = [round((x0 + x1) / 2, 3), round((y0 + y1) / 2, 3)]
     return out
 
 
@@ -653,7 +717,15 @@ def footprint(obs: Observation, obj: SceneObject) -> np.ndarray:
     """The pixels ``obj`` would cover in ``obs``'s image if nothing were in front of it: its
     triangles rasterized alone at pixel centers with the CPU rasterizer's exact rules
     (clipping, fixed-point edge functions, the render settings' culling and single-sided
-    materials). Alpha masks are not applied: cut-out texels count as covered."""
+    materials). Alpha masks are not applied: cut-out texels count as covered. A group's
+    footprint is the union of its parts'."""
+    mask = np.zeros((obs.height, obs.width), dtype=bool)
+    for part in parts_of(obj):
+        mask |= _footprint(obs, part)
+    return mask
+
+
+def _footprint(obs: Observation, obj: SceneObject) -> np.ndarray:
     from ..rendering import raster
     from ..rendering.cpu import _clip_coords, _front_facing, _transform_points
     from ..rendering.scene_data import _mat4_mul
@@ -726,20 +798,26 @@ def _single_sided(obj: SceneObject, groups: np.ndarray | None, count: int) -> np
 def footprint_occlusion(obs: Observation, obj: SceneObject) -> dict[str, Any]:
     """How much of ``obj``'s unoccluded footprint the image shows, and what covers the rest
     (exact at pixel centers; see :func:`footprint`)."""
+    from ..spatial.index import get_index
+
     limits: ObservationLimits = obs.options.get("limits_object") or ObservationLimits()
-    entry_triangles = obj.mesh.triangle_count if obj.mesh is not None else 0
-    if entry_triangles > limits.max_footprint_triangles:
+    index = get_index(obs.scene)
+    triangles = sum(
+        index.by_id[p.id].mesh.triangle_count for p in parts_of(obj) if p.id in index.by_id
+    )
+    if triangles > limits.max_footprint_triangles:
         return {
             "computed": False,
-            "reason": f"{entry_triangles} triangles exceed max_footprint_triangles",
+            "reason": f"{triangles} triangles exceed max_footprint_triangles",
         }
     mask = footprint(obs, obj)
     total = int(np.count_nonzero(mask))
-    instance = obs._by_id.get(obj.id)
+    own = np.array(obs.instances_of(obj), dtype=np.int64)
     seen = obs.index[mask]
-    visible = 0 if instance is None else int(np.count_nonzero(seen == instance))
+    mine = np.isin(seen, own)
+    visible = int(np.count_nonzero(mine))
     occluders = []
-    others = seen[(seen >= 0) & (seen != (-2 if instance is None else instance))]
+    others = seen[(seen >= 0) & ~mine]
     if others.size:
         counts = np.bincount(others, minlength=len(obs.instances))
         for k in np.flatnonzero(counts):

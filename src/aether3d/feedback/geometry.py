@@ -75,9 +75,12 @@ def cast(
 
 
 def vertical_contact(
-    index: SpatialIndex, subject: Entry, supports: list[Entry], tolerance: float
+    index: SpatialIndex, subject: Entry | list[Entry], supports: list[Entry], tolerance: float
 ) -> dict[str, Any]:
     """How ``subject`` sits on ``supports`` along the vertical (see the module docstring).
+
+    ``subject`` may be several entries: the parts of a group (a prefab of blocks), which
+    rest as one.
 
     Returns ``gap`` (the least vertical distance from the subject down to a support's
     surface, ``inf`` when nothing is below), ``penetration`` (the greatest depth of a
@@ -88,8 +91,11 @@ def vertical_contact(
     vertex lying on a surface sees it at distance ``eps`` instead of starting on it.
     """
     zhat = np.array([0.0, 0.0, 1.0])
-    pts, exact = _points(subject)
-    lo, hi = subject.box
+    subjects = as_list(subject)
+    found_points = [_points(e) for e in subjects]
+    pts = np.concatenate([f[0] for f in found_points])
+    exact = all(f[1] for f in found_points)
+    lo, hi = union_box(subjects)
     scale = max(1.0, float(np.max(np.abs(np.concatenate([lo, hi])))))
     eps = 1e-9 * scale
     gap, gap_by, gap_point = math.inf, None, None
@@ -135,11 +141,11 @@ def vertical_contact(
         spts = spts[under]
         if not spts.size:
             continue
-        found = nearest_front(spts - eps * zhat, [subject], zhat)
+        found = nearest_front(spts - eps * zhat, subjects, zhat)
         if found is not None and found[0] < gap:
             gap, gap_by = found[0], support
             gap_point = found[2] + eps * zhat
-        found = deepest_back(spts + eps * zhat, [subject], -zhat)
+        found = deepest_back(spts + eps * zhat, subjects, -zhat)
         if found is not None and found[0] > depth:
             depth, depth_by = found[0], support
     if depth > tolerance:
@@ -148,7 +154,7 @@ def vertical_contact(
         status, gap, gap_point = "resting", 0.0, None
     elif math.isfinite(gap):
         status = "floating" if gap > tolerance else "resting"
-    elif _touching(index, subject, supports, tolerance):
+    elif meets(subjects, supports, tolerance):
         status, gap = "resting", 0.0
     else:
         status = "not_above"
@@ -164,12 +170,6 @@ def vertical_contact(
     if gap_point is not None and math.isfinite(gap):
         out["gap_point"] = [float(v) for v in gap_point]
     return out
-
-
-def _touching(index: SpatialIndex, subject: Entry, supports: list[Entry], tol: float) -> bool:
-    from ..spatial.queries import _surfaces_meet
-
-    return any(_surfaces_meet(subject, s, tol) for s in supports)
 
 
 def _ref(entry: Entry) -> dict[str, str]:
@@ -204,29 +204,61 @@ class Shifted:
         return a + self.offset, b + self.offset, c + self.offset
 
 
-def meets(a: Any, b: Any) -> bool:
-    """Whether two (possibly shifted) entries' surfaces share a point (exact)."""
+def as_list(entries: Any) -> list[Any]:
+    return list(entries) if isinstance(entries, (list, tuple)) else [entries]
+
+
+def union_box(entries: Any) -> tuple[np.ndarray, np.ndarray]:
+    """The world box around several entries."""
+    boxes = [e.box for e in as_list(entries)]
+    return (
+        np.min(np.array([b[0] for b in boxes]), axis=0),
+        np.max(np.array([b[1] for b in boxes]), axis=0),
+    )
+
+
+def shift(entries: Any, offset: Any) -> list[Shifted]:
+    return [Shifted(e, np.asarray(offset, dtype=np.float64)) for e in as_list(entries)]
+
+
+def meets(a: Any, b: Any, tolerance: float = 0.0) -> bool:
+    """Whether the surfaces of two entries -- or two groups of entries, possibly shifted --
+    share a point (or come within ``tolerance``): exact, on the triangles of the pairs of
+    parts whose boxes overlap."""
     from ..spatial.queries import _surfaces_meet
 
-    return _surfaces_meet(a, b, 0.0)
+    first, second = as_list(a), as_list(b)
+    alo = np.array([e.box[0] for e in first]) - tolerance
+    ahi = np.array([e.box[1] for e in first]) + tolerance
+    blo = np.array([e.box[0] for e in second])
+    bhi = np.array([e.box[1] for e in second])
+    near = np.all(alo[:, None, :] <= bhi[None, :, :], axis=2) & np.all(
+        blo[None, :, :] <= ahi[:, None, :], axis=2
+    )
+    for i, j in zip(*np.nonzero(near), strict=True):
+        if first[i].obj is second[j].obj:
+            continue
+        if _surfaces_meet(first[i], second[j], tolerance):
+            return True
+    return False
 
 
-def classify_contact(a: Entry, b: Entry, tolerance: float) -> dict[str, Any]:
-    """Two entries whose surfaces meet: ``{"contact": True, "axis": [...]}`` when moving
-    ``a`` by ``tolerance`` along an axis direction separates them, else
+def classify_contact(a: Any, b: Any, tolerance: float) -> dict[str, Any]:
+    """Two entries (or groups) whose surfaces meet: ``{"contact": True, "axis": [...]}`` when
+    moving ``a`` by ``tolerance`` along an axis direction separates them, else
     ``{"contact": False}`` (they penetrate)."""
-    for axis in AXES:
-        offset = np.asarray(axis) * max(tolerance, 0.0)
-        if tolerance > 0.0 and not meets(Shifted(a, offset), b):
-            return {"contact": True, "axis": list(axis)}
+    if tolerance > 0.0:
+        for axis in AXES:
+            if not meets(shift(a, np.asarray(axis) * tolerance), b):
+                return {"contact": True, "axis": list(axis)}
     return {"contact": False}
 
 
-def box_separation(a: Entry, b: Entry, direction: np.ndarray) -> float:
+def box_separation(a: Any, b: Any, direction: np.ndarray) -> float:
     """The translation of ``a`` along unit axis ``direction`` that separates the world
     boxes (and therefore the objects) by a tiny clearance."""
-    alo, ahi = a.box
-    blo, bhi = b.box
+    alo, ahi = union_box(a)
+    blo, bhi = union_box(b)
     k = int(np.flatnonzero(direction)[0])
     sign = float(direction[k])
     span = max(float(np.max(np.abs(np.concatenate([alo, ahi, blo, bhi])))), 1.0)
@@ -237,24 +269,25 @@ def box_separation(a: Entry, b: Entry, direction: np.ndarray) -> float:
 
 
 def separation(
-    a: Entry, b: Entry, directions: Any, *, tolerance: float, steps: int = 24
+    a: Any, b: Any, directions: Any, *, tolerance: float, steps: int = 24
 ) -> list[dict[str, Any]]:
-    """For each unit axis ``direction``: a translation of ``a`` that separates it from
-    ``b`` (bisection between ``tolerance`` and the box-separating translation, keeping the
-    end verified separated by the exact test), sorted by distance."""
+    """For each unit axis ``direction``: a translation of ``a`` (an entry or a group) that
+    separates it from ``b`` (bisection between ``tolerance`` and the box-separating
+    translation, keeping the end verified separated by the exact test), sorted by
+    distance."""
     out = []
     for direction in directions:
         d = np.asarray(direction, dtype=np.float64)
         hi = box_separation(a, b, d)
         lo = min(tolerance, hi)
-        if lo > 0.0 and not meets(Shifted(a, d * lo), b):
+        if lo > 0.0 and not meets(shift(a, d * lo), b):
             hi = lo
         else:
             for _ in range(steps):
                 if hi - lo <= max(tolerance * 0.25, 1e-12):
                     break
                 mid = 0.5 * (lo + hi)
-                if meets(Shifted(a, d * mid), b):
+                if meets(shift(a, d * mid), b):
                     lo = mid
                 else:
                     hi = mid

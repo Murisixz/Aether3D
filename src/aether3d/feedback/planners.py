@@ -132,13 +132,20 @@ def _not_on_support(diagnosis, finding, fix, context):
     if len(supports) != 1:
         return [], "several objects could be the support: name it in the check"
     from ..spatial.index import get_index
+    from .geometry import union_box
+    from .observe import parts_of
 
     index = get_index(diagnosis.scene)
-    es, eb = index.by_id.get(subject["id"]), index.by_id.get(supports[0]["id"])
-    if es is None or eb is None:
+    scene = diagnosis.scene
+
+    def entries(oid: str) -> list:
+        return [index.by_id[o.id] for o in parts_of(scene._objects[oid]) if o.id in index.by_id]
+
+    es, eb = entries(subject["id"]), entries(supports[0]["id"])
+    if not es or not eb:
         return [], "no geometry"
-    slo, shi = es.box
-    blo, bhi = eb.box
+    slo, shi = union_box(es)
+    blo, bhi = union_box(eb)
     target_xy = (blo[:2] + bhi[:2]) / 2.0
     center_xy = (slo[:2] + shi[:2]) / 2.0
     offset = [
@@ -496,9 +503,11 @@ def _dolly(diagnosis, finding, fix, context):
     ids = [s["id"] for s in finding.subjects]
     depths = []
     for oid in ids:
-        k = obs._by_id.get(oid)
-        if k is not None and not math.isnan(float(obs.stats.dmin[k])):
-            depths.append((float(obs.stats.dmin[k]) + float(obs.stats.dmax[k])) / 2)
+        if oid not in obs.scene._objects:
+            continue
+        for k in obs.instances_of(oid):
+            if obs.stats.pixels[k] and not math.isnan(float(obs.stats.dmin[k])):
+                depths.append((float(obs.stats.dmin[k]) + float(obs.stats.dmax[k])) / 2)
     if not depths:
         return [], "the objects are not visible: frame the camera on them first"
     d = float(np.mean(depths))

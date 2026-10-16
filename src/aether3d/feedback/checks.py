@@ -279,6 +279,18 @@ class Diagnoser:
     def entry(self, obj: SceneObject) -> Entry | None:
         return self.index.by_id.get(obj.id)
 
+    def parts(self, obj: SceneObject) -> list[Entry]:
+        """The geometry an object stands for: its own and, for a group (a prefab of blocks,
+        an imported hierarchy), its visible descendants' -- placed and checked as one."""
+        from .observe import parts_of
+
+        return [e for p in parts_of(obj) if (e := self.index.by_id.get(p.id)) is not None]
+
+    def order(self, obj: SceneObject) -> int:
+        if not hasattr(self, "_order"):
+            self._order = {o.id: k for k, o in enumerate(self.scene)}
+        return self._order.get(obj.id, 0)
+
     def add(self, result: CheckResult, finding: Finding) -> None:
         self.findings.append(finding)
         result.findings.append(finding.key)
@@ -416,8 +428,8 @@ class Diagnoser:
                     ),
                 )
                 continue
-            instance = obs.instance_of(obj)
-            pixels = 0 if instance is None else int(obs.stats.pixels[instance])
+            instance = obs.instances_of(obj)
+            pixels = int(sum(int(obs.stats.pixels[k]) for k in instance))
             geometry = obs.geometry(obj, occlusion=min_fraction is not None or pixels < min_pixels)
             if geometry is None:
                 self.add(
@@ -549,9 +561,9 @@ class Diagnoser:
             if in_frame:
                 inside = geometry.get("in_frame_fraction")
                 touches = (
-                    instance is not None
+                    bool(instance)
                     and pixels
-                    and any(obs.pixel_record(instance).get("touches_border", {}).values())
+                    and any(obs.pixel_record(instance, obj).get("touches_border", {}).values())
                 )
                 if (inside is not None and inside < 1.0) or touches:
                     self.add(
@@ -579,8 +591,8 @@ class Diagnoser:
         obs = self.observation(check.view)
         w, h = obs.width, obs.height
         s = obs.stats
-        instances = [obs.instance_of(o) for o in objs]
-        rows = [k for k in instances if k is not None and s.pixels[k] > 0]
+        instances = [k for o in objs for k in obs.instances_of(o)]
+        rows = [k for k in dict.fromkeys(instances) if s.pixels[k] > 0]
         subjects = [_ref(o, "subject") for o in objs[:10]]
         base = {"view": check.view, "observation": obs.id}
         if not rows:
@@ -668,16 +680,21 @@ class Diagnoser:
                 ),
             )
 
-    def _support_entries(self, obj: SceneObject, supports: list[SceneObject] | None):
-        if supports is not None:
-            return [
-                e
-                for o in supports
-                if o is not obj and (e := self.index.by_id.get(o.id)) is not None
-            ]
+    def _support_entries(
+        self, obj: SceneObject, supports: list[SceneObject] | None, parts: list[Entry]
+    ) -> list[Entry]:
         own = {obj.id} | {d.id for d in obj.iter_descendants()}
-        entry = self.index.by_id[obj.id]
-        lo, hi = entry.box
+        if supports is not None:
+            out, seen = [], set()
+            for o in supports:
+                for e in self.parts(o):
+                    if e.obj.id not in own and e.obj.id not in seen:
+                        seen.add(e.obj.id)
+                        out.append(e)
+            return out
+        from .geometry import union_box
+
+        lo, hi = union_box(parts)
         out = []
         for e in self.index.entries:
             if e.obj.id in own or not e.visible:
@@ -703,13 +720,17 @@ class Diagnoser:
                 result.status = "unknown"
                 result.note = "the support selector matches no object"
                 return
+        owners = {}
+        for o in supports or []:
+            for e in self.parts(o):
+                owners.setdefault(e.obj.id, o)
         measured = {}
         for obj in objs:
-            entry = self.entry(obj)
+            parts = self.parts(obj)
             subject = [_ref(obj, "subject")]
-            if entry is None:
+            if not parts:
                 continue
-            candidates = self._support_entries(obj, supports)
+            candidates = self._support_entries(obj, supports, parts)
             if not candidates:
                 self.add(
                     result,
@@ -723,10 +744,17 @@ class Diagnoser:
                     ),
                 )
                 continue
-            r = vertical_contact(self.index, entry, candidates, tol)
+            r = vertical_contact(self.index, parts, candidates, tol)
             measured[obj.name] = {k: r[k] for k in ("status", "gap", "penetration")}
             evidence = {**r, "tolerance": tol}
+            if len(parts) > 1:
+                evidence["parts"] = len(parts)
             support = r.get("gap_support") or r.get("penetrated_support")
+            if support is not None and support["id"] in owners:  # a part of a named support
+                owner = owners[support["id"]]
+                if owner.id != support["id"]:
+                    evidence["support_part"] = dict(support)
+                    support = {"id": owner.id, "name": owner.name}
             subjects = subject + ([{**support, "role": "support"}] if support else [])
             if r["status"] == "floating":
                 self.add(
@@ -842,27 +870,58 @@ class Diagnoser:
         tol: float,
         allow_contact: bool,
     ) -> dict[str, Any]:
-        """Intersecting pairs among ``objs`` (or against ``against``), classified."""
+        """Intersecting pairs among ``objs`` (or against ``against``), classified. A group
+        takes part as one object (its parts never collide with each other); pairs of
+        selected objects are decided on all their parts."""
         from ..spatial.queries import overlaps
-        from .geometry import classify_contact, separation
+        from .geometry import AXES, classify_contact, separation
 
+        empty = {"pairs": [], "intersecting": 0, "contacts": 0, "truncated": False}
         if not objs or (against is not None and not against):
-            return {"pairs": [], "intersecting": 0, "contacts": 0, "truncated": False}
+            return empty
+        owner_a: dict[str, SceneObject] = {}
+        for o in objs:
+            for e in self.parts(o):
+                owner_a.setdefault(e.obj.id, o)
+        owner_b = owner_a
+        if against is not None:
+            owner_b = {}
+            for o in against:
+                for e in self.parts(o):
+                    owner_b.setdefault(e.obj.id, o)
+        if not owner_a or not owner_b:
+            return empty
         found = overlaps(
             self.scene,
-            objects=[o.id for o in objs],
-            against=None if against is None else [o.id for o in against],
+            objects=list(owner_a),
+            against=None if against is None else list(owner_b),
         )
+        groups: dict[tuple[str, str], dict[str, Any]] = {}
+        for ov in found:
+            pa, pb = ov.a.id, ov.b.id
+            if pa in owner_a and pb in owner_b:
+                oa, ob = owner_a[pa], owner_b[pb]
+            else:
+                oa, ob = owner_a.get(pb), owner_b.get(pa)
+                if oa is None or ob is None:
+                    continue
+            if oa is ob:
+                continue  # parts of one object
+            if self.order(ob) < self.order(oa):
+                oa, ob = ob, oa
+            pair = groups.setdefault((oa.id, ob.id), {"a": oa, "b": ob, "contained": []})
+            pair["contained"].append(ov.contained)
+        ordered = sorted(groups.values(), key=lambda g: (self.order(g["a"]), self.order(g["b"])))
         out, contacts, truncated = [], 0, False
-        for k, ov in enumerate(found):
+        for k, pair in enumerate(ordered):
             if k >= MAX_OVERLAP_PAIRS:
                 truncated = True
                 break
-            a = self.scene._objects[ov.a.id]
-            b = self.scene._objects[ov.b.id]
-            ea, eb = self.index.by_id[a.id], self.index.by_id[b.id]
-            if ov.contained:
-                inner, outer = (a, b) if ov.contained == "a_in_b" else (b, a)
+            a, b = pair["a"], pair["b"]
+            pa, pb = self.parts(a), self.parts(b)
+            if all(c is not None for c in pair["contained"]):
+                first = pair["contained"][0]
+                inner, outer = (a, b) if first == "a_in_b" else (b, a)
                 out.append(
                     {
                         "kind": "contained",
@@ -870,20 +929,26 @@ class Diagnoser:
                         "b": b,
                         "inner": inner,
                         "outer": outer,
-                        "contained": ov.contained,
+                        "contained": first,
                     }
                 )
                 continue
-            if allow_contact and classify_contact(ea, eb, tol)["contact"]:
+            if allow_contact and classify_contact(pa, pb, tol)["contact"]:
                 contacts += 1
                 continue
-            from .geometry import AXES
-
-            sep = separation(ea, eb, AXES, tolerance=tol)
-            out.append({"kind": "intersection", "a": a, "b": b, "separation": sep})
+            sep = separation(pa, pb, AXES, tolerance=tol)
+            out.append(
+                {
+                    "kind": "intersection",
+                    "a": a,
+                    "b": b,
+                    "separation": sep,
+                    "parts": [len(pa), len(pb)],
+                }
+            )
         return {
             "pairs": out,
-            "intersecting": len(found),
+            "intersecting": len(groups),
             "contacts": contacts,
             "truncated": truncated,
         }
@@ -892,11 +957,13 @@ class Diagnoser:
         objs = self._geometry_objects(check, result)
         box = check.params["region"]["box"]
         rlo, rhi = np.array(box["min"]), np.array(box["max"])
+        from .geometry import union_box
+
         for obj in objs:
-            entry = self.entry(obj)
-            if entry is None:
+            parts = self.parts(obj)
+            if not parts:
                 continue
-            lo, hi = entry.box
+            lo, hi = union_box(parts)
             below = np.maximum(rlo - lo, 0.0)
             above = np.maximum(hi - rhi, 0.0)
             excess = float(max(below.max(), above.max()))
@@ -1043,7 +1110,12 @@ class Diagnoser:
                 ),
             )
             return
+        targets = []
         for obj in objs:
+            for e in self.parts(obj):
+                if e.obj not in targets:
+                    targets.append(e.obj)
+        for obj in targets:
             current = obj.material
             if current is None or current.id != material.id:
                 self.add(
@@ -1214,7 +1286,7 @@ class Diagnoser:
                         },
                         magnitude=max(magnitude, 0.0),
                         unit="m",
-                        region=_bounds(obs, obs.instance_of(obj)),
+                        region=_bounds(obs, obs.instances_of(obj)),
                         hint=f"move the camera's {plane} plane",
                         **base,
                     ),
@@ -1361,11 +1433,18 @@ class Diagnoser:
         self.results.append(result)
 
 
-def _bounds(obs: Observation, instance: int | None) -> tuple[int, int, int, int] | None:
-    if instance is None or not obs.stats.pixels[instance]:
-        return None
+def _bounds(obs: Observation, instance: Any) -> tuple[int, int, int, int] | None:
+    rows = [instance] if isinstance(instance, (int, np.integer)) else list(instance or ())
     s = obs.stats
-    return (int(s.x0[instance]), int(s.y0[instance]), int(s.x1[instance]), int(s.y1[instance]))
+    rows = [k for k in rows if s.pixels[k]]
+    if not rows:
+        return None
+    return (
+        min(int(s.x0[k]) for k in rows),
+        min(int(s.y0[k]) for k in rows),
+        max(int(s.x1[k]) for k in rows),
+        max(int(s.y1[k]) for k in rows),
+    )
 
 
 def annotate_regions(findings: list[Finding], obs: Observation | None, view: str | None):
@@ -1375,9 +1454,8 @@ def annotate_regions(findings: list[Finding], obs: Observation | None, view: str
         return findings
     out = []
     for f in findings:
-        if f.region is None and f.subjects and f.subjects[0].get("id"):
-            instance = obs._by_id.get(f.subjects[0]["id"])
-            region = _bounds(obs, instance)
+        if f.region is None and f.subjects and f.subjects[0].get("id") in obs.scene._objects:
+            region = _bounds(obs, obs.instances_of(f.subjects[0]["id"]))
             if region is not None:
                 from dataclasses import replace
 

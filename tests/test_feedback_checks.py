@@ -455,3 +455,67 @@ def test_findings_point_at_their_region_in_the_default_view():
     inside = obs.objects_in_rect((x0, y0, x1, y1))
     assert inside[0]["name"] in ("Vase", "Table")
     assert any(o["name"] == "Vase" for o in inside)
+
+
+# --------------------------------------------------------------------------- #
+# Groups (prefabs, imported hierarchies) are one object
+# --------------------------------------------------------------------------- #
+
+
+def tower(scene: Scene, name: str, position, levels: int = 3) -> object:
+    """A group of blocks: an empty parent with stacked 1 m cubes (a Minecraft-like tower)."""
+    group = scene.add_object(name, position=position)
+    for k in range(levels):
+        scene.add_cube(f"{name} block {k}", size=1, parent=group, position=(0, 0, 0.5 + k))
+    return group
+
+
+def test_a_group_rests_and_is_corrected_as_one_object():
+    scene = room()
+    group = tower(scene, "Tower", (3, 2, 0.4))  # floats 0.4 above the floor
+    d = diagnose(scene, {"check": "rests_on", "objects": "Tower", "support": "Floor"})
+    (f,) = d.findings
+    assert f.code == "FLOATING" and f.subjects[0]["name"] == "Tower"
+    assert f.magnitude == pytest.approx(0.4, abs=1e-6) and f.evidence["parts"] == 3
+    fs = FeedbackSession(scene, doc({"check": "rests_on", "objects": "Tower", "support": "Floor"},
+                                    defaults=False), width=160, height=90)  # fmt: skip
+    result = fs.apply(fs.propose())
+    assert result.status == "applied" and group.position[2] == pytest.approx(0.0, abs=1e-6)
+    assert scene.get_by_name("Tower block 2").world_position[2] == pytest.approx(2.5, abs=1e-6)
+
+
+def test_groups_intersect_as_wholes_never_with_their_own_parts():
+    scene = room()
+    tower(scene, "Left", (3, 0, 0))
+    tower(scene, "Right", (3.6, 0, 0))  # 0.4 into the left tower
+    d = diagnose(scene, {"check": "no_overlap", "objects": ["Left", "Right"]})
+    (f,) = d.findings
+    assert f.code == "INTERSECTION"
+    assert {s["name"] for s in f.subjects} == {"Left", "Right"}  # the groups, not blocks
+    assert f.magnitude == pytest.approx(0.4, abs=1e-4)
+    alone = diagnose(scene, {"check": "no_overlap", "objects": "Left"})
+    assert not alone.findings  # its stacked blocks touch each other: one object
+
+
+def test_groups_are_seen_and_framed_as_wholes():
+    scene = room()
+    tower(scene, "Tower", (0, 2, 0))
+    d = diagnose(
+        scene,
+        {"check": "visible", "objects": "Tower", "min_pixels": 5},
+        {"check": "framing", "objects": "Tower", "fill": {"max": 0.01}},
+        {"check": "inside_region", "objects": "Tower",
+         "region": {"box": {"min": [-1, 1, 0], "max": [1, 3, 2]}}},
+        views={"main": {"camera": "Cam"}},
+    )  # fmt: skip
+    codes_by_check = {c.kind: c for c in d.checks}
+    assert codes_by_check["visible"].status == "pass"
+    obs = d.observed["main"]
+    record = obs.record("Tower")
+    assert record["parts"] == 3 and record["visible_pixels"] == sum(
+        obs.record(f"Tower block {k}", geometry=False)["visible_pixels"] for k in range(3)
+    )
+    assert record["geometry"]["parts"] == 3
+    assert [f.code for f in d.findings] == ["TOO_LARGE_IN_FRAME", "OUT_OF_REGION"]
+    region = [f for f in d.findings if f.code == "OUT_OF_REGION"][0]
+    assert region.magnitude == pytest.approx(1.0)  # 3 m tall in a 2 m box
