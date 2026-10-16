@@ -2,7 +2,8 @@
 
 Run from the repository root:
 
-    python benchmarks/bench_feedback.py [--json OUT.json] [--quick] [--no-gpu] [--adapter SPEC]
+    python benchmarks/bench_feedback.py [--json OUT.json] [--quick | --smoke] [--no-gpu]
+        [--adapter SPEC]
 
 Groups (medians of repeated runs after warm-up, the garbage collector paused while each
 runs, as in ``bench_engine.py``):
@@ -20,6 +21,9 @@ runs, as in ``bench_engine.py``):
   a new diagnosis), and a preview;
 * ``loop`` -- the whole loop from the first draft to acceptance: the room and the garden
   view (examples/feedback_room.py, examples/feedback_composition.py).
+
+``--smoke`` runs every group once, on the room only, with small images: it checks that
+the benchmark works (CI), and its numbers mean nothing.
 
 Results depend on the machine: compare runs on the same machine only.
 """
@@ -48,19 +52,23 @@ def ms(seconds: float) -> float:
     return round(seconds * 1000, 3)
 
 
+SIZE = {"width": 640, "height": 360}
+"""The observations' size (``--smoke`` makes it smaller)."""
+
+
 # ---------------------------------------------------------------------------------------
 
 
-def group_stats(quick: bool) -> dict[str, Any]:
+def group_stats(quick: bool, smoke: bool = False) -> dict[str, Any]:
     from functools import partial
 
     from aether3d.feedback.observe import image_statistics, luminance_of, pixel_statistics
 
     rng = np.random.default_rng(1)
-    repeat = 3 if quick else 7
+    repeat = 1 if smoke else 3 if quick else 7
     out = {}
-    for w, h in ((640, 360), (1920, 1080)):
-        n = 3000
+    for w, h in ((160, 90),) if smoke else ((640, 360), (1920, 1080)):
+        n = 300 if smoke else 3000
         index = np.full((h, w), -1, np.int32)
         for k in range(n):
             x0, y0 = rng.integers(0, w - 30), rng.integers(0, h - 30)
@@ -81,7 +89,7 @@ def group_stats(quick: bool) -> dict[str, Any]:
     return out
 
 
-def _scenes(quick: bool):
+def _scenes(quick: bool, smoke: bool = False):
     import feedback_room
     import mcp_feedback_agent
 
@@ -89,6 +97,8 @@ def _scenes(quick: bool):
 
     room = Scene("Room")
     room.execute_plan(feedback_room.PLAN)
+    if smoke:
+        return {"room": room}
     castle = Scene("Castle")
     castle.execute_plan(mcp_feedback_agent.first_draft())
     scenes = {"room": room, "castle": castle}
@@ -118,18 +128,21 @@ def _move_and_observe(scene, mover, kw, step):
     return observe(scene, **kw)
 
 
-def group_observe(quick: bool, backends: list[str], adapter: str | None) -> dict[str, Any]:
+def group_observe(
+    quick: bool, backends: list[str], adapter: str | None, smoke: bool = False
+) -> dict[str, Any]:
     from functools import partial
 
     from aether3d.feedback import ObservationStore, observe
 
     out: dict[str, Any] = {}
-    for name, scene in _scenes(quick).items():
+    repeat = 1 if smoke else 3 if quick else 7
+    for name, scene in _scenes(quick, smoke).items():
         row: dict[str, Any] = {"objects": len(scene)}
         camera = scene.active_camera
         mover = _mover(scene)
         for backend in backends:
-            kw = {"width": 640, "height": 360, "backend": backend}
+            kw = {**SIZE, "backend": backend}
             if backend == "gpu" and adapter:
                 kw["adapter"] = adapter
             t0 = time.perf_counter()
@@ -142,12 +155,12 @@ def group_observe(quick: bool, backends: list[str], adapter: str | None) -> dict
                 "cold_ms": ms(cold),
                 "render_ms": ms(obs.timings["render"]),
                 "metrics_ms": ms(obs.timings["metrics"]),
-                "one_moved_ms": ms(median_time(moved, 3 if quick else 7)),
+                "one_moved_ms": ms(median_time(moved, repeat)),
                 "reused_ms": ms(median_time(partial(observe, scene, store=store, **kw), 5)),
             }
             os.environ["AETHER3D_RETAINED_RENDER_WORLD"] = "0"
             try:
-                entry["one_moved_full_extraction_ms"] = ms(median_time(moved, 3 if quick else 5))
+                entry["one_moved_full_extraction_ms"] = ms(median_time(moved, min(repeat, 5)))
             finally:
                 del os.environ["AETHER3D_RETAINED_RENDER_WORLD"]
             if backend == "gpu":
@@ -158,7 +171,7 @@ def group_observe(quick: bool, backends: list[str], adapter: str | None) -> dict
     return out
 
 
-def group_diagnose(quick: bool, backend: str) -> dict[str, Any]:
+def group_diagnose(quick: bool, backend: str, smoke: bool = False) -> dict[str, Any]:
     import feedback_room
     import mcp_feedback_agent
 
@@ -169,10 +182,12 @@ def group_diagnose(quick: bool, backend: str) -> dict[str, Any]:
         "room": (feedback_room.PLAN, feedback_room.EXPECTATIONS),
         "castle": (mcp_feedback_agent.first_draft(), mcp_feedback_agent.EXPECTATIONS),
     }
+    if smoke:
+        del cases["castle"]
     for name, (plan, expectations) in cases.items():
         scene = Scene(name)
         scene.execute_plan(plan)
-        fs = FeedbackSession(scene, expectations, backend=backend, width=640, height=360)
+        fs = FeedbackSession(scene, expectations, backend=backend, **SIZE)
         first = fs.diagnose()  # renders the views
 
         def checks(fs=fs):
@@ -184,13 +199,13 @@ def group_diagnose(quick: bool, backend: str) -> dict[str, Any]:
             "checks": len(fs.expectations.checks),
             "findings": len(first.findings),
             "first_diagnosis_ms": ms(first.timings["total"]),
-            "checks_ms": ms(median_time(checks, 3 if quick else 5)),
+            "checks_ms": ms(median_time(checks, 1 if smoke else 3 if quick else 5)),
             "reused_ms": ms(median_time(fs.diagnose, 5)),
         }
     return out
 
 
-def group_correct(quick: bool, backend: str) -> dict[str, Any]:
+def group_correct(quick: bool, backend: str, smoke: bool = False) -> dict[str, Any]:
     import feedback_room
 
     from aether3d import FeedbackSession, Scene
@@ -202,13 +217,12 @@ def group_correct(quick: bool, backend: str) -> dict[str, Any]:
             scene,
             feedback_room.EXPECTATIONS,
             backend=backend,
-            width=640,
-            height=360,
             policy={"auto_apply": ["safe", "verify"]},
+            **SIZE,
         )
 
     applies, previews, proposes = [], [], []
-    for _ in range(3 if quick else 5):
+    for _ in range(1 if smoke else 3 if quick else 5):
         fs = fresh()
         corrections = fs.propose()  # diagnoses first
         t0 = time.perf_counter()
@@ -229,7 +243,7 @@ def group_correct(quick: bool, backend: str) -> dict[str, Any]:
     }
 
 
-def group_loop(quick: bool, backend: str) -> dict[str, Any]:
+def group_loop(quick: bool, backend: str, smoke: bool = False) -> dict[str, Any]:
     import feedback_composition
     import feedback_room
 
@@ -246,12 +260,10 @@ def group_loop(quick: bool, backend: str) -> dict[str, Any]:
         ),
     ):
         times, iterations, renders = [], [], []
-        for _ in range(3 if quick else 5):
+        for _ in range(1 if smoke else 3 if quick else 5):
             scene = Scene(name)
             scene.execute_plan(module.PLAN)
-            fs = FeedbackSession(
-                scene, module.EXPECTATIONS, backend=backend, width=640, height=360, policy=policy
-            )
+            fs = FeedbackSession(scene, module.EXPECTATIONS, backend=backend, policy=policy, **SIZE)
             t0 = time.perf_counter()
             report = run_loop(fs, budget={"max_iterations": 8})
             times.append(time.perf_counter() - t0)
@@ -270,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--json", help="write the results here")
     parser.add_argument("--quick", action="store_true", help="fewer repeats, no village")
+    parser.add_argument("--smoke", action="store_true", help="once, the room only (CI)")
     parser.add_argument("--no-gpu", action="store_true", help="CPU only")
     parser.add_argument("--adapter", help="GPU adapter (default: the best)")
     args = parser.parse_args(argv)
@@ -280,22 +293,27 @@ def main(argv: list[str] | None = None) -> int:
         if not gpu_status(adapter=args.adapter)["available"]:
             backends = ["cpu"]
     fast = backends[-1]
+    smoke = args.smoke
+    if smoke:
+        SIZE.update(width=480, height=270)
     t0 = time.perf_counter()
     results: dict[str, Any] = {"machine": machine(), "groups": {}}
     groups = results["groups"]
-    groups["stats"] = group_stats(args.quick)
+    groups["stats"] = group_stats(args.quick, smoke)
     print("stats", json.dumps(groups["stats"]))
-    groups["observe"] = group_observe(args.quick, backends, args.adapter)
+    groups["observe"] = group_observe(args.quick, backends, args.adapter, smoke)
     print("observe", json.dumps(groups["observe"]))
-    groups["diagnose"] = {b: group_diagnose(args.quick, b) for b in backends}
+    groups["diagnose"] = {b: group_diagnose(args.quick, b, smoke) for b in backends}
     print("diagnose", json.dumps(groups["diagnose"]))
-    groups["correct"] = {b: group_correct(args.quick, b) for b in backends}
+    groups["correct"] = {b: group_correct(args.quick, b, smoke) for b in backends}
     print("correct", json.dumps(groups["correct"]))
-    groups["loop"] = {b: group_loop(args.quick, b) for b in backends}
+    groups["loop"] = {b: group_loop(args.quick, b, smoke) for b in backends}
     print("loop", json.dumps(groups["loop"]))
     results["seconds"] = round(time.perf_counter() - t0, 1)
     results["backends"] = backends
     results["fast_backend"] = fast
+    results["size"] = dict(SIZE)
+    results["mode"] = "smoke" if smoke else "quick" if args.quick else "full"
     if args.json:
         Path(args.json).write_text(json.dumps(results, indent=2) + "\n")
         print(f"wrote {args.json}")
