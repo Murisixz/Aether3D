@@ -275,3 +275,16 @@ def test_gpu_observations_agree_with_the_cpu(gpu):
         assert all(
             abs(p - q) <= 1 for p, q in zip(a["screen_bounds"], b["screen_bounds"], strict=True)
         )
+
+
+def test_a_reused_observation_marks_the_focus_of_each_call():
+    scene = _wall_scene()
+    scene.add_sphere("Ball", radius=0.3, position=(1.2, -0.5, 0))
+    store = ObservationStore()
+    plain = observe(scene, width=120, height=90, store=store)
+    assert [m["name"] for m in plain.markers()] == ["Box", "Ball"]
+    focused = observe(scene, width=120, height=90, store=store, focus="Ball")
+    assert focused.id == plain.id and focused.image is plain.image  # one render
+    assert [m["name"] for m in focused.markers()] == ["Ball"]
+    assert focused.png("annotated") != plain.png("annotated")
+    assert store.get(plain.id) is focused  # the store keeps the latest marking

@@ -95,20 +95,21 @@ def _label(img: np.ndarray, text: str, x: int, y: int, color: np.ndarray, scale:
 def annotate(
     image: np.ndarray,
     index: np.ndarray,
-    markers: list[tuple[int, int, tuple[int, int, int, int]]],
+    markers: list[tuple[int, list[int], tuple[int, int, int, int]]],
 ) -> np.ndarray:
-    """A copy of ``image`` with each marker drawn: ``(number, instance, (x0, y0, x1, y1))``.
+    """A copy of ``image`` with each marker drawn: ``(number, instances, (x0, y0, x1, y1))``.
 
-    The instance's visible pixels get a thin outline (their boundary with other objects or
-    the background) in the marker's color, its pixel bounds a rectangle, and a numbered tag
-    sits at the rectangle's top-left corner.
+    The object's visible pixels (those of all its instances: a group's parts) get a thin
+    outline -- their boundary with other objects or the background -- in the marker's
+    color, its pixel bounds a rectangle, and a numbered tag sits at the rectangle's
+    top-left corner.
     """
     out = image.copy()
     h, w = image.shape[:2]
     scale = 2 if min(w, h) >= 300 else 1
-    for number, instance, (x0, y0, x1, y1) in markers:
+    for number, instances, (x0, y0, x1, y1) in markers:
         color = PALETTE[(number - 1) % len(PALETTE)]
-        mask = index == instance
+        mask = np.isin(index, np.asarray(instances, dtype=index.dtype))
         edge = mask.copy()
         edge[1:-1, 1:-1] &= ~(mask[:-2, 1:-1] & mask[2:, 1:-1] & mask[1:-1, :-2] & mask[1:-1, 2:])
         out[edge] = color

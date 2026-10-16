@@ -3,12 +3,12 @@
 Everything here reads the scene's spatial index (``aether3d.spatial``: world-space
 vertices, per-object BVHs, the watertight ray test) and changes nothing.
 
-* :func:`vertical_contact` -- how an object sits on a support: the vertical gap between
-  them and how deep one penetrates the other, from vertical rays cast from the vertices
-  of each against the other (front and back faces tell entering from leaving a surface).
-  Exact for configurations where the extreme is reached at a vertex of one object over a
-  face of the other -- an object standing on a floor or a table top; an edge resting
-  across an edge can be measured too large (reported as ``method``).
+* :func:`vertical_contact` -- how an object sits on a support: how far it must rise to
+  stop penetrating the supports it crosses (exact: the triangle test decides every step
+  of a bisection), and otherwise the vertical gap down to the nearest support, from
+  vertical rays cast from the vertices of each against the other (exact where the gap is
+  reached at a vertex over a face -- an object standing on a floor or a table top; an
+  edge resting across an edge can be measured too large).
 * :func:`classify_contact` -- whether two objects whose surfaces meet merely touch: they
   do when a translation of at most ``tolerance`` along one of the six axis directions
   separates them, decided by the exact triangle-intersection test on translated copies.
@@ -65,12 +65,22 @@ def cast(
     if not len(hits):
         return empty, empty, np.zeros(0), np.zeros(0, dtype=bool), ents
     front = np.zeros(len(hits), dtype=bool)
-    for k in range(len(hits)):
-        e = ents[int(hits.inst[k])]
-        tri = e.mesh.triangles[int(hits.prim[k])].astype(np.int64)
-        a, b, c = e.vertices[tri[0]], e.vertices[tri[1]], e.vertices[tri[2]]
-        normal = np.cross(b - a, c - a) * e.orientation
-        front[k] = float(normal @ d[0]) < 0.0
+    inst = np.asarray(hits.inst, dtype=np.int64)
+    prim = np.asarray(hits.prim, dtype=np.int64)
+    for k in np.unique(inst):  # one vectorized pass per object hit
+        rows = np.flatnonzero(inst == k)
+        e = ents[int(k)]
+        a, b, c = e.corners(prim[rows])
+        u, v = b - a, c - a
+        normal = np.stack(
+            [
+                u[:, 1] * v[:, 2] - u[:, 2] * v[:, 1],
+                u[:, 2] * v[:, 0] - u[:, 0] * v[:, 2],
+                u[:, 0] * v[:, 1] - u[:, 1] * v[:, 0],
+            ],
+            axis=1,
+        )
+        front[rows] = (normal @ d[0]) * e.orientation < 0.0
     return hits.ray, hits.inst, hits.t, front, ents
 
 
@@ -82,24 +92,62 @@ def vertical_contact(
     ``subject`` may be several entries: the parts of a group (a prefab of blocks), which
     rest as one.
 
-    Returns ``gap`` (the least vertical distance from the subject down to a support's
-    surface, ``inf`` when nothing is below), ``penetration`` (the greatest depth of a
-    vertex of one inside the other, measured vertically; 0 if none), the supports involved
-    and ``status``: ``"resting"``, ``"floating"``, ``"sunken"`` or ``"not_above"``.
+    * **Penetration** -- for every support the subject's surfaces cross (the exact triangle
+      test), the upward translation of the subject that separates them, found by bisection
+      and verified separated by the same test; ``penetration`` is the largest. This is
+      exact for any configuration (a leg piercing a rug has no vertex inside it).
+    * **Gap** -- when nothing is crossed: the least vertical distance from the subject
+      down to a support's top (front faces), with vertical rays from the subject's vertices
+      down and from the supports' vertices (under the subject) up. Exact where the
+      extreme is at a vertex over a face; an edge resting across an edge can be measured
+      too large.
 
-    Rays start ``eps`` (a billionth of the coordinates' scale) behind each vertex, so a
-    vertex lying on a surface sees it at distance ``eps`` instead of starting on it.
+    ``status``: ``"sunken"`` (penetration beyond ``tolerance``), ``"resting"`` (touching,
+    or a gap within it), ``"floating"`` or ``"not_above"`` (nothing below).
     """
     zhat = np.array([0.0, 0.0, 1.0])
     subjects = as_list(subject)
+    depth, depth_by, touching = 0.0, None, None
+    lift_axis = [(0.0, 0.0, 1.0)]
+    for support in supports:
+        if not meets(subjects, [support]):
+            continue
+        lift = separation(subjects, [support], lift_axis, tolerance=tolerance)[0]["distance"]
+        if lift <= tolerance:
+            touching = touching or support
+        elif lift > depth:
+            depth, depth_by = lift, support
     found_points = [_points(e) for e in subjects]
-    pts = np.concatenate([f[0] for f in found_points])
     exact = all(f[1] for f in found_points)
+    out: dict[str, Any] = {
+        "method": "penetration: the upward translation that separates the surfaces (exact "
+        "triangle test, bisection); gap: vertical rays from both objects' vertices",
+    }
+    if depth > tolerance:
+        out.update(
+            status="sunken",
+            gap=0.0,
+            penetration=depth,
+            gap_support=None,
+            penetrated_support=_ref(depth_by),
+            exact=True,
+        )
+        return out
+    if touching is not None:
+        out.update(
+            status="resting",
+            gap=0.0,
+            penetration=0.0,
+            gap_support=_ref(touching),
+            penetrated_support=None,
+            exact=True,
+        )
+        return out
+    pts = np.concatenate([f[0] for f in found_points])
     lo, hi = union_box(subjects)
     scale = max(1.0, float(np.max(np.abs(np.concatenate([lo, hi])))))
     eps = 1e-9 * scale
     gap, gap_by, gap_point = math.inf, None, None
-    depth, depth_by = 0.0, None
 
     def nearest_front(origins, targets, direction):
         ray, inst, t, front, ents = cast(index, targets, origins, direction)
@@ -108,24 +156,10 @@ def vertical_contact(
         k = int(np.argmin(np.where(front, t, np.inf)))
         return max(float(t[k]) - eps, 0.0), ents[int(inst[k])], origins[int(ray[k])]
 
-    def deepest_back(origins, targets, direction):
-        ray, inst, t, front, ents = cast(index, targets, origins, direction)
-        if front.all():
-            return None
-        k = int(np.argmax(np.where(~front, t, -np.inf)))
-        return max(float(t[k]) - eps, 0.0), ents[int(inst[k])]
-
-    # From the subject's vertices: down onto a support's top (front face) is a gap; up to a
-    # support's surface from inside it (back face) is a penetration.
     found = nearest_front(pts + eps * zhat, supports, -zhat)
     if found is not None:
         gap, gap_by, origin = found
-        gap_point = origin + eps * zhat - (gap + eps) * zhat
-    found = deepest_back(pts - eps * zhat, supports, zhat)
-    if found is not None and found[0] > depth:
-        depth, depth_by = found
-    # From each support's vertices under the subject: up onto the subject's bottom (front
-    # face) is a gap; down out of the subject from inside it (back face) is a penetration.
+        gap_point = origin - gap * zhat
     for support in supports:
         slo, shi = support.box
         if np.any(slo[:2] > hi[:2] + tolerance) or np.any(shi[:2] < lo[:2] - tolerance):
@@ -145,28 +179,17 @@ def vertical_contact(
         if found is not None and found[0] < gap:
             gap, gap_by = found[0], support
             gap_point = found[2] + eps * zhat
-        found = deepest_back(spts + eps * zhat, subjects, -zhat)
-        if found is not None and found[0] > depth:
-            depth, depth_by = found[0], support
-    if depth > tolerance:
-        status, gap, gap_point = "sunken", 0.0, None
-    elif depth > 0.0:  # in contact (within the tolerance): any gap elsewhere is beside it
-        status, gap, gap_point = "resting", 0.0, None
-    elif math.isfinite(gap):
+    status = "not_above"
+    if math.isfinite(gap):
         status = "floating" if gap > tolerance else "resting"
-    elif meets(subjects, supports, tolerance):
-        status, gap = "resting", 0.0
-    else:
-        status = "not_above"
-    out: dict[str, Any] = {
-        "status": status,
-        "gap": gap,
-        "penetration": depth,
-        "gap_support": None if gap_by is None else _ref(gap_by),
-        "penetrated_support": None if depth_by is None else _ref(depth_by),
-        "method": "vertical rays from both objects' vertices (watertight ray test)",
-        "exact": exact,
-    }
+    out.update(
+        status=status,
+        gap=gap,
+        penetration=0.0,
+        gap_support=None if gap_by is None else _ref(gap_by),
+        penetrated_support=None,
+        exact=exact,
+    )
     if gap_point is not None and math.isfinite(gap):
         out["gap_point"] = [float(v) for v in gap_point]
     return out
@@ -221,24 +244,28 @@ def shift(entries: Any, offset: Any) -> list[Shifted]:
     return [Shifted(e, np.asarray(offset, dtype=np.float64)) for e in as_list(entries)]
 
 
-def meets(a: Any, b: Any, tolerance: float = 0.0) -> bool:
-    """Whether the surfaces of two entries -- or two groups of entries, possibly shifted --
-    share a point (or come within ``tolerance``): exact, on the triangles of the pairs of
-    parts whose boxes overlap."""
+def meets(a: Any, b: Any, tolerance: float = 0.0, offset: Any = None) -> bool:
+    """Whether the surfaces of two entries -- or two groups of entries -- share a point (or
+    come within ``tolerance``), with ``a`` moved by ``offset``: exact, on the triangles of
+    the pairs of parts whose boxes overlap (only those parts are shifted, and only their
+    BVHs are built)."""
     from ..spatial.queries import _surfaces_meet
 
     first, second = as_list(a), as_list(b)
-    alo = np.array([e.box[0] for e in first]) - tolerance
-    ahi = np.array([e.box[1] for e in first]) + tolerance
+    move = np.zeros(3) if offset is None else np.asarray(offset, dtype=np.float64)
+    alo = np.array([e.box[0] for e in first]) + move - tolerance
+    ahi = np.array([e.box[1] for e in first]) + move + tolerance
     blo = np.array([e.box[0] for e in second])
     bhi = np.array([e.box[1] for e in second])
     near = np.all(alo[:, None, :] <= bhi[None, :, :], axis=2) & np.all(
         blo[None, :, :] <= ahi[:, None, :], axis=2
     )
+    moved: dict[int, Any] = {}
     for i, j in zip(*np.nonzero(near), strict=True):
         if first[i].obj is second[j].obj:
             continue
-        if _surfaces_meet(first[i], second[j], tolerance):
+        part = first[i] if offset is None else moved.setdefault(i, Shifted(first[i], move))
+        if _surfaces_meet(part, second[j], tolerance):
             return True
     return False
 
@@ -249,7 +276,7 @@ def classify_contact(a: Any, b: Any, tolerance: float) -> dict[str, Any]:
     ``{"contact": False}`` (they penetrate)."""
     if tolerance > 0.0:
         for axis in AXES:
-            if not meets(shift(a, np.asarray(axis) * tolerance), b):
+            if not meets(a, b, offset=np.asarray(axis) * tolerance):
                 return {"contact": True, "axis": list(axis)}
     return {"contact": False}
 
@@ -280,14 +307,14 @@ def separation(
         d = np.asarray(direction, dtype=np.float64)
         hi = box_separation(a, b, d)
         lo = min(tolerance, hi)
-        if lo > 0.0 and not meets(shift(a, d * lo), b):
+        if lo > 0.0 and not meets(a, b, offset=d * lo):
             hi = lo
         else:
             for _ in range(steps):
                 if hi - lo <= max(tolerance * 0.25, 1e-12):
                     break
                 mid = 0.5 * (lo + hi)
-                if meets(shift(a, d * mid), b):
+                if meets(a, b, offset=d * mid):
                     lo = mid
                 else:
                     hi = mid

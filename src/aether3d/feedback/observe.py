@@ -437,20 +437,40 @@ class Observation:
         return encode_png(pixels, text=text, compression=compression), [x0, y0, x1, y1]
 
     def markers(self) -> list[dict[str, Any]]:
-        """The numbered markers of the annotated image: number, object id and name."""
-        out = []
-        for number, instance, _box in self._marker_boxes():
-            row = self.instances[instance]
-            out.append({"marker": number, "id": row["id"], "name": row["name"]})
-        return out
+        """The numbered markers of the annotated image: number, object id and name (a group
+        is marked as one object, around all its visible parts)."""
+        return [
+            {"marker": number, "id": oid, "name": name}
+            for number, oid, name, _instances, _box in self._markers()
+        ]
 
-    def _marker_boxes(self) -> list[tuple[int, int, tuple[int, int, int, int]]]:
-        focus = self.options.get("focus_instances") or []
-        order = list(focus) if focus else self._largest(self.options.get("max_markers", 12))
+    def _marker_boxes(self) -> list[tuple[int, list[int], tuple[int, int, int, int]]]:
+        return [(number, inst, box) for number, _oid, _name, inst, box in self._markers()]
+
+    def _markers(self) -> list[tuple[int, str, str, list[int], tuple[int, int, int, int]]]:
+        """The focus objects (with their parts), or else the most visible objects."""
         s = self.stats
+        chosen: list[tuple[str, str, list[int]]] = []
+        for oid in self.options.get("focus") or []:
+            obj = self.scene._objects.get(oid)
+            if obj is not None:
+                chosen.append((oid, obj.name, self.instances_of(obj)))
+        if not chosen:
+            for k in self._largest(self.options.get("max_markers", 12)):
+                row = self.instances[k]
+                chosen.append((row["id"], row["name"], [k]))
         out = []
-        for number, k in enumerate((k for k in order if s.pixels[k] > 0), start=1):
-            out.append((number, k, (int(s.x0[k]), int(s.y0[k]), int(s.x1[k]), int(s.y1[k]))))
+        for oid, name, instances in chosen:
+            seen = [k for k in instances if s.pixels[k] > 0]
+            if not seen:
+                continue
+            box = (
+                min(int(s.x0[k]) for k in seen),
+                min(int(s.y0[k]) for k in seen),
+                max(int(s.x1[k]) for k in seen),
+                max(int(s.y1[k]) for k in seen),
+            )
+            out.append((len(out) + 1, oid, name, seen, box))
         return out
 
     def _largest(self, count: int) -> list[int]:
@@ -593,25 +613,30 @@ def geometry_in_view(obs: Observation, obj: SceneObject, *, occlusion: bool) -> 
     if not entries:
         return None
     view = _view(obs)
-    try:
-        matches = objects_in_view(
-            obs.scene,
-            camera=obs.view.target,
-            width=obs.width,
-            height=obs.height,
-            objects=[e.obj.id for e in entries],
-            include_hidden=True,
-        )
-    except QueryError as exc:
-        return {"error": exc.to_dict()}
-    kinds = [m.visibility for m in matches]
-    if not kinds:
-        frustum = "outside"
-    elif len(kinds) == len(entries) and all(k == "inside" for k in kinds):
-        frustum = "inside"
-    else:
-        frustum = "partial"
     pts = np.concatenate([e.points for e in entries])
+    # The view volume is convex: every vertex inside means the geometry is inside, any
+    # vertex inside means it meets the volume. With no vertex inside, a triangle can still
+    # cross it: the exact triangle-frustum test (spatial objects_in_view) decides.
+    normals, offsets = view.planes()
+    slack = 1e-9 * (1 + np.abs(offsets))
+    inside = np.all(pts @ normals.T <= offsets + slack, axis=1)
+    if inside.all():
+        frustum = "inside"
+    elif inside.any():
+        frustum = "partial"
+    else:
+        try:
+            matches = objects_in_view(
+                obs.scene,
+                camera=obs.view.target,
+                width=obs.width,
+                height=obs.height,
+                objects=[e.obj.id for e in entries],
+                include_hidden=True,
+            )
+        except QueryError as exc:
+            return {"error": exc.to_dict()}
+        frustum = "partial" if matches else "outside"
     depth = (pts - view.eye) @ view.forward
     lo = np.min(np.array([e.box[0] for e in entries]), axis=0)
     hi = np.max(np.array([e.box[1] for e in entries]), axis=0)
@@ -719,48 +744,29 @@ def footprint(obs: Observation, obj: SceneObject) -> np.ndarray:
     (clipping, fixed-point edge functions, the render settings' culling and single-sided
     materials). Alpha masks are not applied: cut-out texels count as covered. A group's
     footprint is the union of its parts'."""
-    mask = np.zeros((obs.height, obs.width), dtype=bool)
-    for part in parts_of(obj):
-        mask |= _footprint(obs, part)
-    return mask
-
-
-def _footprint(obs: Observation, obj: SceneObject) -> np.ndarray:
     from ..rendering import raster
-    from ..rendering.cpu import _clip_coords, _front_facing, _transform_points
     from ..rendering.scene_data import _mat4_mul
     from ..spatial.index import get_index
 
-    entry = get_index(obs.scene).by_id.get(obj.id)
     w, h = obs.width, obs.height
-    covered = np.zeros(h * w, dtype=bool)
-    if entry is None or entry.singular:
-        return covered.reshape(h, w)
+    index = get_index(obs.scene)
     rc = obs.view.render_camera(obs.scene)
     vp = _mat4_mul(rc.camera.projection_matrix(w / h), rc.frame.view_matrix())
-    mesh = entry.mesh
-    P = _transform_points(mesh.positions, entry.world)
-    clip = _clip_coords(P, vp)
-    tv = mesh.triangles.astype(np.int64)
-    finite = np.all(np.isfinite(clip), axis=1)[tv].all(axis=1)
-    tv = tv[finite]
-    groups = None if mesh.groups is None else mesh.groups[finite]
-    cull = obs.options.get("cull", "none")
-    single = _single_sided(obj, groups, tv.shape[0])
-    if tv.size and (cull != "none" or single.any()):
-        # The renderer's rules: the settings' culling, then single-sided materials' backs.
-        mirrored = np.full(tv.shape[0], entry.det < 0)
-        eye, forward = rc.frame.position, rc.frame.forward
-        front = _front_facing(P, tv, mirrored, eye, forward, rc.camera.is_perspective)
-        keep = np.ones(tv.shape[0], dtype=bool)
-        if cull == "back":
-            keep &= front
-        elif cull == "front":
-            keep &= ~front
-        keep &= front | ~single
-        tv = tv[keep]
-    if not tv.size:
+    clips, tris, base = [], [], 0
+    for part in parts_of(obj):  # every part's triangles, rasterized together
+        entry = index.by_id.get(part.id)
+        if entry is None or entry.singular:
+            continue
+        clip, tv = _drawn_triangles(obs, part, entry, rc, vp)
+        if tv.size:
+            clips.append(clip)
+            tris.append(tv + base)
+            base += clip.shape[0]
+    covered = np.zeros(h * w, dtype=bool)
+    if not tris:
         return covered.reshape(h, w)
+    clip = np.concatenate(clips)
+    tv = np.concatenate(tris)
     ids = np.arange(tv.shape[0], dtype=np.int64)
     codes = raster.outcodes(clip)
     oc = codes[tv]
@@ -782,6 +788,35 @@ def _footprint(obs: Observation, obj: SceneObject) -> np.ndarray:
         X, Y, z, raster.signed_area(X, Y), ids_in, w, h, keys, id_bits, raster.RasterStats()
     )
     return (keys != raster.EMPTY).reshape(h, w)
+
+
+def _drawn_triangles(obs: Observation, obj: SceneObject, entry: Any, rc: Any, vp: np.ndarray):
+    """One object's clip-space vertices and the triangles the renderer draws (finite, not
+    culled by the render settings or a single-sided material's back)."""
+    from ..rendering.cpu import _clip_coords, _front_facing, _transform_points
+
+    mesh = entry.mesh
+    P = _transform_points(mesh.positions, entry.world)
+    clip = _clip_coords(P, vp)
+    tv = mesh.triangles.astype(np.int64)
+    finite = np.all(np.isfinite(clip), axis=1)[tv].all(axis=1)
+    tv = tv[finite]
+    groups = None if mesh.groups is None else mesh.groups[finite]
+    cull = obs.options.get("cull", "none")
+    single = _single_sided(obj, groups, tv.shape[0])
+    if tv.size and (cull != "none" or single.any()):
+        # The renderer's rules: the settings' culling, then single-sided materials' backs.
+        mirrored = np.full(tv.shape[0], entry.det < 0)
+        eye, forward = rc.frame.position, rc.frame.forward
+        front = _front_facing(P, tv, mirrored, eye, forward, rc.camera.is_perspective)
+        keep = np.ones(tv.shape[0], dtype=bool)
+        if cull == "back":
+            keep &= front
+        elif cull == "front":
+            keep &= ~front
+        keep &= front | ~single
+        tv = tv[keep]
+    return clip, tv
 
 
 def _single_sided(obj: SceneObject, groups: np.ndarray | None, count: int) -> np.ndarray:
@@ -984,6 +1019,14 @@ def observe(
     if store is not None:
         found = store.find(scene, key)
         if found is not None:
+            focus_ids = [o.id for o in focus_objects]
+            if focus is not None and focus_ids != found.options.get("focus"):
+                # The same render, marked for this call's focus: buffers and geometry facts
+                # are shared, the annotated image is drawn again.
+                from dataclasses import replace
+
+                found = replace(found, options={**found.options, "focus": focus_ids}, _png={})
+                store.put(found)
             for k, obj in enumerate(focus_objects):
                 if obj.camera is None and obj.light is None:
                     found.geometry(obj, occlusion=occlusion and k < limits.max_occlusion_objects)
@@ -1038,7 +1081,6 @@ def observe(
         camera=_camera_report(result.camera),
         transient=transient,
     )
-    obs.options["focus_instances"] = [obs._by_id[o.id] for o in focus_objects if o.id in obs._by_id]
     t_geometry = time.perf_counter()
     budget = limits.max_occlusion_objects
     for k, obj in enumerate(focus_objects):

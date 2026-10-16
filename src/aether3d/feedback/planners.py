@@ -467,6 +467,38 @@ def _clipping(diagnosis, finding, fix, context):
     ], None
 
 
+def _just_inside(value: float, lo: float | None, hi: float | None, margin: float) -> float | None:
+    """The smallest change that brings ``value`` into ``[lo, hi]``: the violated bound,
+    ``margin`` times inside it (never past the middle of the range)."""
+    if lo is not None and value < lo:
+        target = lo * margin
+        return min(target, math.sqrt(lo * hi) if hi is not None and lo > 0 else target)
+    if hi is not None and value > hi:
+        target = hi / margin
+        return max(target, math.sqrt(lo * hi) if lo is not None and lo > 0 else target)
+    return None
+
+
+def _frame_limit(obs: Any, rows: list[int], margin: float = 0.03) -> float:
+    """The largest size ratio a move along the view direction can apply before the objects'
+    pixel bounds leave the frame (bounds scale about the image center; points at other
+    depths scale differently, so verification has the last word)."""
+    s = obs.stats
+    w, h = obs.width, obs.height
+    x0 = min(int(s.x0[k]) for k in rows)
+    y0 = min(int(s.y0[k]) for k in rows)
+    x1 = max(int(s.x1[k]) for k in rows)
+    y1 = max(int(s.y1[k]) for k in rows)
+    limit = math.inf
+    for lo, hi, size in ((x0, x1, w), (y0, y1, h)):
+        half, room = size / 2, size / 2 - margin * size
+        for edge in (lo, hi):
+            reach = abs(edge - half)
+            if reach > 1e-9:
+                limit = min(limit, room / reach)
+    return limit
+
+
 def _scale_to(finding: Finding, check: Any) -> float | None:
     """The size ratio (new / current) that brings a framing measure into its range."""
     ev = finding.evidence
@@ -475,13 +507,8 @@ def _scale_to(finding: Finding, check: Any) -> float | None:
         return None
     value = float(ev[key])
     lo, hi = check.params[key]["min"], check.params[key]["max"]
-    if lo is not None and hi is not None:
-        target = math.sqrt(lo * hi) if lo > 0 else (lo + hi) / 2
-    elif lo is not None:
-        target = lo * 1.15
-    else:
-        target = hi / 1.15
-    if value <= 0 or target <= 0:
+    target = _just_inside(value, lo, hi, 1.15)
+    if value <= 0 or target is None or target <= 0:
         return None
     ratio = target / value
     return math.sqrt(ratio) if key == "fill" else ratio
@@ -510,6 +537,18 @@ def _dolly(diagnosis, finding, fix, context):
                 depths.append((float(obs.stats.dmin[k]) + float(obs.stats.dmax[k])) / 2)
     if not depths:
         return [], "the objects are not visible: frame the camera on them first"
+    rows = [k for oid in ids if oid in obs.scene._objects for k in obs.instances_of(oid)]
+    rows = [k for k in rows if obs.stats.pixels[k]]
+    notes = []
+    if ratio > 1.0:
+        cap = _frame_limit(obs, rows)
+        if cap < ratio:
+            notes.append(
+                f"limited to {cap:.3g} times (of {ratio:.3g}) to keep the objects in the frame"
+            )
+            ratio = cap
+        if ratio <= 1.0 + 1e-6:
+            return [], "moving closer would push the objects out of the frame"
     d = float(np.mean(depths))
     new_d = d / ratio
     move = d - new_d
@@ -522,9 +561,11 @@ def _dolly(diagnosis, finding, fix, context):
             [{"action": "dolly_camera", "camera": camera.id, "distance": move}],
             "verify",
             f"projected size scales with the inverse of the distance (perspective): from "
-            f"{d:.4g} m to {new_d:.4g} m changes it {ratio:.3g} times",
+            f"{d:.4g} m to {new_d:.4g} m changes it {ratio:.3g} times, just into the "
+            "expected range",
             expected=_expected(finding),
             validation=[f"re-check {finding.check!r}", "no new failure"],
+            notes=notes,
             group=f"dolly:{camera.id}",
         )
     ], None
@@ -681,12 +722,9 @@ def _exposure(diagnosis, finding, fix, context):
             lo, hi = ev.get("rule", 0.01) * 4, None
         else:
             lo, hi = None, 0.5
-        if lo is not None and hi is not None:
-            target = math.sqrt(max(lo, 1e-9) * hi)
-        elif lo is not None:
-            target = lo * 1.25
-        else:
-            target = hi / 1.25
+        target = _just_inside(mean, lo, hi, 1.25)
+        if target is None:
+            return [], "the luminance is already in range"
         delta = math.log2(target / mean)
         if stats.get("luminance_source") == "display" and finding.code == "OVEREXPOSED":
             delta -= 0.5  # clipped 8-bit values understate the light: aim lower

@@ -230,11 +230,8 @@ def test_no_overlap_tells_contact_from_penetration():
         scene, {"check": "no_overlap", "objects": ["Touching", "Inside"], "against": "Table"}
     )
     (f,) = d.findings
-    assert (
-        f.code == "INTERSECTION"
-        and f.subjects[0]["name"] == "Table"
-        or f.subjects[1]["name"] == "Inside"
-    )
+    assert f.code == "INTERSECTION"
+    assert [x["name"] for x in f.subjects] == ["Inside", "Table"]  # the checked side first
     assert f.magnitude == pytest.approx(0.1, abs=1e-4)
     roles = {s["name"]: s["role"] for s in f.subjects}
     assert roles == {"Table": "against", "Inside": "subject"}
@@ -519,3 +516,70 @@ def test_groups_are_seen_and_framed_as_wholes():
     assert [f.code for f in d.findings] == ["TOO_LARGE_IN_FRAME", "OUT_OF_REGION"]
     region = [f for f in d.findings if f.code == "OUT_OF_REGION"][0]
     assert region.magnitude == pytest.approx(1.0)  # 3 m tall in a 2 m box
+
+
+def test_penetration_without_a_vertex_inside_is_measured_exactly():
+    """A leg piercing a thin rug: no vertex of either lies inside the other (the rug's top
+    face cuts the leg's edges), and the rug's bottom coincides with the floor."""
+    scene = room()
+    rug = scene.add_cube("Rug", size=1, position=(2.5, 0, 0.01))
+    rug.scale = (2, 2, 0.02)
+    scene.add_cube("Leg", size=1, position=(2.5, 0, 0.25)).scale = (0.05, 0.05, 0.5)
+    d = diagnose(scene, {"check": "rests_on", "objects": "Leg"})
+    (f,) = d.findings
+    assert f.code == "SUNKEN" and f.subjects[1]["name"] == "Rug"
+    assert f.magnitude == pytest.approx(0.02, abs=1e-4 / 4 + 1e-9)
+
+
+def test_an_implicit_support_is_below_the_object_not_beside_it():
+    scene = room()
+    wall = scene.add_cube("Wall", size=1, position=(3, 1, 1.4))
+    wall.scale = (4, 0.2, 2.8)
+    scene.add_cube("Cabinet", size=1, position=(3, 0.6, 0.5))  # 0.1 into the wall, on the floor
+    d = diagnose(scene, {"check": "rests_on", "objects": "Cabinet"})
+    assert d.accepted and not d.findings  # the wall is beside it, not under it
+
+
+def test_a_proposal_waits_while_its_support_moves():
+    scene = room()
+    scene.get_by_name("Table").position = (0, 0, 0.6)  # floats 0.1 above the floor
+    scene.add_cube("Vase", size=0.2, position=(0.2, 0.1, 1.45))  # floats 0.25 above the table
+    fs = FeedbackSession(
+        scene,
+        doc({"check": "rests_on", "objects": "Table", "support": "Floor"},
+            {"check": "rests_on", "objects": "Vase", "support": "Table"}, defaults=False),
+        width=160, height=90,
+    )  # fmt: skip
+    first = fs.apply(fs.propose())
+    assert first.applied == ["P1"]  # the table; the vase is measured against it
+    assert "measured against" in first.rejected[0]["reasons"][0]
+    second = fs.apply(fs.propose())
+    assert second.status == "applied"
+    vase, table = scene.get_by_name("Vase"), scene.get_by_name("Table")
+    assert vase.bounds().aabb.min[2] == pytest.approx(table.bounds().aabb.max[2], abs=1e-6)
+
+
+def test_corrections_are_minimal_and_keep_the_objects_in_frame():
+    from aether3d.feedback.planners import _frame_limit, _just_inside
+
+    assert _just_inside(0.01, 0.1, 0.5, 1.25) == pytest.approx(0.125)  # just inside
+    assert _just_inside(0.9, 0.1, 0.5, 1.25) == pytest.approx(0.4)
+    assert _just_inside(0.3, 0.1, 0.5, 1.25) is None  # already in range
+    assert _just_inside(0.01, 0.3, 0.32, 1.25) == pytest.approx((0.3 * 0.32) ** 0.5)
+    scene = room()
+    obs = FeedbackSession(scene, width=200, height=100).observe(None)
+    k = obs.instances_of("Table")
+    limit = _frame_limit(obs, k)
+    x0, y0, x1, y1 = obs.record("Table", geometry=False)["screen_bounds"]
+    for edge, half in ((x0, 100), (x1, 100), (y0, 50), (y1, 50)):
+        assert abs(edge - half) * limit <= half * 0.94 + 1e-9  # inside the 3 % margins
+
+
+def test_a_diagnosis_at_the_same_revision_is_reused():
+    scene = room()
+    fs = FeedbackSession(scene, doc({"check": "exists", "objects": "Table"}), width=96, height=54)
+    a = fs.diagnose()
+    assert fs.diagnose() is a
+    scene.get_by_name("Table").position = (0.1, 0, 0.5)
+    b = fs.diagnose()
+    assert b is not a and b.revision == scene.revision

@@ -1016,6 +1016,7 @@ class Proposal:
     changes: list[dict[str, Any]] = field(default_factory=list)
     policy: dict[str, Any] = field(default_factory=dict)
     targets: tuple[str, ...] = ()
+    related: tuple[str, ...] = ()  # objects its findings measure against (supports, ...)
 
     @property
     def signature(self) -> str:
@@ -1224,6 +1225,14 @@ def _finish(
         return p
     p.changes = [c for b in bound for c in b.changes]
     p.targets = tuple(dict.fromkeys(b.target.id for b in bound if b.target is not None))
+    p.related = tuple(
+        dict.fromkeys(
+            s["id"]
+            for f in d.findings
+            for s in f.subjects
+            if s.get("id") and s["id"] not in p.targets
+        )
+    )
     p.compiled = compile_actions(bound, f"Feedback: {d.title}", diagnosis.revision)
     violations = policy.violations(scene, bound)
     auto = not violations and p.safety in policy.auto_apply and p.safety != "approval"

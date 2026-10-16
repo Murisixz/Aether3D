@@ -695,12 +695,15 @@ class Diagnoser:
         from .geometry import union_box
 
         lo, hi = union_box(parts)
+        # "Below": an object whose top lies under the subject's lowest quarter. A wall the
+        # subject stands against, or a table beside a chair, is not what it stands on.
+        reach = lo[2] + max(0.25 * float(hi[2] - lo[2]), DEFAULT_TOLERANCE)
         out = []
         for e in self.index.entries:
             if e.obj.id in own or not e.visible:
                 continue
             elo, ehi = e.box
-            if np.any(elo[:2] > hi[:2]) or np.any(ehi[:2] < lo[:2]) or elo[2] > hi[2]:
+            if np.any(elo[:2] > hi[:2]) or np.any(ehi[:2] < lo[:2]) or ehi[2] > reach:
                 continue
             out.append(e)
         return out
@@ -749,7 +752,10 @@ class Diagnoser:
             evidence = {**r, "tolerance": tol}
             if len(parts) > 1:
                 evidence["parts"] = len(parts)
-            support = r.get("gap_support") or r.get("penetrated_support")
+            if r["status"] == "sunken":
+                support = r.get("penetrated_support") or r.get("gap_support")
+            else:
+                support = r.get("gap_support") or r.get("penetrated_support")
             if support is not None and support["id"] in owners:  # a part of a named support
                 owner = owners[support["id"]]
                 if owner.id != support["id"]:
@@ -830,6 +836,16 @@ class Diagnoser:
 
         for pair in pairs:
             a, b = pair["a"], pair["b"]
+            if side(a) == "against" and side(b) != "against":
+                a, b = b, a  # the side the check is about comes first
+                if pair["kind"] == "intersection":  # the separations move the first object
+                    pair = {
+                        **pair,
+                        "separation": [
+                            {**sep, "direction": [-v + 0.0 for v in sep["direction"]]}
+                            for sep in pair["separation"]
+                        ],
+                    }
             subjects = [_ref(a, side(a)), _ref(b, side(b))]
             if pair["kind"] == "contained":
                 message = f"{pair['inner'].name!r} lies inside {pair['outer'].name!r}"
@@ -869,10 +885,13 @@ class Diagnoser:
         against: list[SceneObject] | None,
         tol: float,
         allow_contact: bool,
+        exact_depth: bool = True,
     ) -> dict[str, Any]:
         """Intersecting pairs among ``objs`` (or against ``against``), classified. A group
         takes part as one object (its parts never collide with each other); pairs of
-        selected objects are decided on all their parts."""
+        selected objects are decided on all their parts. ``exact_depth=False`` (the
+        informational default scan) bounds each penetration by the world boxes instead of
+        searching the separating translations."""
         from ..spatial.queries import overlaps
         from .geometry import AXES, classify_contact, separation
 
@@ -936,7 +955,22 @@ class Diagnoser:
             if allow_contact and classify_contact(pa, pb, tol)["contact"]:
                 contacts += 1
                 continue
-            sep = separation(pa, pb, AXES, tolerance=tol)
+            if exact_depth:
+                sep = separation(pa, pb, AXES, tolerance=tol)
+            else:
+                from .geometry import box_separation
+
+                sep = sorted(
+                    (
+                        {
+                            "direction": list(axis),
+                            "distance": box_separation(pa, pb, np.array(axis)),
+                            "bound": "world boxes (an upper bound)",
+                        }
+                        for axis in AXES
+                    ),
+                    key=lambda r: (r["distance"], r["direction"]),
+                )
             out.append(
                 {
                     "kind": "intersection",
@@ -1403,7 +1437,7 @@ class Diagnoser:
             self.results.append(result)
             return
         objs = [self.scene._objects[obs.instances[int(k)]["id"]] for k in visible]
-        found = self.penetrations(objs, None, DEFAULT_TOLERANCE, True)
+        found = self.penetrations(objs, None, DEFAULT_TOLERANCE, True, exact_depth=False)
         for pair in found["pairs"]:
             a, b = pair["a"], pair["b"]
             depth = None if pair["kind"] == "contained" else pair["separation"][0]["distance"]
@@ -1413,7 +1447,7 @@ class Diagnoser:
                     check,
                     "POSSIBLE_PENETRATION" if depth is not None else "POSSIBLE_CONTAINMENT",
                     f"{a.name!r} and {b.name!r} intersect"
-                    + (f" ({depth:.4g} m deep along an axis)" if depth is not None else ""),
+                    + (f" (at most {depth:.4g} m deep along an axis)" if depth is not None else ""),
                     [_ref(a, "subject"), _ref(b, "other")],
                     severity="info",
                     evidence={

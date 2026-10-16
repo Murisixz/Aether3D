@@ -124,6 +124,7 @@ class FeedbackSession:
         self.renders = 0
         self.rendered_pixels = 0
         self.last_diagnosis: Diagnosis | None = None
+        self._diagnoses: dict[str, Diagnosis] = {}
         self.last_corrections: CorrectionSet | None = None
         self.loops: dict[str, Any] = {}
 
@@ -214,6 +215,16 @@ class FeedbackSession:
         exp = self.expectations
         scene = self.scene
         revision = scene.revision
+        key = None
+        if not scene.history.in_progress:
+            key = json.dumps(  # the expectations' normalized content, not their source
+                [revision, exp.to_dict(), defaults, list(evaluations or ())],
+                sort_keys=True,
+                default=str,
+            )
+            cached = self._diagnoses.get(key)
+            if cached is not None and not cached.stale:
+                return cached
         needed = self._needed_views()
         observed: dict[str, Observation] = {}
         notes: list[str] = []
@@ -356,6 +367,9 @@ class FeedbackSession:
         }
         if not diagnosis.transient:
             self.last_diagnosis = diagnosis
+            if key is not None:  # the same question at the same revision: the same answer
+                self._diagnoses = {k: d for k, d in self._diagnoses.items() if not d.stale}
+                self._diagnoses[key] = diagnosis
         return diagnosis
 
     def preview(self, corrections: CorrectionSet, ids: Any = None) -> dict[str, Any]:
@@ -592,8 +606,25 @@ class FeedbackSession:
 
 
 def _one_per_target(chosen: list[Proposal], rejected: list[dict[str, Any]]) -> list[Proposal]:
-    """At most one proposal per changed object (and one exposure change) per step: the
-    others wait for the next diagnosis, which sees the first one's effect."""
+    """At most one proposal per changed object (and one exposure change) per step, and none
+    whose findings were measured against an object another proposal moves in the same
+    step (a vase's gap to a table that moves too): those wait for the next diagnosis, which
+    sees the first one's effect."""
+    moved = {t for p in chosen for t in p.targets}
+    waiting = []
+    for p in chosen:
+        if set(p.related) & (moved - set(p.targets)):
+            waiting.append(p)
+            rejected.append(
+                {
+                    "id": p.id,
+                    "reasons": [
+                        "an object it is measured against changes in this "
+                        "step: diagnose again after it"
+                    ],
+                }
+            )
+    chosen = [p for p in chosen if p not in waiting]
     out, taken = [], set()
     for p in chosen:
         keys = set(p.targets) or {f"global:{a['action']}" for a in p.actions}
