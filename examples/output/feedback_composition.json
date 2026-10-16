@@ -1,0 +1,107 @@
+{
+  "aether3d": "0.12.0",
+  "renderer": {
+    "backend": "gpu",
+    "requested": "gpu",
+    "device": "gpu",
+    "adapter": {
+      "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "backend": "vulkan",
+      "software": false
+    },
+    "antialiasing_samples": 2
+  },
+  "before": {
+    "observation": "obs-3b4a2829aebb",
+    "monument_center": [
+      0.2564135416666667,
+      0.5215240740740741
+    ],
+    "monument_fill": 0.005985725308641976,
+    "touches_border": {
+      "left": false,
+      "top": false,
+      "right": false,
+      "bottom": false
+    },
+    "mean_luminance": 0.014778285867764362,
+    "clipped_fraction": 4.187481941484127e-06
+  },
+  "findings": [
+    {
+      "code": "OFF_CENTER",
+      "basis": "render",
+      "magnitude": 0.043586012192501855,
+      "unit": "image fraction"
+    },
+    {
+      "code": "TOO_SMALL_IN_FRAME",
+      "basis": "render",
+      "magnitude": 2.304967042811785,
+      "unit": "log ratio"
+    },
+    {
+      "code": "UNDEREXPOSED",
+      "basis": "render",
+      "magnitude": 3.0214835596193685,
+      "unit": "stops"
+    }
+  ],
+  "loop": {
+    "stop_reason": "accepted",
+    "seconds": 0.11810518299171235,
+    "iterations": [
+      {
+        "iteration": 1,
+        "errors": 3,
+        "applied": [
+          "Aim 'Camera' to put the objects at (0.50, 0.50) of the image",
+          "Set the exposure to +0.343 stops"
+        ],
+        "decision": "kept"
+      },
+      {
+        "iteration": 2,
+        "errors": 1,
+        "applied": [
+          "Move 'Camera' 22.76 m closer"
+        ],
+        "decision": "kept"
+      }
+    ],
+    "budget_used": {
+      "iterations": 2,
+      "renders": 2,
+      "pixels": 1036800,
+      "seconds": 0.118051,
+      "memory": 48211200,
+      "critic_calls": 0,
+      "cost": 0.0
+    }
+  },
+  "after": {
+    "observation": "obs-3ee1a9c045a4",
+    "monument_center": [
+      0.49870000000000003,
+      0.4969296296296296
+    ],
+    "monument_fill": 0.06855324074074073,
+    "touches_border": {
+      "left": false,
+      "top": false,
+      "right": false,
+      "bottom": false
+    },
+    "mean_luminance": 0.18184575342614318,
+    "clipped_fraction": 0.0005651603435910486
+  },
+  "camera": {
+    "position": [
+      2.5175758298834845,
+      -8.42219305634148,
+      2.7951193721015883
+    ],
+    "exposure": 0.343412
+  },
+  "failures": []
+}

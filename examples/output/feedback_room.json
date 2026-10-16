@@ -1,0 +1,214 @@
+{
+  "aether3d": "0.12.0",
+  "build": {
+    "objects": 34,
+    "seconds": 0.04367282100429293
+  },
+  "before": {
+    "accepted": false,
+    "errors": 3,
+    "findings": [
+      {
+        "id": "F1",
+        "check": "standing",
+        "code": "SUNKEN",
+        "basis": "geometry",
+        "exact": true,
+        "subjects": [
+          "Chair B",
+          "Rug"
+        ],
+        "magnitude": 0.0800000019,
+        "unit": "m",
+        "message": "'Chair B' sinks 0.08 m into 'Rug'"
+      },
+      {
+        "id": "F2",
+        "check": "vase-on-table",
+        "code": "FLOATING",
+        "basis": "geometry",
+        "exact": true,
+        "subjects": [
+          "Vase",
+          "Table"
+        ],
+        "magnitude": 0.14999999940395364,
+        "unit": "m",
+        "message": "'Vase' floats 0.15 m above 'Table'"
+      },
+      {
+        "id": "F3",
+        "check": "clear-of-walls",
+        "code": "INTERSECTION",
+        "basis": "geometry",
+        "exact": true,
+        "subjects": [
+          "Lamp",
+          "Back wall"
+        ],
+        "magnitude": 0.2000000035000002,
+        "unit": "m",
+        "message": "'Lamp' intersects 'Back wall' (separated by moving 'Lamp' 0.2 m along [0.0, -1.0, 0.0])"
+      }
+    ],
+    "timings": {
+      "observe": 0.8493630630109692,
+      "checks": 0.254615534999175,
+      "total": 1.10416807999718
+    }
+  },
+  "renderer": {
+    "backend": "gpu",
+    "requested": "gpu",
+    "device": "gpu",
+    "adapter": {
+      "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "backend": "vulkan",
+      "software": false
+    },
+    "antialiasing_samples": 2
+  },
+  "proposals": [
+    {
+      "id": "P1",
+      "title": "Raise 'Chair B' 0.08 m up onto 'Rug'",
+      "safety": "safe",
+      "auto": true,
+      "actions": [
+        {
+          "action": "translate",
+          "object": "b078645a-222f-4833-8f28-14b19d9c0815",
+          "offset": [
+            0.0,
+            0.0,
+            0.0800000019
+          ],
+          "frame": "world"
+        }
+      ],
+      "rationale": "check 'standing' states that 'Chair B' rests on 'Rug'; its measured vertical penetration is 0.08 m (penetration: the upward translation that separates the surfaces (exact triangle test, bisection); gap: vertical rays from both objects' vertices). Moving 'Chair B' by exactly that closes it."
+    },
+    {
+      "id": "P2",
+      "title": "Lower 'Vase' 0.15 m down onto 'Table'",
+      "safety": "safe",
+      "auto": true,
+      "actions": [
+        {
+          "action": "translate",
+          "object": "cb6b67f0-2856-442b-931d-85042f707507",
+          "offset": [
+            0.0,
+            0.0,
+            -0.14999999940395364
+          ],
+          "frame": "world"
+        }
+      ],
+      "rationale": "check 'vase-on-table' states that 'Vase' rests on 'Table'; its measured vertical gap is 0.15 m (penetration: the upward translation that separates the surfaces (exact triangle test, bisection); gap: vertical rays from both objects' vertices). Moving 'Vase' by exactly that closes it."
+    },
+    {
+      "id": "P3",
+      "title": "Separate 'Lamp' from 'Back wall'",
+      "safety": "verify",
+      "auto": true,
+      "actions": [
+        {
+          "action": "translate",
+          "object": "5e29b692-bff4-466e-ab0f-0c66aa6af279",
+          "offset": [
+            0.0,
+            -0.20005000350000018,
+            0.0
+          ],
+          "frame": "world"
+        }
+      ],
+      "rationale": "'Lamp' and 'Back wall' intersect (exact triangle test). The shortest horizontal axis translation found that separates them -- verified by the exact test -- moves 'Lamp' 0.2 m"
+    }
+  ],
+  "loop": {
+    "stop_reason": "accepted",
+    "seconds": 0.10828895198937971,
+    "budget_used": {
+      "iterations": 1,
+      "renders": 1,
+      "pixels": 518400,
+      "seconds": 0.108227,
+      "memory": 41990400,
+      "critic_calls": 0,
+      "cost": 0.0
+    },
+    "iterations": [
+      {
+        "iteration": 1,
+        "errors": 3,
+        "applied": [
+          "P1",
+          "P2",
+          "P3"
+        ],
+        "status": "applied",
+        "decision": "kept",
+        "changes": [
+          {
+            "object": "Chair B",
+            "id": "b078645a-222f-4833-8f28-14b19d9c0815",
+            "field": "world_position",
+            "before": [
+              1.25,
+              0.3,
+              -0.06
+            ],
+            "after": [
+              1.25,
+              0.3,
+              0.02000000190000001
+            ]
+          },
+          {
+            "object": "Vase",
+            "id": "cb6b67f0-2856-442b-931d-85042f707507",
+            "field": "world_position",
+            "before": [
+              0.55,
+              0.35,
+              1.06
+            ],
+            "after": [
+              0.55,
+              0.35,
+              0.9100000005960465
+            ]
+          },
+          {
+            "object": "Lamp",
+            "id": "5e29b692-bff4-466e-ab0f-0c66aa6af279",
+            "field": "world_position",
+            "before": [
+              1.9,
+              2.95,
+              0.0
+            ],
+            "after": [
+              1.9,
+              2.7499499965,
+              0.0
+            ]
+          }
+        ],
+        "seconds": 0.108217
+      }
+    ]
+  },
+  "after": {
+    "accepted": true,
+    "errors": 0,
+    "findings": []
+  },
+  "history": [
+    "Living room (first draft)",
+    "Feedback: Raise 'Chair B' 0.08 m up onto 'Rug'; Lower 'Vase' 0.15 m down onto 'Table'; Separate 'Lamp' from 'Back wall'"
+  ],
+  "failures": []
+}

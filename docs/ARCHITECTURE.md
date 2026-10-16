@@ -132,10 +132,27 @@ Aether3D/
 │   │   ├── limits.py      PlanLimits
 │   │   ├── guide.md       The plan guide for agents (an MCP resource)
 │   │   └── examples/      Example plans: basics, castle (2,190 objects), village (11,270)
+│   ├── feedback/          Visual feedback and automatic corrections (see docs/FEEDBACK.md)
+│   │   ├── views.py       Views: scene cameras, virtual cameras, framed close-ups, presets
+│   │   ├── observe.py     Observations: render, per-object pixel and geometry facts,
+│   │   │                  footprints and occlusion, image statistics, the observation store
+│   │   ├── overlay.py     Annotated images (numbered markers), object colors, depth, masks
+│   │   ├── expectations.py  The aether3d.expectations format and its checker
+│   │   ├── geometry.py    Support (gaps, penetrations), contact and separation measurements
+│   │   ├── checks.py      Diagnosis: checks, default checks, findings and their basis
+│   │   ├── vision.py      Vision evaluations: checking, grounding, provenance; critics
+│   │   ├── corrections.py The action allowlist, binding, compilation to plans and scripts,
+│   │   │                  policy, proposals
+│   │   ├── planners.py    Corrections per finding code (safe, verify, approval)
+│   │   ├── session.py     FeedbackSession: observe, diagnose, propose, preview, apply, verify
+│   │   ├── loop.py        The automatic loop: budgets, stop reasons, resume
+│   │   ├── schema.py      JSON Schemas of the documents (fuzzed against the checkers)
+│   │   └── guide.md       The guide for agents (an MCP resource)
 │   ├── mcp/               The MCP server, optional (see docs/MCP.md)
 │   │   ├── server.py      The protocol (official SDK, low-level server): one tool at a time
 │   │   │                  in a worker thread, cancellation, progress, logging to stderr
 │   │   ├── tools.py       The tools: argument schemas, implementations, replies, errors
+│   │   ├── feedback.py    The visual feedback tools (observe, diagnose, propose, apply, loop)
 │   │   ├── content.py     Resources and prompts
 │   │   ├── session.py     The session: open scene, project and its disk state, configuration
 │   │   └── workspace.py   The path policy: containment, suffixes, overwrites, redaction
@@ -146,6 +163,7 @@ Aether3D/
 │   │   └── reader.py      Import: validated, resource-limited, path-confined
 │   ├── cli.py             `aether3d` command-line interface
 │   ├── _cli_materials.py  `aether3d material` and `aether3d texture`
+│   ├── _cli_feedback.py   `aether3d feedback`
 │   └── __main__.py        `python -m aether3d`
 ├── tests/                 pytest suite, one file per module
 │   └── data/              Khronos samples (pinned), v0.1.0/v0.4.0/v0.7.0 projects, reference renders
@@ -192,8 +210,9 @@ Aether3D/
 | `_history_file` | `history`, `serialization`, `scene`, `materials`, `procedural` (states and entities), `_fileio` |
 | `spatial.*` | `rendering.raytrace` (two-level BVH, watertight test), `rendering.scene_data` (world matrices, render-scene extraction), `rendering.pathtrace.scene` (rendered surfaces, lazily), `rendering.camera`, `inspection` (topology), `errors`; `scene` only for type hints and lazily for lookups |
 | `plans.*` | `scene` (bulk creation, history), `primitives`, `procedural` (expressions, primitives, modifiers), `materials`, `rendering` (cameras, lights, colors, settings), `mesh`, `spatial` (query requests, lazily), `errors` |
-| `mcp.*` | `plans`, `scene`, `serialization`, `gltf`, `rendering`, `spatial`, `history`, `editing` and `procedural` (scripts), `errors`; the `mcp` SDK (optional: never imported by `import aether3d`) |
-| `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `history`, `spatial`, `plans`, `errors`; `mcp` lazily (`aether3d mcp serve`) |
+| `feedback.*` | `rendering` (render, virtual cameras, framing, the CPU raster for footprints, PNG), `spatial` (index, rays, overlaps, frustum), `plans` (selectors, executing compiled corrections), `rendering.script` (compiled corrections), `history` (transactions, undo), `errors`; NumPy only |
+| `mcp.*` | `plans`, `scene`, `serialization`, `gltf`, `rendering`, `spatial`, `history`, `editing` and `procedural` (scripts), `feedback`, `errors`; the `mcp` SDK (optional: never imported by `import aether3d`) |
+| `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `history`, `spatial`, `plans`, `feedback`, `errors`; `mcp` lazily (`aether3d mcp serve`) |
 
 Lower layers never import higher ones. `scene` provides convenience methods
 (`save`/`load`, `export`/`import_file`, `inspect_geometry`, `edit_mesh`) by importing
@@ -762,3 +781,42 @@ records every phase, with what was measured and what was not reached, in
   times faster -- they remove 10-42 % of the kernel's GPU time, and shading stays as it
   is. wgpu-py cannot build acceleration structures, so integrating them would need a
   second GPU device owned by a Rust host. The software traversal stays.
+
+## Visual feedback and automatic corrections (v0.12.0)
+
+`aether3d.feedback` closes the loop between what a scene should be and what its renders
+show: observe -> diagnose -> propose -> apply -> verify. See [FEEDBACK.md](FEEDBACK.md).
+Key decisions:
+
+- **Languages were chosen per component, before writing them.** Observations reuse the
+  existing renderers (no new renderer, no new WGSL: the GPU rasterizer's finalize pass
+  already produces the object index and depth, read back selectively); per-object pixel
+  statistics are one vectorized NumPy pass over buffers the renderers already return as
+  arrays (measured: 11-15 ms for all of a 640 x 360 observation's measurements, against
+  24-46 ms for its GPU render and over a second on the CPU); geometry reuses the
+  spatial queries' exact kernels (and their optional Rust traversal); documents, policy,
+  planning, the loop, MCP and the CLI are Python, dominated by renders and queries. No
+  native kernel was added: nothing measured hot enough to justify a second
+  implementation and its parity tests, and no dependency was added.
+- **Facts and judgments are kept apart.** Every finding states its basis -- geometry,
+  render, scene (measured), heuristic (a default threshold), vision or agent (a declared
+  judgment) -- and whether it is exact. The engine contains no model and makes no network
+  request; image-aware evaluations come in as checked documents, grounded in the render's
+  object index, labeled by their declared provenance, never counted as facts and never
+  applied without approval. Only stated expectations are checked: whether an object floats
+  matters only where a rule says it must rest.
+- **Views are not scene content.** `render()` and the camera queries take virtual cameras
+  (a `RenderCamera` without an object id), so presets and close-ups add nothing to the
+  scene; a scene camera's virtual twin renders bit for bit like it.
+- **Corrections are the engine's own operations.** A fixed allowlist of typed actions
+  compiles to a scene plan and a scene script, shown in each proposal and run in one
+  history transaction: one undo step, all or nothing, refused for a changed revision,
+  preserving identity, hierarchy, procedural definitions and materials. Verification is a
+  new diagnosis; a step that breaks a passing check, or does not help, is undone exactly.
+- **Groups are objects.** An object with children (a prefab of blocks, an imported
+  hierarchy) is checked, observed and moved as one: the union of its visible parts.
+- **Caches follow revisions.** Observations are reused while the revision is unchanged
+  (renders are deterministic), diagnoses too; after a correction the retained render world
+  and the spatial index update only what changed. Work inside an open transaction (a
+  preview) is never cached.
+

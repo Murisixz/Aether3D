@@ -1158,22 +1158,35 @@ def _json_equal(a: Any, b: Any) -> bool:
 
 
 class View:
-    """A camera's view for an image size: its frame, extents and clipping range."""
+    """A camera's view for an image size: its frame, extents and clipping range.
+
+    ``camera`` is a camera object, id or name (default: the active camera), or a virtual
+    camera (a :class:`~aether3d.rendering.scene_data.RenderCamera` without an object id,
+    as :func:`aether3d.render` takes): ``obj`` is then ``None``.
+    """
 
     def __init__(self, scene: Scene, camera: Any, width: Any, height: Any) -> None:
         from ..errors import RenderError
         from ..rendering.camera import frame_from_matrix
-        from ..rendering.scene_data import resolve_camera
+        from ..rendering.scene_data import RenderCamera, resolve_camera
 
         settings = scene.render_settings
         self.width = _integer(settings.width if width is None else width, "width", 1, 65536)
         self.height = _integer(settings.height if height is None else height, "height", 1, 65536)
         try:
-            obj = resolve_camera(scene, camera)
-            # The renderers' world matrices (the same arithmetic): camera rays match theirs.
-            world = get_index(scene).worlds[obj.id]
-            frame, _ = frame_from_matrix(world, f"objects[{obj.name}]")
-            hx, hy = obj.camera.half_extents(self.width / self.height)
+            if isinstance(camera, RenderCamera):
+                from ..rendering.renderer import check_virtual_camera
+
+                obj = None
+                cam = check_virtual_camera(camera).camera
+                frame = camera.frame
+            else:
+                obj = resolve_camera(scene, camera)
+                cam = obj.camera
+                # The renderers' world matrices (the same arithmetic): camera rays match theirs.
+                world = get_index(scene).worlds[obj.id]
+                frame, _ = frame_from_matrix(world, f"objects[{obj.name}]")
+            hx, hy = cam.half_extents(self.width / self.height)
         except RenderError as exc:
             raise QueryError(exc.code, exc.message, "camera", hint=exc.hint) from None
         except AetherError as exc:
@@ -1185,8 +1198,8 @@ class View:
         self.right = np.asarray(frame.right, dtype=np.float64)
         self.up = np.asarray(frame.up, dtype=np.float64)
         self.hx, self.hy = hx, hy
-        self.perspective = obj.camera.is_perspective
-        self.near, self.far = obj.camera.near, obj.camera.far
+        self.perspective = cam.is_perspective
+        self.near, self.far = cam.near, cam.far
 
     def rays(self, x: np.ndarray, y: np.ndarray):
         """Rays through image points (the path tracer's arithmetic): ``o, d, tmin, tmax``."""

@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -358,7 +359,7 @@ def test_village_example_on_the_gpu(tmp_path, gpu):
 def test_mcp_client_example_runs(tmp_path):
     pytest.importorskip("mcp")
     result = _run_example("mcp_client.py", str(tmp_path), "--backend", "cpu")
-    assert "15 tools" in result.stdout and "on the CPU: preview.png" in result.stdout
+    assert "20 tools" in result.stdout and "on the CPU: preview.png" in result.stdout
     assert (tmp_path / "preview.png").read_bytes().startswith(b"\x89PNG")
     assert len(Scene.load(tmp_path / "courtyard.aether")) == 44
 
@@ -376,3 +377,55 @@ def test_mcp_castle_agent_example_runs(tmp_path):
     assert (workspace / "castle.glb").read_bytes()[:4] == b"glTF"
     assert len(Scene.load(workspace / "castle.aether")) == 2190
     assert _decode(tmp_path / "mcp_castle_agent.png").shape == (180, 320, 3)
+
+
+def test_feedback_room_example_runs(tmp_path):
+    _run_example("feedback_room.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "feedback_room.json").read_text())
+    assert report["failures"] == [] and report["loop"]["stop_reason"] == "accepted"
+    before = {f["code"] for f in report["before"]["findings"]}
+    assert {"FLOATING", "SUNKEN", "INTERSECTION"} <= before
+    assert report["after"]["accepted"] and report["renderer"]["device"] == "cpu"
+    assert _decode(tmp_path / "feedback_room.png").shape == (270, 968, 3)
+
+
+def test_feedback_composition_example_runs(tmp_path):
+    _run_example("feedback_composition.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "feedback_composition.json").read_text())
+    assert report["failures"] == [] and report["loop"]["stop_reason"] == "accepted"
+    assert {f["code"] for f in report["findings"]} >= {"OFF_CENTER", "UNDEREXPOSED"}
+    assert report["before"]["mean_luminance"] < 0.12 <= report["after"]["mean_luminance"]
+    assert report["before"]["monument_fill"] < 0.06 <= report["after"]["monument_fill"]
+
+
+def test_mcp_feedback_agent_example_runs(tmp_path):
+    pytest.importorskip("mcp")
+    _run_example("mcp_feedback_agent.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "mcp_feedback_agent.json").read_text())
+    assert report["failures"] == []
+    codes = {(code, basis) for code, basis, _ in report["first_diagnosis"]["findings"]}
+    assert ("VISION_FLOATING", "agent") in codes  # scripted, labeled as no visual observation
+    assert report["final"]["accepted"]
+    assert len(Scene.load(tmp_path / "mcp_feedback_workspace" / "castle.aether")) == 2190
+
+
+def test_feedback_room_example_on_the_gpu(tmp_path, gpu):
+    env = {**os.environ, **({"AETHER3D_GPU_ADAPTER": gpu.adapter} if gpu.adapter else {})}
+    _run_example("feedback_room.py", str(tmp_path), "--quick", "--backend", "gpu", env=env)
+    report = json.loads((tmp_path / "feedback_room.json").read_text())
+    assert report["failures"] == [] and report["renderer"]["device"] == "gpu"
+
+
+def test_committed_feedback_outputs():
+    """The visual feedback examples' committed results: Aether3D renders and reports."""
+    image = pytest.importorskip("PIL.Image")
+    for name, size in (
+        ("feedback_room.png", (2 * 960 + 8, 540)),
+        ("feedback_composition.png", (2 * 960 + 8, 540)),
+        ("mcp_feedback_agent.png", (2 * 960 + 8, 540)),
+    ):
+        with image.open(EXAMPLES / "output" / name) as png:
+            assert png.size == size and png.info["Software"].startswith("Aether3D ")
+    for name in ("feedback_room", "feedback_composition", "mcp_feedback_agent"):
+        report = json.loads((EXAMPLES / "output" / f"{name}.json").read_text())
+        assert report["failures"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", report["aether3d"])

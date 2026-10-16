@@ -229,6 +229,37 @@ def check_outputs(outputs: Any) -> frozenset[str]:
     return chosen | {"image"}
 
 
+def check_virtual_camera(camera: RenderCamera) -> RenderCamera:
+    """A virtual camera passed to :func:`render`, checked: no object id (it is not in the
+    scene), a :class:`Camera`, and a finite, orthonormal, right-handed frame."""
+    if camera.object_id is not None:
+        raise RenderError(
+            "INVALID_CAMERA",
+            "a RenderCamera passed as camera= is a virtual camera and has no object id",
+            "camera",
+            hint="pass the camera object (or its id or name) to render from a scene camera",
+        )
+    if not isinstance(camera.camera, Camera) or not isinstance(camera.frame, CameraFrame):
+        raise RenderError("INVALID_CAMERA", "a virtual camera needs a Camera and a CameraFrame")
+    f = camera.frame
+    vectors = [np.asarray(v, dtype=np.float64) for v in (f.position, f.forward, f.up, f.right)]
+    if any(v.shape != (3,) or not np.all(np.isfinite(v)) for v in vectors):
+        raise RenderError("INVALID_CAMERA", "the virtual camera's frame has non-finite values")
+    _, forward, up, right = vectors
+    tolerance = 1e-9
+    unit = all(abs(float(v @ v) - 1.0) <= tolerance for v in (forward, up, right))
+    orthogonal = abs(float(forward @ up)) <= tolerance and abs(float(forward @ right)) <= tolerance
+    handed = np.allclose(np.cross(forward, up), right, rtol=0.0, atol=1e-9)
+    if not (unit and orthogonal and handed):
+        raise RenderError(
+            "INVALID_CAMERA",
+            "the virtual camera's frame is not orthonormal (right = forward x up, unit vectors)",
+            "camera",
+            hint="build it with aether3d.feedback.virtual_camera(...)",
+        )
+    return camera
+
+
 def _resolve_size(
     settings: RenderSettings, width: Any, height: Any, camera: Camera
 ) -> tuple[Any, Any]:
@@ -268,7 +299,11 @@ def render(
 ) -> RenderResult:
     """Render ``scene`` and return a :class:`RenderResult`.
 
-    * ``camera`` -- camera object, id or name; default: ``scene.active_camera``.
+    * ``camera`` -- camera object, id or name; default: ``scene.active_camera``. A
+      :class:`~aether3d.rendering.scene_data.RenderCamera` without an object id (a
+      *virtual* camera: a :class:`Camera` and a :class:`CameraFrame` that are not part of
+      the scene; :func:`aether3d.feedback.virtual_camera` makes one) renders from that view
+      without adding anything to the scene.
     * ``width``, ``height``, ``samples``, ``exposure``, ``cull``,
       ``default_lights`` -- override ``scene.render_settings`` for this render.
       Giving only one of ``width``/``height`` derives the other from the
@@ -403,13 +438,18 @@ def render(
     diagnostics: list[Diagnostic] = []
 
     camera_obj: SceneObject | None
-    try:
-        camera_obj = resolve_camera(scene, camera)
-    except RenderError as exc:
-        if not (frame and exc.code == "NO_CAMERA"):
-            raise
+    virtual = check_virtual_camera(camera) if isinstance(camera, RenderCamera) else None
+    if virtual is not None:
         camera_obj = None
-    base_camera = camera_obj.camera if camera_obj is not None else Camera()
+        base_camera = virtual.camera
+    else:
+        try:
+            camera_obj = resolve_camera(scene, camera)
+        except RenderError as exc:
+            if not (frame and exc.code == "NO_CAMERA"):
+                raise
+            camera_obj = None
+        base_camera = camera_obj.camera if camera_obj is not None else Camera()
 
     settings = scene.render_settings.copy()
     width, height = _resolve_size(settings, width, height, base_camera)
@@ -437,7 +477,11 @@ def render(
 
     render_camera: SceneObject | RenderCamera
     if frame:
-        if camera_obj is not None:
+        if virtual is not None:
+            cam = virtual.camera.copy()
+            base_frame = virtual.frame
+            cam_id, cam_name = None, virtual.name
+        elif camera_obj is not None:
             cam = camera_obj.camera.copy()
             world = world_matrices(scene)[camera_obj.id]
             base_frame, cam_diags = frame_from_matrix(world, f"objects[{camera_obj.name}]")
@@ -461,6 +505,8 @@ def render(
                 "(the scene was not modified)",
             )
         )
+    elif virtual is not None:
+        render_camera = virtual
     else:
         assert camera_obj is not None
         render_camera = camera_obj

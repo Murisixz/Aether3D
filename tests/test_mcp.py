@@ -71,6 +71,8 @@ def test_tools_are_discoverable_with_strict_schemas(tmp_path):
         "scene_new", "scene_open", "scene_save", "scene_info", "objects_list",
         "execute_scene_plan", "check_scene_plan", "spatial_query", "render_preview",
         "render_image", "history", "export_scene", "run_script", "diagnostics", "capabilities",
+        "observe_scene", "diagnose_scene", "propose_corrections", "apply_corrections",
+        "feedback_loop",
     ]  # fmt: skip
     for tool in tools:
         schema = tool.input_schema
@@ -164,7 +166,7 @@ def test_stdout_carries_only_protocol_messages(tmp_path):
             proc.kill()
     assert proc.stdout.read() == b""
     assert replies[1]["result"]["serverInfo"]["name"] == "aether3d"
-    assert len(replies[2]["result"]["tools"]) == 15
+    assert len(replies[2]["result"]["tools"]) == 20
     assert replies[4]["result"]["structuredContent"]["counts"]["objects"] == 44
     image = replies[5]["result"]["content"][0]
     assert image["type"] == "image" and image["mimeType"] == "image/png"
@@ -540,7 +542,7 @@ def test_resources_and_prompts(tmp_path):
     assert all(f"aether3d://examples/{name}" in out["before"] for name in out["examples"])
     assert out["object"]["name"] == "ground" and out["object"]["kind"] == "mesh"
     assert out["preview"].mime_type == "image/png" and len(out["preview"].blob) > 100
-    assert out["prompts"] == ["build_scene", "inspect_and_fix", "from_example"]
+    assert out["prompts"] == ["build_scene", "inspect_and_fix", "from_example", "visual_feedback"]
     assert "aether3d.scene-plan" in out["prompt"]
 
 

@@ -49,7 +49,10 @@ INSTRUCTIONS = (
     "one declarative plan builds thousands of objects in a single call and a single undo "
     "step (read aether3d://guide once). Check placement with spatial_query (overlaps, "
     "raycast, relation, describe) instead of guessing, look with render_preview, undo with "
-    "history. Conventions: +Z up, meters, objects face -Y, rotation_euler in degrees."
+    "history. To check the result visually and fix it: observe_scene (images + measured "
+    "facts), diagnose_scene against expectations (aether3d://feedback/guide), "
+    "propose_corrections, apply_corrections (verified), or feedback_loop. "
+    "Conventions: +Z up, meters, objects face -Y, rotation_euler in degrees."
 )
 
 
@@ -289,8 +292,8 @@ def _ok_result(output: ToolOutput, session: Session, spec: Any) -> types.CallToo
             }
         )
     blocks: list[Any] = []
-    if output.image is not None:
-        blocks.append(types.ImageContent(data=encode_image(output.image), mime_type="image/png"))
+    for png in ([output.image] if output.image is not None else []) + list(output.images):
+        blocks.append(types.ImageContent(data=encode_image(png), mime_type="image/png"))
     blocks.append(types.TextContent(text=text))
     return types.CallToolResult(content=blocks, structured_content=json.loads(text))
 

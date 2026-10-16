@@ -65,6 +65,9 @@ class ServerConfig:
     max_reply_bytes: int = 256 * 1024
     """Largest JSON reply of a read-only tool; a larger one is refused (RESULT_TOO_LARGE)
     with a hint to ask for less, rather than flooding the client's context."""
+    feedback_backend: str = "auto"
+    """How the visual-feedback tools render observations: ``auto`` (the GPU rasterizer when
+    one works), ``gpu`` or ``cpu``."""
 
 
 @dataclass
@@ -99,6 +102,7 @@ class Session:
         self.started = time.time()
         self.lock = threading.Lock()  # one tool at a time touches the scene
         self._gpu: dict[str, Any] | None = None
+        self.feedback: Any = None  # the open scene's FeedbackSession (Stage 12 tools)
 
     # -- the scene ------------------------------------------------------------
 
@@ -133,6 +137,7 @@ class Session:
         self.saved_revision = scene.revision if saved else None
         self.disk = _disk_state(project) if project is not None and saved else None
         self.last_preview = None
+        self.feedback = None
 
     def mark_saved(self, path: Path) -> None:
         self.project = path

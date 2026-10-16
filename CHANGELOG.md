@@ -4,6 +4,113 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.12.0: visual feedback and automatic corrections
+
+Aether3D now closes the loop between what a scene should be and what its renders show:
+**observe -> diagnose -> propose -> apply -> verify**, step by step or in a budgeted
+loop, from Python, the command line and MCP ([docs/FEEDBACK.md](docs/FEEDBACK.md)). What
+the engine can measure -- geometry, pixels, light -- it reports as facts, each labeled
+with how it was measured; what only a model or a person can judge comes in as a checked
+vision evaluation, grounded in the render's object ids and never treated as a fact. The
+engine contains no model, makes no network request and never claims to have seen an
+image.
+
+Measured on the development machine (i9-12900H, RTX 4060 Laptop GPU, Vulkan;
+`benchmarks/bench_feedback.py`, saved as `benchmarks/results/stage12-feedback.json`),
+observations at 640 x 360:
+
+| | GPU rasterizer | CPU rasterizer |
+| --- | ---: | ---: |
+| One observation after one object moved: 34 / 2,190 / 11,270 objects | 24.0 / 26.8 / 46.2 ms | 1.14 / 2.60 / 3.10 s |
+| An observation's measurements (objects and image) | 11-15 ms | 11-15 ms |
+| The same view again, the scene unchanged | 0.01 ms | 0.01 ms |
+| The checks of the furnished room's diagnosis (6 checks) | 240 ms | 240 ms |
+| Applying a correction step and verifying it (the room) | 100 ms | 1.22 s |
+| The loop, first draft to accepted: the room (1 iteration, 2 renders) / the garden (2 iterations, 3 renders) | 390 / 179 ms | 2.64 / 5.58 s |
+
+### Added
+
+- **Observations** (`scene.observe(view, ...)`, `aether3d.feedback.observe`): render a
+  view with an existing backend and measure it, without changing the scene -- per object
+  its pixels, screen bounds, center, border contact, depth range and luminance; the
+  frustum test, exact projected bounds and near/far clipping of its geometry; with
+  `occlusion=True` its unoccluded footprint (its triangles rasterized alone) and the
+  objects covering the rest; for the image coverage, luminance, black and clipped
+  fractions. Images: the render, an annotated copy with numbered markers, object colors,
+  depth, masks and enlarged crops. Observations are reused at the same revision from a
+  memory-bounded `ObservationStore`. A group (a prefab of blocks, an imported hierarchy)
+  is observed, checked and moved as one object.
+- **Views** and **virtual cameras**: `render(camera=...)` and the camera queries take a
+  camera that is not part of the scene (`aether3d.feedback.virtual_camera`; a scene
+  camera's `camera_view` twin renders bit for bit like it); view specifications for a
+  scene camera, a virtual camera, a close-up framed on objects and presets (`top`,
+  `front`, `iso`, ...).
+- **Expectations** (`aether3d.expectations`, version 1): `exists`, `visible`, `framing`,
+  `rests_on`, `no_overlap`, `inside_region`, `distance`, `relation`, `upright`,
+  `material`, `exposure`, `camera_clipping`, with severities, which side a correction
+  may move, and acceptance rules; checked as a whole (codes, JSON pointers, hints) and
+  described by a JSON Schema.
+- **Diagnosis** (`FeedbackSession.diagnose`): findings with a stable code, their
+  **basis** (`geometry`, `render`, `scene`, `heuristic`, `vision`, `agent`), whether the
+  measurement is exact, a magnitude and unit, the subjects with their roles and the region
+  in the image. Placement is decided on triangles: gaps by vertical rays, penetrations and
+  separations by bisection verified with the exact intersection test. Default checks
+  (black or empty images, render warnings, far-off exposure, possible penetrations) are
+  labeled as heuristics or information.
+- **Vision evaluations** (`aether3d.vision-evaluation`, version 1): an image-aware
+  evaluator's findings (over MCP, the agent's own), checked, tied to one observation's id
+  and pixel digest, marked stale after changes, grounded in the object index, labeled by
+  their declared provenance (the engine records only whether it delivered the image), and
+  only ever proposed for approval. Critics plug into the loop as callables
+  (`run_loop(critic=...)`); none ships, and none is required.
+- **Corrections**: 16 allowlisted actions (placement, visibility, materials, cameras,
+  lights, exposure, procedural parameters -- no deletion, mesh editing, files or code)
+  compiled to scene plans and scene scripts; proposals with rationale, expected effect,
+  alternatives and a safety class (`safe`, `verify`, `approval`); a `CorrectionPolicy`
+  with limits; `preview` (apply in a transaction, observe, roll back); `apply` as one undo
+  step, refused for a changed revision or stale proposals, verified on a new render and
+  undone when a passing check fails or nothing improved.
+- **The loop** (`run_loop`, `FeedbackSession.run`): budgets (iterations, renders, pixels,
+  time, memory, critic calls and cost), cancellation, stagnation, no-progress and cycle
+  detection, a stop reason, a checkpoint before the first change, and `resume` after
+  approvals.
+- **MCP**: five tools that separate inspecting, proposing and changing --
+  `observe_scene` and `diagnose_scene` (inspect), `propose_corrections` (propose),
+  `apply_corrections` and `feedback_loop` (change) -- with images as MCP image content;
+  resources (the agent guide, the schemas, observations and their images), the
+  `visual_feedback` prompt, `capabilities(topic="feedback")` and
+  `--feedback-backend auto|gpu|cpu`.
+- **CLI**: `aether3d feedback observe|check|correct|loop|schema` (`check` and `loop` exit
+  with 3 when the expectations are not accepted).
+- **`FeedbackError`** (`code`, `location`, `hint`, `details`, `issues`).
+- **Examples**: `examples/feedback_room.py` (a furnished room with a floating vase, a
+  sunken chair and a lamp inside a wall), `examples/feedback_composition.py` (a camera
+  aimed past its subject, too far away and underexposed) and
+  `examples/mcp_feedback_agent.py` (the castle corrected over MCP).
+- **Benchmarks**: `benchmarks/bench_feedback.py`.
+
+### Changed
+
+- **The MCP server has 20 tools** (15 before) and replies may carry several images.
+  Existing tests whose expected values changed with it: `tests/test_mcp.py` (the tool
+  list gains five names, 20 tools over raw JSON-RPC, the prompt list gains
+  `visual_feedback`) and `tests/test_examples.py` ("20 tools").
+- **`RenderCamera`** values without an object id are accepted wherever a camera is: by
+  `render` (checked: `INVALID_CAMERA` for a malformed frame) and by the camera queries.
+
+### Compatibility
+
+- **No format change** (`FORMAT_VERSION` unchanged), **no new dependency**, no new WGSL
+  shader and no new Rust kernel: `aether3d-native` is unchanged (0.11.1, ABI 1). The CPU
+  path works without a GPU and without the native package.
+- **Unchanged results:** the render goldens, the path tracer's bit-for-bit images, the
+  spatial references and the history catalog pass unchanged; no existing assertion was
+  weakened.
+- **MCP sampling is not used** (it is deprecated as of the 2026-07-28 protocol,
+  SEP-2577): over MCP the client's model is the evaluator.
+- **CI:** the 22 jobs are unchanged; the wheel check also requires the feedback guide,
+  and the lavapipe job runs the feedback benchmark's smoke mode.
+
 ## 0.11.1: performance modernization
 
 An architecture-first performance release, following the plan of the

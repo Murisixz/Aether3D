@@ -353,7 +353,7 @@ shading), [GPU.md](GPU.md) (the GPU backend) and
 
 | Name | Description |
 | --- | --- |
-| `render(scene, *, camera=None, width=None, height=None, samples=None, exposure=None, cull=None, default_lights=None, frame=False, margin=0.05, limits=None, backend="cpu", adapter=None, msaa=None, supersample=None, shadows=None, path=None, ao=None, tonemap="none", progress=None, outputs=None)` | Render the scene. Arguments override `scene.render_settings` for this render only. Same as `scene.render(...)`. `backend`: `"cpu"` (the NumPy rasterizer, the default), `"gpu"` (wgpu; `GPU_*` error if unavailable), `"auto"` (GPU if it works, else CPU with a `BACKEND_FALLBACK` diagnostic), `"path"` (the CPU path tracer) or `"gpu_path"` (the same path tracer on a GPU adapter; `GPU_*` error if unavailable). `adapter`: GPU adapter selection (also for `"gpu_path"`) (index, `"discrete"`, `"vulkan"`, part of a name, ...). `msaa`, `supersample`: GPU antialiasing (default: `samples²` samples per pixel). `shadows`: GPU shadow maps (`True`, a dict or a `ShadowSettings`). `path`: path tracer settings (`PathSettings` or a dict). `ao`: the path tracer's ambient occlusion pass (`True`, a dict or `AOSettings`). `tonemap`: `"none"` or `"neutral"` (any backend). `progress`: path tracer callback `progress(done, total, seconds)`; return `False` to stop. `outputs`: the per-pixel outputs to return (`None`: all; or some of `"image"`, `"linear"`, `"depth"`, `"object_index"`, `"coverage"`; the image always comes); the GPU reads back only those and the others are `None`. |
+| `render(scene, *, camera=None, width=None, height=None, samples=None, exposure=None, cull=None, default_lights=None, frame=False, margin=0.05, limits=None, backend="cpu", adapter=None, msaa=None, supersample=None, shadows=None, path=None, ao=None, tonemap="none", progress=None, outputs=None)` | Render the scene. Arguments override `scene.render_settings` for this render only. Same as `scene.render(...)`. `camera`: a camera object, id or name, or a *virtual* camera (a `RenderCamera` without an object id: `aether3d.feedback.virtual_camera(...)`), which renders from a view that is not part of the scene (since 0.12.0). `backend`: `"cpu"` (the NumPy rasterizer, the default), `"gpu"` (wgpu; `GPU_*` error if unavailable), `"auto"` (GPU if it works, else CPU with a `BACKEND_FALLBACK` diagnostic), `"path"` (the CPU path tracer) or `"gpu_path"` (the same path tracer on a GPU adapter; `GPU_*` error if unavailable). `adapter`: GPU adapter selection (also for `"gpu_path"`) (index, `"discrete"`, `"vulkan"`, part of a name, ...). `msaa`, `supersample`: GPU antialiasing (default: `samples²` samples per pixel). `shadows`: GPU shadow maps (`True`, a dict or a `ShadowSettings`). `path`: path tracer settings (`PathSettings` or a dict). `ao`: the path tracer's ambient occlusion pass (`True`, a dict or `AOSettings`). `tonemap`: `"none"` or `"neutral"` (any backend). `progress`: path tracer callback `progress(done, total, seconds)`; return `False` to stop. `outputs`: the per-pixel outputs to return (`None`: all; or some of `"image"`, `"linear"`, `"depth"`, `"object_index"`, `"coverage"`; the image always comes); the GPU reads back only those and the others are `None`. |
 | `RenderResult` | `image` (`(h, w, 3) uint8` sRGB); `linear`, `depth`, `coverage` and `object_index` maps; `objects`, `camera`, `settings`, `stats` (counts and timings; GPU: also `gpu_timings`, `draw_calls`; path tracer: rays, rays per second, noise), `diagnostics`, `backend` (`{"name": "cpu"}`, the GPU adapter, API, antialiasing, shadow maps and resources, or the path tracer's device (`"cpu"` or `"gpu"`), processes or adapter, settings, BVH and lights), `passes` (path tracer: `beauty`, `direct`, `indirect`, `albedo`, `normal`, `depth`, `ao`, `sample_count`, `variance`), `color` (exposure and tone mapper), `output`, `status`, `width`, `height`, `pixel(x, y)`, `png_bytes(compression=6)` (zlib level; 1 encodes several times faster, a few percent larger), `save(path)` (atomic: `.png`, or `.hdr`/`.pfm` linear: `OUTPUT_NOT_RENDERED` if `linear` was not returned), `to_dict()`. |
 | `ShadowSettings(lights=None, map_size=2048, bias=0.5, normal_offset=0.5, pcf_radius=1)` | GPU shadow-map settings for one render (not saved in projects). |
 | `PathSettings(samples=16, bounces=4, seed=0, light_samples=1, russian_roulette=3, clamp=0, integrator="path", workers=0)` | Path tracer settings for one render (not saved in projects); see [RENDER_QUALITY.md](RENDER_QUALITY.md#python-and-cli-reference). |
@@ -484,13 +484,42 @@ then applied as one undo step, all or nothing ([SCENE_PLANS.md](SCENE_PLANS.md))
 (frozen dataclass) bounds a plan: `max_objects`, `max_scene_objects`,
 `max_pattern_count`, `max_operations`, `max_triangles`, ... ([limits](SCENE_PLANS.md#limits)).
 
+## Visual feedback
+
+Observe renders, check expectations, propose, apply and verify corrections
+([FEEDBACK.md](FEEDBACK.md)). Since 0.12.0.
+
+| Name | |
+| --- | --- |
+| `scene.observe(view=None, **options)`, `aether3d.feedback.observe(scene, view=None, *, width, height, backend="cpu", adapter, samples, shadows, path, linear=False, focus=None, occlusion=False, max_markers=12, limits=None, store=None)` | render one view and measure it: an `Observation` (`id`, `revision`, `view`, `image`, `index`, `depth`, `linear`, `stats`, `image_stats`, `renderer`, `camera`, `sha256`; `record(obj)`, `geometry(obj, occlusion=)`, `instances_of(obj)`, `objects_in_rect(rect)`, `markers()`, `png(kind)` with kinds `image`, `annotated`, `ids`, `depth`, `mask`, `crop_png(rect, scale=)`, `to_dict()`). Never changes the scene |
+| `aether3d.feedback.virtual_camera(position, *, look_at=None, direction=None, up=(0, 0, 1), name=..., **lens)`, `camera_view(scene, camera=None)` | a camera that is not in the scene (`RenderCamera`); a scene camera's virtual twin |
+| `resolve_view(scene, spec, width, height)`, `check_view_spec(spec)` | view specifications: `{}`, `{"camera": ...}`, `{"virtual": {...}}`, `{"focus": {"objects": ...}}`, `{"preset": "top"}` |
+| `FeedbackSession(scene, expectations=None, *, backend="cpu", adapter=None, width=640, height=360, samples=None, shadows=False, policy=None, store=None, limits=None, base_dir=None)` | the workflow on one scene: `observe(view, ...)`, `diagnose(evaluations=(), defaults=None)` -> `Diagnosis`, `propose(diagnosis=None, policy=None)` -> `CorrectionSet`, `preview(corrections, ids=None)`, `apply(corrections=None, ids=None, *, actions=None, approve=(), policy=None, verify=None, expected_revision=None, label=None)` -> `ApplyResult`, `run(**options)` -> `LoopReport`; also `aether3d.FeedbackSession` |
+| `aether3d.feedback.parse_expectations(document)` | check an `aether3d.expectations` document (dict or JSON text): `Expectations` |
+| `aether3d.feedback.check_evaluation(document, observation)` | check and ground an `aether3d.vision-evaluation`: `VisionEvaluation` (`findings`, `basis`, `provenance`, `overall`, `stale`, `delivered`) |
+| `aether3d.feedback.critique_request(observation, intent=None)` | what a critic receives: `CritiqueRequest` (PNG bytes, markers, summary, instructions) |
+| `aether3d.feedback.check_actions(actions)` | check correction actions against the allowlist (`ACTIONS`) |
+| `aether3d.feedback.run_loop(session, *, budget=None, policy=None, critic=None, intent=None, cancel=None, progress=None, resume=None)` | the automatic loop: `LoopReport` (`stop_reason`, `iterations`, `final`, `budget`, `pending`, `checkpoint`) |
+| `CorrectionPolicy`, `FeedbackBudget`, `ObservationLimits`, `ObservationStore` | policy (`auto_apply`, `allow_*`, limits, `verify`, `rollback_*`), loop budget, observation bounds, the observation cache; `coerce(dict)` for the first two |
+| `aether3d.feedback.schema.expectations_schema()`, `evaluation_schema()`, `actions_schema()` | the documents' JSON Schemas (draft 2020-12) |
+
+A `Diagnosis` has `id`, `revision`, `checks` (`CheckResult`: `id`, `kind`, `status`,
+`findings`, `measured`), `findings` (`Finding`: `id`, `key`, `code`, `severity`,
+`basis`, `exact`, `message`, `subjects`, `evidence`, `magnitude`, `unit`, `view`,
+`observation`, `region`, `hint`), `errors`, `warnings`, `score`, `accepted`,
+`acceptance`, `vision`, `observed` (the observations), `stale` and `to_dict()`. A
+`Proposal` has `id`, `title`, `findings`, `actions`, `safety`, `basis`, `rationale`,
+`confidence`, `expected`, `validation`, `alternatives`, `changes`, `compiled` (the scene
+plan and script), `policy` and `to_dict()`.
+
 ## The MCP server
 
 `aether3d.mcp` (needs `pip install "aether3d[mcp]"`; `import aether3d` never imports it)
 serves Aether3D to AI agents over the Model Context Protocol ([MCP.md](MCP.md)):
 `serve(config)` runs a stdio server with a `ServerConfig` (`workspace`, `read_only`,
 `project`, `plan_limits`, `tool_timeout`, `max_preview_pixels`, `max_render_pixels`,
-`max_path_samples`, `allow_path_tracing`, `gpu_adapter`, `max_reply_bytes`); `TOOLS` describes its tools,
+`max_path_samples`, `allow_path_tracing`, `gpu_adapter`, `max_reply_bytes`,
+`feedback_backend`); `TOOLS` describes its tools,
 `Workspace` its path policy. Most uses go through `aether3d mcp serve`.
 
 ## `aether3d.math3d`
@@ -522,6 +551,7 @@ All deliberate errors derive from `AetherError`.
 | `MaterialError` | `ValueError` | A material, texture, graph or image is invalid or cannot be used (`INVALID_MATERIAL`, `TEXTURE_MISSING`, `IMAGE_TOO_LARGE`, `UNSAFE_PATH`, ...; see [MATERIALS.md](MATERIALS.md#errors-and-diagnostics)); nothing changed. `.code` (stable), `.location` (e.g. `materials[Stone].roughness`), `.hint`, `.details` |
 | `QueryError` | `ValueError` | A spatial query is malformed or cannot be answered (`INVALID_ARGUMENT`, `INVALID_REQUEST`, `OBJECT_NOT_FOUND`, `NO_GEOMETRY`, `NO_CAMERA`, ...; see [SPATIAL.md](SPATIAL.md#errors)); nothing changed. `.code` (stable), `.location` (the argument), `.hint`, `.details`, `to_dict()` |
 | `PlanError` | `ValueError` | A scene plan is invalid or cannot be applied; nothing changed (except completed chunks of an opt-in chunked plan). `.code` (stable: `UNKNOWN_REFERENCE`, `NAME_CONFLICT`, `REVISION_MISMATCH`, `LIMIT_EXCEEDED`, ...; see [SCENE_PLANS.md](SCENE_PLANS.md#errors)), `.pointer` (a JSON pointer into the plan), `.operation`, `.hint`, `.details`, `.issues` (every problem found), `to_dict()` |
+| `FeedbackError` | `ValueError` | A visual-feedback request cannot be carried out: a view, an expectations document, a vision evaluation, a correction or a loop (`INVALID_VIEW`, `UNKNOWN_KEY`, `OBSERVATION_MISMATCH`, `STALE_PROPOSALS`, `REVISION_MISMATCH`, `NOT_ALLOWED`, ...; see [FEEDBACK.md](FEEDBACK.md)); nothing changed. `.code` (stable), `.location` (a JSON pointer or argument), `.hint`, `.details`, `.issues`, `to_dict()` |
 | `HistoryError` | `ValueError` | An undo, redo, checkpoint or history file operation cannot be performed (`NOTHING_TO_UNDO`, `TRANSACTION_OPEN`, `HISTORY_MISMATCH`, `INVALID_HISTORY`, ...; see [HISTORY.md](HISTORY.md#errors)); nothing changed. `.code` (stable), `.location`, `.hint`, `.details` |
 
 Missing files raise the standard `FileNotFoundError`.
@@ -555,6 +585,11 @@ aether3d object set|remove PROJECT OBJECT ... [--output PATH] [--dry-run] [--jso
 aether3d scene set PROJECT ... | scene run PROJECT SCRIPT.json|- [--output PATH] [--dry-run] [--json]
 aether3d scene merge PROJECT SOURCE.aether|.glb|.gltf [--parent REF] [--allow-lossy] [--output PATH] [--dry-run] [--json]
 aether3d material list|presets|schema|create|set|assign|texture|inspect|validate|remove|convert-colors|preview ...
+aether3d feedback observe PATH [--view NAME|JSON] [--expect FILE] [--focus JSON] [--occlusion] [--linear] [--images image,annotated,ids,depth] [--out DIR] [--backend B] [--width W] [--height H] [--json]
+aether3d feedback check PATH --expect FILE [--evaluation FILE]... [--out DIR] [--json]
+aether3d feedback correct PROJECT --expect FILE [--policy FILE|JSON] [--preview] [--apply] [--approve IDS] [--output PATH] [--dry-run] [--history] [--json]
+aether3d feedback loop PROJECT --expect FILE [--budget FILE|JSON] [--policy FILE|JSON] [--out DIR] [--output PATH] [--dry-run] [--history] [--json]
+aether3d feedback schema expectations|vision-evaluation|corrections
 aether3d texture list|add|procedural|set|inspect|preview|remove ...
 aether3d history start|show|undo|redo|checkpoint|goto|clear|verify PROJECT ... [--json]
 aether3d query QUERY PATH [KEY=VALUE ...] [--allow-lossy] [--json]

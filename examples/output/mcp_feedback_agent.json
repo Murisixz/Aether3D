@@ -1,0 +1,344 @@
+{
+  "aether3d": "0.12.0",
+  "seconds": 3.1170489140058635,
+  "orient": {
+    "checks": 12,
+    "actions": 16,
+    "guide_chars": 6360
+  },
+  "first_diagnosis": {
+    "accepted": false,
+    "summary": {
+      "errors": 2,
+      "warnings": 0,
+      "info": 0,
+      "score": 2.0,
+      "checks": {
+        "pass": 3,
+        "fail": 2,
+        "unknown": 1
+      }
+    },
+    "findings": [
+      [
+        "FLOATING",
+        "geometry",
+        3.02
+      ],
+      [
+        "INTERSECTION",
+        "geometry",
+        1.9000161982316124
+      ],
+      [
+        "VISION_FLOATING",
+        "agent",
+        null
+      ]
+    ]
+  },
+  "proposals": {
+    "proposals": [
+      [
+        "P1",
+        "safe",
+        "Lower 'Tower NE' 3.02 m down onto 'ground'"
+      ],
+      [
+        "P2",
+        "verify",
+        "Separate 'Tree 1' from 'keep'"
+      ],
+      [
+        "P3",
+        "approval",
+        "Translate (suggested by scripted-example)"
+      ]
+    ],
+    "unresolved": []
+  },
+  "preview_resolved": [
+    "towers-stand|FLOATING|a37715e6-552e-4d3a-9936-d7641fdbfadd+2dcad2ad-9996-4af0-94a6-86565d0bec0d",
+    "vision|89f91d42|v1"
+  ],
+  "applied": {
+    "status": "applied",
+    "applied": [
+      "P1",
+      "P2"
+    ],
+    "resolved": [
+      "towers-stand|FLOATING|a37715e6-552e-4d3a-9936-d7641fdbfadd+2dcad2ad-9996-4af0-94a6-86565d0bec0d",
+      "trees-clear|INTERSECTION|1f468776-4649-4952-af16-eb3539eb2f59+6e87c4af-24b3-4412-bd17-dbc0da8a6303",
+      "vision|89f91d42|v1"
+    ],
+    "decision": "kept"
+  },
+  "loop": {
+    "stop_reason": "accepted",
+    "iterations": 1
+  },
+  "final": {
+    "accepted": true,
+    "summary": {
+      "errors": 0,
+      "warnings": 0,
+      "info": 0,
+      "score": 0,
+      "checks": {
+        "pass": 5,
+        "fail": 0,
+        "unknown": 1
+      }
+    },
+    "findings": []
+  },
+  "transcript": [
+    {
+      "tool": "capabilities",
+      "seconds": 0.0076,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "topic": "feedback",
+        "workflow": "observe_scene -> look at the image -> diagnose_scene (expectations, your evaluations) -> propose_corrections -> apply_corrections (verified, undone if it does not help); or feedback_loop. Guide: aether3d://feedback/guide",
+        "checks": {
+          "exists": "the selected objects exist, as many as count says (default at least 1)",
+          "visible": "each object is seen in the view: rendered, in the view volume, at least min_pixels visible (default 1), and optionally at least min_visible_fraction of its unoccluded footprint, wholly inside the frame (in_frame)",
+          "framing": "composition in the view: the visible pixels' center inside region (normalized [x0, y0, x1, y1]), their share of the image within fill {min, max}, their screen height fraction within height {min, max}",
+          "rests_on": "each object rests on the support (or, without support, on whatever is directly below it): no vertical gap and no penetration beyond tolerance",
+          "no_overlap": "the objects do not intersect each other (or the against objects); touching within tolerance is allowed unless allow_contact is false",
+          "inside_region": "each object's world box lies inside region {\"box\": {\"min\", \"max\"}}",
+          "distance": "the surface distance between a and b lies within [min, max]",
+          "relation": "a spatial relation of a to b (above, below, in_front_of, behind, inside, contains, near, intersecting) has the expected truth value",
+          "upright": "each object's local axis (default +Z) points within max_tilt degrees (default 2) of world +Z",
+          "material": "each object uses the material (by name or id)",
+          "exposure": "the view's image: mean linear luminance (of the objects' pixels, or the whole image with over: image) within a range, clipped and black fractions at most the given ones, geometry covering at least min_coverage of the image",
+          "camera_clipping": "the view's near and far planes cut none of the objects (default: every visible object with geometry)"
+        },
+        "actions": {
+          "translate": "move an object by an offset (frame: world, default, or local: its parent's)",
+          "place": "put an object's origin at a position (frame: world or local)",
+          "rotate": "set an object's local rotation (Euler degrees XYZ, or a quaternion)",
+          "scale": "multiply an object's scale by a factor (a number or [x, y, z])",
+          "set_visibility": "show or hide an object",
+          "assign_material": "assign an existing material (by name or id) to an object",
+          "set_color": "set the color of an object without a material",
+          "frame_camera": "move a camera (default: the active one) so the targets fill its frame",
+          "aim_camera": "turn a camera toward a point or an object",
+          "dolly_camera": "move a camera along its view direction (positive: forward)",
+          "set_camera": "change a camera's field of view or clipping planes",
+          "set_light": "change a light's intensity or color",
+          "add_light": "add a directional or point light",
+          "set_exposure": "set the render settings' exposure (stops)",
+          "set_ambient": "set the world's ambient light",
+          "set_parameter": "set a procedural scene parameter"
+        }
+      }
+    },
+    {
+      "tool": "scene_new",
+      "seconds": 0.002,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "scene": {
+          "open": true,
+          "name": "castle",
+          "project": "castle.aether",
+          "revision": 0,
+          "dirty": true,
+          "objects": 0
+        }
+      }
+    },
+    {
+      "tool": "execute_scene_plan",
+      "seconds": 0.1381,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "ok": true,
+        "mode": "execute",
+        "status": "applied",
+        "label": "Castle (first draft)"
+      }
+    },
+    {
+      "tool": "observe_scene",
+      "seconds": 1.0519,
+      "error": false,
+      "images": 2,
+      "brief": {
+        "observations": [
+          "obs-427bb7474c66"
+        ],
+        "renderer": {
+          "backend": "gpu",
+          "requested": "gpu",
+          "device": "gpu",
+          "adapter": {
+            "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+            "backend": "vulkan",
+            "software": false
+          },
+          "antialiasing_samples": 2
+        }
+      }
+    },
+    {
+      "tool": "diagnose_scene",
+      "seconds": 0.3842,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "accepted": false,
+        "summary": {
+          "errors": 2,
+          "warnings": 0,
+          "info": 0,
+          "score": 2.0,
+          "checks": {
+            "pass": 3,
+            "fail": 2,
+            "unknown": 1
+          }
+        },
+        "findings": [
+          [
+            "FLOATING",
+            "geometry",
+            3.02
+          ],
+          [
+            "INTERSECTION",
+            "geometry",
+            1.9000161982316124
+          ],
+          [
+            "VISION_FLOATING",
+            "agent",
+            null
+          ]
+        ]
+      }
+    },
+    {
+      "tool": "propose_corrections",
+      "seconds": 0.4376,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "proposals": [
+          [
+            "P1",
+            "safe",
+            "Lower 'Tower NE' 3.02 m down onto 'ground'"
+          ],
+          [
+            "P2",
+            "verify",
+            "Separate 'Tree 1' from 'keep'"
+          ],
+          [
+            "P3",
+            "approval",
+            "Translate (suggested by scripted-example)"
+          ]
+        ],
+        "unresolved": []
+      }
+    },
+    {
+      "tool": "apply_corrections",
+      "seconds": 0.1176,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "status": "applied",
+        "applied": [
+          "P1",
+          "P2"
+        ],
+        "resolved": [
+          "towers-stand|FLOATING|a37715e6-552e-4d3a-9936-d7641fdbfadd+2dcad2ad-9996-4af0-94a6-86565d0bec0d",
+          "trees-clear|INTERSECTION|1f468776-4649-4952-af16-eb3539eb2f59+6e87c4af-24b3-4412-bd17-dbc0da8a6303",
+          "vision|89f91d42|v1"
+        ],
+        "decision": "kept"
+      }
+    },
+    {
+      "tool": "feedback_loop",
+      "seconds": 0.0018,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "stop_reason": "accepted",
+        "iterations": 1
+      }
+    },
+    {
+      "tool": "diagnose_scene",
+      "seconds": 0.0013,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "accepted": true,
+        "summary": {
+          "errors": 0,
+          "warnings": 0,
+          "info": 0,
+          "score": 0,
+          "checks": {
+            "pass": 5,
+            "fail": 0,
+            "unknown": 1
+          }
+        },
+        "findings": []
+      }
+    },
+    {
+      "tool": "observe_scene",
+      "seconds": 0.1429,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "observations": [
+          "obs-749bda4ab337"
+        ],
+        "renderer": {
+          "backend": "gpu",
+          "requested": "gpu",
+          "device": "gpu",
+          "adapter": {
+            "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+            "backend": "vulkan",
+            "software": false
+          },
+          "antialiasing_samples": 2
+        }
+      }
+    },
+    {
+      "tool": "scene_save",
+      "seconds": 0.1117,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "scene": {
+          "open": true,
+          "name": "castle",
+          "project": "castle.aether",
+          "revision": 2,
+          "dirty": false,
+          "objects": 2190
+        },
+        "saved": "castle.aether",
+        "history_file": null
+      }
+    }
+  ],
+  "failures": []
+}

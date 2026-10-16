@@ -20,13 +20,13 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: ruff format --check .
-      - name: The wheel ships the data files (plan guide and examples, WGSL shaders)
+      - name: The wheel ships the data files (plan and feedback guides, plan examples, WGSL shaders)
         run: |
           pip wheel --no-deps -w dist .
           python - <<'EOF'
           import glob, sys, zipfile
           names = set(zipfile.ZipFile(glob.glob("dist/aether3d-*.whl")[0]).namelist())
-          need = ["aether3d/plans/guide.md", "aether3d/mcp/server.py"]
+          need = ["aether3d/plans/guide.md", "aether3d/feedback/guide.md", "aether3d/mcp/server.py"]
           need += [f"aether3d/plans/examples/{n}.json" for n in ("basics", "castle", "village")]
           need += ["aether3d/rendering/gpu/wgsl/scene.wgsl"]
           missing = [n for n in need if n not in names]
@@ -199,6 +199,7 @@ jobs:
           python examples/gpu_render.py ci_gpu --width 640 --height 360 --adapter llvmpipe --require-gpu
           aether3d render examples/output/minecraft_castle_render.aether -o ci_gpu/cli_castle_gpu.png --backend gpu --adapter llvmpipe --width 480 --height 270 --shadows --json > ci_gpu/cli_render.json
           python benchmarks/bench_gpu.py --quick --no-4k --adapter llvmpipe --json ci_gpu/bench_lavapipe.json
+          python benchmarks/bench_feedback.py --smoke --adapter llvmpipe --json ci_gpu/bench_feedback_smoke.json
           python examples/gpu_path_showcase.py ci_gpu --quick --adapter llvmpipe
           aether3d render examples/output/minecraft_castle_render.aether -o ci_gpu/cli_castle_gpu_path.png --backend gpu_path --adapter llvmpipe --width 160 --height 90 --spp 4 --bounces 2 --json > ci_gpu/cli_render_gpu_path.json
           python -c "from PIL import Image; import sys; [print(p, Image.open(p).size, Image.open(p).info.get('Source')) for p in sys.argv[1:]]" ci_gpu/*.png
