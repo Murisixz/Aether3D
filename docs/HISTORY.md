@@ -53,11 +53,12 @@ Contents:
 | Scene plans | `scene.execute_plan(plan)`: the whole plan is one step, however many objects it makes or changes; a plan with `chunk_size` is one step per chunk, after a checkpoint `plan:KEY:before` ([SCENE_PLANS.md](SCENE_PLANS.md)) (0.11.0) |
 | Cameras and lights | every parameter (`obj.camera.fov = 35`, `obj.light.configure(...)`), the active camera |
 | World and settings | background, ambient light, the environment and its fields, render settings, the scene's name |
-| Meshes | `obj.mesh = ...`, committed edit sessions (`obj.edit_mesh()`, with `scope="shared"` too), committed sculpt sessions (`obj.sculpt()`: "Sculpt mesh of 'Head'"; 0.13.0) |
+| Meshes | `obj.mesh = ...`, committed edit sessions (`obj.edit_mesh()`, with `scope="shared"` too), committed sculpt sessions (`obj.sculpt()`: "Sculpt mesh of 'Head'"; 0.13.0); UV changes: `unwrap`, `project_uvs`, `edit_uvs` (0.14.0) |
 | Materials | create (presets too), every parameter, model, name, texture bindings and their options, remove, assign (whole objects and face groups), `convert_appearances` |
-| Textures | add (images, procedural graphs), name, sampler settings, graph and node parameters, embed and extract, remove |
+| Textures | add (images, procedural graphs, painted textures), name, sampler settings, graph and node parameters, embed and extract, remove; painted textures: every layer change, mask, background and **each stroke, fill and gradient: one step**, holding only the tiles it changed (0.14.0) |
+| Bakes | `scene.bake(..., apply=True)` and `transfer_textures`: the new textures, bindings and factors, one step (0.14.0) |
 | Procedural geometry | parameters and rules (scene and geometry), geometry nodes, sources (and `edit_source()` commits), modifiers (add, set, move, remove), assigning nodes to objects, `bake()`, `procedural.undo()` |
-| Scripts | a scene, edit, procedural or sculpt script is one step |
+| Scripts | a scene, edit, procedural, sculpt or texture script is one step |
 | Command line | every command that changes a project, when the project keeps a history (see [Command line](#command-line)) |
 
 These are the properties a future animation system would animate (transforms,
@@ -174,7 +175,8 @@ far, and `history.nbytes` estimates what the history holds.
   part's state before and after: an object's transform, its camera, its place in
   the hierarchy, a material, the procedural definitions.
 - **Shared data.** Meshes, image bytes and texture graphs are immutable and shared
-  by reference, never copied. Consecutive steps that change the procedural
+  by reference, never copied. A painted texture's step holds the 64 x 64 tiles a
+  stroke changed, before and after (16-bit RGBA: 32 KiB per tile), not the image. Consecutive steps that change the procedural
   definitions share one copy of them.
 - **What `nbytes` counts:** the states, plus the meshes and images that only the
   history still refers to. A mesh the scene still uses costs the history nothing.

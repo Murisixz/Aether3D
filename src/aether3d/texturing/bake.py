@@ -811,7 +811,7 @@ class _CPUTracer:
 
 def _tracer(ps: Any, backend: str, adapter: Any = None, *, hemisphere: bool = True):
     """The ray tracer of a bake. ``"auto"`` takes the GPU only for bakes with hemisphere
-    maps (AO, thickness: many rays per sample, where it was measured 7.5 times faster);
+    maps (AO, thickness: many rays per sample, where it was measured about 7 times faster);
     one projection ray per sample is not worth the transfers (measured slower at 4K)."""
     if backend == "cpu":
         return _CPUTracer(ps)

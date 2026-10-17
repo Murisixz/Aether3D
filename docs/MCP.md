@@ -111,10 +111,12 @@ problem; a plan with problems gives every problem, as in [SCENE_PLANS.md](SCENE_
 | `render_image` | an image file in the workspace (`.png`, linear `.hdr`/`.pfm`); `backend: "path"` or `"gpu_path"` path traces, within the server's sample budget |
 | `history` | `list`, `undo`, `redo` (`steps`), `checkpoint`, `goto`, `remove_checkpoint` (`name`) |
 | `export_scene` | a `.glb` or `.gltf` file (`allow_lossy`, `bake_textures`, `overwrite`) |
-| `run_script` | one of the engine's JSON scripts, atomically: edit scripts (polygon editing), procedural scripts, scene scripts, sculpt scripts (strokes, masks, dynamic topology, remeshing, symmetrize; [MODELING.md](MODELING.md#sculpt-scripts)) |
+| `run_script` | one of the engine's JSON scripts, atomically: edit scripts (polygon editing), procedural scripts, scene scripts, sculpt scripts (strokes, masks, dynamic topology, remeshing, symmetrize; [MODELING.md](MODELING.md#sculpt-scripts)), texture scripts (UV unwrapping and island edits, painted textures and layers, strokes in surface, view and UV space, fills, bakes, texture transfer; [TEXTURING.md](TEXTURING.md#texture-scripts-cli-and-mcp); 0.14.0) |
 | `inspect_mesh` | **inspect** (read-only, 0.13.0): one object's validity tier (`valid` < `manifold` < `closed` < `solid`) and quality in world units -- counts, boundary and non-manifold edges and vertices, winding, degenerate triangles, components, Euler characteristic, volume, edge lengths, smallest angle; `self_intersections: true` adds the exact test (needed for `solid`; meshes up to 2,000,000 triangles) |
+| `inspect_uvs` | **inspect** (read-only, 0.14.0): one object's UV diagnostics -- islands, flipped, degenerate and overlapping triangles (unintended) apart from stacked islands (deliberate), mirrored islands, stretch, texel density and spread, utilization, gaps -- with a layout image (`image`: `islands`, `density`, `stretch`, `overlaps`, `texture` with `texture`, or `none`; `size`) |
+| `inspect_texture` | **inspect** (read-only, 0.14.0): a texture's details (painted textures: size, encoding, layers with blend modes, opacity, masks, revision), the material slots using it, and a preview image (`preview_size`) |
 | `diagnostics` | checks with stable codes: `geometry`, `procedural`, `materials`, `history` |
-| `capabilities` | what the engine offers, by `topic`: `overview`, `plan`, `primitives`, `modifiers`, `materials`, `queries`, `limits`, `gpu`, `feedback`, `sculpt` |
+| `capabilities` | what the engine offers, by `topic`: `overview`, `plan`, `primitives`, `modifiers`, `materials`, `queries`, `limits`, `gpu`, `feedback`, `sculpt`, `texturing` |
 | `observe_scene` | **inspect**: render views (`view`, `views`: the active camera, a scene camera, a virtual camera, a close-up framed on objects, presets `top`/`front`/`iso`/...) and return the images as image content (`images`: `image`, `annotated` with numbered markers, `ids`, `depth`; `crops`), with measured facts per object (pixels, bounds, depth, border contact; for `focus` objects frustum, projected bounds, clipping and, with `occlusion`, what covers them) and for the image (coverage, luminance, black and clipped fractions). Nothing is added to the scene |
 | `diagnose_scene` | **inspect**: check the scene against `expectations` (kept for later calls) and default render checks, with your own visual `evaluations` grounded in the render's object index; findings with codes, magnitudes, regions and their basis |
 | `propose_corrections` | **propose**: typed corrections for the findings, each with its compiled scene plan or script, rationale, expected effect and safety (`safe`, `verify`, `approval`); `preview` applies them in a transaction, re-renders and rolls back |
@@ -168,6 +170,8 @@ way (`TIMEOUT`).
 | `aether3d://feedback/guide` | the visual feedback guide for agents (Markdown) |
 | `aether3d://sculpt/guide` | the sculpting guide for agents (Markdown): brushes, strokes, masks, symmetry, dynamic topology, remeshing, validity tiers, scripts |
 | `aether3d://schema/sculpt-script` | the sculpt script format's JSON Schema |
+| `aether3d://texturing/guide` | the texturing guide for agents (Markdown): UVs and their checks, painted textures, strokes, baking, texture scripts |
+| `aether3d://schema/texture-script` | the texture script format's JSON Schema |
 | `aether3d://schema/expectations`, `.../vision-evaluation`, `.../corrections` | the JSON Schemas of expectations, vision evaluations and correction actions |
 | `aether3d://observations/{id}`, `aether3d://observations/{id}/{kind}` | an observation's measured facts (JSON), its images (`image`, `annotated`, `ids`, `depth`; PNG) |
 
@@ -197,7 +201,8 @@ The server treats every argument, plan, path and imported file as untrusted.
   only with `"overwrite": true`. `scene_save` without `overwrite` replaces only the
   project this session opened or saved, and only if no one changed it on disk since
   (`PROJECT_CHANGED_ON_DISK`). `--read-only` refuses every write.
-- **No code execution.** Plans and scripts are declarative data. Expressions use the
+- **No code execution.** Plans and scripts are declarative data. Texture scripts name
+  textures by id or name only -- never a file path -- so they read and write no file. Expressions use the
   procedural engine's whitelisted evaluator; nothing is passed to `eval`, `exec`, a shell
   or a compiler; shaders are Aether3D's own, never compiled from arguments.
 - **Untrusted evaluations and actions.** Vision evaluations and correction actions are
@@ -226,6 +231,14 @@ The server treats every argument, plan, path and imported file as untrusted.
   and `diagnose_scene` with a `mesh_validity` expectation find the chin sunk into the
   pedestal, and a verified correction raises it: 18 tool calls in about 4.4 s on the CPU
   rasterizer.
+- [`examples/mcp_texture_agent.py`](../examples/mcp_texture_agent.py): an agent textures a
+  crate and a barrel over MCP -- a texture script binding a file path is refused
+  (`TEXTURE_NOT_FOUND` at `operations[3].texture`, nothing changed), a planar projection
+  folds the barrel's back onto its front, `inspect_uvs` shows the overlap and
+  `diagnose_scene` with a `uv_quality` expectation finds it exactly (`UV_OVERLAP`,
+  `UV_FLIPPED`), a second script unwraps the barrel and paints hoops and braces, and the
+  final diagnosis is accepted: 17 tool calls in 5.7 s (most of it the painting script,
+  2.7 s, and a first GPU render).
 
 On the machine of [the benchmark](SCENE_PLANS.md#performance) (i9-12900H, Python 3.14), a
 trivial tool call takes about 1.2 ms over stdio, and a plan of 10,000 objects about 9 ms

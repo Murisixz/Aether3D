@@ -1,6 +1,6 @@
 {
   "aether3d": "0.14.0",
-  "seconds": 8.779402530999505,
+  "seconds": 5.708976203983184,
   "orient": {
     "operations": [
       "unwrap",
@@ -82,7 +82,7 @@
     "findings": []
   },
   "texture": {
-    "id": "ed43b99b-a5a5-459e-8191-ad79e1679158",
+    "id": "d6469682-b6f7-4d4e-80ca-e245b4bbfc81",
     "name": "Barrel wood",
     "type": "painted",
     "width": 512,
@@ -96,7 +96,7 @@
     ],
     "layers": [
       {
-        "id": "e9c7d39ec8694389aa626309bf4e7405",
+        "id": "42022fee66004e7bbb591cee11ce91d2",
         "name": "Hoops",
         "kind": "paint",
         "blend": "normal",
@@ -121,7 +121,7 @@
       "layers": 1,
       "tiles": 40,
       "revision": 6,
-      "digest": "painted:ed43b99b-a5a5-459e-8191-ad79e1679158:139912497085344:6",
+      "digest": "painted:d6469682-b6f7-4d4e-80ca-e245b4bbfc81:140281229528096:6",
       "texture_bytes": 1398100
     }
   },
@@ -133,7 +133,7 @@
   "transcript": [
     {
       "tool": "capabilities",
-      "seconds": 0.0135,
+      "seconds": 0.0106,
       "error": false,
       "images": 0,
       "brief": {
@@ -147,7 +147,7 @@
     },
     {
       "tool": "scene_new",
-      "seconds": 0.0024,
+      "seconds": 0.0011,
       "error": false,
       "images": 0,
       "brief": {
@@ -163,7 +163,7 @@
     },
     {
       "tool": "execute_scene_plan",
-      "seconds": 0.042,
+      "seconds": 0.0373,
       "error": false,
       "images": 0,
       "brief": {
@@ -174,7 +174,7 @@
     },
     {
       "tool": "scene_info",
-      "seconds": 0.0032,
+      "seconds": 0.0033,
       "error": false,
       "images": 0,
       "brief": {
@@ -185,7 +185,7 @@
     },
     {
       "tool": "run_script",
-      "seconds": 0.1717,
+      "seconds": 0.1691,
       "error": true,
       "images": 0,
       "brief": {
@@ -207,7 +207,7 @@
     },
     {
       "tool": "run_script",
-      "seconds": 0.1598,
+      "seconds": 0.1591,
       "error": false,
       "images": 0,
       "brief": {
@@ -223,7 +223,7 @@
     },
     {
       "tool": "inspect_uvs",
-      "seconds": 0.2171,
+      "seconds": 0.1583,
       "error": false,
       "images": 1,
       "brief": {
@@ -235,7 +235,7 @@
     },
     {
       "tool": "observe_scene",
-      "seconds": 0.9984,
+      "seconds": 1.0124,
       "error": false,
       "images": 1,
       "brief": {
@@ -254,7 +254,7 @@
     },
     {
       "tool": "diagnose_scene",
-      "seconds": 0.2129,
+      "seconds": 0.0833,
       "error": false,
       "images": 0,
       "brief": {
@@ -275,7 +275,7 @@
     },
     {
       "tool": "run_script",
-      "seconds": 4.41,
+      "seconds": 2.6942,
       "error": false,
       "images": 0,
       "brief": {
@@ -296,7 +296,7 @@
     },
     {
       "tool": "inspect_uvs",
-      "seconds": 1.134,
+      "seconds": 0.2563,
       "error": false,
       "images": 1,
       "brief": {
@@ -308,7 +308,7 @@
     },
     {
       "tool": "diagnose_scene",
-      "seconds": 0.4894,
+      "seconds": 0.19,
       "error": false,
       "images": 0,
       "brief": {
@@ -318,7 +318,7 @@
     },
     {
       "tool": "observe_scene",
-      "seconds": 0.058,
+      "seconds": 0.0521,
       "error": false,
       "images": 1,
       "brief": {
@@ -337,12 +337,12 @@
     },
     {
       "tool": "inspect_texture",
-      "seconds": 0.0021,
+      "seconds": 0.0018,
       "error": false,
       "images": 0,
       "brief": {
         "texture": {
-          "id": "ed43b99b-a5a5-459e-8191-ad79e1679158",
+          "id": "d6469682-b6f7-4d4e-80ca-e245b4bbfc81",
           "name": "Barrel wood",
           "type": "painted",
           "width": 512,
@@ -356,7 +356,7 @@
           ],
           "layers": [
             {
-              "id": "e9c7d39ec8694389aa626309bf4e7405",
+              "id": "42022fee66004e7bbb591cee11ce91d2",
               "name": "Hoops",
               "kind": "paint",
               "blend": "normal",
@@ -381,7 +381,7 @@
             "layers": 1,
             "tiles": 40,
             "revision": 6,
-            "digest": "painted:ed43b99b-a5a5-459e-8191-ad79e1679158:139912497085344:6",
+            "digest": "painted:d6469682-b6f7-4d4e-80ca-e245b4bbfc81:140281229528096:6",
             "texture_bytes": 1398100
           }
         },
@@ -403,7 +403,7 @@
     },
     {
       "tool": "history",
-      "seconds": 0.0013,
+      "seconds": 0.0022,
       "error": false,
       "images": 0,
       "brief": {
@@ -416,7 +416,7 @@
     },
     {
       "tool": "scene_save",
-      "seconds": 0.0389,
+      "seconds": 0.041,
       "error": false,
       "images": 0,
       "brief": {

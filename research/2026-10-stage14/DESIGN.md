@@ -210,6 +210,38 @@ mips, GPU update); baking normal and AO at 1K-4K from 100k and 1M-face sources, 
 GPU; MikkTSpace at 10k-1M; peak memory per group in its own process. Baselines: the
 existing image path (decode, mip chain, pool upload) and `SceneAccel` ray rates.
 
-## 9. Outcome
+## 8. Outcome
 
-(written after the implementation)
+Implemented as planned, with these measured results (`benchmarks/results/stage14-texturing.json`
+at d5c70b9; tables in docs/TEXTURING.md#performance):
+
+- **Languages.** As decided in section 3: NumPy everywhere except the LDL^T factorization
+  and the packing placement (Rust, bit-identical twins) and the bake rays (WGSL). The
+  native factorization is 58 times faster than its twin and makes unwrapping 5.8 to 9.3
+  times faster; GPU AO rays run at 38.5 M rays/s against 5.3 M on all CPU cores. One
+  plan was revised by measurement: GPU *projection* rays (one per sample) were not
+  faster than the CPU at 4K (52.4 s against 45.3 s: the CPU shading of hits dominates and
+  the GPU adds transfers), so `backend="auto"` uses the GPU for AO and thickness only.
+  No feature was implemented twice to compare.
+- **Charts.** Splitting by dual-graph hop distance carved staircase borders; it was
+  replaced by geodesic distance (centroid to centroid) and a border-straightening pass
+  (faces or face pairs hanging on their side by one edge move across). Seam length on a
+  UV sphere and an organic block-out fell by 27% and 26%; meshes of long thin diagonal
+  quads still zigzag (the shortest edge paths).
+- **Diagnostics.** The overlap broad phase first clipped boxes to 64 cells, missing real
+  overlaps of long triangles; it now enters small boxes in a grid (each pair once) and
+  looks up the cells of large ones. Overlaps, flips and stacking are exact.
+- **Painting** follows the plan; seam padding was first done on the bounding rectangle of
+  a stroke's tiles (most of the texture for seam-crossing strokes) and is now local.
+- **Deviations from section 4**, stated so they are not mistaken for features: imported
+  glTF `TANGENT` attributes are ignored and MikkTSpace is recomputed (identical for files
+  written by MikkTSpace tools); seams are given as edge lists (no persistent `seam` edge
+  flag on `EditableMesh`), and existing UV seams are kept with `split_by="seams"` instead of
+  `keep_seams`; painted layers are embedded in the project file (base64 16-bit PNG) rather
+  than stored as content-addressed side files; brushes have no separate `flow` (dabs build
+  up through `strength`, capped by `opacity`); bake misses are always filled by the padding
+  dilation (and reported), not only on request; the UV report gives stretch, texel density
+  and an anisotropy layout image, not a separate angle-distortion measure.
+- **Known limits** are in docs/TEXTURING.md#limitations; the largest is the unwrap of very
+  large charts (a 500k-triangle hemisphere: about 2 minutes and several GiB), where a
+  supernodal factorization would be the next step.

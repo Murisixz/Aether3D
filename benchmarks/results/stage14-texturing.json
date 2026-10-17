@@ -1,0 +1,230 @@
+{
+  "label": "stage 14 d5c70b9",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.14.0",
+    "switches": {
+      "AETHER3D_EDITING_BULK": true,
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.14.0",
+      "reason": "loaded"
+    },
+    "git": "d5c70b9",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "unwrap:10k": {
+      "triangles": 10080,
+      "native": true,
+      "unwrap_s": 1.014,
+      "charts": 2,
+      "stretch_l2_max": 1.0249,
+      "unwrap_numpy_s": 5.911,
+      "uv_report_s": 0.705,
+      "utilization": 0.5302,
+      "layout_image_1024_s": 0.194,
+      "peak_rss_mib": 313.4
+    },
+    "unwrap:100k": {
+      "triangles": 99904,
+      "native": true,
+      "unwrap_s": 9.329,
+      "charts": 2,
+      "stretch_l2_max": 1.0242,
+      "unwrap_numpy_s": 87.105,
+      "uv_report_s": 3.398,
+      "utilization": 0.5336,
+      "layout_image_1024_s": 0.516,
+      "peak_rss_mib": 878.1
+    },
+    "unwrap:1m": {
+      "triangles": 998284,
+      "native": true,
+      "unwrap_s": 271.138,
+      "charts": 2,
+      "stretch_l2_max": 1.024,
+      "uv_report_s": 46.116,
+      "utilization": 0.5336,
+      "layout_image_1024_s": 2.736,
+      "peak_rss_mib": 9242.6
+    },
+    "mikktspace:10k": {
+      "triangles": 10080,
+      "mikktspace_s": 0.024,
+      "peak_rss_mib": 67.7
+    },
+    "mikktspace:100k": {
+      "triangles": 99904,
+      "mikktspace_s": 0.245,
+      "peak_rss_mib": 217.6
+    },
+    "mikktspace:1m": {
+      "triangles": 998284,
+      "mikktspace_s": 3.078,
+      "peak_rss_mib": 1656.3
+    },
+    "paint:1k": {
+      "texels": 1048576,
+      "first_dab_ms": 129.99,
+      "stroke_r0.05_dabs": 97,
+      "stroke_r0.05_ms": 122.448,
+      "stroke_r0.05_per_dab_ms": 1.262,
+      "stroke_r0.05_tiles": 13,
+      "stroke_r0.2_dabs": 67,
+      "stroke_r0.2_ms": 1141.828,
+      "stroke_r0.2_per_dab_ms": 17.042,
+      "stroke_r0.2_tiles": 54,
+      "fill_s": 0.217,
+      "composite_s": 0.044,
+      "level0_and_mips_s": 0.074,
+      "undo_fill_ms": 0.089,
+      "peak_rss_mib": 876.2
+    },
+    "paint:2k": {
+      "texels": 4194304,
+      "first_dab_ms": 137.258,
+      "stroke_r0.05_dabs": 97,
+      "stroke_r0.05_ms": 189.723,
+      "stroke_r0.05_per_dab_ms": 1.956,
+      "stroke_r0.05_tiles": 26,
+      "stroke_r0.2_dabs": 67,
+      "stroke_r0.2_ms": 1464.649,
+      "stroke_r0.2_per_dab_ms": 21.86,
+      "stroke_r0.2_tiles": 144,
+      "fill_s": 0.888,
+      "composite_s": 0.171,
+      "level0_and_mips_s": 0.318,
+      "undo_fill_ms": 0.189,
+      "peak_rss_mib": 876.3
+    },
+    "paint:4k": {
+      "texels": 16777216,
+      "first_dab_ms": 145.638,
+      "stroke_r0.05_dabs": 97,
+      "stroke_r0.05_ms": 352.988,
+      "stroke_r0.05_per_dab_ms": 3.639,
+      "stroke_r0.05_tiles": 55,
+      "stroke_r0.2_dabs": 67,
+      "stroke_r0.2_ms": 2418.491,
+      "stroke_r0.2_per_dab_ms": 36.097,
+      "stroke_r0.2_tiles": 437,
+      "fill_s": 5.477,
+      "composite_s": 0.693,
+      "level0_and_mips_s": 1.434,
+      "undo_fill_ms": 0.369,
+      "peak_rss_mib": 1645.0
+    },
+    "paint:8k": {
+      "texels": 67108864,
+      "first_dab_ms": 193.014,
+      "stroke_r0.05_dabs": 97,
+      "stroke_r0.05_ms": 812.524,
+      "stroke_r0.05_per_dab_ms": 8.377,
+      "stroke_r0.05_tiles": 152,
+      "stroke_r0.2_dabs": 67,
+      "stroke_r0.2_ms": 5679.45,
+      "stroke_r0.2_per_dab_ms": 84.768,
+      "stroke_r0.2_tiles": 1437,
+      "fill_s": 21.796,
+      "composite_s": 2.744,
+      "level0_and_mips_s": 5.934,
+      "undo_fill_ms": 1.061,
+      "peak_rss_mib": 4566.3
+    },
+    "bake:1k": {
+      "source_triangles": 998284,
+      "normal_cpu_s": 6.056,
+      "normal_cpu_stages": {
+        "setup": 3.426,
+        "rasterize": 0.318,
+        "trace": 0.156,
+        "shade": 1.696,
+        "finish": 0.089,
+        "total": 6.052
+      },
+      "miss_fraction": 0.0,
+      "ao64_cpu_s": 27.338,
+      "ao64_cpu_mrays_per_s": 5.29,
+      "normal_gpu_s": 3.527,
+      "normal_gpu_stages": {
+        "setup": 0.895,
+        "rasterize": 0.305,
+        "trace": 0.2,
+        "shade": 1.683,
+        "finish": 0.083,
+        "total": 3.523
+      },
+      "ao64_gpu_s": 3.75,
+      "ao64_gpu_mrays_per_s": 38.54,
+      "peak_rss_mib": 1786.0
+    },
+    "bake:2k": {
+      "source_triangles": 998284,
+      "normal_cpu_s": 13.809,
+      "normal_cpu_stages": {
+        "setup": 3.396,
+        "rasterize": 1.219,
+        "trace": 0.604,
+        "shade": 6.789,
+        "finish": 0.323,
+        "total": 13.79
+      },
+      "miss_fraction": 0.0,
+      "normal_gpu_s": 11.793,
+      "normal_gpu_stages": {
+        "setup": 0.864,
+        "rasterize": 1.216,
+        "trace": 1.29,
+        "shade": 6.631,
+        "finish": 0.322,
+        "total": 11.778
+      },
+      "peak_rss_mib": 2211.7
+    },
+    "bake:4k": {
+      "source_triangles": 998284,
+      "normal_cpu_s": 45.278,
+      "normal_cpu_stages": {
+        "setup": 3.345,
+        "rasterize": 4.881,
+        "trace": 2.301,
+        "shade": 27.337,
+        "finish": 1.257,
+        "total": 45.025
+      },
+      "miss_fraction": 2.792658382322344e-08,
+      "normal_gpu_s": 52.413,
+      "normal_gpu_stages": {
+        "setup": 0.901,
+        "rasterize": 7.973,
+        "trace": 5.684,
+        "shade": 26.892,
+        "finish": 4.298,
+        "total": 51.605
+      },
+      "peak_rss_mib": 6585.8
+    },
+    "pack": {
+      "pack_1024_s": 1.329,
+      "pack_1024_utilization": 0.5166,
+      "pack_2048_s": 2.348,
+      "pack_2048_utilization": 0.5268,
+      "pack_4096_s": 4.835,
+      "pack_4096_utilization": 0.5336,
+      "pack_8192_s": 12.565,
+      "pack_8192_utilization": 0.5336,
+      "peak_rss_mib": 3807.6
+    }
+  }
+}

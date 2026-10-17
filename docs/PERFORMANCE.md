@@ -113,8 +113,8 @@ is an error naming the variable). Benchmark records include their state.
 | `AETHER3D_MATERIAL_CACHE` | on | reuse materials resolved for earlier renders of a scene (`rendering/materials.py`, `MaterialCache`); `0` resolves every material for every render |
 | `AETHER3D_GPU_PERSISTENT_BUFFERS` | on | keep the GPU's per-frame data buffers between renders and write only what changed (`rendering/gpu/resources.py`, `FrameBuffers`); `0` creates fresh buffers for every render |
 | `AETHER3D_RETAINED_RENDER_WORLD` | on | keep what extraction computed between renders and update it from the history's change journal (`rendering/retained.py`, `RenderWorld`; it needs the material cache); `0` walks the whole scene for every render |
-| `AETHER3D_NATIVE` | on | use the native kernels of `aether3d-native` when installed (`aether3d/_native.py`: ray traversal, transform hierarchies, PNG filters); `0` uses the NumPy implementations, which give the same bits |
-| `AETHER3D_NATIVE_THREADS` | `1` | threads of the native ray traversal (`0`: one per CPU); results do not depend on it (a count, not an on/off switch) |
+| `AETHER3D_NATIVE` | on | use the native kernels of `aether3d-native` when installed (`aether3d/_native.py`: ray traversal, transform hierarchies, PNG filters; since 0.14.0 the sparse LDL^T factorization and solves of UV parameterization and the packing placement); `0` uses the NumPy implementations, which give the same bits |
+| `AETHER3D_NATIVE_THREADS` | `1` | threads of the native ray traversal (`0`: one per CPU); results do not depend on it (a count, not an on/off switch). Bakes use one thread per CPU unless it is set (0.14.0) |
 | `AETHER3D_EDITING_BULK` | on | build an `EditableMesh`'s faces, edges and corner layers from a `Mesh` in bulk with NumPy (`editing/core.py`, `MeshCore._bulk_faces`); `0` adds one face at a time |
 
 ## Phase 0: foundation and baseline
@@ -769,3 +769,36 @@ Measured choices:
   of the same quality (the tests check validity and quality, not ids). The mesh is
   replaced once, as one journaled step: 199 s and 3.4 GB at 1M, 27.4 s and 544 MiB at
   100k.
+
+## UV texture painting and baking (0.14.0)
+
+Stage 14 added two native kernels and one GPU kernel, each decided in the design record
+([research/2026-10-stage14/DESIGN.md](../research/2026-10-stage14/DESIGN.md)) before
+implementation:
+
+- **Sparse LDL^T** (`native/src/ldl.rs`: elimination tree, row patterns, up-looking
+  factorization, solves) for LSCM and SLIM, with a NumPy twin that gives the same bits
+  (`AETHER3D_NATIVE=0`). Unwrapping is 5.8 times faster at 10k triangles (1.0 s against
+  5.9 s) and 9.3 times at 100k (9.3 s against 87 s); the factorization is 58 times faster
+  than its twin.
+- **Packing placement** (`native/src/pack.rs`, the skyline search; integer decisions, the
+  twin is exactly equal).
+- **Bake rays on the GPU** (`wgsl/bake.wgsl`, sharing `wgsl/traverse.wgsl` with the GPU
+  path tracer): AO at 38.5 M rays/s against 5.3 M on all CPU cores.
+
+Measured with `benchmarks/bench_texturing.py` at d5c70b9
+(`benchmarks/results/stage14-texturing.json`; every table is in
+[TEXTURING.md](TEXTURING.md#performance)). Optimizations made during the stage, each
+checked equal to the code it replaced:
+
+| Change | Before | After |
+| --- | ---: | ---: |
+| MikkTSpace, 1M triangles: subgroup checks only where they can split | 7.2 s | 3.1 s |
+| bake 2048^2, normal + AO + curvature: per-chunk accumulation, frontier dilation | 41.7 s | 17.2 s |
+| `uv_report`, 100k triangles: exact-sign shortcuts in `orient2d`/`orient3d`, frontier gap search, edge neighbours by side tests, deduplication-free broad phase | 43 s | 3.4 s |
+| 100-dab stroke on an 8K texture: padding per tile window, one nearest-point query per stroke, cached surface | 7.8 s | 0.84 s |
+
+The UV report's broad phase also stopped missing overlaps: it clipped every box to 64
+grid cells, so long UV triangles (pole wedges of a spherical projection) went unpaired;
+a 1M-triangle projected sphere has 706 overlapping pairs (each verified with exact
+polygon clipping), of which it had reported 127.

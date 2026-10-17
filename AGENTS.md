@@ -16,6 +16,9 @@ apply to agents too.
   advanced modeling and sculpting: [docs/MODELING.md](docs/MODELING.md) (bevels, cuts,
   bridges, sweeps; brushes, dynamic topology, remeshing, symmetrize, validity tiers,
   sculpt scripts).
+- UV mapping, texture painting and baking: [docs/TEXTURING.md](docs/TEXTURING.md)
+  (unwrapping, projections, island tools, UV diagnostics, MikkTSpace, painted textures,
+  brushes, baking, texture transfer, texture scripts).
 - Procedural geometry: [docs/PROCEDURAL.md](docs/PROCEDURAL.md) (parameters, expressions, modifiers,
   caching, transactions, scripts).
 - Cameras, lights and rendering: [docs/RENDERING.md](docs/RENDERING.md) (conventions, pipeline,
@@ -158,6 +161,29 @@ apply to agents too.
   - **Measure what you report.** Remeshers and dynamic topology report counts and
     statistics computed on the result; validity tiers are measured (`solid` only with the
     exact self-intersection test). Never call a result valid without checking it.
+
+- UVs, painting and baking (`uv/`, `texturing/`, `materials/painted.py`):
+  - **NumPy twins for native kernels.** The sparse LDL^T factorization and the packing
+    placement have Rust kernels (`native/src/ldl.rs`, `pack.rs`) and NumPy versions that
+    must give the same bits (`tests/test_native.py`); change both or neither, and bump
+    `ABI` in `_native.py` and `native/src/lib.rs` when a signature changes.
+  - **MikkTSpace is a bit-exact port.** `uv/mikktspace.py` reproduces the reference C
+    code in float32 (`tests/data/mikktspace`, regenerated only from the reference harness
+    described there); the renderers' tangent convention (interpolated, unnormalized `T`,
+    `B = sign x cross(N, T)`) and the baker's exact inverse must change together
+    (`tests/test_tangents.py`, `tests/test_bake.py`).
+  - **Painted textures change through journaled tile replacements** (`replace_tiles`,
+    `replace_masks`, layer methods), each one history step; incremental level-0 and mip
+    updates must equal a full rebuild bit for bit (`tests/test_painted.py`). A stroke,
+    fill or bake commits once, after computing everything, so a failure changes nothing.
+  - **Validate before changing; scripts never touch files.** Texture scripts pass only
+    allowlisted arguments to each operation and resolve textures by id or name (never a
+    path); the fuzz tests (`tests/test_texture_script.py`) fail on any exception other
+    than `TexturingError`. A new operation or argument needs its allowlist entry, the
+    schema (`texturing/schema.py`), the guide (`texturing/guide.md`) and docs.
+  - **Diagnostics are exact or say what they are.** UV overlaps and flips use exact
+    predicates; stacked islands are reported apart from unintended overlaps; bake misses
+    and UV overlaps are counted, never hidden.
 
 - Operations history (`history.py`):
   - **Every change of a scene is recorded.** A new public method that changes the
@@ -345,6 +371,14 @@ apply to agents too.
   `aether3d sculpt check --require TIER` or MCP `inspect_mesh`; look with
   `observe_scene` and check with a `mesh_validity` expectation. Read the guide
   `aether3d://sculpt/guide` and match on error `code` and `location`.
+- Texture with `obj.unwrap()`, `obj.paint(...)`, `scene.bake(...)` (Python) or a texture
+  script (`aether3d texture run PROJECT script.json`, MCP `run_script` with format
+  `aether3d.texture-script`). Unwrap first and check with `aether3d texture report
+  --require-clean` or MCP `inspect_uvs` (`image: "overlaps"`): no flipped or overlapping
+  triangles. Paint with world-space points and world-unit radii (like sculpt strokes);
+  bind with `"factor": "#ffffff"` so painted colors show as painted; bake with
+  `apply: true` and read `miss_fraction`. Check with a `uv_quality` expectation; read the
+  guide `aether3d://texturing/guide` and match on error `code` and `location`.
 - Build or change procedural geometry with `scene.procedural` (Python) or
   `aether3d procedural run PROJECT script.json` (JSON). Read `aether3d procedural types --json`
   for schemas, wrap related changes in one `batch()`/script, and match on

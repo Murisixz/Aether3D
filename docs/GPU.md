@@ -475,6 +475,24 @@ Disagreement is allowed only within the documented boundary band (the filter
 width plus one pixel). On the castle at 240×135, 0 of 5,921 compared pixels
 disagree with the default settings, on both the RTX 4060 and llvmpipe.
 
+## Texturing on the GPU (0.14.0)
+
+- **MikkTSpace tangents** ([TEXTURING.md](TEXTURING.md#tangent-space)) are uploaded per
+  mesh (a `tangents` storage buffer, binding 5 of the mesh group) for meshes drawn with
+  a UV-mapped normal map, and interpolated by the rasterizer and the GPU path tracer
+  exactly as the CPU renderers do.
+- **Painted textures** go through the texel pool (one storage buffer of packed texels)
+  like other images. After a stroke, only the rows of the level-0 tiles and mip regions
+  it changed are written with `queue.write_buffer` (`stats["partial_uploads"]`); the
+  pool is not rebuilt.
+- **Bake rays** (`bake(..., backend="auto"|"gpu")`) run in a compute kernel
+  (`wgsl/bake.wgsl`) on the path tracer's scene words and BVH, with the traversal shared
+  with the path tracer (`wgsl/traverse.wgsl`): closest hits for projection rays, and AO
+  and thickness hemispheres generated on the GPU from each point's normal and random
+  shift (the CPU's Hammersley set). Items go in chunks of 2^20 per dispatch. The rest of
+  the bake (texel samples, shading of hits, accumulation, padding) is the CPU code, so a
+  GPU bake differs from a CPU bake by float32 rounding in the traversal only.
+
 ## GPU memory and caching
 
 - **Meshes** are uploaded once per device and shared by every instance (and

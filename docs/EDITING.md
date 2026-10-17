@@ -308,6 +308,18 @@ sharp.
   normals of its two faces differ across it.
 - New faces inherit the flag of the face they came from.
 
+### Computing UVs (0.14.0)
+
+`m.unwrap(faces=None, *, seams=None, split_by=("hard",), ...)` and
+`m.project_uvs(kind, faces=None, ...)` compute UVs inside an edit session with
+[`aether3d.uv`](TEXTURING.md#uv-mapping) and write them to the `"uv"` corner layer
+(created if the mesh has none): charts never split a polygon (each face's triangles stay
+together), the mesh's sharp edges are hard edges, and `seams` are edge ids to cut. With
+`faces`, only those faces get new UVs; the other islands keep their shapes and are
+repacked with them. Both are operations (atomic, undoable, in edit scripts:
+`{"op": "unwrap", "resolution": 1024, "padding": 8}`). Use them to repair UVs an
+operation could not keep (extrusion side walls, `UVS_UNDEFINED` faces).
+
 ## Face groups
 
 Every face belongs to a face group, an integer from 0 to 65535 (0 by

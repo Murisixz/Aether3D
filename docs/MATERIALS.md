@@ -240,10 +240,19 @@ ambient light.
   texel, before filtering, as GPU sRGB textures do. Data slots use the stored
   values. A texture's `color_space` (`"auto"`, `"srgb"`, `"linear"`) can force
   either.
-- **Normal maps.** The tangent frame comes from each triangle's corner
-  positions and texture coordinates (the classic UV-gradient construction).
-  It is made orthonormal against the interpolated normal. Mip levels of
-  normal maps average unit vectors and renormalize them.
+- **Normal maps.** UV-mapped normal maps are read in the **MikkTSpace**
+  tangent frame (0.14.0; [TEXTURING.md](TEXTURING.md#tangent-space)), the
+  standard that bakers, other engines and glTF use: every renderer
+  interpolates the per-corner tangent and sign, and maps baked by Aether3D or
+  by other MikkTSpace bakers render as intended. A binding that rotates,
+  mirrors or non-uniformly scales the UVs, and object- or world-mapped normal
+  textures, use each triangle's UV-gradient frame (made orthonormal against
+  the interpolated normal). Mip levels of normal maps average unit vectors
+  and renormalize them.
+- **Painted textures** (`scene.add_painted_texture`, 0.14.0) are image
+  textures you paint: 16-bit layers with blend modes, opacity and masks, kept
+  in the project file and in the history ([TEXTURING.md](TEXTURING.md#painted-textures)).
+  Bind them like any image.
 
 ```python
 m.set_texture("roughness", "rough.png", channel="r")  # a grayscale roughness map
@@ -744,15 +753,18 @@ In practice:
   environment images.
 - **No transmission.** No glass, refraction or subsurface scattering, on any
   renderer.
-- **Normal-map tangents** are derived per triangle (UV gradients), not
-  MikkTSpace. Maps baked against MikkTSpace tangents may shade slightly
-  differently on curved low-polygon meshes. glTF `TANGENT` attributes are
-  not imported (they are exported for UV-normal-mapped meshes).
+- **Normal-map tangents** are MikkTSpace for UV bindings that keep the UV
+  basis (0.14.0); rotated, mirrored or non-uniformly scaled bindings use the
+  per-triangle UV-gradient frame. glTF `TANGENT` attributes are not imported
+  (MikkTSpace is recomputed, which matches files written by MikkTSpace tools);
+  they are exported.
 - **Procedural patterns are point-sampled**, not prefiltered. Very fine
   patterns alias unless the image is supersampled (`samples` ≥ 2 on the CPU,
   `supersample` on the GPU). MSAA alone shades once per pixel.
 - **Texture coordinates.** One UV set per mesh (glTF `TEXCOORD_1` is not
-  imported). Images are 8 bits per channel after decoding.
+  imported). Images decoded from files are 8 bits per channel; painted
+  textures keep 16 bits per channel (their level 0 is filtered at 8 bits by
+  the renderers, as other images).
 - **File formats.** PNG and JPEG only. No KTX2/Basis, HDR or EXR textures.
 - **No displacement.** Bump and normal maps tilt normals; they do not move
   geometry.

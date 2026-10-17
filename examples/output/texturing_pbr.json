@@ -24,14 +24,14 @@
       "rows_used": 2037
     },
     "seconds": {
-      "charts": 0.6758603150083218,
-      "pack": 0.7871472390106646,
-      "total": 1.483244688002742
+      "charts": 0.6647290039982181,
+      "pack": 0.7803672650188673,
+      "total": 1.4650490770000033
     }
   },
   "textures": {
     "Orb color": {
-      "id": "726ff04a-9e34-49ff-9d22-fbf4268a7b19",
+      "id": "8cf8d6c7-1bf2-40ff-b44e-8ad2a30d0f3e",
       "name": "Orb color",
       "type": "painted",
       "width": 2048,
@@ -45,7 +45,7 @@
       ],
       "layers": [
         {
-          "id": "52032fea66d749a9a85dfd4d6c7efe07",
+          "id": "7c9c812b60d94ade9caa67d9a389920e",
           "name": "Paint",
           "kind": "paint",
           "blend": "normal",
@@ -70,12 +70,12 @@
         "layers": 1,
         "tiles": 327,
         "revision": 16,
-        "digest": "painted:726ff04a-9e34-49ff-9d22-fbf4268a7b19:140711979748464:16",
+        "digest": "painted:8cf8d6c7-1bf2-40ff-b44e-8ad2a30d0f3e:140710785633712:16",
         "texture_bytes": 22369620
       }
     },
     "Orb roughness": {
-      "id": "bf058fa4-e299-43b2-bb8b-089497e44cdd",
+      "id": "0355b5ed-f684-4efc-9824-e3035d3902db",
       "name": "Orb roughness",
       "type": "painted",
       "width": 2048,
@@ -89,7 +89,7 @@
       ],
       "layers": [
         {
-          "id": "06a478eb838143f9b33a103aa49255e3",
+          "id": "09179b36a71248f384969a9db4e4714f",
           "name": "Paint",
           "kind": "paint",
           "blend": "normal",
@@ -114,12 +114,12 @@
         "layers": 1,
         "tiles": 350,
         "revision": 22,
-        "digest": "painted:bf058fa4-e299-43b2-bb8b-089497e44cdd:140711980749968:22",
+        "digest": "painted:0355b5ed-f684-4efc-9824-e3035d3902db:140710784603840:22",
         "texture_bytes": 22369620
       }
     },
     "Orb metallic": {
-      "id": "bae0f020-4116-4092-b197-4f2199bf2226",
+      "id": "fcfa48cf-06ea-4c20-a164-0b873b208ab5",
       "name": "Orb metallic",
       "type": "painted",
       "width": 2048,
@@ -133,7 +133,7 @@
       ],
       "layers": [
         {
-          "id": "14e627ff67f448db96763ed1f6dfe606",
+          "id": "9c44534988d04ef2a43aa44fa45911cd",
           "name": "Paint",
           "kind": "paint",
           "blend": "normal",
@@ -158,12 +158,12 @@
         "layers": 1,
         "tiles": 327,
         "revision": 16,
-        "digest": "painted:bae0f020-4116-4092-b197-4f2199bf2226:140711980750288:16",
+        "digest": "painted:fcfa48cf-06ea-4c20-a164-0b873b208ab5:140710784604160:16",
         "texture_bytes": 22369620
       }
     },
     "Orb emission": {
-      "id": "1b78d89b-8035-4bdd-96fb-43b2fa5b3f97",
+      "id": "46dd8256-d46a-41d3-9c55-f4bf3094134f",
       "name": "Orb emission",
       "type": "painted",
       "width": 2048,
@@ -177,7 +177,7 @@
       ],
       "layers": [
         {
-          "id": "4044e5dbe66a4c62815fbea8aaa2df49",
+          "id": "b7defe203e0242da996858311ddf676e",
           "name": "Paint",
           "kind": "paint",
           "blend": "normal",
@@ -202,7 +202,7 @@
         "layers": 1,
         "tiles": 38,
         "revision": 7,
-        "digest": "painted:1b78d89b-8035-4bdd-96fb-43b2fa5b3f97:140711980750688:7",
+        "digest": "painted:46dd8256-d46a-41d3-9c55-f4bf3094134f:140710784604560:7",
         "texture_bytes": 22369620
       }
     }
@@ -238,7 +238,7 @@
       },
       "shadows": null,
       "device_created": true,
-      "device_init_seconds": 0.349817392998375,
+      "device_init_seconds": 0.34874935299740173,
       "resources": {
         "mesh_uploads": 2,
         "mesh_upload_bytes": 466136,
@@ -259,7 +259,7 @@
         "images": 4,
         "texel_uploads": 1,
         "texel_upload_bytes": 89478480,
-        "texel_upload_seconds": 0.20225949499581475,
+        "texel_upload_seconds": 0.19896331301424652,
         "texel_pool": {
           "images": 4,
           "bytes": 89478480,
@@ -329,15 +329,15 @@
         "nodes": 9537,
         "max_depth": 15,
         "bytes": 1601784,
-        "seconds_blas": 0.0330372900061775,
-        "seconds": 0.0337479690060718,
+        "seconds_blas": 0.03367775699007325,
+        "seconds": 0.0344226390006952,
         "traversal": {
           "rays": 230400,
           "shadow_rays": 0,
           "iterations": 310,
           "node_visits": 3501891,
           "triangle_tests": 946842,
-          "seconds": 0.07030494000355247
+          "seconds": 0.06678085602470674
         }
       },
       "work_estimate": {
@@ -432,8 +432,8 @@
         "nodes": 9537,
         "max_depth": 15,
         "bytes": 1601784,
-        "seconds_blas": 1.2742995750159025e-05,
-        "seconds": 0.0013719069975195453,
+        "seconds_blas": 1.2156000593677163e-05,
+        "seconds": 0.00116281199734658,
         "traversal": {
           "rays": 0,
           "shadow_rays": 0,
@@ -452,11 +452,11 @@
     }
   },
   "seconds": {
-    "build_and_paint": 18.463241000994458,
-    "cpu": 2.9822999510070076,
-    "gpu": 1.0758844169904478,
-    "path": 129.04124259500531,
-    "gpu_path": 4.401307399006328
+    "build_and_paint": 8.67431469602161,
+    "cpu": 2.9839737819856964,
+    "gpu": 1.0822969019936863,
+    "path": 128.61345406799228,
+    "gpu_path": 4.457704678003211
   },
   "rms": {
     "cpu_vs_gpu_raster": 0.014010816217462111,

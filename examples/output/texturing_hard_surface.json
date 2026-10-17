@@ -2,12 +2,12 @@
   "aether3d": "0.14.0",
   "failures": [],
   "timings": {
-    "unwrap_body": 0.2593193929933477,
-    "unwrap_knob": 0.02333432700834237,
-    "unwrap_bezel": 0.020463873996050097,
-    "bake_ao_curvature": 5.433055548011907,
-    "paint": 1.1060650099971099,
-    "render": 21.81917195999995
+    "unwrap_body": 0.25838309997925535,
+    "unwrap_knob": 0.023935779987368733,
+    "unwrap_bezel": 0.020217001991113648,
+    "bake_ao_curvature": 3.3585016089782584,
+    "paint": 1.2938609789998736,
+    "render": 21.86710014299024
   },
   "unwrap": {
     "triangles": 236,
@@ -32,9 +32,9 @@
       "rows_used": 1009
     },
     "seconds": {
-      "charts": 0.021271024001180194,
-      "pack": 0.23733169998740777,
-      "total": 0.25925820400880184
+      "charts": 0.02237274800427258,
+      "pack": 0.23530293299700134,
+      "total": 0.25831797599676065
     }
   },
   "uv": {
@@ -106,17 +106,17 @@
     "miss_fraction": 1.9222110040351126e-06,
     "rays": 268440361,
     "seconds": {
-      "setup": 0.7047119790076977,
-      "rasterize": 0.26906287600286305,
-      "trace": 0.18888666199927684,
-      "shade": 2.0856005149980774,
-      "finish": 1.8408009169943398,
-      "total": 5.429687244002707
+      "setup": 0.6974174669885542,
+      "rasterize": 0.2662857450195588,
+      "trace": 0.1896034860110376,
+      "shade": 1.6783733619085979,
+      "finish": 0.1866406250046566,
+      "total": 3.3551202890230343
     }
   },
   "textures": {
     "Cell color": {
-      "id": "13c1fa16-d22d-4447-b7c8-cf03d73ba268",
+      "id": "1d6390dd-f6d2-4315-88cb-a57744c286c1",
       "name": "Cell color",
       "type": "painted",
       "width": 1024,
@@ -130,7 +130,7 @@
       ],
       "layers": [
         {
-          "id": "f2165a119cd34b3f851a321ceb8ce0f8",
+          "id": "ffb02384e3824ca69ba318245b0d822a",
           "name": "Parts",
           "kind": "paint",
           "blend": "normal",
@@ -140,7 +140,7 @@
           "masked": false
         },
         {
-          "id": "354db6452f144d49960d92929c4fc06b",
+          "id": "b48abab5e8de4dcf9d89631254b7ee81",
           "name": "Stripe",
           "kind": "paint",
           "blend": "normal",
@@ -150,7 +150,7 @@
           "masked": false
         },
         {
-          "id": "66154b46c55d4dd283ac16e8b2e42d3c",
+          "id": "bf14c6dbf4ef43a8b68dd21ec160af3f",
           "name": "Shade",
           "kind": "paint",
           "blend": "normal",
@@ -160,7 +160,7 @@
           "masked": false
         },
         {
-          "id": "f6a643b5eba749ada4818e6c7cf43b8b",
+          "id": "a40b73e0d502496eaf6552af15571189",
           "name": "Rivets",
           "kind": "paint",
           "blend": "normal",
@@ -170,7 +170,7 @@
           "masked": false
         },
         {
-          "id": "91eb17944f894f93aa8cece83e7c7f52",
+          "id": "b7e7c40506f5457dad45faea47ff0412",
           "name": "Grime",
           "kind": "fill",
           "blend": "multiply",
@@ -186,7 +186,7 @@
           "masked": true
         },
         {
-          "id": "35ec7c4bee64467aab7206e703c4eb33",
+          "id": "173c7a81aa16430ebc0e83756c7ca6f3",
           "name": "Wear",
           "kind": "fill",
           "blend": "normal",
@@ -217,12 +217,12 @@
         "layers": 6,
         "tiles": 317,
         "revision": 21,
-        "digest": "painted:13c1fa16-d22d-4447-b7c8-cf03d73ba268:140127560777088:21",
+        "digest": "painted:1d6390dd-f6d2-4315-88cb-a57744c286c1:140400107597200:21",
         "texture_bytes": 5592404
       }
     },
     "Cell roughness": {
-      "id": "c6f5be62-69ad-4f8d-8c66-72ac82f8402e",
+      "id": "d3b9cb64-c0e7-49ab-8035-c453e624f9a8",
       "name": "Cell roughness",
       "type": "painted",
       "width": 1024,
@@ -236,7 +236,7 @@
       ],
       "layers": [
         {
-          "id": "5ed2f8e239d34e10bcb9efc1ae51e810",
+          "id": "06ce129b93314d2f8e51ea14844273ed",
           "name": "Parts",
           "kind": "paint",
           "blend": "normal",
@@ -246,7 +246,7 @@
           "masked": false
         },
         {
-          "id": "74958b43b05c41a89be17ef06710914b",
+          "id": "da79a5528eb240e1bdb02fbfede81340",
           "name": "Grime",
           "kind": "fill",
           "blend": "normal",
@@ -262,7 +262,7 @@
           "masked": true
         },
         {
-          "id": "7bb6c617f72343d297fc2278e0ef62b6",
+          "id": "d58681dc8f36432585be645014faf155",
           "name": "Wear",
           "kind": "fill",
           "blend": "normal",
@@ -293,12 +293,12 @@
         "layers": 3,
         "tiles": 63,
         "revision": 7,
-        "digest": "painted:c6f5be62-69ad-4f8d-8c66-72ac82f8402e:140127559227472:7",
+        "digest": "painted:d3b9cb64-c0e7-49ab-8035-c453e624f9a8:140400104577904:7",
         "texture_bytes": 5592404
       }
     },
     "Cell metallic": {
-      "id": "64c27138-8442-4426-bff9-8257bfcd9f7b",
+      "id": "eb8157d8-b4bb-4c56-bc0c-d71e997512d7",
       "name": "Cell metallic",
       "type": "painted",
       "width": 1024,
@@ -312,7 +312,7 @@
       ],
       "layers": [
         {
-          "id": "b85ba67a7b3446299b742b9e26546741",
+          "id": "f9b21f96922d477d94ca9f14d05c6caa",
           "name": "Parts",
           "kind": "paint",
           "blend": "normal",
@@ -322,7 +322,7 @@
           "masked": false
         },
         {
-          "id": "ff61f1a8fff445a490336230ffd37698",
+          "id": "0162aaa6d1064704886aa655d4a58071",
           "name": "Wear",
           "kind": "fill",
           "blend": "normal",
@@ -353,12 +353,12 @@
         "layers": 2,
         "tiles": 27,
         "revision": 4,
-        "digest": "painted:64c27138-8442-4426-bff9-8257bfcd9f7b:140127559228272:4",
+        "digest": "painted:eb8157d8-b4bb-4c56-bc0c-d71e997512d7:140400104578704:4",
         "texture_bytes": 5592404
       }
     },
     "Cell glow": {
-      "id": "067cd0ca-1e9a-4d26-9d76-51d5cdcfd40f",
+      "id": "8a73c06d-5af2-43cc-9c8b-08dca823622f",
       "name": "Cell glow",
       "type": "painted",
       "width": 1024,
@@ -372,7 +372,7 @@
       ],
       "layers": [
         {
-          "id": "5835a4387c064713af67e0b9adf6b27e",
+          "id": "7cb40ca9ba0a425b9c562d1a8631b781",
           "name": "Parts",
           "kind": "paint",
           "blend": "normal",
@@ -397,7 +397,7 @@
         "layers": 1,
         "tiles": 14,
         "revision": 2,
-        "digest": "painted:067cd0ca-1e9a-4d26-9d76-51d5cdcfd40f:140127559229472:2",
+        "digest": "painted:8a73c06d-5af2-43cc-9c8b-08dca823622f:140400104579904:2",
         "texture_bytes": 5592404
       }
     }
@@ -427,7 +427,7 @@
     },
     "hardware_ray_tracing": false,
     "device_created": true,
-    "device_init_seconds": 0.358529789999011,
+    "device_init_seconds": 0.35382794300676323,
     "dispatch": {
       "tiles": 4,
       "tile_size": 512,
@@ -478,8 +478,8 @@
       "nodes": 705,
       "max_depth": 9,
       "bytes": 113784,
-      "seconds_blas": 0.0033794629998737946,
-      "seconds": 0.0036897429963573813,
+      "seconds_blas": 0.0034917049924843013,
+      "seconds": 0.00381373698473908,
       "traversal": {
         "rays": 0,
         "shadow_rays": 0,

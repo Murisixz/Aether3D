@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.13.0 (advanced modeling and sculpting).** Aether3D provides:
+> **Status: v0.14.0 (UV texture painting and baking).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -22,6 +22,13 @@ graphical interface required.
 >   topology, isotropic and voxel remeshing, symmetrize and exact validity tiers,
 >   from Python, JSON scripts, the CLI and MCP -- one stroke one undo step, a
 >   million-vertex mesh in interactive time;
+> - **texturing**: automatic UV unwrapping (charts, LSCM and SLIM, packing),
+>   projections, island tools and exact UV diagnostics; 16-bit layered painted
+>   textures painted in 3D (across seams, through a camera with occlusion, in
+>   UV space) with symmetry, masks and blend modes; baking of normal, AO,
+>   curvature, thickness, height, ID and material maps from high-resolution
+>   sources on the CPU or GPU, with MikkTSpace tangents shared by the baker,
+>   every renderer and glTF;
 > - a **non-destructive procedural geometry engine**: parametric primitives,
 >   modifier stacks (transform, mirror, array, solidify, Catmull–Clark
 >   subdivision, bevel, solid booleans), typed parameters with safe
@@ -207,6 +214,59 @@ See [docs/MODELING.md](docs/MODELING.md) and the examples
 [`organic_sculpt.py`](examples/organic_sculpt.py),
 [`remesh_validity.py`](examples/remesh_validity.py) and
 [`mcp_sculpt_agent.py`](examples/mcp_sculpt_agent.py) (renders in `examples/output/`).
+
+### UV mapping, texture painting and baking
+
+```python
+from aether3d import Scene, create_sphere
+
+scene = Scene()
+ball = scene.add_object("Ball", mesh=create_sphere(1.0, 64, 32))
+unwrap = ball.unwrap(resolution=1024, padding=8)  # one undo step
+uvs = ball.uv_report(resolution=1024)
+print(unwrap["charts"], uvs["flipped_triangles"], uvs["overlapping_triangles"])  # 2 0 0
+
+paint = scene.add_painted_texture("Paint", 1024, 1024, background="#3d6fb5")
+paint.add_layer("Ink")
+material = scene.create_material("Painted", base_color="#ffffff")
+material.set_texture("base_color", paint)
+ball.material = material
+
+# A stroke in world space across the ball (radius in world units): one undo step.
+stroke = ball.paint(paint, {"radius": 0.15, "color": "#f2c230"}, [[0, -1, 0.3], [0.7, -0.7, 0.3]])
+print(stroke["dabs"], stroke["tiles"])  # 34 12
+print(scene.history.entries[-1].label)  # Paint stroke (paint) on 'Ball'
+
+# Bake normals and ambient occlusion from a detailed source onto the ball's UVs, and
+# bind them to its material (one undo step).
+scene.add_object("Detail", mesh=create_sphere(1.0, 256, 128))
+result = scene.bake(ball, ["Detail"], ["normal", "ao"], resolution=512, apply=True, backend="cpu")
+maps = sorted(result.report["applied"]["textures"])
+print(result.report["miss_fraction"], maps)  # 0.0 ['ao', 'normal']
+```
+
+- **UVs.** `unwrap` cuts charts at hard edges, groups and seams, flattens them without
+  flips (LSCM, then SLIM), splits until the stretch is low and packs them with padding;
+  projections, island tools (move, rotate, align, stitch, texel density, pack) and a UV
+  report that tells flips and unintended overlaps from deliberately stacked islands.
+- **Painting.** Painted textures with layers, blend modes, opacity and masks (16 bits,
+  64 x 64 tiles); brushes (paint, erase, blur, smudge, clone, mask) in world space across
+  UV seams, through a camera with occlusion, or in UV space; symmetry, pressure, material
+  strokes over several textures; one stroke, one undo step.
+- **Baking.** Normal (MikkTSpace, the renderers' own inverse), AO, thickness, curvature,
+  height, position, ID and material maps from high-resolution sources, cage-based,
+  supersampled, padded, CPU or GPU; `apply=True` binds them; texture transfer after a
+  remesh.
+- **For agents.** Texture scripts (atomic JSON), `aether3d texture run|report|bake`, the
+  MCP tools `run_script`, `inspect_uvs` and `inspect_texture`, and the feedback check
+  `uv_quality`.
+
+See [docs/TEXTURING.md](docs/TEXTURING.md) and the examples
+[`texturing_hard_surface.py`](examples/texturing_hard_surface.py),
+[`texturing_organic_paint.py`](examples/texturing_organic_paint.py),
+[`texturing_bake.py`](examples/texturing_bake.py),
+[`texturing_pbr.py`](examples/texturing_pbr.py) and
+[`mcp_texture_agent.py`](examples/mcp_texture_agent.py) (renders in `examples/output/`).
 
 ### Procedural geometry
 
@@ -459,13 +519,13 @@ pip install -e ".[mcp]"
 claude mcp add aether3d -- aether3d mcp serve --workspace "$PWD"   # Claude Code
 ```
 
-The server gives MCP clients 21 tools -- `execute_scene_plan`, `spatial_query`,
+The server gives MCP clients 23 tools -- `execute_scene_plan`, `spatial_query`,
 `render_preview` (the GPU rasterizer when it works, the CPU one otherwise, and it says
-which), `history`, `scene_save`, `export_scene`, `run_script` (edit, procedural, scene and
-sculpt scripts), `inspect_mesh`, the visual feedback tools (`observe_scene`,
-`diagnose_scene`, `propose_corrections`, `apply_corrections`, `feedback_loop`), ... --
-plus the plan, feedback and sculpting guides, their JSON Schemas and example plans as
-resources. It speaks stdio only, keeps every file inside the
+which), `history`, `scene_save`, `export_scene`, `run_script` (edit, procedural, scene,
+sculpt and texture scripts), `inspect_mesh`, `inspect_uvs`, `inspect_texture`, the visual
+feedback tools (`observe_scene`, `diagnose_scene`, `propose_corrections`,
+`apply_corrections`, `feedback_loop`), ... -- plus the plan, feedback, sculpting and
+texturing guides, their JSON Schemas and example plans as resources. It speaks stdio only, keeps every file inside the
 workspace, and never runs code from its arguments.
 
 ![An agent's castle: built with two mistakes, found by spatial queries, fixed, undone, redone, previewed and exported over MCP](examples/output/mcp_castle_agent.png)
@@ -642,6 +702,9 @@ $ aether3d topology world.aether --object Crate --json     # polygon topology + 
 $ aether3d edit world.aether script.json --json            # declarative JSON edit script
 $ aether3d sculpt run head.aether shape.json --json        # sculpt script (atomic, one undo step)
 $ aether3d sculpt check head.aether --require closed       # validity tiers (exit 3 if below)
+$ aether3d texture run crate.aether paint.json --json      # texture script (atomic, one undo step)
+$ aether3d texture report crate.aether --require-clean     # UV diagnostics (exit 3 on flips/overlaps)
+$ aether3d texture bake crate.aether --target Low --source High --map normal --map ao --out maps
 $ aether3d procedural run castle.aether build.json         # declarative procedural script
 $ aether3d procedural set castle.aether tower_count=8      # change parameters (validated)
 $ aether3d procedural inspect castle.aether --evaluate     # parameters, nodes, stacks
@@ -783,6 +846,7 @@ see [docs/PERFORMANCE.md](docs/PERFORMANCE.md#phase-3-native-kernels-rust).
 | [docs/INSPECTION.md](docs/INSPECTION.md) | Geometry inspection reports and diagnostic codes |
 | [docs/EDITING.md](docs/EDITING.md) | Mesh editing: topology, ids, sessions, operations, scripts, limitations |
 | [docs/MODELING.md](docs/MODELING.md) | Advanced modeling and sculpting: bevels, cuts, bridges, slides, sweeps; the sculpt mesh, brushes, strokes, masks, symmetry, dynamic topology, remeshing, symmetrize, validity tiers, scripts, CLI, MCP, history, design, performance, limitations |
+| [docs/TEXTURING.md](docs/TEXTURING.md) | UV mapping, texture painting and baking: unwrapping, projections, island tools, diagnostics, MikkTSpace, painted textures and layers, brushes and strokes, baking, texture transfer, scripts, CLI, MCP, safety, performance, limitations |
 | [docs/PROCEDURAL.md](docs/PROCEDURAL.md) | Procedural geometry: parameters, expressions, modifiers, caching, scripts, CLI, limitations |
 | [docs/RENDERING.md](docs/RENDERING.md) | Cameras, lights, the CPU renderer: pipeline, conventions, shading model, API, CLI, verification, performance, limitations |
 | [docs/GPU.md](docs/GPU.md) | The GPU backend: installation, adapters, pipeline, antialiasing, shadows, memory, CPU/GPU differences, benchmarks, debugging, the backend decision |

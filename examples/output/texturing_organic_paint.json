@@ -28,9 +28,9 @@
       "rows_used": 2047
     },
     "seconds": {
-      "charts": 1.8546064800029853,
-      "pack": 1.3076229409925872,
-      "total": 3.1841723999968963
+      "charts": 1.803191101003904,
+      "pack": 1.2586709769966546,
+      "total": 3.083168832992669
     }
   },
   "uv": {
@@ -55,7 +55,7 @@
     "utilization": 0.7145532243984623
   },
   "texture": {
-    "id": "b6f477d4-21fd-4c7e-9d1d-819d38e752ad",
+    "id": "d78b2c3e-ec9a-4ba6-af99-9ddad1f8092a",
     "name": "Skin",
     "type": "painted",
     "width": 2048,
@@ -69,7 +69,7 @@
     ],
     "layers": [
       {
-        "id": "8fdc31e9a79049d6a4bfe943123d3f6f",
+        "id": "8ced3c558d414d6b9a21672ae2f7c67f",
         "name": "Belly",
         "kind": "paint",
         "blend": "normal",
@@ -79,7 +79,7 @@
         "masked": false
       },
       {
-        "id": "35f68492272946ae87d7edc9004794d1",
+        "id": "585f290264604807b4ee16500da854e0",
         "name": "Spots",
         "kind": "paint",
         "blend": "normal",
@@ -89,7 +89,7 @@
         "masked": false
       },
       {
-        "id": "e0c6a37537544ec381b6e7c95114b427",
+        "id": "a091d30354544d26bec202b572142c35",
         "name": "Stripe",
         "kind": "paint",
         "blend": "normal",
@@ -99,7 +99,7 @@
         "masked": false
       },
       {
-        "id": "7db1d3dab53a4ac88cf636f0c37d1f22",
+        "id": "4b89bf4cffe544ee9797a9b0c79e6226",
         "name": "Horns",
         "kind": "paint",
         "blend": "normal",
@@ -109,7 +109,7 @@
         "masked": false
       },
       {
-        "id": "8c9736baaf20473b89c32bbd2d87314a",
+        "id": "8be5da6f901040b0b1f9a3a49a45909e",
         "name": "War paint",
         "kind": "paint",
         "blend": "normal",
@@ -134,7 +134,7 @@
       "layers": 5,
       "tiles": 676,
       "revision": 112,
-      "digest": "painted:b6f477d4-21fd-4c7e-9d1d-819d38e752ad:139788675242144:112",
+      "digest": "painted:d78b2c3e-ec9a-4ba6-af99-9ddad1f8092a:140534794787856:112",
       "texture_bytes": 22369620
     }
   },
@@ -146,35 +146,35 @@
       "texels": 293067,
       "tiles": 104,
       "skipped_dabs": 0,
-      "seconds": 1.3446651039994322
+      "seconds": 0.5716314059973229
     },
     "first_spot": {
       "dabs": 1,
       "texels": 5756,
       "tiles": 7,
       "skipped_dabs": 0,
-      "seconds": 0.04219142199144699
+      "seconds": 0.08986924900091253
     },
     "stripe": {
       "dabs": 348,
       "texels": 351894,
       "tiles": 218,
       "skipped_dabs": 0,
-      "seconds": 4.088580256007845
+      "seconds": 1.53224140801467
     },
     "war_paint": {
       "dabs": 44,
       "texels": 28705,
       "tiles": 30,
       "skipped_dabs": 0,
-      "seconds": 1.3942336100008106
+      "seconds": 1.376908893988002
     }
   },
   "spot_symmetry_alpha_difference": 0.0,
   "timings": {
-    "sculpt": 6.107692274992587,
-    "unwrap": 3.1842510249989573,
-    "paint": 13.70466997200856
+    "sculpt": 6.081949345010798,
+    "unwrap": 3.0849780019780155,
+    "paint": 9.17100502899848
   },
   "render": {
     "name": "gpu",
@@ -209,7 +209,7 @@
       "maps": [
         {
           "light": "Key",
-          "id": "148a5215-d029-46ef-ac82-07fc1479359c",
+          "id": "14ce19b5-ecf2-4356-91b2-02ac516a2d93",
           "map_size": 2048,
           "texel_size": 0.004625236376521113,
           "extent": [
@@ -221,7 +221,7 @@
         },
         {
           "light": "Rim",
-          "id": "9888bff1-0079-4a2f-96b8-7ffae06d698b",
+          "id": "cd444f65-6563-48c1-aec6-e85b9bbd87a4",
           "map_size": 2048,
           "texel_size": 0.004192741937438342,
           "extent": [
@@ -255,7 +255,7 @@
       "images": 2,
       "texel_uploads": 1,
       "texel_upload_bytes": 44739240,
-      "texel_upload_seconds": 0.1548955809994368,
+      "texel_upload_seconds": 0.15139971900498495,
       "texel_pool": {
         "images": 2,
         "bytes": 44739240,
