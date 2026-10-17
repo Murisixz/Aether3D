@@ -163,6 +163,12 @@ class Path3D:
         return float(self.lengths()[1][-1])
 
     def _circle_basis(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        found = self._cache.get("circle_basis")
+        if found is None:
+            found = self._cache["circle_basis"] = self._make_circle_basis()
+        return found
+
+    def _make_circle_basis(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         c, _, nrm, _ = self.circle  # type: ignore[misc]
         n = np.asarray(nrm, np.float64)
         n = n / np.linalg.norm(n)
@@ -173,7 +179,10 @@ class Path3D:
             e1 = np.array([1.0, 0.0, 0.0]) - n[0] * n
             e1 /= np.linalg.norm(e1)
         e2 = np.cross(n, e1)
-        return np.asarray(c, np.float64), e1, e2
+        out = (np.array(c, np.float64), e1, e2)
+        for a in out:
+            a.flags.writeable = False  # (shared by every call)
+        return out
 
     def _segment_length(self, s: int, u: np.ndarray) -> np.ndarray:
         """Arc length from the segment's start to ``u`` (Gauss-Legendre on [0, u])."""

@@ -22,6 +22,9 @@ Groups:
   overlay and the world matrices of the posed scene.
 * ``instances:N`` -- N objects playing one shared clip through NLA strips, each with its
   own time offset (crowds, fields, instanced props): evaluation, overlay, posed worlds.
+* ``crowd`` -- the 10,000 instances plus 48 walking blocky characters (rigs with six
+  attached parts each, one shared walk cycle in offset strips, looping circle paths): the
+  overlay with its rigging pass (rigs, attachments, path constraints) per frame.
 * ``rig:J`` -- a branching rig of J joints, every joint with a rotation track: the pose,
   forward kinematics and the rigging pass per frame.
 * ``skin:V`` -- linear blend skinning of V vertices (4 influences, 64 joints): NumPy,
@@ -62,7 +65,7 @@ SIZED = {
     "rig": ("50", "200"),
     "skin": ("10000", "100000", "1000000"),
 }
-GROUPS = ("ik", "nla", "generate", "frames", "gltf", "fit")
+GROUPS = ("crowd", "ik", "nla", "generate", "frames", "gltf", "fit")
 
 
 def _repeat(quick: bool, n: int) -> int:
@@ -210,6 +213,49 @@ def group_instances(size: str, quick: bool) -> dict[str, Any]:
 
     a.evaluate(0.1)
     out: dict[str, Any] = {"objects": n, "strips": n, "build_s": round(build, 3)}
+    out["evaluate_ms"] = ms(median_time(lambda: a.evaluate(fresh()), _repeat(quick, 7)))
+    out["overlay_ms"] = ms(median_time(lambda: a.overlay(fresh()), _repeat(quick, 7)))
+    out["posed_worlds_ms"] = ms(
+        median_time(lambda: world_matrices(s, a.overlay(fresh())), _repeat(quick, 5))
+    )
+    out["peak_rss_mib"] = peak_rss_mib()
+    return out
+
+
+def group_crowd(quick: bool) -> dict[str, Any]:
+    from test_animation_motion import blocky
+
+    from aether3d.rendering.scene_data import world_matrices
+
+    s = _instanced_scene(10_000)
+    a = s.animation
+    t0 = time.perf_counter()
+    walkers = []
+    for k in range(48):
+        arm = blocky(s, f"Walker {k}")
+        for joint in ("Body", "Head", "Arm.L", "Arm.R", "Leg.L", "Leg.R"):
+            part = s.add_cube(f"Walker {k} {joint}", size=0.25)
+            a.attach(part, arm, joint)
+        walkers.append(arm)
+    walk = a.generate(walkers[0], "walk", name="Walk", travel=False, bind=False)
+    for k, arm in enumerate(walkers):
+        radius = 28.0 + 2.5 * (k // 12)
+        a.add_path(f"Ring {k}", kind="circle", center=[0, 0, 0], radius=radius, start=0.0)
+        laps = walk["speed"] * 8.0 / (2 * 3.141592653589793 * radius)
+        a.follow_path(arm, f"Ring {k}", start=0.0, end=8.0, offsets=(k / 48, k / 48 + laps),
+                      easing=None, loop=True)  # fmt: skip
+        strip = {"clip": "Walk", "start": -(k % 7) * 0.1, "repeat": 12.0}
+        a.set_binding(arm, {"layers": [{"name": "walk", "strips": [strip]}]})
+    build = time.perf_counter() - t0
+    counter = [0]
+
+    def fresh() -> float:
+        counter[0] += 1
+        return 0.5 + 1e-4 * counter[0]  # a new time each run: nothing cached
+
+    a.overlay(0.1)
+    out: dict[str, Any] = {"objects": len(list(s.objects)), "rigs": 48,
+                           "crowd_build_s": round(build, 3)}  # fmt: skip
     out["evaluate_ms"] = ms(median_time(lambda: a.evaluate(fresh()), _repeat(quick, 7)))
     out["overlay_ms"] = ms(median_time(lambda: a.overlay(fresh()), _repeat(quick, 7)))
     out["posed_worlds_ms"] = ms(

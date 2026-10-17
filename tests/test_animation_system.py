@@ -20,7 +20,7 @@ from aether3d import Scene
 from aether3d.animation import rotation as R
 from aether3d.errors import AnimationError, ProjectFormatError
 from aether3d.rendering.overlay import animation_overlay
-from aether3d.rendering.scene_data import _extract_full, extract_render_scene
+from aether3d.rendering.scene_data import _extract_full, extract_render_scene, world_matrices
 from aether3d.serialization import scene_from_dict
 
 
@@ -507,3 +507,42 @@ def test_layer_masks_with_descendants_cover_the_joints_subtree():
     a.update_layer(arm, "upper", mask=[{"joint": "Chest"}])  # the joint alone
     pose = a.evaluate(0.0).joints[arm.id]
     assert "Upper" not in pose or pose["Upper"][1] is None
+
+
+def test_evaluation_inside_a_transaction_sees_the_authored_changes_made_in_it():
+    # (cached rest values are keyed by the scene revision, which an open transaction
+    # does not advance: inside one they are computed afresh)
+    s = Scene("Inside")
+    box = s.add_cube("Box")
+    lift = s.add_cube("Lift", position=(0, 0, 2.0))
+    arm = s.add_object("Arm")
+    hat = s.add_cube("Hat", position=(0, 0, 1.0))
+    a = s.animation
+    a.set_channel(box, "transform.position.z", [(0, 0.0), (1, 1.0)])  # (x, y authored)
+    a.add_clip("Up").set_channel("transform.position.z", [(0, 0.0), (1, 1.0)])
+    a.add_layer(lift, "add", mode="additive")
+    a.add_strip(lift, "add", "Up")
+    a.add_rig(arm, [{"name": "Root"}, {"name": "Head", "parent": "Root", "position": [0, 0, 1]}])
+    a.attach(hat, arm, "Head")
+    a.set_channel(arm, 'joints["Head"].position.x', [(0, 0.0), (1, 2.0)])
+
+    def state():
+        pose = a.evaluate(0.5)
+        hat_world = world_matrices(s, a.overlay(0.5))[hat.id][:3, 3]
+        return (
+            pose.position[pose.ids.index(box.id)],
+            pose.position[pose.ids.index(lift.id)],
+            hat_world,
+        )
+
+    state()  # (fills the caches)
+    with s.transaction("Move"):
+        box.position = (5.0, 0.0, 0.0)
+        lift.position = (0.0, 0.0, 10.0)
+        hat.position = (0.0, 3.0, 1.0)
+        inside = state()
+    after = state()
+    for got in (inside, after):
+        assert got[0].tolist() == [5.0, 0.0, 0.5]
+        assert got[1].tolist() == [0.0, 0.0, 10.5]
+        assert got[2] == pytest.approx([1.0, 3.0, 1.0])

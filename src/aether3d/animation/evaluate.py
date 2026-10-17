@@ -421,12 +421,19 @@ def _rest_scalar(
     return None
 
 
+def scene_key(scene: Any) -> int | None:
+    """The key of caches of the scene's authored state: its revision -- or ``None``
+    while an operation or transaction is open, whose changes the revision does not count
+    yet (such caches are then computed afresh and not kept, like spatial queries)."""
+    return None if scene._history.in_progress else scene.revision
+
+
 def _rest_values(prog: Program, system: AnimationSystem) -> dict[str, Any]:
     """Rest values of every slot (cached on the program per scene revision)."""
     scene = system.scene
-    key = scene.revision
+    key = scene_key(scene)
     cached = prog.rest_cache.get("rest")
-    if cached is not None and cached[0] == key:
+    if key is not None and cached is not None and cached[0] == key:
         return cached[1]
     rigs = system._rig_rest() if hasattr(system, "_rig_rest") else None
     values = np.zeros(len(prog.slots))
@@ -476,7 +483,8 @@ def _rest_values(prog: Program, system: AnimationSystem) -> dict[str, Any]:
                 qz = _euler_quats(prog, rest_euler, np.array([i]), np.array([z]))
                 deltas[i] = R.log(R.multiply(R.align(qa, qz), R.conjugate(qa)))[0]
         prog.e_delta_log[:] = deltas
-    prog.rest_cache["rest"] = (key, out)
+    if key is not None:
+        prog.rest_cache["rest"] = (key, out)
     return out
 
 
@@ -870,9 +878,9 @@ def _transform_plan(prog: Program) -> dict[str, Any]:
 
 def _transform_base(prog: Program, plan: dict[str, Any], system: AnimationSystem) -> dict:
     """The authored transforms of the plan's rows (cached per scene revision)."""
-    key = system.scene.revision
+    key = scene_key(system.scene)
     cached = prog.rest_cache.get("transform_base")
-    if cached is not None and cached[0] == key:
+    if key is not None and cached is not None and cached[0] == key:
         return cached[1]
     objects = system.scene._objects
     ids, pos, rot, scl = [], [], [], []
@@ -889,7 +897,8 @@ def _transform_base(prog: Program, plan: dict[str, Any], system: AnimationSystem
         "rotation": np.array(rot, np.float64).reshape(-1, 4),
         "scale": np.array(scl, np.float64).reshape(-1, 3),
     }
-    prog.rest_cache["transform_base"] = (key, base)
+    if key is not None:
+        prog.rest_cache["transform_base"] = (key, base)
     return base
 
 

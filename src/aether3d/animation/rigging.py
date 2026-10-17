@@ -60,6 +60,13 @@ class _Worlds:
         ids = tuple(local)
         overlay = RenderOverlay(ids=ids, local=np.array([local[i] for i in ids]).reshape(-1, 4, 4))
         self.world = {k: v.copy() for k, v in world_matrices(scene, overlay).items()}
+        self._order: dict[str, int] | None = None
+
+    def order(self) -> dict[str, int]:
+        """Each object's position in the scene's order (cached per scene revision)."""
+        if self._order is None:
+            self._order = _cached(self.scene, "scene_order", _scene_order)
+        return self._order
 
     def set_local(self, obj: Any, matrix: np.ndarray) -> None:
         from ..rendering.scene_data import _mat4_mul
@@ -122,9 +129,7 @@ def evaluate_rigging(system: AnimationSystem, pose: AnimationPose) -> RiggingRes
         if kind == "rig":
             item, rig = rigs[oid]
             if authored is None and rig.attachments:
-                from ..rendering.scene_data import world_matrices
-
-                authored = world_matrices(scene)
+                authored = _authored_worlds(system)
             _run_rig(system, pose, rig, oid, worlds, authored, result)
         else:
             _run_object_constraints(system, pose, oid, object_constraints[oid][1], worlds, result)
@@ -138,6 +143,32 @@ def evaluate_rigging(system: AnimationSystem, pose: AnimationPose) -> RiggingRes
             if mesh is not None:
                 result.meshes[oid] = mesh
     return result
+
+
+def _cached(scene: Any, name: str, make: Any) -> Any:
+    """``make(scene)``, cached on the animation program per scene revision (read only)."""
+    from .evaluate import scene_key
+
+    key = scene_key(scene)
+    cache = scene.animation._program().rest_cache
+    cached = cache.get(name)
+    if key is not None and cached is not None and cached[0] == key:
+        return cached[1]
+    value = make(scene)
+    if key is not None:
+        cache[name] = (key, value)
+    return value
+
+
+def _scene_order(scene: Any) -> dict[str, int]:
+    return {o._id: k for k, o in enumerate(scene)}
+
+
+def _authored_worlds(system: AnimationSystem) -> dict[str, np.ndarray]:
+    """World matrices of the authored scene (the rest of attachments)."""
+    from ..rendering.scene_data import world_matrices
+
+    return _cached(system.scene, "authored_worlds", world_matrices)
 
 
 def _target_objects(constraints: tuple[Constraint, ...], scene: Any) -> set[str]:
@@ -292,7 +323,7 @@ def _run_rig(
         assert authored is not None
         rest_model = rig.rest_model()
         a_rest = authored[arm_id]
-        for oid, jid in _attachments_in_order(scene, rig.attachments):
+        for oid, jid in _attachments_in_order(worlds.order(), rig.attachments):
             obj = scene._objects.get(oid)
             k = rig.index_of_id(jid)
             if obj is None or k is None:
@@ -311,8 +342,7 @@ def _run_rig(
             worlds.set_local(obj, np.linalg.solve(p_world, w_new))
 
 
-def _attachments_in_order(scene: Any, attachments: tuple) -> list:
-    order = {o._id: k for k, o in enumerate(scene)}
+def _attachments_in_order(order: dict[str, int], attachments: tuple) -> list:
     return sorted(attachments, key=lambda a: order.get(a[0], -1))
 
 
