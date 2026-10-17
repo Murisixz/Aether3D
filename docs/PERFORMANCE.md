@@ -802,3 +802,54 @@ The UV report's broad phase also stopped missing overlaps: it clipped every box 
 grid cells, so long UV triangles (pole wedges of a spherical projection) went unpaired;
 a 1M-triangle projected sphere has 706 overlapping pairs (each verified with exact
 polygon clipping), of which it had reported 127.
+
+## Precision modeling (0.15)
+
+Stage 15 decided its languages before implementation
+([research/2026-10-stage15/DESIGN.md](../research/2026-10-stage15/DESIGN.md), section 3):
+NumPy and LAPACK for geometry, the sketch solver, the B-rep kernel and exchange;
+Manifold (optional) for boolean topology; the existing ray core for hidden lines; and one
+native kernel:
+
+- **Batched polygon triangulation** (`native/src/earcut.rs`, `aether3d-native` 0.15.0,
+  ABI 3): ear clipping of many polygons with holes per call, for every planar face,
+  section and fill. It is the line-by-line twin of `cad.triangulate.triangulate_numpy`
+  (the same float64 operations in the same order, the same stable sorts), so the
+  triangles are bitwise identical (`tests/test_native.py`: 600 random and degenerate
+  polygons, real tessellations). 600 polygons with 66k points: 18.6 ms native, 770 ms
+  NumPy (41 times).
+
+Measured with `benchmarks/bench_cad.py` at 6fd147f
+(`benchmarks/results/stage15-cad.json`; i9-12900H laptop, Python 3.14, NumPy 2.5). Each
+group runs in its own process (peak RSS per group):
+
+| Workload | Size | Time | Peak RSS |
+| --- | --- | ---: | ---: |
+| sketch: first solve (with DOF analysis) | 15 / 95 / 999 / 4,999 constraints | 5.8 / 12 / 41 / 178 ms | 55-99 MiB |
+| sketch: one dimension changed | same | 1.2 / 9.8 / 38 / 188 ms | |
+| part: L-bracket build (7 features, 28 faces) | | 469 ms | 74 MiB |
+| part: parameter edit / last feature edit | | 273 / 189 ms | |
+| holes: one feature cutting N holes | 4 / 25 / 100 | 0.036 / 0.21 / 1.07 s | 75-348 MiB |
+| tessellation: sphere at 1e-3 / 1e-4 / 1e-5 of its size | 2.9k / 27.5k / 269k triangles | 4.2 / 27 / 244 ms | |
+| mass properties (exact, the bracket) | | 70 ms | |
+| assembly: plate and N pins, 2N mates (solve + DOF) | 4 / 16 / 64 pins | 8.5 / 31 / 121 ms | |
+| assembly: exact clash detection | 4 pins in their holes | 5.6 s | 336 MiB |
+| building: build | 2 x 16 / 4 x 100 / 10 x 100 rooms (80 / 880 / 2,200 walls) | 0.40 / 6.7 / 16.6 s | 68 / 131 / 227 MiB |
+| building: cold regeneration from definitions | same | 0.33 / 4.5 / 11.2 s | |
+| building: one door moved | same | 17 / 134 / 134 ms | |
+| drawing: plan / section / isometric (2 levels, 72 rooms) | 53k / 124k / 225k visibility rays | 1.23 / 0.83 / 1.14 s | 178 MiB |
+| STEP export / import (the bracket) | 31 kB | 28 / 22 ms | |
+| IFC4 export / import (2 levels, 72 rooms) | 312 products, 1.2 MB | 0.09 / 1.66 s | 124 MiB |
+
+Optimizations made during the stage, each checked equal to the code it replaced:
+
+| Change | Before | After |
+| --- | ---: | ---: |
+| sketch edit, 999 constraints: per-block exact rank check instead of the component's SVD (`BLOCK_CHECK_MIN`; a singular block falls back to the dense analysis) | 314 ms | 71 ms |
+| sketch edit, 4,999 constraints: pieces already satisfied and untouched are not solved again (equivalent: the solver would return at once; 5 Newton iterations instead of one solve per block) | 368 ms | 188 ms |
+| 100 holes in one feature: disjoint tools gathered as lumps of one body, one boolean (not pairwise unions) | 19.6 s | 1.07 s |
+| door moved on a 220-wall floor (`building:10x4`): rooms and door/window bodies reused by content key; one arrangement for all rooms; box-filtered point-in-polygon | 1.25 s | 0.134 s |
+
+Known slow spot: clash detection between a pin and a hole of its own diameter intersects
+coincident cylinders exactly (about 1.4 s per pair); it is exact (contact, not
+interference) but not yet fast.

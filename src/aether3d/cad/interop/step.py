@@ -332,7 +332,7 @@ def write_step(
         items = ",".join(f"#{x}" for x in [origin, *solids])
         rep = w.add(f"ADVANCED_BREP_SHAPE_REPRESENTATION({_str(bname)},({items}),#{ctx})")
         w.add(f"SHAPE_DEFINITION_REPRESENTATION(#{pds},#{rep})")
-    stamp = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S")
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     from ..._version import __version__
 
     header = [

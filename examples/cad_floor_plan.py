@@ -4,7 +4,8 @@ Run from the repository root:
 
     python examples/cad_floor_plan.py [OUTPUT_DIR] [--quick] [--backend auto|gpu|cpu]
 
-A 12 x 9 m flat on one level: exterior walls of one type, interior partitions of another,
+A 12 x 9 m flat on one level: exterior walls along the lines of a dimensioned footprint
+sketch (its length and depth are parameters), interior partitions of another type,
 doors and windows from families, five rooms found from the walls around their points.
 
 Checks (exact, from the parameters and the B-reps):
@@ -80,8 +81,17 @@ def build(scene: Scene):
             families=FAMILIES,
             materials={"leaf": "Oak", "frame": "Frame", "glass": "Glass", "slab": "Screed"},
         )
+        # The exterior walls follow a dimensioned sketch of the footprint (its dimensions
+        # are parameters); the partitions are placed by coordinates.
+        doc.parameter("length", "12 m")
+        doc.parameter("depth", "9 m")
+        footprint = doc.sketch("Footprint")
+        sides = footprint.rectangle((0, 0), (12, 9))
+        footprint.constrain("fix", "p1")
+        footprint.dimension("length", sides[0], value="=length")
+        footprint.dimension("length", sides[1], value="=depth")
         g = b.floor("Level 1", name="Level 1")
-        ext = g.walls([(0, 0), (12, 0), (12, 9), (0, 9)], type="Ext")
+        ext = g.walls_from_sketch(footprint, type="Ext")
         g.wall((7, 0), (7, 9), type="Int", id="spine")
         g.wall((0, 5), (7, 5), type="Int", id="hall")
         g.wall((7, 4.5), (12, 4.5), type="Int", id="beds")
@@ -120,6 +130,10 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.perf_counter()
     doc, building, floor = build(scene)
     report["build_seconds"] = time.perf_counter() - t0
+    sketch = doc.info("Footprint")
+    report["footprint_sketch"] = {k: sketch[k] for k in ("status", "dof", "reference")}
+    if sketch["status"] != "fully_constrained":
+        failures.append(f"the footprint sketch is {sketch['status']}")
     q = floor.quantities()
     report["totals"] = q["totals"]
     report["gross_floor_area_m2"] = q["gross_floor_area"]

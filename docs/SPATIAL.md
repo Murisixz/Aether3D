@@ -372,6 +372,11 @@ object whose procedural geometry fails to evaluate has an `error` (the
   bit, run after run and in a fresh copy of the scene: traversal orders and tie
   breaks are fixed, and sampling is a fixed sequence.
 
+Objects that show CAD items ([CAD.md](CAD.md)) are queried like any mesh object: on
+their display tessellation, within its chord tolerance of the exact geometry. For exact
+answers about CAD geometry use `scene.cad.measure(...)` (exact surfaces and curves). CAD
+drawings use the same ray core for their hidden lines (0.15.0).
+
 ## JSON requests, the command line and scripts
 
 Every query is also a JSON request with the Python argument names:

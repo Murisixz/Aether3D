@@ -1,0 +1,329 @@
+{
+  "label": "stage15 6fd147f",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.15.0",
+    "switches": {
+      "AETHER3D_EDITING_BULK": true,
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.15.0",
+      "reason": "loaded"
+    },
+    "git": "6fd147f",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "sketch:2": {
+      "constraints": 15,
+      "equations_dof": 0,
+      "status": "fully_constrained",
+      "first_solve_ms": 5.789,
+      "dimension_edit_ms": 1.201,
+      "blocks": 16,
+      "peak_rss_mib": 55.4
+    },
+    "sketch:12": {
+      "constraints": 95,
+      "equations_dof": 0,
+      "status": "fully_constrained",
+      "first_solve_ms": 12.048,
+      "dimension_edit_ms": 9.797,
+      "blocks": 96,
+      "peak_rss_mib": 97.5
+    },
+    "sketch:125": {
+      "constraints": 999,
+      "equations_dof": 0,
+      "status": "fully_constrained",
+      "first_solve_ms": 40.707,
+      "dimension_edit_ms": 37.824,
+      "blocks": 1000,
+      "peak_rss_mib": 67.3
+    },
+    "sketch:625": {
+      "constraints": 4999,
+      "equations_dof": 0,
+      "status": "fully_constrained",
+      "first_solve_ms": 178.153,
+      "dimension_edit_ms": 188.032,
+      "blocks": 5000,
+      "peak_rss_mib": 98.9
+    },
+    "booleans:4": {
+      "holes": 4,
+      "seconds": 0.0357,
+      "faces": 14,
+      "valid": true,
+      "peak_rss_mib": 75.4
+    },
+    "booleans:25": {
+      "holes": 25,
+      "seconds": 0.2081,
+      "faces": 56,
+      "valid": true,
+      "peak_rss_mib": 137.0
+    },
+    "booleans:100": {
+      "holes": 100,
+      "seconds": 1.0724,
+      "faces": 206,
+      "valid": true,
+      "peak_rss_mib": 347.6
+    },
+    "assembly:4": {
+      "components": 5,
+      "mates": 8,
+      "solve_ms": 8.489,
+      "status": "under_constrained",
+      "dof": {
+        "plate": 0,
+        "pin0": 1,
+        "pin1": 1,
+        "pin2": 1,
+        "pin3": 1
+      },
+      "clash_ms": 5632.632,
+      "contacts": 4,
+      "interferences": 0,
+      "peak_rss_mib": 336.2
+    },
+    "assembly:16": {
+      "components": 17,
+      "mates": 32,
+      "solve_ms": 30.529,
+      "status": "under_constrained",
+      "dof": {
+        "plate": 0,
+        "pin0": 1,
+        "pin1": 1,
+        "pin2": 1,
+        "pin3": 1,
+        "pin4": 1,
+        "pin5": 1,
+        "pin6": 1,
+        "pin7": 1,
+        "pin8": 1,
+        "pin9": 1,
+        "pin10": 1,
+        "pin11": 1,
+        "pin12": 1,
+        "pin13": 1,
+        "pin14": 1,
+        "pin15": 1
+      },
+      "peak_rss_mib": 72.1
+    },
+    "assembly:64": {
+      "components": 65,
+      "mates": 128,
+      "solve_ms": 120.759,
+      "status": "under_constrained",
+      "dof": {
+        "plate": 0,
+        "pin0": 1,
+        "pin1": 1,
+        "pin2": 1,
+        "pin3": 1,
+        "pin4": 1,
+        "pin5": 1,
+        "pin6": 1,
+        "pin7": 1,
+        "pin8": 1,
+        "pin9": 1,
+        "pin10": 1,
+        "pin11": 1,
+        "pin12": 1,
+        "pin13": 1,
+        "pin14": 1,
+        "pin15": 1,
+        "pin16": 1,
+        "pin17": 1,
+        "pin18": 1,
+        "pin19": 1,
+        "pin20": 1,
+        "pin21": 1,
+        "pin22": 1,
+        "pin23": 1,
+        "pin24": 1,
+        "pin25": 1,
+        "pin26": 1,
+        "pin27": 1,
+        "pin28": 1,
+        "pin29": 1,
+        "pin30": 1,
+        "pin31": 1,
+        "pin32": 1,
+        "pin33": 1,
+        "pin34": 1,
+        "pin35": 1,
+        "pin36": 1,
+        "pin37": 1,
+        "pin38": 1,
+        "pin39": 1,
+        "pin40": 1,
+        "pin41": 1,
+        "pin42": 1,
+        "pin43": 1,
+        "pin44": 1,
+        "pin45": 1,
+        "pin46": 1,
+        "pin47": 1,
+        "pin48": 1,
+        "pin49": 1,
+        "pin50": 1,
+        "pin51": 1,
+        "pin52": 1,
+        "pin53": 1,
+        "pin54": 1,
+        "pin55": 1,
+        "pin56": 1,
+        "pin57": 1,
+        "pin58": 1,
+        "pin59": 1,
+        "pin60": 1,
+        "pin61": 1,
+        "pin62": 1,
+        "pin63": 1
+      },
+      "peak_rss_mib": 109.0
+    },
+    "building:4x2": {
+      "levels": 2,
+      "walls": 80,
+      "doors": 32,
+      "rooms": 32,
+      "build_s": 0.399,
+      "door_edit_ms": 16.632,
+      "door_edit_evaluations": 1.0,
+      "cold_regeneration_s": 0.329,
+      "peak_rss_mib": 67.8
+    },
+    "building:10x4": {
+      "levels": 4,
+      "walls": 880,
+      "doors": 400,
+      "rooms": 400,
+      "build_s": 6.699,
+      "door_edit_ms": 134.324,
+      "door_edit_evaluations": 1.0,
+      "cold_regeneration_s": 4.496,
+      "peak_rss_mib": 130.9
+    },
+    "building:10x10": {
+      "levels": 10,
+      "walls": 2200,
+      "doors": 1000,
+      "rooms": 1000,
+      "build_s": 16.624,
+      "door_edit_ms": 133.957,
+      "door_edit_evaluations": 1.0,
+      "cold_regeneration_s": 11.218,
+      "peak_rss_mib": 227.1
+    },
+    "features": {
+      "faces": 28,
+      "build_ms": 469.469,
+      "parameter_edit_ms": 273.141,
+      "last_feature_edit_ms": 189.177,
+      "peak_rss_mib": 73.7
+    },
+    "tessellate": {
+      "sphere@0.001": {
+        "triangles": 2904,
+        "ms": 4.206
+      },
+      "sphere@0.0001": {
+        "triangles": 27544,
+        "ms": 27.421
+      },
+      "sphere@1e-05": {
+        "triangles": 269424,
+        "ms": 244.086
+      },
+      "torus@0.001": {
+        "triangles": 3200,
+        "ms": 5.29
+      },
+      "torus@0.0001": {
+        "triangles": 29504,
+        "ms": 29.24
+      },
+      "torus@1e-05": {
+        "triangles": 289832,
+        "ms": 258.501
+      },
+      "bracket@0.001": {
+        "triangles": 460,
+        "ms": 3.39
+      },
+      "bracket@0.0001": {
+        "triangles": 1276,
+        "ms": 4.318
+      },
+      "bracket@1e-05": {
+        "triangles": 3836,
+        "ms": 6.478
+      },
+      "bracket_mass_properties_ms": 70.279,
+      "peak_rss_mib": 235.0
+    },
+    "drawing": {
+      "plan": {
+        "ms": 1225.648,
+        "polylines": 1684,
+        "hatches": 228,
+        "rays": 52792,
+        "png_ms": 182.402,
+        "png_pixels": 1935180
+      },
+      "section": {
+        "ms": 833.6,
+        "polylines": 362,
+        "hatches": 14,
+        "rays": 124420,
+        "png_ms": 48.684,
+        "png_pixels": 1935180
+      },
+      "iso": {
+        "ms": 1141.237,
+        "polylines": 1528,
+        "hatches": 0,
+        "rays": 225420,
+        "png_ms": 75.872,
+        "png_pixels": 1935180
+      },
+      "peak_rss_mib": 172.7
+    },
+    "exchange": {
+      "step_bytes": 30754,
+      "step_export_ms": 28.343,
+      "step_import_ms": 22.074,
+      "ifc_bytes": 1226073,
+      "ifc_products": 312,
+      "ifc_export_s": 0.091,
+      "ifc_import_s": 1.661,
+      "ifc_elements_read": 312,
+      "peak_rss_mib": 123.8
+    },
+    "triangulate": {
+      "polygons": 600,
+      "points": 66326,
+      "native_ms": 18.564,
+      "numpy_ms": 769.717,
+      "triangles": 61069,
+      "bitwise_equal": true,
+      "peak_rss_mib": 74.3
+    }
+  }
+}

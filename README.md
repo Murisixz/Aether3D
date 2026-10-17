@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.14.0 (UV texture painting and baking).** Aether3D provides:
+> **Status: v0.15.0 (precision modeling, CAD and architecture).** Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -70,11 +70,22 @@ graphical interface required.
 >   agent's own visual evaluations, and correct what is wrong with verified, undoable
 >   steps -- by hand, in a budgeted loop, from Python, the CLI or MCP. Every finding says
 >   whether it was measured or judged; the engine never claims to have seen anything;
+> - **precision modeling and CAD**: units and tolerances, parametric sketches solved
+>   under constraints and dimensions (exact DOF, redundancy and conflict analysis), solid
+>   parts built from features (extrudes, revolves, sweeps, lofts, holes, fillets,
+>   chamfers, shells, patterns, booleans) on an exact B-rep with persistent face names,
+>   assemblies with mates and clash detection, exact measurements and mass properties,
+>   drawings (plans, sections, elevations, isometric views with hidden lines; SVG, DXF,
+>   PNG), and STEP and DXF exchange;
+> - **architecture and BIM**: levels, walls with exact joins, doors and windows from
+>   families, rooms found from the walls, slabs, roofs, stairs checked against your
+>   criteria, columns and beams, IFC base quantities, schedules, and IFC4 export and
+>   import validated with IfcOpenShell;
 > - **incremental rendering and optional native kernels**: renders update only what
 >   changed since the last one (a 10,000-object GPU frame in 7-8 ms when nothing
 >   changed), and the optional `aether3d-native` package (Rust) traces rays, builds
->   transform hierarchies and filters PNG rows with exactly the results of the NumPy code
->   ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
+>   transform hierarchies, filters PNG rows and triangulates polygons with exactly the
+>   results of the NumPy code ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
 > Animation, physics and other systems are intentionally **not** part of
@@ -267,6 +278,81 @@ See [docs/TEXTURING.md](docs/TEXTURING.md) and the examples
 [`texturing_bake.py`](examples/texturing_bake.py),
 [`texturing_pbr.py`](examples/texturing_pbr.py) and
 [`mcp_texture_agent.py`](examples/mcp_texture_agent.py) (renders in `examples/output/`).
+
+### Precision modeling, CAD and buildings
+
+```python
+from aether3d import Scene
+
+scene = Scene()
+doc = scene.cad
+doc.set_units(length="mm")
+doc.parameter("width", "80 mm")
+
+sketch = doc.sketch("Profile")  # on the XY plane
+lines = sketch.rectangle((0, 0), (80, 40))  # four lines, horizontal and vertical
+sketch.constrain("fix", "p1")
+sketch.dimension("length", lines[0], value="=width")
+sketch.dimension("length", lines[1], value="40 mm")
+print(doc.info("Profile")["status"])  # fully_constrained
+
+part = doc.part("Plate")
+part.extrude(sketch, 10, id="base")  # 10 mm, the document's unit
+part.hole(
+    "base:end",
+    [[20, 20, 10], [60, 20, 10]],
+    8,
+    kind="counterbore",
+    cbore_diameter=14,
+    cbore_depth=4,
+    id="holes",
+)
+part.fillet([{"edge": ["base:end", "base:side/r2"]}], 3, id="round")
+m = part.measure("main")
+print(m["valid"], round(m["volume"], 3))  # True 30088.053
+
+doc.parameter("width", "100 mm")  # everything downstream regenerates
+print(round(part.measure("main")["volume"], 3))  # 38088.053
+gap = doc.measure(
+    {"part": "Plate", "face": "holes.0:rev/wall.0"}, {"part": "Plate", "face": "holes.1:rev/wall.0"}
+)
+print(round(gap["axis_distance"], 9))  # 40.0
+
+doc.drawing("Top", "top", ["Plate"])
+svg = doc.result("Top").to_svg()  # also .to_dxf(), .to_png(dpi)
+step = doc.export_step(["Plate"])  # exact B-rep, AP214
+print(step.splitlines()[0], len(doc.import_step(step, name="Copy")))  # ISO-10303-21; 1
+```
+
+- **Exact, not approximated.** Parts are boundary representations on exact planes,
+  quadrics, tori and NURBS; meshes are derived for display within a stated chord. Mass
+  properties are integrated on the exact surfaces. Booleans use Manifold for robust
+  topology and reconstruct an exact B-rep from it (no claim of exact surface-surface
+  booleans).
+- **Parametric.** Parameters and expressions with units drive sketches, features,
+  buildings and drawings; a change regenerates only what depends on it, as one undo
+  step. Constraint conflicts are refused with the constraints named.
+- **Buildings.** Walls with exact joins, families of doors and windows, rooms from the
+  walls, slabs, roofs, stairs (checked against criteria you give -- no building code is
+  assumed), columns, beams; quantities, schedules, plans and IFC4.
+- **Exchange.** STEP (exact solids), IFC4, DXF, SVG and PNG; imports are untrusted data
+  with strict limits; Open CASCADE, IfcOpenShell and ezdxf validate the output in the
+  tests (optional).
+- **For agents.** CAD scripts (atomic JSON with `expect` checks), `aether3d cad
+  run|info|export|import`, the MCP tools `run_script`, `inspect_cad`, `import_cad` and
+  `export_scene`, the scene-plan operation `cad`, and the feedback checks `cad_valid` and
+  `cad_dimension`.
+
+![A parametric L-bracket: path-traced render and drawings (front with hidden lines, top, section, isometric)](examples/output/cad_bracket.png)
+
+![A two-storey house: render, first floor plan, section through the stair, south elevation](examples/output/cad_modern_house.png)
+
+See [docs/CAD.md](docs/CAD.md), [docs/BUILDINGS.md](docs/BUILDINGS.md) and the examples
+[`cad_bracket.py`](examples/cad_bracket.py), [`cad_floor_plan.py`](examples/cad_floor_plan.py),
+[`cad_modern_house.py`](examples/cad_modern_house.py),
+[`cad_grid_building.py`](examples/cad_grid_building.py) and
+[`mcp_cad_agent.py`](examples/mcp_cad_agent.py) (outputs in `examples/output/`: renders,
+drawings, STEP, IFC, DXF, schedules).
 
 ### Procedural geometry
 
@@ -519,13 +605,14 @@ pip install -e ".[mcp]"
 claude mcp add aether3d -- aether3d mcp serve --workspace "$PWD"   # Claude Code
 ```
 
-The server gives MCP clients 23 tools -- `execute_scene_plan`, `spatial_query`,
+The server gives MCP clients 25 tools -- `execute_scene_plan`, `spatial_query`,
 `render_preview` (the GPU rasterizer when it works, the CPU one otherwise, and it says
-which), `history`, `scene_save`, `export_scene`, `run_script` (edit, procedural, scene,
-sculpt and texture scripts), `inspect_mesh`, `inspect_uvs`, `inspect_texture`, the visual
+which), `history`, `scene_save`, `export_scene` (glTF, and STEP, IFC, DXF, SVG and PNG of
+CAD items), `run_script` (edit, procedural, scene, sculpt, texture and CAD scripts),
+`inspect_mesh`, `inspect_uvs`, `inspect_texture`, `inspect_cad`, `import_cad`, the visual
 feedback tools (`observe_scene`, `diagnose_scene`, `propose_corrections`,
-`apply_corrections`, `feedback_loop`), ... -- plus the plan, feedback, sculpting and
-texturing guides, their JSON Schemas and example plans as resources. It speaks stdio only, keeps every file inside the
+`apply_corrections`, `feedback_loop`), ... -- plus the plan, feedback, sculpting,
+texturing and CAD guides, their JSON Schemas and example plans as resources. It speaks stdio only, keeps every file inside the
 workspace, and never runs code from its arguments.
 
 ![An agent's castle: built with two mistakes, found by spatial queries, fixed, undone, redone, previewed and exported over MCP](examples/output/mcp_castle_agent.png)
@@ -705,6 +792,10 @@ $ aether3d sculpt check head.aether --require closed       # validity tiers (exi
 $ aether3d texture run crate.aether paint.json --json      # texture script (atomic, one undo step)
 $ aether3d texture report crate.aether --require-clean     # UV diagnostics (exit 3 on flips/overlaps)
 $ aether3d texture bake crate.aether --target Low --source High --map normal --map ao --out maps
+$ aether3d cad run part.aether bracket.json --json         # CAD script (atomic; exit 3 if an expect fails)
+$ aether3d cad info part.aether Bracket                    # one CAD item's report
+$ aether3d cad export part.aether bracket.step --item Bracket   # STEP, IFC, DXF, SVG or PNG by suffix
+$ aether3d cad import part.aether supplier.step --name Bought   # STEP, IFC or DXF
 $ aether3d procedural run castle.aether build.json         # declarative procedural script
 $ aether3d procedural set castle.aether tower_count=8      # change parameters (validated)
 $ aether3d procedural inspect castle.aether --evaluate     # parameters, nodes, stacks
@@ -810,7 +901,8 @@ dependency, and is tested on Linux, macOS and Windows:
 pip install -e ".[dev]"
 ```
 
-Procedural booleans additionally need the optional `boolean` extra
+Procedural booleans and the CAD features that combine solids (holes, fillets, shells,
+walls with openings, roofs, sections) additionally need the optional `boolean` extra
 (`pip install "aether3d[boolean]"`, which installs manifold3d, Apache-2.0).
 JPEG textures need the optional `images` extra (`pip install
 "aether3d[images]"`, which installs Pillow, MIT-CMU); PNG textures need
@@ -847,6 +939,8 @@ see [docs/PERFORMANCE.md](docs/PERFORMANCE.md#phase-3-native-kernels-rust).
 | [docs/EDITING.md](docs/EDITING.md) | Mesh editing: topology, ids, sessions, operations, scripts, limitations |
 | [docs/MODELING.md](docs/MODELING.md) | Advanced modeling and sculpting: bevels, cuts, bridges, slides, sweeps; the sculpt mesh, brushes, strokes, masks, symmetry, dynamic topology, remeshing, symmetrize, validity tiers, scripts, CLI, MCP, history, design, performance, limitations |
 | [docs/TEXTURING.md](docs/TEXTURING.md) | UV mapping, texture painting and baking: unwrapping, projections, island tools, diagnostics, MikkTSpace, painted textures and layers, brushes and strokes, baking, texture transfer, scripts, CLI, MCP, safety, performance, limitations |
+| [docs/CAD.md](docs/CAD.md) | Precision modeling and CAD: the document, units and tolerances, sketches and the constraint solver, features and persistent names, the B-rep kernel and booleans, assemblies, measurements and snapping, drawings, STEP/DXF/IFC exchange, CAD scripts, CLI, MCP, limitations |
+| [docs/BUILDINGS.md](docs/BUILDINGS.md) | Architecture and BIM: buildings, levels, walls and joins, openings and families, rooms, slabs, roofs, stairs, columns, beams, quantities and schedules, plans, IFC, limitations |
 | [docs/PROCEDURAL.md](docs/PROCEDURAL.md) | Procedural geometry: parameters, expressions, modifiers, caching, scripts, CLI, limitations |
 | [docs/RENDERING.md](docs/RENDERING.md) | Cameras, lights, the CPU renderer: pipeline, conventions, shading model, API, CLI, verification, performance, limitations |
 | [docs/GPU.md](docs/GPU.md) | The GPU backend: installation, adapters, pipeline, antialiasing, shadows, memory, CPU/GPU differences, benchmarks, debugging, the backend decision |

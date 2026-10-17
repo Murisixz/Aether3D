@@ -4,6 +4,104 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.15.0: precision modeling, CAD and architecture
+
+Aether3D gains exact, parametric modeling beside its meshes: units and tolerances,
+sketches solved under constraints and dimensions, solid parts built from features on an
+exact B-rep with persistent names, assemblies, measurements, drawings, STEP and DXF
+exchange ([docs/CAD.md](docs/CAD.md)); and buildings -- levels, walls with exact joins,
+doors and windows, rooms, slabs, roofs, stairs, columns, beams, quantities, schedules,
+IFC4 ([docs/BUILDINGS.md](docs/BUILDINGS.md)). Everything works from Python, CAD scripts,
+the CLI, scene plans and MCP, one undo step per change. Each subsystem's language was
+decided before implementation (the design record:
+[research/2026-10-stage15/DESIGN.md](research/2026-10-stage15/DESIGN.md)): Python and
+NumPy (LAPACK) for geometry, the solver, the B-rep kernel and exchange; Manifold
+(optional) for robust boolean topology; one new Rust kernel (batched polygon
+triangulation, `aether3d-native` ABI 3, with a bit-identical NumPy twin).
+
+Measured on the development machine (i9-12900H laptop, Python 3.14, NumPy 2.5;
+`benchmarks/bench_cad.py`, saved as `benchmarks/results/stage15-cad.json`; the tables are
+in [docs/PERFORMANCE.md](docs/PERFORMANCE.md#precision-modeling-015)):
+
+- sketches: a fully constrained sketch of 999 constraints solves (with its DOF analysis)
+  in 41 ms, one of 4,999 in 178 ms; changing one dimension re-solves only what follows
+  it (38 ms and 188 ms, most of it bookkeeping);
+- parts: the bracket of `examples/cad_bracket.py` (28 faces) builds in 0.47 s; a plate
+  with 100 holes in 1.1 s; tessellating a sphere to 1e-4 of its size takes 27 ms (27,544
+  triangles); exact mass properties of the bracket 70 ms;
+- buildings: 10 levels of 100 rooms (2,200 walls, 1,000 doors, 1,000 rooms) build in
+  16.6 s and regenerate cold in 11.2 s (227 MiB peak); moving one door re-evaluates one
+  floor in 134 ms at every size measured;
+- a plan with hidden lines and hatched sections of a 2-level, 72-room building: 1.2 s;
+  STEP export and import of the bracket: 28 and 22 ms; IFC4 export of 312 products 0.09 s,
+  import 1.7 s; triangulating 600 polygons (66k points): 18.6 ms native, 770 ms NumPy.
+
+### Added
+
+- **The CAD document** (`scene.cad`, `aether3d.cad`): items (parameters, frames,
+  sketches, parts, assemblies, building elements, drawings) with JSON definitions,
+  regenerated incrementally by content keys, atomic and undoable, shown in the scene as
+  objects that follow them (`doc.show`, `convert_to_mesh`); project format 8.
+- **Units and tolerances**: lengths, angles, areas, volumes, masses and densities with
+  exact rational conversions, feet-and-inches and DMS text, fractions; safe expressions
+  over parameters; scale-derived tolerances and tessellation tolerances.
+- **Sketches**: points, lines, circles, arcs, splines; 18 constraint and dimension types;
+  a solver with analytic Jacobians, Dulmage-Mendelsohn decomposition, Gauss-Newton and
+  Levenberg-Marquardt, exact DOF / redundancy / conflict analysis, recorded branches,
+  incremental solving; snapping (`doc.snap`).
+- **The B-rep kernel**: exact planes, quadrics, tori, extrusions, revolutions, NURBS;
+  validation; watertight tessellation within a chord; mass properties by boundary
+  quadrature on the exact surfaces; booleans through Manifold with exact B-rep
+  reconstruction and analytic edge recovery; sewing.
+- **Features**: extrude (with draft), revolve, sweep, loft, holes (simple, counterbore,
+  countersink, drill point), fillet, chamfer, shell, pattern, mirror, transform,
+  boolean, primitives, imported solids; persistent face and edge names.
+- **Assemblies** with mates (coincident, concentric, parallel, perpendicular, distance,
+  angle, fixed), DOF and conflict analysis, nesting and exact clash detection.
+- **Measurements** (`doc.measure`): exact descriptions, angles, parallel and axis
+  distances, minimum distances with bounds.
+- **Drawings** (`drawing` items): plan, section, elevations and isometric views with exact
+  edges, ray-cast hidden lines, exact section fills, door swings, room labels,
+  dimensions; SVG, DXF R12 and PNG (own rasterizer and stroke font).
+- **Exchange**: STEP AP214 export and import of exact solids; DXF import into sketches
+  and export of sketches and drawings; IFC4 export (walls with layer sets and types,
+  openings, doors, windows, spaces, slabs, roofs, stairs, columns, beams, base
+  quantities, property sets, deterministic GlobalIds) and import of its subset.
+- **Buildings** (`aether3d.arch`, `doc.building`): levels, wall types, families, walls
+  with exact L/T/junction joins, openings checked against their walls, rooms from wall
+  faces, slabs with holes, flat/shed/gable/hip roofs, straight stairs checked against the
+  user's criteria, columns and beams with rectangular, circular and I profiles;
+  quantities (IFC base quantity formulas), schedules and CSV.
+- **For agents**: CAD scripts (`aether3d.cad-script`, `run_cad_script`) with a JSON
+  Schema and an agent guide; CLI `aether3d cad run | info | export | import | schema`;
+  MCP: CAD scripts in `run_script`, the `inspect_cad` and `import_cad` tools, CAD exports
+  in `export_scene`, the `cad` capabilities topic, guide and schema resources; the
+  scene-plan operation `cad`; the feedback checks `cad_valid` and `cad_dimension`.
+- **Native**: batched ear-clipping triangulation (`aether3d-native` 0.15.0).
+- **Examples** (rendered and drawn by Aether3D): `cad_bracket.py`, `cad_floor_plan.py`,
+  `cad_modern_house.py`, `cad_grid_building.py`, `mcp_cad_agent.py`;
+  `benchmarks/bench_cad.py`.
+- **Independent validation** in the tests (optional, `AETHER3D_VALIDATOR_PYTHON`):
+  Open CASCADE reads the STEP exports as valid solids of the same volume, IfcOpenShell's
+  validation finds no issue in the IFC exports, ezdxf's audit no error in the DXF;
+  fixtures written by Open CASCADE and ezdxf are read exactly.
+
+### Changed
+
+- **Project format 8** (the CAD document); version 7 files load unchanged.
+- **MCP**: 25 tools (`inspect_cad`, `import_cad` added); `export_scene` also writes
+  STEP, IFC, DXF, SVG and PNG of CAD items.
+- `aether3d-native` 0.15.0, ABI 3 (new kernel `triangulate`).
+- Scene objects that show a CAD item refuse direct mesh edits (`CAD_DRIVEN`) until
+  converted to plain meshes.
+
+### Changed tests
+
+Existing assertions changed (each for a reason stated in the PR): the project
+`format_version` 7 -> 8 (tests/test_annotations.py x2, test_material_persistence.py,
+test_pathtrace_api.py, test_plans_execution.py); the MCP tool list and count 23 -> 25
+(tests/test_mcp.py x2, tests/test_examples.py).
+
 ## 0.14.0: UV texture painting and baking
 
 Aether3D gives meshes UVs, paints textures on them in 3D and bakes detail from

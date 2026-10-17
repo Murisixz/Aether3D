@@ -58,6 +58,7 @@ Scene(name: str = "Untitled Scene")
 | `active_camera` | The default render camera, or `None` (settable with an object, id, name or `None`). |
 | `world`, `render_settings` | `World` (background, ambient light) and `RenderSettings` (saved output settings). Edit them in place. |
 | `materials` | The scene's `MaterialLibrary`: materials and textures (see [Materials and textures](#materials-and-textures)). |
+| `cad` | The scene's `CadDocument`: precision models, buildings and drawings (see [Precision modeling and buildings](#precision-modeling-and-buildings)). Since 0.15.0. |
 | `create_material(name=None, *, model="standard", preset=None, **params)` | Create a material from parameters, or from a preset and its options. Returns the `Material`. |
 | `assign_material(objects, material, *, group=None)` | Give one or more mesh objects (objects, ids or names) a material (object, id, name, or `None` to unassign), or only their face group `group`. |
 | `add_image_texture(name=None, path=None, **options)`, `add_procedural_texture(name, graph)` | Add a PNG/JPEG texture (`data=`, `embed=`, `wrap`, `filter`, `mipmaps`, `color_space`) or a procedural texture. |
@@ -346,6 +347,33 @@ UVs, painted textures, brushes and bakes ([TEXTURING.md](TEXTURING.md)). Since 0
 | `scene.transfer_textures(source, target, maps=None, **options) -> dict` | unwrap the target if needed, bake the source's material and bind it (one undo step) |
 | `aether3d.texturing.run_texture_script(scene, script, *, label=None, should_stop=None)` | apply an `aether3d.texture-script` atomically; `aether3d.texturing.script.check_script(script)`; `aether3d.texturing.schema.texture_script_schema()` |
 
+## Precision modeling and buildings
+
+Exact parametric models, buildings and drawings ([CAD.md](CAD.md),
+[BUILDINGS.md](BUILDINGS.md)). Since 0.15.0. Every changing call is one undo step;
+lengths are in the document's unit or quantities (`"80 mm"`).
+
+| Name | Description |
+| --- | --- |
+| `doc = scene.cad` | the `CadDocument` |
+| `doc.set_units(length=None, angle=None)`, `doc.length_unit`, `doc.settings`, `doc.set_display_tolerance(chord, angle_deg, relative)` | units and display tolerance |
+| `doc.parameter(name, value, *, dimension="length") -> Item` | create or change a parameter (`"=expr"` allowed) |
+| `doc.add(kind, name, definition) -> Item`, `doc.set_definition(item, definition)`, `doc.update(item, changes)`, `doc.rename(item, name)`, `doc.remove(item)` | items by JSON definition (`KINDS`: parameter, frame, sketch, part, assembly, building, floor, slab, roof, stair, columns, beams, drawing) |
+| `doc.items(kind=None)`, `doc.item(ref, kind=None)`, `doc.result(item)`, `doc.info(item=None)`, `doc.stats` | items, results (regenerated on demand), reports, regeneration counters |
+| `with doc.batch(label, *, deadline=None, should_stop=None)` | several changes as one step, regenerated once |
+| `doc.sketch(name, plane="XY") -> SketchHandle` | `point`, `line`, `polyline`, `rectangle`, `circle`, `arc`, `spline`, `constrain(kind, *refs, **options)`, `dimension(kind, *refs, value, driving=True)`, `set_value(id, value)`, `remove(*ids)`, `measure(id)`, `result` |
+| `doc.part(name, **options) -> PartHandle` | `extrude`, `revolve`, `hole`, `fillet`, `chamfer`, `shell`, `pattern`, `mirror`, `add_feature(dict)`, `set(id, **changes)`, `faces()`, `measure(body="main")`, `body(name)`, `result` |
+| `doc.building(name, *, levels, **options) -> BuildingHandle` | `floor(level) -> FloorHandle` (`wall`, `walls`, `walls_from_sketch`, `door`, `window`, `opening`, `room`, `set`, `remove`, `quantities()`), `slab`, `roof`, `stair`, `columns`, `beams`, `set`, `set_level`, `schedule(kind)` |
+| `doc.drawing(name, view, items=None, **options) -> Item` | a drawing item; `doc.result(name)` is a `Drawing` (`to_svg()`, `to_dxf(unit)`, `to_png(dpi)`, `summary()`) |
+| `doc.show(item, *, name=None) -> SceneObject`, `doc.unlink(obj)`, `doc.convert_to_mesh(obj)` | scene objects that follow an item |
+| `doc.measure(a, b=None) -> dict`, `doc.snap(sketch, x, y, *, radius, kinds, grid)` | exact measurements; sketch snapping |
+| `doc.export_step(items=None, units=None) -> str`, `doc.import_step(text, name=None)` | STEP AP214 |
+| `doc.export_ifc(building=None, name=...) -> (str, counts)`, `doc.import_ifc(text, create_parts=True)` | IFC4 |
+| `doc.import_dxf(text, name, *, plane="XY", layers=None, unit=None)`, `doc.export_sketch_dxf(sketch, unit=None)` | DXF |
+| `aether3d.cad.script.run_cad_script(scene, script, *, label=None, should_stop=None)` | apply an `aether3d.cad-script` atomically; `check_script(script)`; `aether3d.cad.schema.cad_script_schema()` |
+| `aether3d.cad.brep`: `build` (`box`, `cylinder`, `sphere`, `cone`, `torus`, `extrude`, `revolve`), `topology` (`Body`, `validate`, `merge`), `tessellate` (`tessellate`, `max_deviation`), `properties` (`mass_properties`), `boolean` (`boolean`) | the kernel |
+| `aether3d.cad.assembly.clashes(doc, assembly)`, `aether3d.arch.quantities.schedule(doc, kind)`, `to_csv(rows)` | clashes; schedules |
+
 ## Procedural geometry
 
 Full guide: [PROCEDURAL.md](PROCEDURAL.md).
@@ -605,6 +633,7 @@ All deliberate errors derive from `AetherError`.
 | `QueryError` | `ValueError` | A spatial query is malformed or cannot be answered (`INVALID_ARGUMENT`, `INVALID_REQUEST`, `OBJECT_NOT_FOUND`, `NO_GEOMETRY`, `NO_CAMERA`, ...; see [SPATIAL.md](SPATIAL.md#errors)); nothing changed. `.code` (stable), `.location` (the argument), `.hint`, `.details`, `to_dict()` |
 | `PlanError` | `ValueError` | A scene plan is invalid or cannot be applied; nothing changed (except completed chunks of an opt-in chunked plan). `.code` (stable: `UNKNOWN_REFERENCE`, `NAME_CONFLICT`, `REVISION_MISMATCH`, `LIMIT_EXCEEDED`, ...; see [SCENE_PLANS.md](SCENE_PLANS.md#errors)), `.pointer` (a JSON pointer into the plan), `.operation`, `.hint`, `.details`, `.issues` (every problem found), `to_dict()` |
 | `FeedbackError` | `ValueError` | A visual-feedback request cannot be carried out: a view, an expectations document, a vision evaluation, a correction or a loop (`INVALID_VIEW`, `UNKNOWN_KEY`, `OBSERVATION_MISMATCH`, `STALE_PROPOSALS`, `REVISION_MISMATCH`, `NOT_ALLOWED`, ...; see [FEEDBACK.md](FEEDBACK.md)); nothing changed. `.code` (stable), `.location` (a JSON pointer or argument), `.hint`, `.details`, `.issues`, `to_dict()` |
+| `CadError` | `ValueError` | A CAD definition, regeneration, measurement, script or exchange cannot be carried out (`SKETCH_CONFLICT`, `REFERENCE_LOST`, `REFERENCE_AMBIGUOUS`, `HOLE_OFF_FACE`, `FILLET_CORNER_UNSUPPORTED`, `BOOLEAN_FAILED`, `WALLS_CROSS`, `OPENING_OVERLAP`, `ROOM_NOT_ENCLOSED`, `UNSUPPORTED_STEP`, `INVALID_DXF`, `EXPECTATION_FAILED`, `LIMIT_EXCEEDED`, `CANCELLED`, ...; see [CAD.md](CAD.md)); nothing changed. `.code` (stable), `.location` (e.g. `part[Bracket].features[2](h)`), `.hint`, `.details`, `to_dict()` |
 | `HistoryError` | `ValueError` | An undo, redo, checkpoint or history file operation cannot be performed (`NOTHING_TO_UNDO`, `TRANSACTION_OPEN`, `HISTORY_MISMATCH`, `INVALID_HISTORY`, ...; see [HISTORY.md](HISTORY.md#errors)); nothing changed. `.code` (stable), `.location`, `.hint`, `.details` |
 
 Missing files raise the standard `FileNotFoundError`.

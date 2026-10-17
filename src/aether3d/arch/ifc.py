@@ -327,7 +327,7 @@ class _Exporter:
         )
         for b in buildings:
             self.building(b)
-        stamp = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S")
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
         from .._version import __version__
 
         header = [

@@ -78,7 +78,7 @@ pytest
 
 ```bash
 pip install .              # core: NumPy is the only dependency
-pip install ".[boolean]"   # also solid booleans for procedural geometry
+pip install ".[boolean]"   # also solid booleans (procedural geometry, CAD features, buildings)
 pip install ".[images]"    # also JPEG textures (Pillow)
 pip install ".[gpu]"       # also GPU rendering (Python 3.11+)
 pip install ".[mcp]"       # also the MCP server for AI agents (aether3d mcp serve)
@@ -98,7 +98,12 @@ The `boolean` extra adds [manifold3d](https://github.com/elalish/manifold)
 (Apache-2.0; prebuilt wheels for Linux, macOS and Windows on Python
 3.10–3.14). Without it, a procedural boolean fails with
 `BOOLEAN_BACKEND_UNAVAILABLE`, while projects that contain booleans still
-load. The `dev` extra includes it, and so do the tests and the castle demo.
+load. In the CAD document ([CAD.md](CAD.md)), sketches, parts made of one solid
+(extrusions, revolutions, primitives, imported STEP), tessellation, mass properties,
+measurements, STEP/DXF/IFC exchange and drawings without sections work without it;
+features that combine solids (holes, fillets, chamfers, shells, cut or added
+extrusions, booleans, patterns of them), walls with openings, roofs and section views
+need it and are refused without it (`BOOLEAN_UNAVAILABLE`). The `dev` extra includes it, and so do the tests and the castle demo.
 The `images` extra adds [Pillow](https://python-pillow.org) (MIT-CMU) to
 decode JPEG textures. Without it, a JPEG texture fails with
 `IMAGE_DECODER_MISSING` (renders keep the material's factors and report it).

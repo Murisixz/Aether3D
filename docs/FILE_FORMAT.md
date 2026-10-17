@@ -1,6 +1,6 @@
 # The `.aether` project format
 
-**Current version: 7** (Aether3D 0.14.0; version 1–6 files are upgraded on load)
+**Current version: 8** (Aether3D 0.15.0; version 1–7 files are upgraded on load)
 
 An `.aether` file stores one scene:
 
@@ -24,8 +24,8 @@ diffable, and safely editable by people, scripts, and AI agents.
 ```json
 {
   "format": "aether3d.project",
-  "format_version": 7,
-  "generator": "aether3d 0.14.0",
+  "format_version": 8,
+  "generator": "aether3d 0.15.0",
   "scene": {
     "name": "First Scene",
     "active_camera": "5b0f1c2e-…",
@@ -155,6 +155,7 @@ diffable, and safely editable by people, scripts, and AI agents.
 | `materials` | array | Materials (see [Materials and textures](#materials-and-textures)). Since version 4. |
 | `textures` | array | Image and procedural textures. Since version 4. |
 | `objects` | array of objects | All scene objects (see below). |
+| `cad` | object | The CAD document (see [CAD document](#cad-document)). Since version 8. |
 
 Writers emit objects in depth-first hierarchy order (each parent before its
 children). Readers accept any order. The relative order of objects that share
@@ -365,6 +366,40 @@ Vertex attribute values are 32-bit floats. Writers emit the shortest decimal
 text that round-trips to the same 32-bit value (e.g. `0.1`), so geometry
 survives save/load bit-for-bit.
 
+## CAD document
+
+`scene.cad` holds the precision-modeling document ([CAD.md](CAD.md)):
+
+```json
+"cad": {
+  "settings": {"length_unit": "mm", "angle_unit": "deg", "precision": 3,
+               "display": {"chord": 0.0005, "angle_deg": 12.0, "relative": 0.002}},
+  "items": [
+    {"id": "2ab6dad9-…", "kind": "parameter", "name": "w",
+     "definition": {"value": "80 mm", "dimension": "length"}, "links": []},
+    {"id": "0c1600bf-…", "kind": "sketch", "name": "S",
+     "definition": {"plane": "XY", "constraints": [],
+                    "entities": [{"id": "p1", "type": "point", "at": [0.0, 0.0]},
+                                 {"id": "p2", "type": "point", "at": [0.08, 0.0]},
+                                 {"id": "l1", "type": "line", "start": "p1", "end": "p2"}]},
+     "links": []},
+    {"id": "4be3e556-…", "kind": "part", "name": "P",
+     "definition": {"features": [{"type": "box", "id": "b", "size": [10, 10, 10]}]},
+     "links": ["811bb703-…"]}
+  ]
+}
+```
+
+| Key | Description |
+| --- | --- |
+| `settings` | The document's length and angle units, display precision and display tessellation tolerance. |
+| `items` | Every item: `id`, `kind` (`parameter`, `frame`, `sketch`, `part`, `assembly`, `building`, `floor`, `slab`, `roof`, `stair`, `columns`, `beams`, `drawing`), unique `name`, `definition` (plain JSON, in the document's units -- except sketch point positions and radii, the solver's state, in metres), `links` (ids of the scene objects that show it). |
+
+Only definitions are stored; results (solved sketches, bodies, drawings) are regenerated
+on load. Objects that show an item keep their current tessellation in `meshes`, so a
+reader without CAD support still sees the geometry. A link to a missing object is an
+error. Definitions are checked by their item kinds as on any change.
+
 ## Conventions
 
 - Right-handed coordinate system, **+Z up**, 1 unit = 1 meter.
@@ -418,7 +453,7 @@ The history file is a JSON document, `"format": "aether3d.history"`,
 | `undo`, `redo` | Steps: `{"index", "parent", "label", "changes"}`, the undone ones in `redo` (the next to redo last) |
 | `checkpoints` | Names and the index of the step behind their state |
 | `max_entries`, `max_bytes`, `dropped` | The limits and how many steps were dropped |
-| `objects`, `materials`, `textures` | Full records of entities the steps refer to that are not in the project (removed ones, which undo can bring back) |
+| `objects`, `materials`, `textures`, `cad_items` | Full records of entities the steps refer to that are not in the project (removed ones, which undo can bring back; `cad_items` since 0.15.0) |
 | `meshes`, `blobs` | Meshes (as in the project's `meshes`) and embedded image bytes (base64) the states refer to by index; painted textures' states refer to their tiles (64 x 64 texels, 16-bit RGBA, zlib-compressed) as blobs, so a stroke's step stores only the tiles it changed |
 
 A change is `{"aspect", "target", "before", "after"}`:
@@ -428,7 +463,8 @@ A change is `{"aspect", "target", "before", "after"}`:
   (tags and metadata, since 0.10.0), `object.parent`,
   `object.children`, `object.alive`, `scene.name`, `scene.roots`,
   `scene.active_camera`, `scene.world`, `scene.render`, `library.materials`,
-  `library.textures`, `material`, `texture` or `procedural`.
+  `library.textures`, `material`, `texture`, `procedural`, and since 0.15.0
+  `cad.item` (one CAD item: kind, name, definition, links, alive) and `cad.settings`.
 - `target` is the id of the object, material or texture (`null` for the others).
 - The states use the project's encodings (transforms as position, rotation and
   scale arrays; cameras, lights, appearances, world and render settings as in
@@ -463,6 +499,7 @@ copy comes back to the same document.
 | 5 | 0.8.0 | Path tracing: `scene.world.environment` and the light sizes `radius` and `angle`. The migration from 4 adds the `"ambient"` environment (the path tracer then lights with the ambient light, as the rasterizers do) and sizes of 0 (point lights and parallel directional lights), so every project renders unchanged on the rasterizers. |
 | 6 | 0.10.0 | Object tags and metadata: `tags` and `metadata` on every object. The migration from 5 changes nothing: their defaults are empty. |
 | 7 | 0.14.0 | Painted textures: textures of `"type": "painted"` with their layers and masks. The migration from 6 changes nothing: a version 6 document has none. |
+| 8 | 0.15.0 | The CAD document: `scene.cad` (settings and items). The migration from 7 adds an empty document with the default settings. |
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged, and Aether3D
 0.6.0 reads and writes version 3 unchanged (GPU rendering added render

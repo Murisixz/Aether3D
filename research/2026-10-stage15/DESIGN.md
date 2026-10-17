@@ -399,4 +399,64 @@ edits (incremental vs full), drawing generation, STEP/IFC export, triangulation 
 
 ## 10. Outcome
 
-(Written after the implementation.)
+Written after the implementation (release 0.15.0).
+
+**Built as decided.** The language decisions of section 3 held: no subsystem was
+implemented twice to compare. Python and NumPy/LAPACK carry units, expressions, geometry,
+the sketch solver, the B-rep kernel, booleans' reconstruction, tessellation, mass
+properties, assemblies, buildings, drawings and exchange; Manifold provides boolean
+topology; hidden lines use the existing ray core (`SceneAccel`); the one native kernel is
+the batched triangulation (`native/src/earcut.rs`, ABI 3), bitwise equal to its NumPy
+twin and 41 times faster on 600 polygons (18.6 ms against 770 ms). The architecture of
+section 4 is the one in the package (`cad/` and `arch/`; the architecture modules were
+folded into `kinds.py`, `elements.py`, `walls.py`, `families.py`, `quantities.py` and
+`ifc.py`).
+
+**Verified independently.** Open CASCADE (OCP 8.0.1.1) reads Aether3D's STEP exports as
+valid solids whose volumes match to 1e-9 relative or better (the bracket: 78337.602095844
+mm3 against ours 78337.60209584454), and Aether3D reads files written by Open CASCADE
+exactly (seam edges, full-circle edges, vertex loops, spheres, cones, a cut hemisphere);
+IfcOpenShell 0.9.0's validation (schema and EXPRESS rules) finds no issue in the IFC
+exports and computes the same volumes; ezdxf 1.4.5's audit finds no error in the DXF
+exports, and an ezdxf-written DXF (bulged polylines, a mirrored arc) imports exactly.
+These run in the tests when `AETHER3D_VALIDATOR_PYTHON` is set; none of them is a
+dependency.
+
+**Measured** (`benchmarks/bench_cad.py`, `benchmarks/results/stage15-cad.json`, tables
+in docs/PERFORMANCE.md): a 4,999-constraint sketch solves with its analysis in 178 ms;
+the bracket builds in 0.47 s; 100 holes in one feature in 1.1 s; a 10-level building of
+2,200 walls, 1,000 doors and 1,000 rooms builds in 16.6 s (227 MiB) and moving one door
+costs 134 ms. Four optimizations were found by measuring and are recorded with their
+before/after figures in docs/PERFORMANCE.md (per-block rank checks, incremental piece
+solving, one boolean per feature for disjoint tools, content-keyed rooms and openings).
+
+**Deviations from this plan**, all documented in docs/CAD.md and docs/BUILDINGS.md:
+
+- *Sketch analysis*: the dense SVD of section 5 is used up to the component sizes where it
+  is cheap; structurally well-constrained components of 128 variables or more are checked
+  per diagonal block of the Dulmage-Mendelsohn form (exact for full rank; a singular block
+  falls back to the dense analysis). Edits re-solve only the pieces downstream of the
+  change.
+- *Booleans*: near-tangent configurations are not reported as `NEAR_TANGENT`; sweeps that
+  meet tangentially are sewn instead of united (exact), and booleans that leave
+  rounding-size slivers merge them into their neighbours. Faces of imported files whose
+  loops wrap around an axis (bands and caps without seam edges, which booleans produce
+  from seam faces) are handled in mass properties and tessellation.
+- *Features*: extents are blind, symmetric, two-sided and through all ("up to" a face is
+  not implemented); lofts are ruled.
+- *Clash detection* intersects the placed B-reps exactly for every pair of overlapping
+  boxes instead of a tessellated broad phase plus exact classification of planar bodies:
+  exact everywhere, but slow for coincident curved surfaces (about 1.4 s per pin in its
+  hole).
+- *Walls*: crossing walls are refused (`WALLS_CROSS`: split them at the crossing) rather
+  than joined as X joins; L-shaped stairs and ceilings as a separate kind were not built
+  (straight flights; a slab with `top_offset` serves as a ceiling).
+- *BIM*: property sets are the common sets Aether3D fills plus an identity set; user
+  property sets are not supported yet.
+- *Drawings*: visibility is sampled every 1/1000 of the view's extent (no adaptive
+  bisection); section fills are exact for every solid (a boolean with a half-space, not
+  only planar solids); dimensions are automatic overall dimensions or explicit points,
+  not bound to model references.
+- *Showcase 4* (the grid building) has 20 items with about 230 members; the
+  "thousands of elements" case is measured by the benchmark (2,200 walls, 1,000 doors,
+  1,000 rooms) instead.

@@ -1,6 +1,14 @@
 {
   "aether3d": "0.15.0",
-  "build_seconds": 0.14434284600429237,
+  "build_seconds": 0.10978433099808171,
+  "footprint_sketch": {
+    "status": "fully_constrained",
+    "dof": 0,
+    "reference": {
+      "d1": "12 m",
+      "d2": "9 m"
+    }
+  },
   "totals": {
     "walls": 8,
     "wall_length": 67.0,
@@ -58,7 +66,7 @@
   },
   "render": {
     "backend": "gpu_path",
-    "seconds": 33.68368223498692,
+    "seconds": 33.58726149398717,
     "size": [
       1400,
       1050
