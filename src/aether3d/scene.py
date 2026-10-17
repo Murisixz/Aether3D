@@ -981,6 +981,22 @@ class SceneObject:
         self._set_uv_mesh(result.mesh, f"Edit UVs ({operation})")
         return {**result.report, "diagnostics": [d.to_dict() for d in result.diagnostics]}
 
+    def paint(self, texture: Any, brush: Any, points: Any, **options: Any) -> dict[str, Any]:
+        """Paint one stroke on painted textures through this object's UVs
+        (:func:`aether3d.texturing.stroke`: ``space="surface"`` with object-space points,
+        ``"view"`` with pixel positions and a ``view=PaintView.render(scene, camera)``, or
+        ``"uv"``); one step of the scene's history. Returns the stroke's report."""
+        from .texturing import stroke
+
+        return stroke(self._require_scene(), self, texture, brush, points, **options).to_dict()
+
+    def fill_texture(self, texture: Any, value: Any, **options: Any) -> dict[str, Any]:
+        """Fill a painted texture's layer through this object's UVs, everywhere or where
+        ``where={"islands"|"groups"|"triangles": [...]}`` says (one history step)."""
+        from .texturing import fill
+
+        return fill(self._require_scene(), self, texture, value, **options)
+
     def uv_report(self, **options: Any) -> dict[str, Any]:
         """UV diagnostics of this object's mesh (:func:`aether3d.uv.uv_report`)."""
         from . import uv
@@ -1782,6 +1798,19 @@ class Scene:
         """Add a painted (layered, editable) texture: see
         :meth:`~aether3d.materials.MaterialLibrary.add_painted_texture`."""
         return self._materials.add_painted_texture(name, width, height, **options)
+
+    def bake(self, target: Any, sources: Any = None, maps: Any = ("normal",), **options: Any):
+        """Bake texture maps of ``target`` from ``sources`` (:func:`aether3d.texturing.bake`;
+        reads the scene only). ``apply=True`` also stores the maps as painted textures and
+        binds them to the target's material (one history step); the result's ``applied``
+        then names them."""
+        from .texturing import apply_bake, bake
+
+        apply = options.pop("apply", False)
+        result = bake(self, target, sources, maps, **options)
+        if apply:
+            result.report["applied"] = apply_bake(self, target, result)
+        return result
 
     def add_procedural_texture(self, name: str | None, graph: Any):
         """Add a procedural texture from a node graph (see docs/MATERIALS.md)."""
