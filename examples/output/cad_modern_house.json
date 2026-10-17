@@ -1,6 +1,6 @@
 {
   "aether3d": "0.15.0",
-  "build_seconds": 0.2677806769788731,
+  "build_seconds": 0.2156356630148366,
   "stair": {
     "checks": [
       {
@@ -163,7 +163,7 @@
   },
   "render": {
     "backend": "gpu_path",
-    "seconds": 63.72856464399956,
+    "seconds": 63.20462922300794,
     "size": [
       1920,
       1080

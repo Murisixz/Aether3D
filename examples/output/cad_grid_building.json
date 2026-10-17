@@ -1,7 +1,7 @@
 {
   "aether3d": "0.15.0",
   "build": {
-    "seconds": 0.2203423710016068,
+    "seconds": 0.21821501801605336,
     "items": 20,
     "evaluations": 20
   },
@@ -13,15 +13,15 @@
   },
   "render_before": {
     "backend": "gpu_path",
-    "seconds": 20.60736356797861
+    "seconds": 20.437278465018608
   },
   "edit_door": {
-    "seconds": 0.014188225992256775,
+    "seconds": 0.010243458003969863,
     "evaluations": 1,
     "cache_hits": 0
   },
   "edit_bay": {
-    "seconds": 0.14359365499694832,
+    "seconds": 0.13238389801699668,
     "evaluations": 17,
     "cache_hits": 1
   },
@@ -32,12 +32,12 @@
     "slab_area_m2": 2592.0
   },
   "undo": {
-    "seconds": 0.01018672200734727,
+    "seconds": 0.009490655997069553,
     "evaluations": 0,
     "cache_hits": 15
   },
   "redo": {
-    "seconds": 0.00963586600846611,
+    "seconds": 0.009782312001334503,
     "evaluations": 0,
     "cache_hits": 15
   },
@@ -66,7 +66,7 @@
   },
   "render_after": {
     "backend": "gpu_path",
-    "seconds": 21.081544874992687
+    "seconds": 20.996300616010558
   },
   "failures": []
 }

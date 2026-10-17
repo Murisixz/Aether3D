@@ -151,8 +151,10 @@ representations, wall types, material layer sets), `IfcOpeningElement` voiding t
 `IfcDoor` and `IfcWindow` filling them, `IfcSpace` per room, `IfcSlab`, `IfcRoof`,
 `IfcStair`, `IfcColumn`, `IfcBeam` -- with their base quantities, `Pset_WallCommon`,
 `Pset_StairCommon` and an `Aether3D_Identity` set naming the CAD item and element.
-GlobalIds are deterministic (UUID 5 of the item and element): exporting again gives the
-same ids, so external tools can track elements across exports.
+GlobalIds are deterministic (UUID 5 of the item and element ids): exporting the same
+document again, also after saving and loading it, gives the same ids, so external tools
+can track elements across exports. Items get new ids when they are created, so a script
+that builds a new document gets new GlobalIds.
 
 `doc.import_ifc(text, create_parts=True)` reads the products of an IFC4 file whose
 geometry is extruded area solids (rectangle, circle, I, arbitrary profiles with voids) or

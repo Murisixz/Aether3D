@@ -1,11 +1,11 @@
 {
   "aether3d": "0.15.0",
-  "build_seconds": 0.32404011199832894,
+  "build_seconds": 0.31014299401431344,
   "sketch": {
     "status": "fully_constrained",
     "dof": 0,
     "max_residual": 0.0,
-    "iterations": 12
+    "iterations": 0
   },
   "first": {
     "valid": true,
@@ -23,7 +23,7 @@
     }
   },
   "edit": {
-    "seconds": 0.41801790602039546,
+    "seconds": 0.40688078600214794,
     "evaluations": 7,
     "items": 12
   },
@@ -160,7 +160,7 @@
   },
   "render": {
     "backend": "gpu_path",
-    "seconds": 15.671600357018178,
+    "seconds": 15.604021132021444,
     "size": [
       1200,
       900

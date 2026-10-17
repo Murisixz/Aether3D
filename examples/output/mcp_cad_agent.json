@@ -1,6 +1,6 @@
 {
   "aether3d": "0.15.0",
-  "seconds": 2.568037054006709,
+  "seconds": 2.5732842090073973,
   "orient": {
     "operations": [
       "units",
@@ -42,7 +42,7 @@
       "solid"
     ],
     "guide_chars": 10230,
-    "schema_bytes": 20534
+    "schema_bytes": 20558
   },
   "refused": {
     "type": "CadError",
@@ -86,7 +86,7 @@
   "transcript": [
     {
       "tool": "capabilities",
-      "seconds": 0.0347,
+      "seconds": 0.0378,
       "error": false,
       "images": 0,
       "brief": {
@@ -100,7 +100,7 @@
     },
     {
       "tool": "scene_new",
-      "seconds": 0.0016,
+      "seconds": 0.0023,
       "error": false,
       "images": 0,
       "brief": {
@@ -116,7 +116,7 @@
     },
     {
       "tool": "run_script",
-      "seconds": 0.2118,
+      "seconds": 0.2001,
       "error": false,
       "images": 0,
       "brief": {
@@ -135,13 +135,35 @@
     },
     {
       "tool": "execute_scene_plan",
-      "seconds": 0.0037,
+      "seconds": 0.0047,
       "error": false,
       "images": 0,
       "brief": {
         "ok": true,
         "mode": "execute",
         "status": "applied"
+      }
+    },
+    {
+      "tool": "scene_info",
+      "seconds": 0.0031,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "open": true,
+        "name": "plate",
+        "project": "plate.aether"
+      }
+    },
+    {
+      "tool": "run_script",
+      "seconds": 0.1395,
+      "error": true,
+      "images": 0,
+      "brief": {
+        "code": "SKETCH_CONFLICT",
+        "location": "operations[1]: sketch[Outline]",
+        "message": "the sketch cannot satisfy its constraints: 'diag_len' conflicts with ['h1', 'len', 'v1', 'wid']"
       }
     },
     {
@@ -157,29 +179,7 @@
     },
     {
       "tool": "run_script",
-      "seconds": 0.1426,
-      "error": true,
-      "images": 0,
-      "brief": {
-        "code": "SKETCH_CONFLICT",
-        "location": "operations[1]: sketch[Outline]",
-        "message": "the sketch cannot satisfy its constraints: 'diag_len' conflicts with ['h1', 'len', 'v1', 'wid']"
-      }
-    },
-    {
-      "tool": "scene_info",
-      "seconds": 0.0019,
-      "error": false,
-      "images": 0,
-      "brief": {
-        "open": true,
-        "name": "plate",
-        "project": "plate.aether"
-      }
-    },
-    {
-      "tool": "run_script",
-      "seconds": 0.1355,
+      "seconds": 0.1245,
       "error": false,
       "images": 0,
       "brief": {
@@ -209,7 +209,7 @@
     },
     {
       "tool": "inspect_cad",
-      "seconds": 0.0981,
+      "seconds": 0.0946,
       "error": false,
       "images": 1,
       "brief": {
@@ -222,7 +222,7 @@
     },
     {
       "tool": "diagnose_scene",
-      "seconds": 0.0519,
+      "seconds": 0.0508,
       "error": false,
       "images": 0,
       "brief": {
@@ -232,7 +232,7 @@
     },
     {
       "tool": "observe_scene",
-      "seconds": 0.9865,
+      "seconds": 0.9753,
       "error": false,
       "images": 1,
       "brief": {
@@ -241,7 +241,7 @@
     },
     {
       "tool": "export_scene",
-      "seconds": 0.0178,
+      "seconds": 0.0184,
       "error": false,
       "images": 0,
       "brief": {
@@ -270,7 +270,7 @@
     },
     {
       "tool": "export_scene",
-      "seconds": 0.0045,
+      "seconds": 0.0051,
       "error": false,
       "images": 0,
       "brief": {
@@ -311,7 +311,7 @@
     },
     {
       "tool": "import_cad",
-      "seconds": 0.0166,
+      "seconds": 0.0176,
       "error": false,
       "images": 0,
       "brief": {
@@ -331,7 +331,7 @@
     },
     {
       "tool": "inspect_cad",
-      "seconds": 0.0449,
+      "seconds": 0.043,
       "error": false,
       "images": 0,
       "brief": {
@@ -344,7 +344,7 @@
     },
     {
       "tool": "history",
-      "seconds": 0.0016,
+      "seconds": 0.0018,
       "error": false,
       "images": 0,
       "brief": {
@@ -359,7 +359,7 @@
     },
     {
       "tool": "scene_save",
-      "seconds": 0.016,
+      "seconds": 0.0181,
       "error": false,
       "images": 0,
       "brief": {
