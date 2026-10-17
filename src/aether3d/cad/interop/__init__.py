@@ -6,7 +6,9 @@ Document-level entry points (installed on :class:`~aether3d.cad.document.CadDocu
 * ``doc.import_step(text, name=None)`` -- one part per solid (a ``solid`` feature);
 * ``doc.export_ifc(building=None, name=...)`` -- IFC4 text and entity counts;
 * ``doc.import_ifc(text, create_parts=True)`` -- the products of an IFC4 file (subset:
-  extruded area solids, faceted B-reps, openings), optionally as parts.
+  extruded area solids, faceted B-reps, openings), optionally as parts;
+* ``doc.import_dxf(text, name, plane=..., unit=None)`` -- a sketch from 2D DXF geometry;
+  ``doc.export_sketch_dxf(sketch)`` -- a sketch as DXF; drawings write DXF themselves.
 
 Every import treats its text as untrusted: size and entity limits, a strict tokenizer,
 no evaluation of anything in the file, and structured ``CadError`` on anything else.
@@ -109,6 +111,7 @@ def _install() -> None:
     CadDocument.import_step = _import_step
     CadDocument.export_ifc = _export_ifc
     CadDocument.import_ifc = _import_ifc
+    from . import dxf  # noqa: F401  (installs import_dxf and export_sketch_dxf)
 
 
 _install()

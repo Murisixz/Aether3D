@@ -403,11 +403,26 @@ class StairKind(_ElementKind):
         else:
             prof += [(x_end, 0.0)]
         pts = np.array(prof)
-        # Remove collinear duplicates.
+        # Remove duplicate points, and spikes: where the outline doubles back along a
+        # line (the top riser and the flight's end face lie on one vertical; the spike
+        # between them encloses nothing, but would make two overlapping faces).
         clean = [pts[0]]
         for p in pts[1:]:
             if np.linalg.norm(p - clean[-1]) > 1e-12:
                 clean.append(p)
+        changed = True
+        while changed and len(clean) > 3:
+            changed = False
+            for i in range(len(clean)):
+                q0, q1, q2 = clean[i - 1], clean[i], clean[(i + 1) % len(clean)]
+                u1, u2 = q1 - q0, q2 - q1
+                cross = u1[0] * u2[1] - u1[1] * u2[0]
+                if abs(cross) <= 1e-12 * float(np.linalg.norm(u1) * np.linalg.norm(u2)) and (
+                    float(u1 @ u2) < 0
+                ):
+                    del clean[i]
+                    changed = True
+                    break
         region = _poly_region(np.array(clean), "s")
         side = np.array([-u[1], u[0], 0.0])
         o = b.frame.to_world(np.array([p0[0], p0[1], lo.elevation]))
