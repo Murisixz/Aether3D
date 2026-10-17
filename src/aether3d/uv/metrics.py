@@ -49,39 +49,101 @@ def stretch(cs: param.ChartSet, uv: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     return l2, linf
 
 
+MAX_SPAN = 64
+"""Grid cells per axis beyond which a box is a "big" box (looked up, not entered)."""
+
+
 def segment_pairs(lo: np.ndarray, hi: np.ndarray, group: np.ndarray, cell: np.ndarray):
     """Candidate pairs ``(i, j)``, ``i < j``, of boxes ``[lo, hi]`` (``(S, 2)``) in the same
-    ``group`` whose boxes share a grid cell (``cell``: per-group cell size)."""
-    if lo.shape[0] < 2:
-        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
+    ``group`` whose boxes may meet, each reported once.
+
+    Boxes spanning at most :data:`MAX_SPAN` cells per axis of a uniform grid (``cell``:
+    per-group cell size) are entered in every cell they cover; two of them are a
+    candidate when they share a cell, reported only in the cell at the larger of their
+    lower cell corners (the one cell both always cover), so nothing needs deduplicating.
+    Each larger box looks up the entered boxes of the cells it covers, one column of cells
+    at a time (so a long, thin box costs its own cells, not its bounding square), and big
+    boxes are paired with each other by a direct box test."""
+    empty = np.zeros(0, dtype=np.int64)
+    n = lo.shape[0]
+    if n < 2:
+        return empty, empty
     size = cell[group][:, None]
     c0 = np.floor(lo / size).astype(np.int64)
     c1 = np.floor(hi / size).astype(np.int64)
-    span = (c1 - c0 + 1).clip(1, 64)
-    counts = span[:, 0] * span[:, 1]
-    seg = np.repeat(np.arange(lo.shape[0]), counts)
-    k = np.arange(int(counts.sum())) - np.repeat(np.cumsum(counts) - counts, counts)
-    cx = c0[seg, 0] + k % span[seg, 0]
-    cy = c0[seg, 1] + k // span[seg, 0]
-    key = np.stack([group[seg], cx, cy], axis=1)
-    order = np.lexsort((seg, key[:, 2], key[:, 1], key[:, 0]))
-    key, seg = key[order], seg[order]
-    same = np.all(key[1:] == key[:-1], axis=1)
-    starts = np.flatnonzero(np.r_[True, ~same])
-    lengths = np.diff(np.r_[starts, seg.shape[0]])
+    span = c1 - c0 + 1
+    big = (span > MAX_SPAN).any(axis=1)
+    small = np.flatnonzero(~big)
     pa, pb = [], []
-    for length in np.unique(lengths[lengths > 1]).tolist():
-        s = starts[lengths == length]
-        ii, jj = np.triu_indices(length, 1)
-        pa.append(seg[s[:, None] + ii].reshape(-1))
-        pb.append(seg[s[:, None] + jj].reshape(-1))
+    g = cx = cy = seg = np.zeros(0, dtype=np.int64)
+    if small.size:
+        sp = span[small]
+        counts = sp[:, 0] * sp[:, 1]
+        seg = np.repeat(small, counts)
+        rep = np.repeat(np.arange(small.size), counts)
+        k = np.arange(int(counts.sum())) - np.repeat(np.cumsum(counts) - counts, counts)
+        cx = c0[seg, 0] + k % sp[rep, 0]
+        cy = c0[seg, 1] + k // sp[rep, 0]
+        order = np.lexsort((seg, cy, cx, group[seg]))
+        g, cx, cy, seg = group[seg][order], cx[order], cy[order], seg[order]
+        same = (g[1:] == g[:-1]) & (cx[1:] == cx[:-1]) & (cy[1:] == cy[:-1])
+        starts = np.flatnonzero(np.r_[True, ~same])
+        lengths = np.diff(np.r_[starts, seg.shape[0]])
+        for length in np.unique(lengths[lengths > 1]).tolist():
+            st = starts[lengths == length]
+            ii, jj = np.triu_indices(length, 1)
+            a = seg[st[:, None] + ii].reshape(-1)
+            b = seg[st[:, None] + jj].reshape(-1)
+            at = np.repeat(st, ii.size)
+            keep = (cx[at] == np.maximum(c0[a, 0], c0[b, 0])) & (
+                cy[at] == np.maximum(c0[a, 1], c0[b, 1])
+            )
+            pa.append(a[keep])
+            pb.append(b[keep])
+    bigs = np.flatnonzero(big)
+    if bigs.size:
+        # Big boxes against the entered ones: per group, cell keys (column, row) in one
+        # sorted int64 array; each big box looks up its rows of every column it covers.
+        for grp in np.unique(group[bigs]).tolist():
+            lo_e = np.searchsorted(g, grp, side="left")
+            hi_e = np.searchsorted(g, grp, side="right")
+            mine = bigs[group[bigs] == grp]
+            if hi_e > lo_e:
+                ex, ey, es = cx[lo_e:hi_e], cy[lo_e:hi_e], seg[lo_e:hi_e]
+                x0, y0 = int(ex.min()), int(ey.min())
+                ry = int(ey.max()) - y0 + 1
+                key = (ex - x0) * ry + (ey - y0)  # sorted (columns, then rows)
+                xmax = int(ex.max())
+                for i in mine.tolist():
+                    bx0, bx1 = max(int(c0[i, 0]), x0), min(int(c1[i, 0]), xmax)
+                    by0 = max(int(c0[i, 1]), y0) - y0
+                    by1 = min(int(c1[i, 1]), y0 + ry - 1) - y0
+                    if bx1 < bx0 or by1 < by0:
+                        continue
+                    cols = np.arange(bx0, bx1 + 1, dtype=np.int64) - x0
+                    first = np.searchsorted(key, cols * ry + by0, side="left")
+                    last = np.searchsorted(key, cols * ry + by1, side="right")
+                    length = last - first
+                    if not length.any():
+                        continue
+                    idx = np.repeat(first - np.cumsum(length) + length, length) + np.arange(
+                        int(length.sum())
+                    )
+                    other = np.unique(es[idx])
+                    pa.append(np.full(other.size, i, dtype=np.int64))
+                    pb.append(other)
+            # Big boxes with each other: a direct box test.
+            if mine.size > 1:
+                ii, jj = np.triu_indices(mine.size, 1)
+                a, b = mine[ii], mine[jj]
+                meet = np.all(lo[a] <= hi[b], axis=1) & np.all(lo[b] <= hi[a], axis=1)
+                pa.append(a[meet])
+                pb.append(b[meet])
     if not pa:
-        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
+        return empty, empty
     a = np.concatenate(pa)
     b = np.concatenate(pb)
-    a, b = np.minimum(a, b), np.maximum(a, b)
-    key = np.unique(a * lo.shape[0] + b)
-    return key // lo.shape[0], key % lo.shape[0]
+    return np.minimum(a, b), np.maximum(a, b)
 
 
 def boundary_overlaps(

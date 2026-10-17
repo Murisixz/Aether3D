@@ -172,7 +172,7 @@ def group_paint(size: str, quick: bool) -> dict[str, Any]:
     out["fill_s"] = round(time.perf_counter() - t0, 3)
     out["composite_s"] = round(median_time(doc.read, 1, warmup=0), 3)
     t0 = time.perf_counter()
-    doc.mip_chain()
+    doc.mip_chain("srgb")
     out["level0_and_mips_s"] = round(time.perf_counter() - t0, 3)
     t0 = time.perf_counter()
     scene.history.undo()

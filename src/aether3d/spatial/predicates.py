@@ -47,7 +47,11 @@ def orient2d(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
         det = left - right
         bound = CCW_BOUND * (np.abs(left) + np.abs(right))
         sign = np.sign(det).astype(np.int8)
-        unsure = ~(np.abs(det) > bound) | _unsafe(a, b, c)
+        # The float signs of the two products are exact (the sign of a float difference
+        # is, and so is a product's, barring underflow: _unsafe), so when they differ or
+        # one is zero they decide the sign of the difference exactly (Shewchuk's orient2d).
+        decided = ((left > 0) & (right <= 0)) | ((left < 0) & (right >= 0)) | (left == 0)
+        unsure = (~(np.abs(det) > bound) & ~decided) | _unsafe(a, b, c)
     for i in np.flatnonzero(unsure):
         ax, ay = Fraction(a[i, 0]), Fraction(a[i, 1])
         bx, by = Fraction(b[i, 0]), Fraction(b[i, 1])
@@ -79,7 +83,9 @@ def orient3d(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) -> np.n
             + (np.abs(adxbdy) + np.abs(bdxady)) * np.abs(cd[:, 2])
         )
         sign = np.sign(det).astype(np.int8)
-        unsure = ~(np.abs(det) > O3D_BOUND * permanent) | _unsafe(a, b, c, d)
+        # A zero permanent means every product is exactly zero (barring underflow:
+        # _unsafe), so the determinant is exactly zero.
+        unsure = (~(np.abs(det) > O3D_BOUND * permanent) & (permanent != 0)) | _unsafe(a, b, c, d)
     for i in np.flatnonzero(unsure):
         pa = [Fraction(x) for x in a[i]]
         pb = [Fraction(x) for x in b[i]]

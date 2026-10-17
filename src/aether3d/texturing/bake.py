@@ -43,7 +43,8 @@ with UVs) from the surfaces of ``sources`` (its own surface by default):
    colors are averaged in linear light and stored as display sRGB); uncovered texels get
    ``padding`` rings of dilation.
 
-Everything is deterministic: the same inputs give the same bits, on every run.
+Everything is deterministic: the same inputs give the same bits on every run with the same
+ray backend and device (CPU and GPU traversals differ by float32 rounding).
 """
 
 from __future__ import annotations
@@ -541,7 +542,7 @@ def bake(
             "ao_rays",
             hint="lower the resolution, samples or ray counts",
         )
-    tracer = _tracer(ps, backend, adapter)
+    tracer = _tracer(ps, backend, adapter, hemisphere=bool({"ao", "thickness"} & set(names)))
     t_setup = time.perf_counter() - t0
     # Texel samples.
     t0 = time.perf_counter()
@@ -808,13 +809,16 @@ class _CPUTracer:
         return self.ps.accel.occluded(origin, direction, 0.0, tmax, skip_inst, skip_tri)
 
 
-def _tracer(ps: Any, backend: str, adapter: Any = None):
+def _tracer(ps: Any, backend: str, adapter: Any = None, *, hemisphere: bool = True):
+    """The ray tracer of a bake. ``"auto"`` takes the GPU only for bakes with hemisphere
+    maps (AO, thickness: many rays per sample, where it was measured 7.5 times faster);
+    one projection ray per sample is not worth the transfers (measured slower at 4K)."""
     if backend == "cpu":
         return _CPUTracer(ps)
     import os
 
-    if backend == "auto" and os.environ.get("AETHER3D_GPU_TESTS") == "skip":
-        return _CPUTracer(ps)  # portable test runs never touch the GPU
+    if backend == "auto" and (not hemisphere or os.environ.get("AETHER3D_GPU_TESTS") == "skip"):
+        return _CPUTracer(ps)  # (portable test runs never touch the GPU)
     try:
         from .gpu_bake import GPUTracer
 

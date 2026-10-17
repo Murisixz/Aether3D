@@ -65,6 +65,8 @@ fn bake_direction(n: vec3<f32>, u1: f32, u2: f32) -> vec3<f32> {
   return t * (r * cos(phi)) + bt * (r * sin(phi)) + n * z;
 }
 
+// One call site of trace_ray for every mode: D3D12's FXC inlines each call of the
+// traversal, so the kernel keeps a single one (as the path tracer does).
 @compute @workgroup_size(64)
 fn bake_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = gid.y * bp.row + gid.x;
@@ -73,41 +75,41 @@ fn bake_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
   let base = 12u * i;
   let o = vec3<f32>(items[base], items[base + 1u], items[base + 2u]);
+  let v = vec3<f32>(items[base + 4u], items[base + 5u], items[base + 6u]);
   let skip_inst = bitcast<u32>(items[base + 10u]);
   let skip_prim = bitcast<u32>(items[base + 11u]);
   let out = 6u * i;
-  if (bp.mode == 0u) {
-    let tmax = items[base + 3u];
-    let d = vec3<f32>(items[base + 4u], items[base + 5u], items[base + 6u]);
-    let h = trace_ray(o, d, 0.0, tmax, skip_inst, skip_prim, false);
-    results[out] = h.t;
-    results[out + 1u] = bitcast<f32>(h.inst);
-    results[out + 2u] = bitcast<f32>(h.prim);
-    results[out + 3u] = h.b.x;
-    results[out + 4u] = h.b.y;
-    results[out + 5u] = h.b.z;
-    return;
-  }
-  let n = vec3<f32>(items[base + 4u], items[base + 5u], items[base + 6u]);
+  let closest = bp.mode == 0u;
+  let count = select(bp.rays, 1u, closest);
   let s1 = items[base + 7u];
   let s2 = items[base + 8u];
-  let count = bp.rays;
   var acc = 0.0;
   for (var r = 0u; r < count; r++) {
-    let u1 = fract((f32(r) + 0.5) / f32(count) + s1);
-    let u2 = fract(radical_inverse(r) + s2);
-    let d = bake_direction(n, u1, u2);
-    if (bp.mode == 1u) {
-      let h = trace_ray(o, d, 0.0, bp.distance, skip_inst, skip_prim, true);
+    var d = v;  // mode 0: the ray's direction; otherwise the normal
+    var tmax = items[base + 3u];
+    if (!closest) {
+      let u1 = fract((f32(r) + 0.5) / f32(count) + s1);
+      let u2 = fract(radical_inverse(r) + s2);
+      d = bake_direction(v, u1, u2);
+      tmax = bp.distance;
+    }
+    let h = trace_ray(o, d, 0.0, tmax, skip_inst, skip_prim, bp.mode == 1u);
+    if (closest) {
+      results[out] = h.t;
+      results[out + 1u] = bitcast<f32>(h.inst);
+      results[out + 2u] = bitcast<f32>(h.prim);
+      results[out + 3u] = h.b.x;
+      results[out + 4u] = h.b.y;
+      results[out + 5u] = h.b.z;
+    } else if (bp.mode == 1u) {
       acc += select(1.0, 0.0, h.inst != PT_NONE);
     } else {
-      let h = trace_ray(o, d, 0.0, bp.distance, skip_inst, skip_prim, false);
       acc += select(bp.distance, min(h.t, bp.distance), h.inst != PT_NONE);
     }
   }
   if (bp.mode == 1u) {
     results[out] = acc / f32(count);
-  } else {
+  } else if (bp.mode == 2u) {
     results[out] = acc / (f32(count) * bp.distance);
   }
 }

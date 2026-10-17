@@ -192,7 +192,6 @@ def overlapping_triangles(corner: np.ndarray, signed: np.ndarray) -> tuple[np.nd
     """Pairs ``(i, j)`` of triangles whose UVs share positive area, exactly: an edge of one
     properly crosses an edge of the other, a vertex (or the centroid) of one lies strictly
     inside the other, or they coincide."""
-    T = corner.shape[0]
     live = np.flatnonzero((signed != 0) & np.isfinite(corner).all(axis=(1, 2)))
     if live.size < 2:
         return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
@@ -208,14 +207,39 @@ def overlapping_triangles(corner: np.ndarray, signed: np.ndarray) -> tuple[np.nd
         corner[tb].min(1) < corner[ta].max(1), axis=1
     )
     ta, tb = ta[boxes], tb[boxes]
+    # Neighbours sharing two UV corners (an edge PQ) overlap exactly when their third
+    # corners lie strictly on the same side of PQ (both tested against PQ in one
+    # direction); three shared corners are the same triangle. Only the others need the
+    # full test.
     out_a, out_b = [], []
     step = 1 << 18
+    rows = np.arange(step)
     for k in range(0, ta.shape[0], step):
         sa, sb = ta[k : k + step], tb[k : k + step]
-        hit = _triangles_overlap(corner[sa], corner[sb])
+        pa, pb = corner[sa], corner[sb]
+        eq = np.all(pa[:, :, None, :] == pb[:, None, :, :], axis=3)
+        in_b = eq.any(axis=2)  # corners of pa found in pb
+        in_a = eq.any(axis=1)  # corners of pb found in pa
+        shared = in_b.sum(axis=1)
+        hit = np.zeros(sa.shape[0], dtype=bool)
+        edge = np.flatnonzero((shared == 2) & (in_a.sum(axis=1) == 2))
+        if edge.size:
+            r = rows[: edge.size]
+            ka = np.argmin(in_b[edge], axis=1)  # the corner of pa not in pb
+            kb = np.argmin(in_a[edge], axis=1)
+            ea, eb = pa[edge], pb[edge]
+            P, Q = ea[r, (ka + 1) % 3], ea[r, (ka + 2) % 3]
+            side_a = orient2d(P, Q, ea[r, ka])
+            side_b = orient2d(P, Q, eb[r, kb])
+            hit[edge] = side_a * side_b > 0
+        hit[shared == 3] = True
+        handled = np.zeros(sa.shape[0], dtype=bool)
+        handled[edge] = True
+        handled[shared == 3] = True
+        rest = ~handled
+        hit[rest] = _triangles_overlap(pa[rest], pb[rest])
         out_a.append(sa[hit])
         out_b.append(sb[hit])
-    del T
     if not out_a:
         return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
     return np.concatenate(out_a), np.concatenate(out_b)
@@ -289,17 +313,34 @@ def min_gap(corner: np.ndarray, labels: np.ndarray, count: int, resolution: tupl
         if clash.any():
             return 0
         label[ys, xs] = c
-    dist = np.where(label >= 0, 0, np.iinfo(np.int64).max // 4)
+    big = np.iinfo(np.int64).max // 4
+    dist = np.where(label >= 0, 0, big)
     shifts = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
+    # Grow the labels 32 rings by Chebyshev steps, visiting only each ring's frontier: a
+    # free texel takes the label of its first labelled neighbour in ``shifts`` order (the
+    # neighbour at ``(y - dy, x - dx)``), as of the previous ring.
+    H, W = label.shape
+    flat = label.reshape(-1)
+    dflat = dist.reshape(-1)
+    near = np.zeros(label.shape, dtype=bool)
+    for dy, dx in shifts:
+        near |= np.roll(np.roll(label >= 0, dy, axis=0), dx, axis=1)
+    frontier = np.flatnonzero(near.reshape(-1) & (flat < 0))
     for ring in range(1, 33):
-        grown = label.copy()
+        if frontier.size == 0:
+            break
+        fy, fx = np.divmod(frontier, W)
+        got = np.full(frontier.size, -1, dtype=np.int64)
         for dy, dx in shifts:
-            src = np.roll(np.roll(label, dy, axis=0), dx, axis=1)
-            take = (grown < 0) & (src >= 0)
-            grown[take] = src[take]
-        newly = (label < 0) & (grown >= 0)
-        dist[newly] = ring
-        label = grown
+            src = flat[((fy - dy) % H) * W + (fx - dx) % W]
+            pick = (got < 0) & (src >= 0)
+            got[pick] = src[pick]
+        reached = frontier[got >= 0]
+        flat[reached] = got[got >= 0]
+        dflat[reached] = ring
+        nxt = [((fy + dy) % H) * W + (fx + dx) % W for dy, dx in shifts]
+        cand = np.unique(np.concatenate(nxt)) if nxt else np.zeros(0, np.int64)
+        frontier = cand[flat[cand] < 0]
     best = None
     for dy, dx in shifts[::2] + ((1, 1), (1, -1)):
         nl = np.roll(np.roll(label, dy, axis=0), dx, axis=1)

@@ -538,3 +538,33 @@ def test_edit_scripts_pass_uv_options():
     script["edits"][0]["operations"] = [{"op": "unwrap", "should_stop": True}]
     with pytest.raises(Exception, match="no argument 'should_stop'"):
         run_edit_script(scene, script)
+
+
+def test_overlap_detection_equals_brute_force_on_flips_and_folds():
+    """The fast paths (cell deduplication, edge neighbours by side tests) agree with the
+    generic exact test applied to every pair, on a layout with reversed corner orders
+    (same geometry, opposite orientation), folds and shifted islands."""
+    from aether3d.uv.report import _triangles_overlap, overlapping_triangles
+
+    rng = np.random.default_rng(21)
+    m = uv.unwrap(create_sphere(1.0, 16, 8), resolution=128).mesh
+    t = Topology.from_mesh(m)
+    c = t.uvs[t.triangles].astype(np.float64)
+    sel = rng.random(len(c)) < 0.3
+    c[sel] = c[sel] * 0.8 + 0.15
+    flip = rng.random(len(c)) < 0.2
+    c[flip] = c[flip][:, ::-1]
+    fold = np.flatnonzero(rng.random(len(c)) < 0.05)
+    mid = (c[fold, 1] + c[fold, 2]) / 2
+    c[fold, 0] = mid + (mid - c[fold, 0]) * 0.5
+    c = np.concatenate([c, [[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]]])  # one huge triangle
+    e1, e2 = c[:, 1] - c[:, 0], c[:, 2] - c[:, 0]
+    signed = 0.5 * (e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0])
+    a, b = overlapping_triangles(c, signed)
+    got = set(zip(np.minimum(a, b).tolist(), np.maximum(a, b).tolist(), strict=True))
+    i, j = np.triu_indices(len(c), 1)
+    live = (signed[i] != 0) & (signed[j] != 0)
+    i, j = i[live], j[live]
+    hit = _triangles_overlap(c[i], c[j])
+    want = set(zip(i[hit].tolist(), j[hit].tolist(), strict=True))
+    assert got == want and len(want) > 50
