@@ -1,0 +1,170 @@
+{
+  "label": "before",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.15.0",
+    "switches": {
+      "AETHER3D_EDITING_BULK": true,
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.17.0",
+      "reason": "loaded"
+    },
+    "git": "19785b7",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "curves:100": {
+      "keys": 100,
+      "times": 100000,
+      "evaluate_ms": 5.289,
+      "evaluate_order3_ms": 8.376,
+      "weighted_evaluate_ms": 9.712,
+      "batch_1000_ms": 0.151,
+      "peak_rss_mib": 74.8
+    },
+    "curves:10000": {
+      "keys": 10000,
+      "times": 100000,
+      "evaluate_ms": 5.964,
+      "evaluate_order3_ms": 8.545,
+      "weighted_evaluate_ms": 9.395,
+      "batch_1000_ms": 0.145,
+      "peak_rss_mib": 79.0
+    },
+    "objects:100": {
+      "objects": 100,
+      "build_s": 0.074,
+      "evaluate_ms": 0.606,
+      "overlay_ms": 0.714,
+      "posed_worlds_ms": 0.785,
+      "peak_rss_mib": 58.1
+    },
+    "objects:1000": {
+      "objects": 1000,
+      "build_s": 0.913,
+      "evaluate_ms": 3.226,
+      "overlay_ms": 3.708,
+      "posed_worlds_ms": 4.499,
+      "peak_rss_mib": 86.5
+    },
+    "objects:10000": {
+      "objects": 10000,
+      "build_s": 40.279,
+      "evaluate_ms": 34.539,
+      "overlay_ms": 38.484,
+      "posed_worlds_ms": 47.214,
+      "peak_rss_mib": 370.9
+    },
+    "rig:50": {
+      "joints": 50,
+      "evaluate_ms": 0.249,
+      "rigging_ms": 0.348,
+      "pose_joints_ms": 0.367,
+      "peak_rss_mib": 55.7
+    },
+    "rig:200": {
+      "joints": 200,
+      "evaluate_ms": 0.396,
+      "rigging_ms": 0.539,
+      "pose_joints_ms": 0.604,
+      "peak_rss_mib": 58.1
+    },
+    "skin:10000": {
+      "vertices": 10000,
+      "influences": 4,
+      "joints": 64,
+      "native_available": true,
+      "numpy_ms": 2.127,
+      "native_1_thread_ms": 0.204,
+      "native_threads": 20,
+      "native_all_threads_ms": 0.224,
+      "bitwise_equal": true,
+      "dual_quaternion_ms": 7.234,
+      "peak_rss_mib": 63.1
+    },
+    "skin:100000": {
+      "vertices": 100000,
+      "influences": 4,
+      "joints": 64,
+      "native_available": true,
+      "numpy_ms": 22.118,
+      "native_1_thread_ms": 2.041,
+      "native_threads": 20,
+      "native_all_threads_ms": 0.723,
+      "bitwise_equal": true,
+      "dual_quaternion_ms": 76.535,
+      "peak_rss_mib": 106.7
+    },
+    "skin:1000000": {
+      "vertices": 1000000,
+      "influences": 4,
+      "joints": 64,
+      "native_available": true,
+      "numpy_ms": 168.755,
+      "native_1_thread_ms": 20.958,
+      "native_threads": 20,
+      "native_all_threads_ms": 6.548,
+      "bitwise_equal": true,
+      "dual_quaternion_ms": 684.347,
+      "peak_rss_mib": 264.6
+    },
+    "ik": {
+      "two_bone_us": 12.445,
+      "fabrik_12_us": 919.59,
+      "rigging_with_ik_ms": 0.516,
+      "peak_rss_mib": 64.6
+    },
+    "nla": {
+      "layers": 4,
+      "strips": 16,
+      "evaluate_ms": 1.167,
+      "peak_rss_mib": 54.9
+    },
+    "generate": {
+      "walk_ms": 739.606,
+      "walk_keys": 644,
+      "land_ms": 2247.159,
+      "land_keys": 616,
+      "blocky_walk_ms": 232.287,
+      "peak_rss_mib": 76.9
+    },
+    "frames": {
+      "frames": 48,
+      "size": "320x180",
+      "cpu_frames": 49,
+      "cpu_seconds": 2.104,
+      "cpu_ms_per_frame": 42.935,
+      "gpu_frames": 49,
+      "gpu_seconds": 0.186,
+      "gpu_ms_per_frame": 3.801,
+      "cpu_motion_blur_4_ms": 134.458,
+      "peak_rss_mib": 456.1
+    },
+    "gltf": {
+      "export_clips_ms": 42.424,
+      "export_bake_ms": 55.982,
+      "clips_bytes": 66992,
+      "baked_bytes": 50316,
+      "import_ms": 10.3,
+      "peak_rss_mib": 72.2
+    },
+    "fit": {
+      "simplify_10000_ms": 3901.164,
+      "simplify_keys_after": 347,
+      "fit_20000_ms": 1572.198,
+      "fit_keys": 579,
+      "peak_rss_mib": 141.4
+    }
+  }
+}

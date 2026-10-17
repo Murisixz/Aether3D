@@ -400,3 +400,49 @@ def test_spatial_queries_and_observations_follow_the_current_time(scene):
     a.time = 0.5
     assert obs.stale
     assert scene.get_by_name("Cube").position == (0.0, 0.0, 1.0)
+
+
+def test_pose_transforms_are_the_channels_values_and_authored_elsewhere():
+    """Many objects with random subsets of transform channels (some clamped): every posed
+    component is its channel's value at the time (clamped to the property's range), every
+    other component the authored one, and objects without channels are not in the pose."""
+    rng = np.random.default_rng(23)
+    s = Scene("Many")
+    a = s.animation
+    objs = []
+    for i in range(120):
+        obj = s.add_cube(f"C{i}", position=tuple(rng.normal(size=3)), scale=(1.0, 2.0, 0.5))
+        objs.append(obj)
+        rotation = ["transform.rotation_euler.z", "transform.rotation"][i % 2]  # (not both)
+        for path in rng.choice(
+            ["transform.position.x", "transform.position.z", "transform.scale.y", rotation],
+            size=rng.integers(0, 3),
+            replace=False,
+        ):
+            if path == "transform.rotation":
+                a.keyframe(obj, path, 0.0, [0.0, 0.0, 0.0, 1.0])
+                a.keyframe(obj, path, 2.0, [0.0, 0.0, 0.6, 0.8])
+            else:
+                lo = -2.0 if "scale" in path else -5.0  # (scale.y goes negative: allowed)
+                a.set_channel(
+                    obj, path, [(0.0, float(rng.uniform(lo, 5))), (2.0, float(rng.uniform(lo, 5)))]
+                )
+    for t in (0.0, 0.7, 2.5):
+        pose = a.evaluate(t)
+        row = {oid: k for k, oid in enumerate(pose.ids)}
+        for obj in objs:
+            clip = a.action(obj)
+            paths = set(clip.paths) if clip is not None else set()
+            if not paths:
+                assert obj.id not in row
+                continue
+            k = row[obj.id]
+            for axis, c in (("x", 0), ("y", 1), ("z", 2)):
+                p = f"transform.position.{axis}"
+                want = a.channel(obj, p).evaluate(t) if p in paths else obj.position[c]
+                assert pose.position[k, c] == want
+                p = f"transform.scale.{axis}"
+                want = a.channel(obj, p).evaluate(t) if p in paths else obj.scale[c]
+                assert pose.scale[k, c] == pytest.approx(want, abs=0)
+            if not ({"transform.rotation", "transform.rotation_euler.z"} & paths):
+                assert np.allclose(pose.rotation[k], obj.rotation, atol=1e-15)

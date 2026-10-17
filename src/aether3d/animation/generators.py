@@ -238,15 +238,30 @@ _AXES = {
 }
 
 
+# Single quaternions and vectors, in plain floats: the pose solver handles thousands of
+# them per motion, where NumPy's per-call overhead would dominate (same formulas as
+# :mod:`.rotation`).
+
+
 def _axis_angle(axis: np.ndarray, degrees: float) -> np.ndarray:
-    return R.axis_angle(axis, np.array([math.radians(degrees)]))[0]
+    x, y, z = (float(c) for c in axis)
+    n = math.sqrt(x * x + y * y + z * z) or 1.0
+    h = 0.5 * math.radians(degrees)
+    s = math.sin(h) / n
+    return np.array([x * s, y * s, z * s, math.cos(h)])
 
 
 def _qmul(*qs: np.ndarray) -> np.ndarray:
-    out = qs[0]
+    ax, ay, az, aw = qs[0].tolist()
     for q in qs[1:]:
-        out = R.multiply(out[None], q[None])[0]
-    return out
+        bx, by, bz, bw = q.tolist()
+        ax, ay, az, aw = (
+            aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw,
+            aw * bw - ax * bx - ay * by - az * bz,
+        )
+    return np.array([ax, ay, az, aw])
 
 
 def _conj(q: np.ndarray) -> np.ndarray:
@@ -254,7 +269,18 @@ def _conj(q: np.ndarray) -> np.ndarray:
 
 
 def _rot(q: np.ndarray, v: np.ndarray) -> np.ndarray:
-    return R.rotate(q[None], np.asarray(v, np.float64)[None])[0]
+    ux, uy, uz, w = q.tolist()
+    vx, vy, vz = (float(c) for c in v)
+    tx = 2.0 * (uy * vz - uz * vy)
+    ty = 2.0 * (uz * vx - ux * vz)
+    tz = 2.0 * (ux * vy - uy * vx)
+    return np.array(
+        [
+            vx + w * tx + (uy * tz - uz * ty),
+            vy + w * ty + (uz * tx - ux * tz),
+            vz + w * tz + (ux * ty - uy * tx),
+        ]
+    )
 
 
 class _Body:
@@ -1184,36 +1210,66 @@ def _slopes(t: np.ndarray, v: np.ndarray, cyclic: bool) -> np.ndarray:
 
 
 def _fit_scalar(t, v, tol, cyclic, extrapolation):
+    from .fitting import _hermite_curve
+
     d = _slopes(t, v, cyclic)
-    idx, worst = _reduce(t, v, lambda i: d[i], tol, t.size, np.zeros(0, np.int64))
-    keys = [
-        {"time": float(t[i]), "value": float(v[i]), "interpolation": "bezier",
-         "left": {"type": "free", "slope": float(d[i])},
-         "right": {"type": "free", "slope": float(d[i])}}
-        for i in idx.tolist()
-    ]  # fmt: skip
-    return FCurve.from_keys(keys).replace(extrapolation=extrapolation), worst, int(idx.size)
+    idx, _ = _reduce(t, v, d, tol, t.size, np.zeros(0, np.int64))
+    curve = _hermite_curve(t[idx], v[idx], d[idx]).replace(extrapolation=extrapolation)
+    worst = float(np.max(np.abs(curve.evaluate(t) - v)))  # (measured on the built curve)
+    return curve, worst, int(idx.size)
+
+
+def _quat_hermite_error(t, q, dq, a, b):
+    """Largest angle (radians) between the samples strictly between keys ``a`` and ``b``
+    and glTF's cubic (component-wise Hermite, normalized) through them."""
+    if b - a < 2:
+        return 0.0, -1
+    span = t[b] - t[a]
+    s = ((t[a + 1 : b] - t[a]) / span)[:, None]
+    s2, s3 = s * s, s * s * s
+    h = (
+        (2 * s3 - 3 * s2 + 1) * q[a]
+        + (s3 - 2 * s2 + s) * span * dq[a]
+        + (-2 * s3 + 3 * s2) * q[b]
+        + (s3 - s2) * span * dq[b]
+    )
+    h /= np.linalg.norm(h, axis=1, keepdims=True)
+    err = 2.0 * np.arccos(np.clip(np.abs(np.sum(h * q[a + 1 : b], axis=1)), 0.0, 1.0))
+    k = int(err.argmax())
+    return float(err[k]), a + 1 + k
 
 
 def _fit_track(t, q, tol_deg, cyclic):
-    """Greedy cubic (Hermite) quaternion keys within ``tol_deg`` of every sample."""
+    """Cubic (glTF) quaternion keys within ``tol_deg`` of every sample: keys added where the
+    spline deviates most, one interval at a time (as :func:`.fitting._reduce`)."""
+    import heapq
+
     q = q.copy()
     for i in range(1, q.shape[0]):
         q[i] = R.align(q[i - 1], q[i])
     dq = _slopes(t, q, cyclic)
     tol = math.radians(tol_deg)
-    keep = [0, t.size - 1]
-    while True:
-        idx = np.array(sorted(keep))
-        track = RotationTrack.from_arrays(t[idx], q[idx], interpolation="cubic")
-        track = track.replace({"in": dq[idx], "out": dq[idx]},
-                              extrapolation="cycle" if cyclic else "constant")  # fmt: skip
-        ev = track.evaluate(t)
-        err = 2.0 * np.arccos(np.clip(np.abs(np.sum(ev * q, axis=1)), 0.0, 1.0))
-        k = int(err.argmax())
-        if err[k] <= tol or k in keep:
-            return track, math.degrees(float(err.max())), int(idx.size)
-        keep.append(k)
+    n = t.size
+    heap = []
+    e, k = _quat_hermite_error(t, q, dq, 0, n - 1)
+    heapq.heappush(heap, (-e, 0, n - 1, k))
+    keys = {0, n - 1}
+    while heap and -heap[0][0] > tol:
+        _, a, b, k = heapq.heappop(heap)
+        if k < 0:
+            continue
+        keys.add(k)
+        for lo, hi in ((a, k), (k, b)):
+            e, at = _quat_hermite_error(t, q, dq, lo, hi)
+            heapq.heappush(heap, (-e, lo, hi, at))
+    idx = np.array(sorted(keys))
+    track = RotationTrack.from_arrays(t[idx], q[idx], interpolation="cubic")
+    track = track.replace(
+        {"in": dq[idx], "out": dq[idx]}, extrapolation="cycle" if cyclic else "constant"
+    )
+    ev = track.evaluate(t)
+    err = 2.0 * np.arccos(np.clip(np.abs(np.sum(ev * q, axis=1)), 0.0, 1.0))
+    return track, math.degrees(float(err.max())), int(idx.size)
 
 
 def generate(

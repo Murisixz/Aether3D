@@ -310,14 +310,22 @@ def axis_angle(axis: np.ndarray, radians: np.ndarray) -> np.ndarray:
     return np.concatenate([a * np.sin(h)[:, None], np.cos(h)[:, None]], axis=1)
 
 
+def _cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """``numpy.cross`` of 3-vectors (rows, broadcasting): the same products and
+    differences, bit for bit, without its per-call overhead (small arrays, hot paths)."""
+    a0, a1, a2 = a[..., 0], a[..., 1], a[..., 2]
+    b0, b1, b2 = b[..., 0], b[..., 1], b[..., 2]
+    return np.stack([a1 * b2 - a2 * b1, a2 * b0 - a0 * b2, a0 * b1 - a1 * b0], axis=-1)
+
+
 def rotate(q: np.ndarray, v: np.ndarray) -> np.ndarray:
     """Rotate vectors ``v`` (rows) by quaternions ``q`` (rows or one)."""
     q = np.asarray(q, np.float64)
     v = np.asarray(v, np.float64)
     u = q[..., :3]
     w = q[..., 3:4]
-    t = 2.0 * np.cross(u, v)
-    return v + w * t + np.cross(u, t)
+    t = 2.0 * _cross(u, v)
+    return v + w * t + _cross(u, t)
 
 
 def swing_twist(q: np.ndarray, axis: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

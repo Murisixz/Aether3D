@@ -19,7 +19,6 @@ Errors reported are measured on the samples used (``basis: "sampled"``).
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -41,42 +40,71 @@ def _err(code: str, message: str, location: str) -> AnimationError:
 def _hermite_curve(
     times: np.ndarray, values: np.ndarray, slopes: np.ndarray, steps: np.ndarray | None = None
 ) -> FCurve:
-    """Keys with free, unweighted handles of the given slopes (``steps``: constant keys)."""
+    """Keys with free, unweighted handles of the given slopes (``steps``: constant keys):
+    the cubic Hermite spline through them."""
     n = times.shape[0]
     interp = np.full(n, 2, np.uint8)
     if steps is not None:
         interp[steps] = CONSTANT
-    keys = []
-    for i in range(n):
-        keys.append(
-            {
-                "time": float(times[i]),
-                "value": float(values[i]),
-                "interpolation": int(interp[i]),
-                "left": {"type": "free", "slope": float(slopes[i])},
-                "right": {"type": "free", "slope": float(slopes[i])},
-            }
-        )
-    return FCurve.from_keys(keys)
+    curve = FCurve.from_arrays(times, values, interpolation=interp, handles="free")
+    if n < 2:
+        return curve
+    gap = np.diff(times)
+    left = np.concatenate([[gap[0]], gap]) / 3.0
+    right = np.concatenate([gap, [gap[-1]]]) / 3.0
+    return curve.replace(
+        {"left_dt": -left, "left_dv": -left * slopes, "right_dt": right, "right_dv": right * slopes}
+    )
+
+
+def _hermite_error(
+    t: np.ndarray, v: np.ndarray, d: np.ndarray, a: int, b: int
+) -> tuple[float, int]:
+    """Largest deviation of the samples strictly between keys ``a`` and ``b`` from the cubic
+    Hermite segment through them, and where (``-1``: no sample between)."""
+    if b - a < 2:
+        return 0.0, -1
+    span = t[b] - t[a]
+    s = (t[a + 1 : b] - t[a]) / span
+    s2 = s * s
+    s3 = s2 * s
+    h = (
+        (2 * s3 - 3 * s2 + 1) * v[a]
+        + (s3 - 2 * s2 + s) * span * d[a]
+        + (-2 * s3 + 3 * s2) * v[b]
+        + (s3 - s2) * span * d[b]
+    )
+    err = np.abs(h - v[a + 1 : b])
+    k = int(err.argmax())
+    return float(err[k]), a + 1 + k
 
 
 def _reduce(
-    t: np.ndarray, v: np.ndarray, slope_of, tolerance: float, max_keys: int, fixed: np.ndarray
+    t: np.ndarray, v: np.ndarray, d: np.ndarray, tolerance: float, max_keys: int, fixed: np.ndarray
 ) -> tuple[np.ndarray, float]:
-    """Indices (into the samples) of the kept keys and the largest deviation."""
+    """Indices (into the samples) of the kept keys and the largest deviation: keys are
+    added where the Hermite spline through the kept keys (with the samples' slopes ``d``)
+    deviates most, one interval at a time (a priority queue: each insertion re-measures
+    only the two intervals it creates)."""
+    import heapq
+
     keep = sorted({0, t.shape[0] - 1, *fixed.tolist()})
-    worst = math.inf
-    while True:
-        idx = np.array(keep)
-        curve = _hermite_curve(t[idx], v[idx], slope_of(idx))
-        err = np.abs(curve.evaluate(t) - v)
-        worst = float(err.max())
-        if worst <= tolerance or len(keep) >= max_keys:
-            return idx, worst
-        k = int(err.argmax())
-        if k in keep:  # (cannot improve: the worst sample is a key)
-            return idx, worst
-        keep = sorted({*keep, k})
+    heap: list[tuple[float, int, int, int]] = []
+    for a, b in zip(keep[:-1], keep[1:], strict=True):
+        e, k = _hermite_error(t, v, d, a, b)
+        heapq.heappush(heap, (-e, a, b, k))
+    count = len(keep)
+    while heap and -heap[0][0] > tolerance and count < max_keys:
+        _, a, b, k = heapq.heappop(heap)
+        if k < 0:
+            continue
+        count += 1
+        for lo, hi in ((a, k), (k, b)):
+            e, at = _hermite_error(t, v, d, lo, hi)
+            heapq.heappush(heap, (-e, lo, hi, at))
+    idx = np.array(sorted({a for _, a, _, _ in heap} | {b for _, _, b, _ in heap} | set(keep)))
+    worst = max((-e for e, *_ in heap), default=0.0)
+    return idx, float(worst)
 
 
 def simplify(
@@ -119,8 +147,9 @@ def simplify(
         # Steps and jumps are kept exactly: the keys of the original around them.
         out = _with_steps(curve, tolerance, density, max_keys)
         return out
-    idx, worst = _reduce(t, v, lambda i: d[i], float(tolerance), max_keys or t.size, fixed)
+    idx, _ = _reduce(t, v, d, float(tolerance), max_keys or t.size, fixed)
     result = _hermite_curve(t[idx], v[idx], d[idx])
+    worst = float(np.max(np.abs(result.evaluate(t) - v)))  # (measured on the built curve)
     result = result.replace(extrapolation=list(curve.extrapolation))
     return result, {
         "keys_before": n,
@@ -195,10 +224,10 @@ def fit_samples(
     if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)) or not tolerance > 0:
         raise _err("INVALID_ARGUMENT", "tolerance is a positive number", "tolerance")
     d = np.gradient(v, t)
-    idx, worst = _reduce(
-        t, v, lambda i: d[i], float(tolerance), max_keys or t.size, np.zeros(0, np.int64)
-    )
-    return _hermite_curve(t[idx], v[idx], d[idx]), {
+    idx, _ = _reduce(t, v, d, float(tolerance), max_keys or t.size, np.zeros(0, np.int64))
+    curve = _hermite_curve(t[idx], v[idx], d[idx])
+    worst = float(np.max(np.abs(curve.evaluate(t) - v)))  # (measured on the built curve)
+    return curve, {
         "samples": int(t.size),
         "keys": int(idx.size),
         "max_error": worst,

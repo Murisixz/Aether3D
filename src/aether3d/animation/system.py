@@ -155,17 +155,40 @@ class AnimationSystem:
         name: str | None = None,
         alive: bool | None = None,
     ) -> None:
+        """Change one item, keeping the indexes in step (in constant time: only this
+        item's entries move). A change that would duplicate a clip or path name, a
+        binding's target or an object's rig/skin/... raises before anything changes."""
+        new_def = item._definition if definition is None else definition
+        new_name = item._name if name is None else name
+        new_alive = item._alive if alive is None else alive
+        old_key = _index_key(item.kind, item._name, item._definition) if item._alive else None
+        new_key = _index_key(item.kind, new_name, new_def) if new_alive else None
+        if new_key is not None and new_key != old_key:
+            table = self._index_table(new_key[0])
+            other = table.get(new_key[1])
+            if other is not None and other is not item:
+                raise _duplicate(new_key)
         self._touch(item)
-        if definition is not None:
-            item._definition = definition
-        if name is not None:
-            item._name = name
-        if alive is not None:
-            item._alive = alive
-        self._reindex()
+        item._definition = new_def
+        item._name = new_name
+        item._alive = new_alive
+        if old_key is not None:
+            table = self._index_table(old_key[0])
+            if table.get(old_key[1]) is item:
+                del table[old_key[1]]
+        if new_key is not None:
+            self._index_table(new_key[0])[new_key[1]] = item
         self._changed()
 
+    def _index_table(self, kind: str) -> dict:
+        return {
+            "clip": self._clip_names,
+            "path": self._path_names,
+            "binding": self._bindings,
+        }.get(kind, self._owned)
+
     def _reindex(self) -> None:
+        """Rebuild every index from the items (after undo, redo or a rollback)."""
         names: dict[str, AnimItem] = {}
         path_names: dict[str, AnimItem] = {}
         bindings: dict[tuple[str, str], AnimItem] = {}
@@ -202,7 +225,10 @@ class AnimationSystem:
         self._changed()
 
     def _new_item(self, kind: str, name: str, definition: Any) -> AnimItem:
-        if sum(1 for i in self._items.values() if i._alive) >= MAX_ITEMS:
+        alive = (
+            len(self._clip_names) + len(self._path_names) + len(self._bindings) + len(self._owned)
+        )
+        if alive >= MAX_ITEMS:
             raise _err("LIMIT_EXCEEDED", f"more than {MAX_ITEMS} animation items")
         item = AnimItem(self, str(uuid.uuid4()), kind, name, definition)
         item._alive = False
@@ -1953,6 +1979,26 @@ class ObjectConstraints:
 
 def _owner_of(item: AnimItem) -> str:
     return item._definition.object
+
+
+def _index_key(kind: str, name: str, definition: Any) -> tuple[str, Any]:
+    """Where an alive item is indexed: ``(table, key)``."""
+    if kind in ("clip", "path"):
+        return (kind, name)
+    if kind == "binding":
+        return ("binding", definition.target)
+    return ("owned", (kind, definition.object))
+
+
+def _duplicate(key: tuple[str, Any]) -> AnimationError:
+    table, value = key
+    if table == "clip":
+        return _err("DUPLICATE_NAME", f"two clips would be named {value!r}")
+    if table == "path":
+        return _err("DUPLICATE_NAME", f"two paths would be named {value!r}")
+    if table == "binding":
+        return _err("DUPLICATE_BINDING", f"two bindings would animate {value[0]} {value[1]}")
+    return _err("DUPLICATE_BINDING", f"two {value[0]} items for object {value[1]}")
 
 
 def _replace_rig(rig: Any, **changes: Any) -> Any:

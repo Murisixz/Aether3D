@@ -537,7 +537,10 @@ def evaluate(system: AnimationSystem, t: float, prog: Program | None = None) -> 
             live = wsum > 0.0
             avg = xsum[live] / wsum[live]
             influence = np.minimum(wsum[live], 1.0) * fs[live]
-            values[live] = values[live] + influence * (avg - values[live])
+            # (full influence plays the curves exactly: v + 1 x (x - v) may round off x)
+            values[live] = np.where(
+                influence == 1.0, avg, values[live] + influence * (avg - values[live])
+            )
     touched = np.zeros(len(prog.slots), bool)
     touched[prog.q_slot] = True
 
@@ -600,12 +603,14 @@ def evaluate(system: AnimationSystem, t: float, prog: Program | None = None) -> 
             if not additive:
                 live = np.flatnonzero(wacc > 0.0)
                 influence = np.minimum(wacc[live], 1.0) * fs[live]
-                rot[live] = R.normalize(R.blend(rot[live], acc[live], influence))
+                full = (influence == 1.0)[:, None]
+                rot[live] = R.normalize(
+                    np.where(full, acc[live], R.blend(rot[live], acc[live], influence))
+                )
         rot_touched[slots] = True
 
     # Assemble the pose.
     scene = system.scene
-    obj_trs: dict[int, list] = {}
     visible: dict[str, bool] = {}
     fields: dict[tuple[str, str], dict[str, Any]] = {}
     materials: dict[str, dict[str, Any]] = {}
@@ -614,7 +619,38 @@ def evaluate(system: AnimationSystem, t: float, prog: Program | None = None) -> 
     influences: dict[str, dict[str, float]] = {}
     clamped: dict[str, int] = {}
     skipped: dict[str, int] = {}
-    for k in np.flatnonzero(touched).tolist():
+    # Object transforms, all at once (by far the most slots): see _transform_plan.
+    plan = _transform_plan(prog)
+    base = _transform_base(prog, plan, system)
+    row_hit = np.zeros(len(plan["row_b"]), bool)
+    position_rows = base["position"].copy()
+    rotation_rows = base["rotation"].copy()
+    scale_rows = base["scale"].copy()
+    if plan["tf_k"].size:
+        k_tf = plan["tf_k"]
+        on = touched[k_tf]
+        bad = on & ~rest["valid"][k_tf]
+        v_tf = values[k_tf]
+        bad |= on & ~np.isfinite(v_tf)
+        _count(skipped, plan["tf_path"], bad)
+        use = on & ~bad
+        lo, hi = plan["tf_lo"], plan["tf_hi"]
+        outside = use & ((v_tf < lo) | (v_tf > hi))
+        _count(clamped, plan["tf_path"], outside)
+        v_tf = np.where(outside, np.minimum(np.maximum(v_tf, lo), hi), v_tf)
+        rows, comps, fields_ = plan["tf_row"][use], plan["tf_comp"][use], plan["tf_field"][use]
+        vals = v_tf[use]
+        at_pos = fields_ == 0
+        position_rows[rows[at_pos], comps[at_pos]] = vals[at_pos]
+        scale_rows[rows[~at_pos], comps[~at_pos]] = vals[~at_pos]
+        row_hit[rows] = True
+    if plan["or_k"].size:
+        k_or = plan["or_k"]
+        use = rot_touched[k_or] & rest["rot_valid"][k_or]
+        rows = plan["or_row"][use]
+        rotation_rows[rows] = rot[k_or[use]]
+        row_hit[rows] = True
+    for k in np.flatnonzero(touched & ~plan["is_tf"]).tolist():
         b, spec = prog.slots[k]
         kind, tid = prog.targets[b]
         if not rest["valid"][k]:
@@ -633,14 +669,7 @@ def evaluate(system: AnimationSystem, t: float, prog: Program | None = None) -> 
             material = scene.materials.find_material(tid)
             _set_component(entry, spec, v, lambda m=material, f=spec.field: list(m.params[f]))
             continue
-        if g == "transform":
-            trs = obj_trs.setdefault(b, [None, None, None])
-            slot = {"position": 0, "scale": 2}[spec.field]
-            if trs[slot] is None:
-                tf = scene._objects[tid]._transform
-                trs[slot] = list(tf._position if slot == 0 else tf._scale)
-            trs[slot][spec.component] = v
-        elif g == "visible":
+        if g == "visible":
             visible[tid] = v > 0.5
         elif g in ("camera", "light", "appearance"):
             entry = fields.setdefault((tid, g), {})
@@ -668,35 +697,20 @@ def evaluate(system: AnimationSystem, t: float, prog: Program | None = None) -> 
         elif g == "constraint":
             key = spec.name if spec.field == "influence" else f"{spec.name}.{spec.field}"
             influences.setdefault(tid, {})[key] = v
-    for k in np.flatnonzero(rot_touched).tolist():
+    for k in np.flatnonzero(rot_touched & ~plan["is_or"]).tolist():
         b, joint = prog.rot_slots[k]
         kind, tid = prog.targets[b]
         if not rest["rot_valid"][k]:
             continue
-        q = rot[k]
-        if joint is None:
-            trs = obj_trs.setdefault(b, [None, None, None])
-            trs[1] = q
-        else:
-            jt = joints.setdefault(tid, {}).setdefault(joint, [None, None, None])
-            jt[1] = q
-    # Objects: fill unanimated components from the authored transform.
-    ids = []
-    pos = []
-    rots = []
-    scl = []
-    for b, trs in sorted(obj_trs.items()):
-        kind, tid = prog.targets[b]
-        tf = scene._objects[tid]._transform
-        ids.append(tid)
-        pos.append(tf._position if trs[0] is None else trs[0])
-        rots.append(tf._rotation if trs[1] is None else trs[1])
-        scl.append(tf._scale if trs[2] is None else trs[2])
-    position = np.array(pos, np.float64).reshape(-1, 3)
-    rotation = np.array(rots, np.float64).reshape(-1, 4)
+        jt = joints.setdefault(tid, {}).setdefault(joint, [None, None, None])
+        jt[1] = rot[k]
+    # Objects with an animated transform component: unanimated components authored.
+    ids = [tid for tid, hit in zip(base["ids"], row_hit.tolist(), strict=True) if hit]
+    position = np.ascontiguousarray(position_rows[row_hit])
+    rotation = rotation_rows[row_hit]
     if rotation.size:
         rotation = R.normalize(rotation)
-    scale = np.array(scl, np.float64).reshape(-1, 3)
+    scale = np.ascontiguousarray(scale_rows[row_hit])
     for arr in (position, rotation, scale):
         arr.flags.writeable = False
     joint_out = {tid: {name: tuple(v) for name, v in jts.items()} for tid, jts in joints.items()}
@@ -735,6 +749,95 @@ def evaluate(system: AnimationSystem, t: float, prog: Program | None = None) -> 
         influences,
         tuple(diags),
     )
+
+
+def _count(counts: dict[str, int], path_ids: tuple[list[str], np.ndarray], mask: np.ndarray):
+    """Add to ``counts`` (path -> count) the slots of ``mask``."""
+    if not np.any(mask):
+        return
+    names, ids = path_ids
+    for i, n in zip(*np.unique(ids[mask], return_counts=True), strict=True):
+        counts[names[int(i)]] = counts.get(names[int(i)], 0) + int(n)
+
+
+def _transform_plan(prog: Program) -> dict[str, Any]:
+    """Where the object transform slots go in the pose (static: cached on the program).
+
+    Rows are the bound objects with a transform slot or an object rotation slot, in
+    binding order (the pose's order); ``tf_*`` describe the scalar slots (position and
+    scale components) and ``or_*`` the object rotation slots."""
+    found = prog.rest_cache.get("transform_plan")
+    if found is not None:
+        return found
+    rows: dict[int, int] = {}
+    tf_k, tf_b, tf_field, tf_comp, tf_lo, tf_hi, tf_path = [], [], [], [], [], [], []
+    path_names: list[str] = []
+    path_index: dict[str, int] = {}
+    for k, (b, spec) in enumerate(prog.slots):
+        if spec.group != "transform" or prog.targets[b][0] != P.OBJECT:
+            continue
+        tf_k.append(k)
+        tf_b.append(b)
+        tf_field.append(0 if spec.field == "position" else 2)
+        tf_comp.append(spec.component)
+        tf_lo.append(spec.lo)
+        tf_hi.append(spec.hi)
+        if spec.path not in path_index:
+            path_index[spec.path] = len(path_names)
+            path_names.append(spec.path)
+        tf_path.append(path_index[spec.path])
+    or_k, or_b = [], []
+    for k, (b, joint) in enumerate(prog.rot_slots):
+        if joint is None and prog.targets[b][0] == P.OBJECT:
+            or_k.append(k)
+            or_b.append(b)
+    for b in sorted(set(tf_b) | set(or_b)):
+        rows[b] = len(rows)
+    is_tf = np.zeros(len(prog.slots), bool)
+    is_tf[tf_k] = True
+    is_or = np.zeros(len(prog.rot_slots), bool)
+    is_or[or_k] = True
+    plan = {
+        "row_b": list(rows),
+        "tf_k": np.array(tf_k, np.int64),
+        "tf_row": np.array([rows[b] for b in tf_b], np.int64),
+        "tf_field": np.array(tf_field, np.int64),
+        "tf_comp": np.array(tf_comp, np.int64),
+        "tf_lo": np.array(tf_lo, np.float64),
+        "tf_hi": np.array(tf_hi, np.float64),
+        "tf_path": (path_names, np.array(tf_path, np.int64)),
+        "or_k": np.array(or_k, np.int64),
+        "or_row": np.array([rows[b] for b in or_b], np.int64),
+        "is_tf": is_tf,
+        "is_or": is_or,
+    }
+    prog.rest_cache["transform_plan"] = plan
+    return plan
+
+
+def _transform_base(prog: Program, plan: dict[str, Any], system: AnimationSystem) -> dict:
+    """The authored transforms of the plan's rows (cached per scene revision)."""
+    key = system.scene.revision
+    cached = prog.rest_cache.get("transform_base")
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    objects = system.scene._objects
+    ids, pos, rot, scl = [], [], [], []
+    for b in plan["row_b"]:
+        tid = prog.targets[b][1]
+        tf = objects[tid]._transform
+        ids.append(tid)
+        pos.append(tf._position)
+        rot.append(tf._rotation)
+        scl.append(tf._scale)
+    base = {
+        "ids": ids,
+        "position": np.array(pos, np.float64).reshape(-1, 3),
+        "rotation": np.array(rot, np.float64).reshape(-1, 4),
+        "scale": np.array(scl, np.float64).reshape(-1, 3),
+    }
+    prog.rest_cache["transform_base"] = (key, base)
+    return base
 
 
 def _set_component(entry: dict[str, Any], spec: P.PathSpec, value: float, current) -> None:
