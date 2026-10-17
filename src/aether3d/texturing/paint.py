@@ -603,19 +603,33 @@ def stroke(
     if space == "surface":
         from ..spatial.surface import TriangleSurface
 
-        surface = TriangleSurface(
-            mesh.positions.astype(np.float64), mesh.triangles.astype(np.int64)
-        )
+        surface = mesh._derived_get("triangle_surface")  # cached: meshes are immutable
+        if surface is None:
+            surface = TriangleSurface(
+                mesh.positions.astype(np.float64), mesh.triangles.astype(np.int64)
+            )
+            mesh._derived_set("triangle_surface", surface)
     world = None
     if space == "view":
         world = np.asarray(obj.world_matrix, dtype=np.float64)
     smudge_load: dict[int, np.ndarray] = {}
+    mirrors = _mirrors(b.symmetry) if space == "surface" else [np.ones(3)]
+    nearest = None
+    if space == "surface":
+        # Every dab's (and mirror's) nearest surface point, in one query.
+        centers = (dabs[:, None, :] * np.asarray(mirrors)[None, :, :]).reshape(-1, 3)
+        found = surface.nearest(centers, np.inf)
+        nearest = (found.points, found.triangles, found.bary)
     for i in range(dabs.shape[0]):
         if should_stop is not None and should_stop():
             raise TexturingError("CANCELLED", "the stroke was cancelled")
-        for m_i, mirror in enumerate(_mirrors(b.symmetry) if space == "surface" else [np.ones(3)]):
+        for m_i, mirror in enumerate(mirrors):
             center = dabs[i] * mirror if space == "surface" else dabs[i]
             alpha_scale = b.strength * float(dab_pressure[i])
+            near = None
+            if nearest is not None:
+                at = i * len(mirrors) + m_i
+                near = (nearest[0][at], int(nearest[1][at]), nearest[2][at])
             for k, acc in enumerate(accs):
                 used = _dab(
                     acc,
@@ -623,7 +637,7 @@ def stroke(
                     space,
                     center,
                     alpha_scale,
-                    surface,
+                    near,
                     view,
                     world,
                     obj,
@@ -689,16 +703,15 @@ def _targets(targets: Any, b: Brush) -> list[Target]:
     return out
 
 
-def _dab(acc, b, space, center, alpha_scale, surface, view, world, obj, smudge_load, key):
-    """Accumulate one dab into ``acc``; returns the number of texels reached or None."""
+def _dab(acc, b, space, center, alpha_scale, near, view, world, obj, smudge_load, key):
+    """Accumulate one dab into ``acc`` (``near``: the dab's nearest surface point, triangle
+    and barycentrics, for surface strokes); returns the number of texels reached or None."""
     tm = acc.tm
     if space == "surface":
-        near = surface.nearest(center[None, :], np.inf)
-        if near.triangles[0] < 0:
+        hit, tri, bary = near
+        if tri < 0:
             return None
-        hit = near.points[0]
-        tri = int(near.triangles[0])
-        n_brush = np.einsum("k,kc->c", near.bary[0], tm.cn[tri])
+        n_brush = np.einsum("k,kc->c", bary, tm.cn[tri])
         n_brush /= max(np.linalg.norm(n_brush), 1e-300)
         tiles = tm.tiles_near(hit, b.radius)
         limit = math.cos(math.radians(b.normal_limit)) if b.normal_limit < 180 else -2.0
@@ -981,50 +994,69 @@ def _finish(acc: _Accumulator, b: Brush, padding: int, edits: dict) -> None:
 
 def _pad_coverage(acc: _Accumulator, tiles: list[int], padding: int) -> None:
     """Grow each tile's stroke coverage into the uncovered (padding) texels around the
-    covered ones, ``padding`` rings, within the tile and its neighbours."""
+    covered ones, ``padding`` rings (at most 16, less than a tile), within the tile and its
+    neighbours.
+
+    Every touched tile and each of its neighbours is grown in a window of 3 x 3 tiles
+    around it, read from the coverage as it was: the rings reach at most 16 texels, so the
+    window holds everything a tile's result depends on, and the work stays near the
+    stroke even when it crosses seams to islands far apart in the texture."""
     tm = acc.tm
-    # Work on the bounding region of the touched tiles plus a margin of one tile.
-    xs = [t % tm.tiles_x for t in tiles]
-    ys = [t // tm.tiles_x for t in tiles]
-    tx0, tx1 = max(0, min(xs) - 1), min(tm.tiles_x - 1, max(xs) + 1)
-    ty0, ty1 = max(0, min(ys) - 1), min(tm.tiles_y - 1, max(ys) + 1)
-    h = (ty1 - ty0 + 1) * TILE
-    w = (tx1 - tx0 + 1) * TILE
-    cov = np.zeros((h, w), np.float32)
-    covered = np.zeros((h, w), bool)
-    work = {}
-    for j in range(ty0, ty1 + 1):
-        for i in range(tx0, tx1 + 1):
-            t = j * tm.tiles_x + i
-            sl = (
-                slice((j - ty0) * TILE, (j - ty0 + 1) * TILE),
-                slice((i - tx0) * TILE, (i - tx0 + 1) * TILE),
-            )
-            if t in acc.coverage:
-                cov[sl] = acc.coverage[t]
+    original = {t: c for t, c in acc.coverage.items()}
+    targets = set()
+    for t in tiles:
+        ty, tx = divmod(t, tm.tiles_x)
+        for j in range(max(0, ty - 1), min(tm.tiles_y, ty + 2)):
+            for i in range(max(0, tx - 1), min(tm.tiles_x, tx + 2)):
+                targets.add(j * tm.tiles_x + i)
+    covered_tiles: dict[int, np.ndarray] = {}
+
+    def covered_of(t: int) -> np.ndarray:
+        found = covered_tiles.get(t)
+        if found is None:
             m = np.zeros(TILE * TILE, bool)
             m[tm.texels(t).local] = True
-            covered[sl] = m.reshape(TILE, TILE)
-            work[t] = sl
-    grown = covered.copy()
-    for _ in range(padding):
-        total = np.zeros_like(cov)
-        count = np.zeros_like(cov)
-        for dy, dx in SHIFTS:
-            ys_ = slice(max(dy, 0), h + min(dy, 0))
-            yd = slice(max(-dy, 0), h + min(-dy, 0))
-            xs_ = slice(max(dx, 0), w + min(dx, 0))
-            xd = slice(max(-dx, 0), w + min(-dx, 0))
-            src = grown[ys_, xs_]
-            total[yd, xd] += np.where(src, cov[ys_, xs_], 0.0)
-            count[yd, xd] += src
-        new = ~grown & (count > 0)
-        if not new.any():
-            break
-        cov[new] = total[new] / count[new]
-        grown |= new
-    for t, sl in work.items():
-        block = cov[sl]
+            found = covered_tiles[t] = m.reshape(TILE, TILE)
+        return found
+
+    w = h = 3 * TILE
+    for t in sorted(targets):
+        ty, tx = divmod(t, tm.tiles_x)
+        cov = np.zeros((h, w), np.float32)
+        covered = np.zeros((h, w), bool)
+        for dj in (-1, 0, 1):
+            for di in (-1, 0, 1):
+                j, i = ty + dj, tx + di
+                if not (0 <= j < tm.tiles_y and 0 <= i < tm.tiles_x):
+                    continue
+                n = j * tm.tiles_x + i
+                sl = (
+                    slice((dj + 1) * TILE, (dj + 2) * TILE),
+                    slice((di + 1) * TILE, (di + 2) * TILE),
+                )
+                if n in original:
+                    cov[sl] = original[n]
+                covered[sl] = covered_of(n)
+        if not cov.any():
+            continue
+        grown = covered.copy()
+        for _ in range(padding):
+            total = np.zeros_like(cov)
+            count = np.zeros_like(cov)
+            for dy, dx in SHIFTS:
+                ys_ = slice(max(dy, 0), h + min(dy, 0))
+                yd = slice(max(-dy, 0), h + min(-dy, 0))
+                xs_ = slice(max(dx, 0), w + min(dx, 0))
+                xd = slice(max(-dx, 0), w + min(-dx, 0))
+                src = grown[ys_, xs_]
+                total[yd, xd] += np.where(src, cov[ys_, xs_], 0.0)
+                count[yd, xd] += src
+            new = ~grown & (count > 0)
+            if not new.any():
+                break
+            cov[new] = total[new] / count[new]
+            grown |= new
+        block = cov[TILE : 2 * TILE, TILE : 2 * TILE]
         if np.any(block > 0):
             acc.coverage[t] = block.copy()
 
