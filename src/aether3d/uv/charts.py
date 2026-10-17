@@ -10,9 +10,12 @@
    inverts a triangle; ``method="isometric"`` (default) refines it with SLIM.
 4. **A chart is accepted** when its map has no inverted triangle, no boundary
    self-overlap and an L2 stretch (Sander et al. 2001, scale-normalized) of at most
-   ``max_stretch``. Otherwise it is **split in two**: faces go to the nearer (in dual-graph
-   hops; ties to the first) of two seeds, the face farthest from the chart's first face
-   and the face farthest from that one (Iso-charts style). Split charts start again at 3.
+   ``max_stretch``. Otherwise it is **split in two**: faces go to the nearer (geodesic
+   distance on the dual graph, centroid to centroid; ties to the first) of two seeds, the
+   face farthest from the chart's first face and the face farthest from that one
+   (Iso-charts style); the border's remaining teeth are then removed (faces with one
+   neighbour on their side and more on the other move across). Split charts start again
+   at 3.
 
 Everything is deterministic: ties break by the lowest face or vertex id.
 """
@@ -229,18 +232,77 @@ def _split(topo: Topology, cut: np.ndarray, faces: np.ndarray, chart: np.ndarray
     indptr = np.cumsum(indptr)
     # First face of each chart, its farthest face, and that face's farthest face.
     first = _first_per(chart, faces)
-    d0 = _bfs(T, indptr, b, first)
+    # Geodesic distances on the dual graph (edges: centroid to centroid), whose bisector
+    # follows the surface; hop counts would carve staircases on regular grids.
+    centroid = topo.positions[topo.triangles].mean(axis=1)
+    w = np.linalg.norm(centroid[a] - centroid[b], axis=1)
+    d0 = _geodesic(T, indptr, b, w, first)
     seed_a = _farthest_per(chart, faces, d0)
-    da = _bfs(T, indptr, b, seed_a)
+    da = _geodesic(T, indptr, b, w, seed_a)
     seed_b = _farthest_per(chart, faces, da)
-    db = _bfs(T, indptr, b, seed_b)
+    db = _geodesic(T, indptr, b, w, seed_b)
     to_b = db[faces] < da[faces]
     unreachable = (da[faces] < 0) & (db[faces] < 0)
     label = np.where(to_b, seed_b[_chart_index(chart)], seed_a[_chart_index(chart)])
     # Faces not reached from either seed (disconnected pieces) become their own parts.
     label = np.where(unreachable, faces, label)
     # A chart whose seeds coincide (one face) cannot split; give it a unique label anyway.
-    return label
+    return _straighten(T, faces, label, a, b, indptr, np.r_[seed_a, seed_b])
+
+
+STRAIGHTEN_ROUNDS = 12
+
+
+def _straighten(T: int, faces, label, a, b, indptr, seeds) -> np.ndarray:
+    """Remove the teeth of a split's border: a face -- or two neighbouring faces -- with at
+    most one link to its own side and more to the other side moves across, shortening the
+    border. Such a piece hangs on its side by one edge at most, so moving it never
+    disconnects that side; seeds never move, so both sides keep a face. Single faces move
+    in vectorized rounds (independent sets: a candidate moves unless a neighbouring
+    candidate has a lower id); pairs, on the border only, one by one in id order, each
+    checked against the current labels. Deterministic."""
+    lab = np.full(T, -1, dtype=np.int64)
+    lab[faces] = label
+    fixed = np.zeros(T, dtype=bool)
+    fixed[seeds] = True
+    big = np.iinfo(np.int64).max
+    for _ in range(STRAIGHTEN_ROUNDS):
+        same = lab[a] == lab[b]
+        n_same = np.bincount(a[same], minlength=T)
+        n_diff = np.bincount(a[~same], minlength=T)
+        lo = np.full(T, big, dtype=np.int64)
+        hi = np.full(T, -1, dtype=np.int64)
+        np.minimum.at(lo, a[~same], lab[b[~same]])
+        np.maximum.at(hi, a[~same], lab[b[~same]])
+        cand = (n_same <= 1) & (n_diff > n_same) & (lo == hi) & ~fixed
+        moved = False
+        if cand.any():
+            blocked = np.zeros(T, dtype=bool)
+            both = cand[a] & cand[b] & (b < a)
+            blocked[a[both]] = True
+            move = cand & ~blocked
+            lab[move] = lo[move]
+            moved = True
+        else:
+            # Pairs of border faces.
+            pairs = same & (n_diff[a] > 0) & (n_diff[b] > 0) & (a < b) & ~fixed[a] & ~fixed[b]
+            for f, g in zip(a[pairs].tolist(), b[pairs].tolist(), strict=True):
+                own = lab[f]
+                if lab[g] != own:
+                    continue
+                around = [
+                    int(n)
+                    for n in np.r_[b[indptr[f] : indptr[f + 1]], b[indptr[g] : indptr[g + 1]]]
+                    if n != f and n != g
+                ]
+                links = sum(1 for n in around if lab[n] == own)
+                other = {int(lab[n]) for n in around if lab[n] != own}
+                if links <= 1 and len(other) == 1 and len(around) - links > links:
+                    lab[f] = lab[g] = other.pop()
+                    moved = True
+        if not moved:
+            break
+    return lab[faces]
 
 
 def _chart_index(chart: np.ndarray) -> np.ndarray:
@@ -263,25 +325,30 @@ def _farthest_per(chart: np.ndarray, faces: np.ndarray, dist: np.ndarray) -> np.
     return faces[order][starts]
 
 
-def _bfs(n: int, indptr: np.ndarray, nbr: np.ndarray, sources: np.ndarray) -> np.ndarray:
-    """Hop distances from ``sources`` (``-1`` unreached), frontier by frontier."""
-    dist = np.full(n, -1, dtype=np.int64)
+def _geodesic(
+    n: int, indptr: np.ndarray, nbr: np.ndarray, weight: np.ndarray, sources: np.ndarray
+) -> np.ndarray:
+    """Shortest-path distances from ``sources`` along weighted edges (``-1`` unreached):
+    Bellman-Ford relaxing only the edges of nodes whose distance changed in the last round
+    (exact; rounds are about the hop diameter)."""
+    dist = np.full(n, np.inf)
     frontier = np.unique(sources)
-    dist[frontier] = 0
-    level = 0
+    dist[frontier] = 0.0
     while frontier.size:
-        level += 1
         lo, hi = indptr[frontier], indptr[frontier + 1]
         cnt = hi - lo
         total = int(cnt.sum())
         if total == 0:
             break
         pos = np.repeat(lo - np.cumsum(cnt) + cnt, cnt) + np.arange(total)
-        cand = np.unique(nbr[pos])
-        cand = cand[dist[cand] < 0]
-        dist[cand] = level
-        frontier = cand
-    return dist
+        cand = np.repeat(dist[frontier], cnt) + weight[pos]
+        target = nbr[pos]
+        best = dist.copy()
+        np.minimum.at(best, target, cand)
+        changed = best < dist
+        dist = best
+        frontier = np.flatnonzero(changed)
+    return np.where(np.isfinite(dist), dist, -1.0)
 
 
 def check_options(
