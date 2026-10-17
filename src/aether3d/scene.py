@@ -1812,6 +1812,18 @@ class Scene:
             result.report["applied"] = apply_bake(self, target, result)
         return result
 
+    def transfer_textures(self, source: Any, target: Any, maps: Any = None, **options: Any):
+        """Carry ``source``'s material onto ``target`` (e.g. a voxel-remeshed copy):
+        unwrap the target if it has no UVs, bake ``maps`` (default base color, roughness,
+        metallic and normal) and bind them -- one history step
+        (:func:`aether3d.texturing.transfer_textures`)."""
+        from .texturing import transfer_textures
+        from .texturing.transfer import DEFAULT_MAPS
+
+        return transfer_textures(
+            self, source, target, DEFAULT_MAPS if maps is None else maps, **options
+        )
+
     def add_procedural_texture(self, name: str | None, graph: Any):
         """Add a procedural texture from a node graph (see docs/MATERIALS.md)."""
         return self._materials.add_procedural_texture(name, graph)

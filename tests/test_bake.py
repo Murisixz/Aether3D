@@ -374,3 +374,95 @@ def test_gpu_backend_without_a_gpu_is_refused(monkeypatch):
         bake(scene, low, maps=["normal"], resolution=64, backend="gpu")
     assert exc.value.code == "GPU_UNAVAILABLE"
     assert bake(scene, low, maps=["normal"], resolution=64).report["backend"] == "cpu"
+
+
+def test_applied_maps_replace_the_factors_they_multiply():
+    scene = Scene()
+    low = scene.add_object("Low", mesh=create_sphere(1.0, 16, 8))
+    low.unwrap(resolution=64)
+    src = scene.add_object("High", mesh=create_sphere(1.0, 32, 16))
+    m = scene.create_material("Red")
+    m.base_color = (0.8, 0.2, 0.1)
+    m.roughness = 0.3
+    src.material = m
+    low.material = scene.create_material("Low")
+    low.material.base_color = (0.5, 0.5, 0.5)
+    scene.bake(low, ["High"], ["base_color", "roughness"], resolution=64, apply=True)
+    assert low.material.base_color == (1.0, 1.0, 1.0) and low.material.roughness == 1.0
+
+
+def test_textures_survive_a_voxel_remesh_through_a_transfer():
+    from aether3d.texturing import fill, texel_map
+
+    scene = Scene()
+    ball = scene.add_object("Ball", mesh=create_sphere(1.0, 32, 16))
+    ball.unwrap(resolution=128)
+    doc = scene.add_painted_texture("Paint", 128, 128)
+    doc.add_layer("Ink")
+    material = scene.create_material("Painted")
+    material.set_texture("base_color", doc)
+    material.roughness = 0.4
+    ball.material = material
+    fill(scene, ball, doc, "#ff0000", where={"islands": [0]})
+    fill(scene, ball, doc, "#0000ff", where={"islands": [1]})
+    keep = scene.duplicate(ball, "Ball before")
+    with ball.sculpt() as session:
+        session.voxel_remesh(0.08)
+        session.commit()
+    assert ball.mesh.uvs is None
+    n = len(scene.history.entries)
+    out = scene.transfer_textures(keep, ball, resolution=128, backend="cpu")
+    assert len(scene.history.entries) == n + 1
+    assert out["unwrapped"] and set(out["maps"]) == {
+        "base_color",
+        "roughness",
+        "metallic",
+        "normal",
+    }
+    assert ball.material is not material and keep.material is material  # the source keeps its look
+    # Every texel takes the color of the source island under it (0.8, the default factor,
+    # x the painted texture): red on island 0, blue on island 1.
+    from aether3d.uv.islands import island_labels
+    from aether3d.uv.topology import Topology
+
+    old = keep.mesh
+    labels, _ = island_labels(Topology.from_mesh(old))
+    centers = old.positions[old.triangles].mean(axis=1)
+    new_doc = scene.materials.texture(out["textures"]["base_color"])
+    tm = texel_map(ball.mesh, 128, 128)
+    image = new_doc.read()
+    agree = total = 0
+    for t in range(tm.tiles_x * tm.tiles_y):
+        tx = tm.texels(t)
+        if tx.local.size == 0:
+            continue
+        x0, y0, _, _ = tm.tile_rect(t)
+        ly, lx = np.divmod(tx.local, 64)
+        rgb = image[y0 + ly, x0 + lx][:, :3]
+        d = np.linalg.norm(tx.position[:, None, :] - centers[None], axis=2)
+        nearest = np.argsort(d, axis=1)[:, :3]
+        sure = (labels[nearest] == labels[nearest[:, :1]]).all(axis=1)  # away from the seam
+        want = np.where(labels[nearest[:, 0]][:, None] == 0, [0.8, 0, 0], [0, 0, 0.8])
+        ok = (np.abs(rgb - want) < 0.03).all(axis=1)
+        agree += int(ok[sure].sum())
+        total += int(sure.sum())
+    assert total > 1000 and agree / total > 0.99
+    rough = scene.materials.texture(out["textures"]["roughness"]).read()[..., 0]
+    baked = rough > 0  # texels the bake and its padding reached (the background is 0)
+    assert baked.mean() > 0.3 and np.allclose(rough[baked], 0.4, atol=2 / 255)
+    scene.history.undo()
+    assert ball.material is material and ball.mesh.uvs is None
+
+
+def test_transfer_refuses_bad_arguments():
+    scene = Scene()
+    a = scene.add_object("A", mesh=create_sphere(1.0, 8, 4))
+    with pytest.raises(TexturingError):
+        scene.transfer_textures(a, a)
+    sphere = create_sphere(1.0, 8, 4)
+    b = scene.add_object("B", mesh=Mesh(sphere.positions, sphere.triangles))  # no UVs
+    with pytest.raises(TexturingError):
+        scene.transfer_textures(a, b, unwrap="sometimes")
+    with pytest.raises(TexturingError) as exc:
+        scene.transfer_textures(a, b, unwrap=False)
+    assert exc.value.code == "NO_UVS"

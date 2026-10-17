@@ -900,6 +900,16 @@ SLOT_OF_MAP = {
 }
 """The material slot (and channel) each bakeable map drives."""
 
+NEUTRAL_FACTORS = {
+    "base_color": {"base_color": (1.0, 1.0, 1.0)},
+    "roughness": {"roughness": 1.0},
+    "metallic": {"metallic": 1.0},
+    "emissive": {"emissive": (1.0, 1.0, 1.0), "emissive_strength": 1.0},
+    "opacity": {"opacity": 1.0},
+}
+"""Factors set where a baked map is bound: the maps hold the evaluated values (factor x
+texture), so the factor they multiply must be neutral."""
+
 
 def apply_bake(
     scene: Any,
@@ -913,8 +923,9 @@ def apply_bake(
     """Store every map of ``result`` as a painted texture and bind the ones that drive a
     material slot (``normal``, ``ao`` -> occlusion, ``base_color``, ``roughness``,
     ``metallic``, ``emissive``, ``opacity``) to ``material`` (by default the target's
-    material, created if it has none) -- one step of the scene's history. Returns
-    ``{map: texture}`` and the material."""
+    material, created if it has none), setting the factors those maps multiply to neutral
+    values (:data:`NEUTRAL_FACTORS`: the maps already hold factor x texture) -- one step
+    of the scene's history. Returns ``{map: texture}`` and the material."""
     obj = _object(scene, target, "target")
     names = names or {}
     with scene.transaction(label or f"Apply bake to {obj.name!r}"):
@@ -938,4 +949,6 @@ def apply_bake(
             if slot is not None:
                 options = {} if slot[1] is None else {"channel": slot[1]}
                 material.set_texture(slot[0], tex, **options)
+                for param, value in NEUTRAL_FACTORS.get(map_name, {}).items():
+                    setattr(material, param, value)
     return {"textures": textures, "material": material}
