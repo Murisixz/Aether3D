@@ -434,6 +434,9 @@ class MaterialLibrary:
             del self._materials[material.id]
             del self._material_names[material.name]
             material._library = None
+            animation = self._scene._animation
+            if animation is not None:  # (its binding goes with it, in this step)
+                animation._material_removed(material.id)
             self._changed()
         return sorted(set(touched))
 

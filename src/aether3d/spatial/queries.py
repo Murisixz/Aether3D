@@ -186,7 +186,7 @@ def _point_objects(index: SpatialIndex, objects: Any, exclude: Any, include_hidd
         drop = {index.resolve(o, "exclude").id for o in _as_list(exclude)}
         chosen = [o for o in chosen if o.id not in drop]
     if not include_hidden:
-        chosen = [o for o in chosen if o.visible]
+        chosen = [o for o in chosen if index.visible_of(o)]
     worlds = index.worlds
     return [(o, worlds[o.id][:3, 3].copy()) for o in chosen if np.all(np.isfinite(worlds[o.id]))]
 

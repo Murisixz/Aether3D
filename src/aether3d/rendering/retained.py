@@ -74,6 +74,7 @@ from .scene_data import (
     _material_cache,
     _render_camera,
     _render_mesh,
+    _with_fields,
     _world_from_local,
     _zero_scale,
     normal_matrices,
@@ -107,6 +108,9 @@ _UNUSED = frozenset(
         _h.RENDER,
         _h.CAD_ITEM,
         _h.CAD_SETTINGS,
+        # Animation reaches renders through the evaluated pose of each render's time.
+        _h.ANIMATION_ITEM,
+        _h.ANIMATION_SETTINGS,
     )
 )
 
@@ -124,11 +128,18 @@ def retained_render_scene(
     *,
     default_lights: bool,
     aspect: float,
+    overlay: Any = None,
 ) -> RenderScene | None:
     """The render scene, from the scene's retained world -- or ``None`` when the full
-    extraction must run instead (see the module docstring)."""
+    extraction must run instead (see the module docstring). An ``overlay`` (an animated
+    pose) is applied on top of the authored rows: posed rows get their local matrices
+    and subtrees' world matrices again, rows with animated content are classified again
+    -- the render scene the full extraction returns for that overlay. Animated material
+    parameters go through the full extraction."""
     history = scene.history
     if history.in_progress or history._building:
+        return None
+    if overlay is not None and overlay.materials:
         return None
     cache = _material_cache(scene)
     if cache is None:  # AETHER3D_MATERIAL_CACHE=0: every render resolves every material
@@ -143,6 +154,7 @@ def retained_render_scene(
         start = time.perf_counter()
         try:
             world.sync(scene, cache)
+            world.apply_overlay(overlay, cache)
         except AetherError:  # a failing evaluation, ...: the full extraction reports it
             derived.pop(_DERIVED, None)  # possibly half updated: start again next time
             return None
@@ -152,7 +164,7 @@ def retained_render_scene(
                 raise
             return None
         try:
-            return world.render_scene(scene, camera, cache, default_lights, aspect, start)
+            return world.render_scene(scene, camera, cache, default_lights, aspect, start, overlay)
         except (_Fallback, AetherError):  # nothing changed in the world: it is kept
             return None
         except Exception:
@@ -239,7 +251,8 @@ def _existing_world(scene: Scene) -> tuple[RenderWorld, MaterialCache] | None:
 
 
 def retained_world_matrices(scene: Scene) -> dict[str, np.ndarray] | None:
-    """``world_matrices(scene)`` from the retained world, when the scene has one."""
+    """``world_matrices(scene)`` from the retained world, when the scene has one (and no
+    animated pose is applied to it: authored queries get authored matrices)."""
     found = _existing_world(scene)
     if found is None:
         return None
@@ -270,6 +283,8 @@ def _with_world(scene: Scene, world: RenderWorld, cache: MaterialCache, use: Any
             scene._derived().pop(_DERIVED, None)
             if STRICT:
                 raise
+            return None
+        if world.overlay is not None:  # it shows an animated pose: compute authored ones
             return None
         return use()
     finally:
@@ -384,6 +399,13 @@ class RenderWorld:
         self.evaluate_time = 0.0
         # (previous instances tuple, indices of the instances built again) of this frame
         self.lineage: tuple[tuple[RenderInstance, ...], np.ndarray] | None = None
+        # An applied overlay (animated pose): authored local matrices are kept apart from
+        # the effective ones; posed rows and rows classified with animated content.
+        self.authored = np.zeros((0, 4, 4))
+        self.overlay: Any = None
+        self.overlay_rows = np.zeros(0, dtype=np.int64)
+        self.content_rows: set[int] = set()
+        self.by_oid: dict[str, int] | None = None
 
     # ------------------------------------------------------------------ #
     # Bringing the world up to date
@@ -394,6 +416,8 @@ class RenderWorld:
         self.evaluate_time = 0.0
         history = scene.history
         changes = history._changes_since(self.revision)  # (the first call starts it)
+        if changes != [] and self.overlay is not None:
+            self._drop_overlay(cache)  # authored changes apply to the authored rows
         if changes is None:  # unknown changes: nothing computed before can be kept
             self._rebuild(scene, cache, {}, {}, reevaluate=False, keep=False)
         elif changes:
@@ -510,6 +534,11 @@ class RenderWorld:
         self.objects, self.rows, self.ids = objects, rows, ids
         self.parent, self.depth = parent, depth
         self.local, self.world = local, world
+        self.authored = local.copy()
+        self.overlay = None
+        self.overlay_rows = np.zeros(0, dtype=np.int64)
+        self.content_rows = set()
+        self.by_oid = None
         self.finite = np.all(np.isfinite(world), axis=(1, 2)).reshape(n)
         self.reorder = True
 
@@ -525,8 +554,14 @@ class RenderWorld:
     def _move(self, rows: list[int]) -> None:
         """New local matrices for ``rows``; new world matrices for their subtrees."""
         objects = self.objects
-        index = self.rows
         self.local[rows] = _local_matrices([objects[r] for r in rows])
+        self.authored[rows] = self.local[rows]
+        self._subtrees(rows)
+
+    def _subtrees(self, rows: list[int]) -> None:
+        """New world matrices for the subtrees of ``rows`` (their local matrices set)."""
+        objects = self.objects
+        index = self.rows
         affected = set(rows)
         for r in rows:
             obj = objects[r]
@@ -562,26 +597,29 @@ class RenderWorld:
         self.dirty[rows] = True
 
     def _classify(self, rows: list[int], cache: MaterialCache) -> None:
-        """What each of ``rows`` renders as (as the full extraction decides it)."""
+        """What each of ``rows`` renders as (as the full extraction decides it; with the
+        applied overlay's visibility, appearance and meshes)."""
         if not rows:
             return
         self.reorder = True
         objects = self.objects
+        overlay = self.overlay
         meshes = []
         for r in rows:
             obj = objects[r]
             kind = _NONE
             mesh = None
             self.procedural[r] = obj._geometry is not None
+            visible = obj.visible if overlay is None else overlay.is_visible(obj)
             if obj.light is not None:
                 kind = _LIGHT
             elif (
                 obj.camera is None
-                and obj.visible
+                and visible
                 and (obj._mesh is not None or obj._geometry is not None)
             ):
                 t0 = time.perf_counter()
-                mesh = _evaluated_mesh(obj)
+                mesh = _evaluated_mesh(obj, overlay)
                 self.evaluate_time += time.perf_counter() - t0
                 if mesh is not None and mesh.triangle_count > 0:
                     kind = _MESH
@@ -604,6 +642,10 @@ class RenderWorld:
             self.mesh_id[r] = id(mesh)
             self.no_uvs[r] = mesh.uvs is None
             look = obj.appearance
+            if overlay is not None:
+                values = overlay.field_values(obj._id, "appearance")
+                if values:
+                    look = _with_fields(look, values)
             self.look[r] = (look.specular, look.shininess)
             self.base_color[r] = to_linear(look.color)
             self.specular[r] = look.specular
@@ -640,6 +682,64 @@ class RenderWorld:
     # ------------------------------------------------------------------ #
     # World matrices and framing (kept for the scene's later renders)
     # ------------------------------------------------------------------ #
+
+    # ------------------------------------------------------------------ #
+    # Overlays (animated poses)
+    # ------------------------------------------------------------------ #
+
+    def apply_overlay(self, overlay: Any, cache: MaterialCache) -> None:
+        """Make the effective rows those of ``overlay`` (``None``: the authored ones)."""
+        if overlay is self.overlay:
+            return
+        if self.by_oid is None:
+            self.by_oid = {o._id: r for r, o in enumerate(self.objects)}
+        by_oid = self.by_oid
+        if overlay is not None and overlay.ids:
+            pairs = [(by_oid[oid], k) for k, oid in enumerate(overlay.ids) if oid in by_oid]
+            new_rows = np.array([p[0] for p in pairs], dtype=np.int64)
+            new_local = overlay.local[[p[1] for p in pairs]] if pairs else np.zeros((0, 4, 4))
+        else:
+            new_rows = np.zeros(0, dtype=np.int64)
+            new_local = np.zeros((0, 4, 4))
+        old_rows = self.overlay_rows
+        touched = np.union1d(old_rows, new_rows)
+        before = self.local[touched].copy()
+        restore = np.setdiff1d(old_rows, new_rows)
+        if restore.size:
+            self.local[restore] = self.authored[restore]
+        if new_rows.size:
+            self.local[new_rows] = new_local
+        changed = (
+            touched[
+                np.any(self.local[touched].view(np.uint64) != before.view(np.uint64), axis=(1, 2))
+            ]
+            if touched.size
+            else touched
+        )
+        self.overlay_rows = new_rows
+        # Content: rows with animated visibility, appearance, light fields or meshes.
+        content: set[int] = set()
+        if overlay is not None:
+            for oid in overlay.visible:
+                if oid in by_oid:
+                    content.add(by_oid[oid])
+            for oid, group in overlay.fields:
+                if group == "appearance" and oid in by_oid:
+                    content.add(by_oid[oid])
+            for oid in overlay.meshes:
+                if oid in by_oid:
+                    content.add(by_oid[oid])
+        reclassify = sorted(content | self.content_rows)
+        self.content_rows = content
+        self.overlay = overlay
+        if changed.size:
+            self._subtrees(changed.tolist())
+        if reclassify:
+            self._classify(reclassify, cache)
+
+    def _drop_overlay(self, cache: MaterialCache) -> None:
+        """Back to the authored rows (before applying journaled authored changes)."""
+        self.apply_overlay(None, cache)
 
     def world_matrices(self) -> dict[str, np.ndarray]:
         """``scene_data.world_matrices``: read-only rows of a copy of the world matrices."""
@@ -693,6 +793,7 @@ class RenderWorld:
         default_lights: bool,
         aspect: float,
         start: float,
+        overlay: Any = None,
     ) -> RenderScene:
         diagnostics: list[Diagnostic] = []
         if isinstance(camera, RenderCamera):
@@ -701,7 +802,9 @@ class RenderWorld:
             row = self.rows.get(id(camera))
             if row is None:
                 raise _Fallback
-            render_camera, camera_diags = _render_camera(camera, self.world[row].copy(), aspect)
+            render_camera, camera_diags = _render_camera(
+                camera, self.world[row].copy(), aspect, overlay
+            )
             diagnostics += camera_diags
         kind = self.kind
         mesh_rows = np.flatnonzero(kind == _MESH)
@@ -711,11 +814,11 @@ class RenderWorld:
         lights: list[RenderLight] = []
         for r in np.flatnonzero(kind == _LIGHT).tolist():
             obj = self.objects[r]
-            if not obj.visible:
+            if not (obj.visible if overlay is None else overlay.is_visible(obj)):
                 continue
             if not self.finite[r]:
                 raise _Fallback
-            light = _light(obj, self.world[r], True, r, ordered)
+            light = _light(obj, self.world[r], True, r, ordered, overlay)
             if light is not None:
                 lights.append(light)
 

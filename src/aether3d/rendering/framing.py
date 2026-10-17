@@ -57,20 +57,29 @@ class Framing:
         }
 
 
-def target_points(scene: Scene, targets: Any = None) -> np.ndarray:
-    """World-space vertices of ``targets`` (objects, ids or names), or of every visible mesh."""
+def target_points(scene: Scene, targets: Any = None, overlay: Any = None) -> np.ndarray:
+    """World-space vertices of ``targets`` (objects, ids or names), or of every visible mesh
+    (with an animated ``overlay``: as posed)."""
     from .. import _features
-    from .scene_data import _find_object, world_matrices
+    from .scene_data import _evaluated_mesh, _find_object, world_matrices
 
-    if targets is None and _features.enabled("AETHER3D_RETAINED_RENDER_WORLD"):
+    if overlay is not None and overlay.empty:
+        overlay = None
+    if targets is None and overlay is None and _features.enabled("AETHER3D_RETAINED_RENDER_WORLD"):
         from .retained import retained_target_points
 
         found = retained_target_points(scene)  # a rendered scene keeps them
         if found is not None:
             return found
-    worlds = world_matrices(scene)
+    worlds = world_matrices(scene, overlay)
     if targets is None:
-        objects = [o for o in scene if o.visible and o.camera is None and o.light is None]
+        objects = [
+            o
+            for o in scene
+            if (o.visible if overlay is None else overlay.is_visible(o))
+            and o.camera is None
+            and o.light is None
+        ]
     else:
         if isinstance(targets, (str,)) or not isinstance(targets, (list, tuple)):
             targets = [targets]
@@ -78,7 +87,7 @@ def target_points(scene: Scene, targets: Any = None) -> np.ndarray:
     chunks = []
     for obj in objects:
         try:
-            mesh = obj.mesh
+            mesh = obj.mesh if overlay is None else _evaluated_mesh(obj, overlay)
         except AetherError as exc:
             raise RenderError(
                 "GEOMETRY_EVALUATION_FAILED",

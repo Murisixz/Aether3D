@@ -219,6 +219,7 @@ class RotationTrack:
         "_before",
         "_after",
         "_squad",
+        "_squad_batch",
     )
 
     def __init__(self) -> None:  # pragma: no cover
@@ -372,6 +373,7 @@ class RotationTrack:
                 "INVALID_EXTRAPOLATION", "cyclic extrapolation needs two keys or more", location
             )
         self._squad = None
+        self._squad_batch = None
         return self
 
     # -- reading ---------------------------------------------------------------------------
@@ -509,83 +511,56 @@ class RotationTrack:
             return q
         return (q, w) if order == 1 else (q, w, a)
 
+    def _batch(self):
+        found = self._squad_batch
+        if found is None:
+            from .batch import RotationBatch
+
+            found = RotationBatch([self])
+            object.__setattr__(self, "_squad_batch", found)
+        return found
+
     def _evaluate(self, t: np.ndarray, order: int):
-        times = self._times
-        n = times.shape[0]
-        first, last = float(times[0]), float(times[-1])
-        period = last - first
-        tt = t.copy()
-        pre = np.zeros((t.shape[0], 4))
-        pre[:, 3] = 1.0  # rotation applied before (cycle_offset)
-        sign = np.ones_like(t)
-        aligned = self._aligned()
-        for mask, mode in ((t < first, self._before), (t > last, self._after)):
-            if not np.any(mask) or mode == 0:
-                continue
-            rel = (t[mask] - first) / period
-            cyc = np.floor(rel)
-            local = np.clip(t[mask] - first - cyc * period, 0.0, period)
-            if mode == 3:
-                odd = (np.abs(cyc) % 2.0) == 1.0
-                tt[mask] = np.where(odd, last - local, first + local)
-                sign[mask] = np.where(odd, -1.0, 1.0)
-            else:
-                tt[mask] = first + local
-                if mode == 2:
-                    delta = R.multiply(aligned[-1], R.conjugate(aligned[0]))  # first -> last
-                    pre[mask] = R.exp(R.log(delta)[None, :] * cyc[:, None])
-        tt = np.clip(tt, first, last)
+        batch = self._batch()
+        zeros = np.zeros(t.shape[0], np.int64)
+        out = batch.evaluate(zeros, t)  # the batched path: identical bits
+        if order == 0:
+            return out, None, None
+        n = len(self)
+        omega = np.zeros((t.shape[0], 3))
+        alpha = np.zeros((t.shape[0], 3)) if order >= 2 else None
         if n == 1:
-            q = np.repeat(self._quats[:1], t.shape[0], axis=0)
-            zero = np.zeros((t.shape[0], 3))
-            return q, (zero if order >= 1 else None), (zero.copy() if order >= 2 else None)
-        k = np.clip(np.searchsorted(times, tt, side="right") - 1, 0, n - 2)
+            return out, omega, alpha
+        tt, cyc_log, sign, k, _ = batch.segment(zeros, t)
+        times = self._times
         span = times[k + 1] - times[k]
         s = np.clip((tt - times[k]) / span, 0.0, 1.0)
         kind = self._interp[k]
-        tim = timing_values(self._timing[k], self._timing_params[k], s, 2)
-        u, du, ddu = tim
-        q0 = aligned[k]
-        q1 = aligned[k + 1]
-        out = np.empty((t.shape[0], 4))
-        sel = kind == CONSTANT
-        out[sel] = q0[sel]
-        sel = kind == SLERP
-        if np.any(sel):
-            out[sel] = R.slerp(q0[sel], q1[sel], u[sel], shortest=False)
-        sel = kind == SQUAD
-        if np.any(sel):
-            c = self._controls()
-            out[sel] = R.squad(q0[sel], q1[sel], c[k[sel]], c[k[sel] + 1], u[sel])
-        sel = kind == CUBIC
-        if np.any(sel):
-            out[sel] = self._cubic(k[sel], u[sel], span[sel])
-        # At a key exactly: the key itself (in the track's continuous sign sequence).
-        at = tt == times[k]
-        out[at] = aligned[k[at]]
-        at_last = tt == last
-        out[at_last] = aligned[-1]
-        out = R.multiply(pre, out)
-        omega = alpha = None
-        if order >= 1:
-            omega = np.zeros((t.shape[0], 3))
-            alpha = np.zeros((t.shape[0], 3)) if order >= 2 else None
-            sl = kind == SLERP
-            if np.any(sl):
-                vel = R.slerp_velocity(q0[sl], q1[sl], shortest=False) / span[sl][:, None]
-                omega[sl] = vel * du[sl][:, None]
-                if alpha is not None:
-                    alpha[sl] = vel * (ddu[sl] / span[sl])[:, None]
-            num = (kind == SQUAD) | (kind == CUBIC)
-            if np.any(num):
-                omega[num], acc = self._numerical(tt[num], order)
-                if alpha is not None:
-                    alpha[num] = acc
-            if np.any(~(pre[:, 3] == 1.0)):
-                omega = R.rotate(pre, omega)
-                if alpha is not None:
-                    alpha = R.rotate(pre, alpha)
-            omega = omega * sign[:, None]
+        _, du, ddu = timing_values(self._timing[k], self._timing_params[k], s, 2)
+        aligned = batch.aligned
+        sl = kind == SLERP
+        if np.any(sl):
+            vel = (
+                R.slerp_velocity(aligned[k[sl]], aligned[k[sl] + 1], shortest=False)
+                / span[sl][:, None]
+            )
+            omega[sl] = vel * du[sl][:, None]
+            if alpha is not None:
+                alpha[sl] = vel * (ddu[sl] / span[sl])[:, None]
+        num = (kind == SQUAD) | (kind == CUBIC)
+        if np.any(num):
+            omega[num], acc = self._numerical(tt[num], order)
+            if alpha is not None:
+                alpha[num] = acc
+        turned = np.any(cyc_log != 0.0, axis=1)
+        if np.any(turned):
+            pre = R.exp(cyc_log[turned])
+            omega[turned] = R.rotate(pre, omega[turned])
+            if alpha is not None:
+                alpha[turned] = R.rotate(pre, alpha[turned])
+        omega = omega * sign[:, None]
+        if alpha is not None:
+            alpha = alpha  # (even derivative: unchanged by mirroring)
         return out, omega, alpha
 
     def _cubic(self, k: np.ndarray, u: np.ndarray, span: np.ndarray) -> np.ndarray:

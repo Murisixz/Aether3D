@@ -1068,6 +1068,7 @@ class Scene:
         self._history = History(self)
         self._procedural: ProceduralSystem | None = None
         self._cad: Any = None  # the CAD document, created on first use (scene.cad)
+        self._animation: Any = None  # the animation document, on first use (scene.animation)
         self._name = _check_name(name, "scene name")
         self._objects: dict[str, SceneObject] = {}
         self._by_name: dict[str, SceneObject] = {}
@@ -1465,6 +1466,8 @@ class Scene:
 
             if self._cad is not None:
                 self._cad._objects_removed(doomed)
+            if self._animation is not None:
+                self._animation._objects_removed(doomed)
             self._detach(target)
             for item in doomed:
                 del self._objects[item._id]
@@ -1860,6 +1863,16 @@ class Scene:
         return self._materials.add_procedural_texture(name, graph)
 
     # -- precision modeling (docs/CAD.md) --------------------------------------
+
+    @property
+    def animation(self) -> Any:
+        """The scene's :class:`~aether3d.animation.AnimationSystem`: timeline, clips,
+        keyframes, layers and strips (created on first use)."""
+        if self._animation is None:
+            from .animation.system import AnimationSystem
+
+            self._animation = AnimationSystem(self)
+        return self._animation
 
     @property
     def cad(self) -> Any:

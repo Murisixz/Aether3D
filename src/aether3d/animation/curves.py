@@ -1163,13 +1163,18 @@ def solve_bezier_time(x: np.ndarray, target: np.ndarray, span: np.ndarray) -> np
     return u
 
 
-def _segment_values(c: _Compiled, k: np.ndarray, t: np.ndarray, order: int) -> list[np.ndarray]:
-    """Values (and time derivatives) of segments ``k`` at times ``t`` inside them."""
+def _segment_values(
+    c: _Compiled, k: np.ndarray, t: np.ndarray, order: int, key: np.ndarray | None = None
+) -> list[np.ndarray]:
+    """Values (and time derivatives) of segments ``k`` at times ``t`` inside them;
+    ``key`` is each segment's first key index in ``c.t``/``c.v`` (default ``k``: one
+    curve; batches of curves number keys and segments differently)."""
+    key = k if key is None else key
     kind = c.kind[k]
-    t0 = c.t[k]
+    t0 = c.t[key]
     span = c.span[k]
-    v0 = c.v[k]
-    v1 = c.v[k + 1]
+    v0 = c.v[key]
+    v1 = c.v[key + 1]
     out = [np.empty_like(t) for _ in range(order + 1)]
     for o in out[1:]:
         o.fill(0.0)

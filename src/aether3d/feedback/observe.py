@@ -228,6 +228,7 @@ class Observation:
     options: dict[str, Any]
     camera: dict[str, Any]  # the render's camera report (lens, frame, fovs)
     transient: bool = False  # made inside an open operation (a preview): never reused
+    time: float | None = None  # the animation time it shows (animated scenes)
     _geometry: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
     _png: dict[str, bytes] = field(default_factory=dict, repr=False)
     _by_id: dict[str, int] = field(default_factory=dict, repr=False)
@@ -250,7 +251,11 @@ class Observation:
         """Whether the scene changed since this observation was made (an observation made
         inside an open operation, such as a preview, is always stale: it shows changes the
         revision does not count)."""
-        return self.transient or self.scene.revision != self.revision
+        return (
+            self.transient
+            or self.scene.revision != self.revision
+            or animation_time(self.scene) != self.time
+        )
 
     def instance_of(self, ref: Any) -> int | None:
         """The render's instance index of an object (id, name or object), or ``None`` when
@@ -519,7 +524,12 @@ class Observation:
             "format": FORMAT,
             "version": VERSION,
             "id": self.id,
-            "scene": {"name": self.scene.name, "revision": self.revision, "stale": self.stale},
+            "scene": {
+                "name": self.scene.name,
+                "revision": self.revision,
+                "stale": self.stale,
+                **({} if self.time is None else {"time": self.time}),
+            },
             "view": self.view.to_dict(),
             "camera": self.camera,
             "conventions": {
@@ -1006,12 +1016,14 @@ def observe(
                 hint=getattr(exc, "hint", None),
             ) from None
     revision = scene.revision
+    anim_time = animation_time(scene)
     transient = scene.history.in_progress
     if transient:  # inside an operation the revision does not count the changes yet
         store = None
     key = json.dumps(
         {
             "view": resolved.key,
+            "time": None if anim_time is None else float(anim_time).hex(),
             "backend": backend,
             "options": {k: v for k, v in render_options.items() if k != "outputs"},
             "linear": linear,
@@ -1083,6 +1095,7 @@ def observe(
         options=options,
         camera=_camera_report(result.camera),
         transient=transient,
+        time=anim_time,
     )
     t_geometry = time.perf_counter()
     budget = limits.max_occlusion_objects
@@ -1094,6 +1107,15 @@ def observe(
     if store is not None:
         store.put(obs)
     return obs
+
+
+def animation_time(scene: Any) -> float | None:
+    """The time an animated scene is shown at (its animation's current time), or
+    ``None`` for a scene without active animation."""
+    animation = scene._animation
+    if animation is None or not animation.active:
+        return None
+    return animation.time
 
 
 def _camera_report(camera: dict[str, Any]) -> dict[str, Any]:

@@ -219,21 +219,61 @@ def _appearance_key(look: Appearance) -> bytes:
     return _APPEARANCE.pack(*look.color, look.specular, look.shininess)
 
 
+def animated_material(material: Any, values: Any) -> Any:
+    """A detached copy of a library ``material`` with animated parameter ``values``
+    (checked like any parameter change; the library's material is untouched)."""
+    from ..materials.material import Material, check_param
+
+    copy = Material.__new__(Material)
+    params = dict(material._values)
+    for name, value in values.items():
+        if name in params:
+            params[name] = check_param(
+                name, tuple(value) if isinstance(value, list) else value, material.location
+            )
+    for slot, value in (
+        ("_library", material._library),
+        ("_home", material._home),
+        ("_id", material._id),
+        ("_name", material._name),
+        ("_model", material._model),
+        ("_values", params),
+        ("_textures", dict(material._textures)),
+    ):
+        object.__setattr__(copy, slot, value)
+    return copy
+
+
 def resolve_materials(
     scene: Scene,
     candidates: list[tuple[SceneObject, Any, int]],
     cache: MaterialCache | None = None,
+    overrides: Any = None,
+    looks: Any = None,
 ) -> tuple[MaterialTable, list[tuple[int, dict[int, int]]]]:
     """Materials of ``candidates`` (``(object, mesh, position in the scene)``).
 
     Returns the table and, per candidate, ``(default material index,
     {group: material index})``. With a ``cache`` (see :class:`MaterialCache`), work
     from earlier renders of the scene is reused; the results are the same.
+    ``overrides`` (material id -> animated parameters) resolves those materials from
+    detached copies with the animated values (an animation's evaluation); ``looks``
+    (object id -> :class:`~aether3d.rendering.Appearance`) replaces objects' own looks.
     """
     table = MaterialTable()
     library = scene.materials
     cache = MaterialCache() if cache is None else cache
     _prepare(cache, library)
+    if overrides:
+        real = library.material
+
+        class _Animated:
+            def material(self, ref: Any) -> Any:
+                m = real(ref)
+                values = overrides.get(m._id)
+                return m if not values else animated_material(m, values)
+
+        library = _Animated()
     this_render: dict[str, RenderMaterial] = {}  # library materials resolved, by id
     per_object: list[tuple[int, dict[int, int]]] = []
     t0 = time.perf_counter()
@@ -243,7 +283,7 @@ def resolve_materials(
                 _material(library.material(obj._material), cache, this_render, table, position)
             )
         else:
-            look = obj.appearance
+            look = obj.appearance if looks is None else looks.get(obj._id, obj.appearance)
             akey = _appearance_key(look)
             material = cache.appearances.get(akey)
             if material is None:
