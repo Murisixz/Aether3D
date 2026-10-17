@@ -1,0 +1,89 @@
+{
+  "backend": "gpu",
+  "fps": 24,
+  "size": [
+    640,
+    360
+  ],
+  "path_length_m": 18.7998,
+  "run_speed_m_s": 3.15,
+  "path_fraction_run": 0.6702,
+  "wave_s": 2.2,
+  "vertigo_fov_keys": 9,
+  "orbit_radius_m": [
+    5.5,
+    5.5,
+    5.5,
+    5.5,
+    5.5,
+    5.5,
+    5.5
+  ],
+  "vertigo_subject_height_fraction": [
+    0.7015,
+    0.7015,
+    0.7015,
+    0.7015,
+    0.7015
+  ],
+  "shots": [
+    {
+      "camera": "c936c355-bca4-4709-b97b-d43a229e4c45",
+      "start": 0.0,
+      "end": 3.0,
+      "name": "crane"
+    },
+    {
+      "camera": "8a6f77fe-f91a-40a6-ac48-ee39cbbe5155",
+      "start": 2.6,
+      "end": 5.5,
+      "name": "orbit",
+      "transition": {
+        "type": "blend",
+        "duration": 0.4
+      }
+    },
+    {
+      "camera": "de31405d-15a5-495f-8866-86d919054558",
+      "start": 5.5,
+      "end": 8.0,
+      "name": "vertigo"
+    },
+    {
+      "camera": "eaf69aae-7e10-4730-b53a-c689ab2f251a",
+      "start": 7.7,
+      "end": 12.0,
+      "name": "follow",
+      "transition": {
+        "type": "blend",
+        "duration": 0.3
+      }
+    }
+  ],
+  "render": {
+    "frames": 289,
+    "seconds": 5.93
+  },
+  "motion_blur_ms": 129.8,
+  "video": {
+    "command": [
+      "ffmpeg",
+      "-y",
+      "-framerate",
+      "24/1",
+      "-i",
+      "examples/output/animation/cinematics/frames/frame_%05d.png",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-crf",
+      "26",
+      "-vf",
+      "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+      "examples/output/animation/cinematics/cinematics.mp4"
+    ],
+    "output": "examples/output/animation/cinematics/cinematics.mp4",
+    "bytes": 1264434
+  }
+}

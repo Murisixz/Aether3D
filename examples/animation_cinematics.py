@@ -199,7 +199,7 @@ def main(argv: list[str]) -> int:
         try:
             report["video"] = assemble_video(out / "frames", "frame_{frame:05d}.png",
                                              FPS if not args.quick else FPS / 2,
-                                             out / "cinematics.mp4")  # fmt: skip
+                                             out / "cinematics.mp4", crf=26)  # fmt: skip
         except Exception as exc:  # (FFmpeg is optional)
             report["video"] = {"skipped": str(exc)}
     write_json(out / "report.json", report)

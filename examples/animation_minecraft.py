@@ -201,7 +201,7 @@ def main(argv: list[str]) -> int:
         {"camera": "Low", "start": t_hit + 1.5, "end": end, "name": "rise"},
     ])  # fmt: skip
     sequences["Land"] = render_sequence(scene, "cinematic", out, start=0.0, end=end, width=w,
-                                        height=h, blur={"shutter": 0.5, "samples": 3})  # fmt: skip
+                                        height=h, blur={"shutter": 0.5, "samples": 8})  # fmt: skip
     c = a.foot_contacts(nova, FEET, start=0.0, end=end, rate=120, height=0.03, speed=0.3)
     contacts["Land"] = feet_summary(c)
     for label, t in (("impact", t_hit + 0.45), ("rise", t_hit + 1.9)):
@@ -233,7 +233,7 @@ def main(argv: list[str]) -> int:
                 n += 1
         try:
             report["video"] = assemble_video(combined, "frame_{frame:05d}.png", FPS,
-                                             out / "nova.mp4")  # fmt: skip
+                                             out / "nova.mp4", crf=26)  # fmt: skip
         except Exception as exc:  # (FFmpeg is optional)
             report["video"] = {"skipped": str(exc)}
     write_json(out / "report.json", report)

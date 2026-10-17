@@ -276,7 +276,7 @@ def main(argv: list[str]) -> int:
     if not args.no_video:
         try:
             report["video"] = assemble_video(out / "frames", "frame_{frame:05d}.png",
-                                             FPS / step, out / "large.mp4")  # fmt: skip
+                                             FPS / step, out / "large.mp4", crf=26)  # fmt: skip
         except Exception as exc:  # (FFmpeg is optional)
             report["video"] = {"skipped": str(exc)}
     from bench_engine import peak_rss_mib

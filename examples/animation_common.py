@@ -346,8 +346,28 @@ def validate_glb(path: Path) -> dict[str, Any]:
             "infos": report["infos"], "version": report["validatorVersion"]}  # fmt: skip
 
 
+REPOSITORY = Path(__file__).resolve().parent.parent
+
+
+def _portable(value: Any) -> Any:
+    """Paths inside the repository made relative to it, programs named without their
+    directory: reports read the same on every machine."""
+    if isinstance(value, dict):
+        return {k: _portable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_portable(v) for v in value]
+    if isinstance(value, str) and Path(value).is_absolute():
+        path = Path(value)
+        if path.is_relative_to(REPOSITORY):
+            return path.relative_to(REPOSITORY).as_posix()
+        if shutil.which(path.name) == value:  # (an executable found on the PATH)
+            return path.name
+    return value
+
+
 def write_json(path: Path, data: Any) -> None:
-    path.write_text(json.dumps(data, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    text = json.dumps(_portable(data), indent=2, sort_keys=False)
+    path.write_text(text + "\n", encoding="utf-8")
 
 
 @functools.cache

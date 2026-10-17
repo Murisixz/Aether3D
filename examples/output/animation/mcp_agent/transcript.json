@@ -1,0 +1,4056 @@
+[
+  {
+    "step": 1,
+    "tool": "capabilities",
+    "arguments": {},
+    "ok": true,
+    "ms": 7.0,
+    "result": {
+      "topic": "overview",
+      "aether3d": "0.17.0",
+      "workspace": ".",
+      "read_only": false,
+      "scene": {
+        "open": false
+      },
+      "tools": {
+        "scene_new": "New scene",
+        "scene_open": "Open a project",
+        "scene_save": "Save the project",
+        "scene_info": "Scene summary",
+        "objects_list": "List objects",
+        "execute_scene_plan": "Build or change the scene (scene plan)",
+        "check_scene_plan": "Check a scene plan",
+        "spatial_query": "Spatial query",
+        "render_preview": "Render a preview",
+        "render_image": "Render an image file",
+        "history": "Undo, redo, checkpoints",
+        "export_scene": "Export glTF or CAD data",
+        "run_script": "Run a JSON script",
+        "inspect_mesh": "Inspect a mesh's validity",
+        "inspect_uvs": "Inspect an object's UVs",
+        "inspect_texture": "Inspect a texture",
+        "diagnostics": "Diagnostics",
+        "capabilities": "Capabilities",
+        "observe_scene": "Observe the scene (render and measure)",
+        "diagnose_scene": "Diagnose the scene against expectations",
+        "propose_corrections": "Propose corrections",
+        "apply_corrections": "Apply corrections",
+        "feedback_loop": "Run the feedback loop",
+        "inspect_cad": "Inspect the CAD document",
+        "import_cad": "Import a CAD file",
+        "inspect_animation": "Inspect the animation"
+      },
+      "plan_format": {
+        "format": "aether3d.scene-plan",
+        "version": 1
+      },
+      "resources": [
+        "aether3d://guide",
+        "aether3d://schema/scene-plan",
+        "aether3d://examples/{name}",
+        "aether3d://sculpt/guide",
+        "aether3d://schema/sculpt-script",
+        "aether3d://texturing/guide",
+        "aether3d://schema/texture-script",
+        "aether3d://cad/guide",
+        "aether3d://schema/cad-script"
+      ],
+      "conventions": "+Z up, right-handed, meters; objects face -Y; rotation_euler in degrees (XYZ); colors are sRGB '#rrggbb'",
+      "tips": [
+        "build and edit with execute_scene_plan: thousands of objects in one call",
+        "check placement with spatial_query (overlaps, raycast, relation)",
+        "render_preview shows the scene (GPU rasterizer when available)"
+      ]
+    },
+    "images": []
+  },
+  {
+    "step": 2,
+    "tool": "scene_new",
+    "arguments": {
+      "name": "Robot walk"
+    },
+    "ok": true,
+    "ms": 2.2,
+    "result": {
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 0,
+        "dirty": true,
+        "objects": 0
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 3,
+    "tool": "execute_scene_plan",
+    "arguments": {
+      "plan": {
+        "format": "aether3d.scene-plan",
+        "version": 1,
+        "label": "Robot parts",
+        "objects": {
+          "ground": {
+            "name": "Ground",
+            "mesh": {
+              "primitive": "plane",
+              "size": 30
+            },
+            "color": "#6f8a5a"
+          },
+          "sun": {
+            "name": "Sun",
+            "light": {
+              "type": "directional",
+              "intensity": 2.4
+            },
+            "direction": [
+              -0.4,
+              0.55,
+              -0.8
+            ]
+          },
+          "cam": {
+            "name": "Cam",
+            "camera": {
+              "fov": 40
+            },
+            "position": [
+              3.2,
+              -3.0,
+              1.5
+            ],
+            "look_at": [
+              0,
+              0,
+              1.0
+            ]
+          },
+          "hero": {
+            "name": "Hero"
+          },
+          "pelvis": {
+            "name": "Pelvis",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.3,
+                0.18,
+                0.14
+              ]
+            },
+            "position": [
+              0,
+              0,
+              0.95
+            ],
+            "color": "#3a4250"
+          },
+          "torso": {
+            "name": "Torso",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.36,
+                0.2,
+                0.42
+              ]
+            },
+            "position": [
+              0,
+              0,
+              1.25
+            ],
+            "color": "#d8892c"
+          },
+          "head": {
+            "name": "Head",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.22,
+                0.24,
+                0.26
+              ]
+            },
+            "position": [
+              0,
+              0,
+              1.7
+            ],
+            "color": "#e7e2d6"
+          },
+          "upperarm_l": {
+            "name": "UpperArm.L",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.09,
+                0.09,
+                0.29
+              ]
+            },
+            "position": [
+              0.21,
+              0,
+              1.3
+            ],
+            "color": "#d8892c"
+          },
+          "forearm_l": {
+            "name": "ForeArm.L",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.08,
+                0.08,
+                0.25
+              ]
+            },
+            "position": [
+              0.21,
+              0,
+              1.025
+            ],
+            "color": "#d8892c"
+          },
+          "thigh_l": {
+            "name": "Thigh.L",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.12,
+                0.12,
+                0.44
+              ]
+            },
+            "position": [
+              0.1,
+              0,
+              0.71
+            ],
+            "color": "#3a4250"
+          },
+          "shin_l": {
+            "name": "Shin.L",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.1,
+                0.1,
+                0.41
+              ]
+            },
+            "position": [
+              0.1,
+              0,
+              0.285
+            ],
+            "color": "#3a4250"
+          },
+          "foot_l": {
+            "name": "Foot.L",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.1,
+                0.24,
+                0.08
+              ]
+            },
+            "position": [
+              0.1,
+              -0.06,
+              0.04
+            ],
+            "color": "#3a4250"
+          },
+          "upperarm_r": {
+            "name": "UpperArm.R",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.09,
+                0.09,
+                0.29
+              ]
+            },
+            "position": [
+              -0.21,
+              0,
+              1.3
+            ],
+            "color": "#d8892c"
+          },
+          "forearm_r": {
+            "name": "ForeArm.R",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.08,
+                0.08,
+                0.25
+              ]
+            },
+            "position": [
+              -0.21,
+              0,
+              1.025
+            ],
+            "color": "#d8892c"
+          },
+          "thigh_r": {
+            "name": "Thigh.R",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.12,
+                0.12,
+                0.44
+              ]
+            },
+            "position": [
+              -0.1,
+              0,
+              0.71
+            ],
+            "color": "#3a4250"
+          },
+          "shin_r": {
+            "name": "Shin.R",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.1,
+                0.1,
+                0.41
+              ]
+            },
+            "position": [
+              -0.1,
+              0,
+              0.285
+            ],
+            "color": "#3a4250"
+          },
+          "foot_r": {
+            "name": "Foot.R",
+            "mesh": {
+              "primitive": "box",
+              "size": [
+                0.1,
+                0.24,
+                0.08
+              ]
+            },
+            "position": [
+              -0.1,
+              -0.06,
+              0.04
+            ],
+            "color": "#3a4250"
+          }
+        }
+      }
+    },
+    "ok": true,
+    "ms": 12.5,
+    "result": {
+      "ok": true,
+      "mode": "execute",
+      "status": "applied",
+      "label": "Robot parts",
+      "fingerprint": "c89435cc9d94c69d1ee373e13e3a6c417851e574a399108b1f66cfc15726b31b",
+      "idempotency_key": null,
+      "revision": {
+        "before": 0,
+        "after": 1
+      },
+      "step": {
+        "index": 1,
+        "label": "Robot parts",
+        "changes": 21,
+        "bytes": 6168
+      },
+      "counts": {
+        "objects": 17,
+        "by_kind": {
+          "mesh": 14,
+          "light": 1,
+          "camera": 1,
+          "empty": 1
+        },
+        "meshes": 9,
+        "materials": 0,
+        "textures": 0,
+        "geometries": 0,
+        "operations": 0,
+        "mesh_objects_sharing_a_mesh": 10
+      },
+      "symbols": {
+        "ground": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "ad2d78f4-1eb6-4c5c-8daa-7fd778c72a81",
+              "name": "Ground"
+            }
+          ]
+        },
+        "sun": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "a5033fa9-c4f6-48aa-baf3-ea67930276ab",
+              "name": "Sun"
+            }
+          ]
+        },
+        "cam": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+              "name": "Cam"
+            }
+          ]
+        },
+        "hero": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "name": "Hero"
+            }
+          ]
+        },
+        "pelvis": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "20501b3e-9bab-4028-8687-1406d9480828",
+              "name": "Pelvis"
+            }
+          ]
+        },
+        "torso": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "19d21770-605d-4878-84a9-2dfba3b33d70",
+              "name": "Torso"
+            }
+          ]
+        },
+        "head": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "cd0d6010-9d21-4ea3-9894-aad33c30ad0b",
+              "name": "Head"
+            }
+          ]
+        },
+        "upperarm_l": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "ed4f1b78-1470-4bd3-81f2-29501178a287",
+              "name": "UpperArm.L"
+            }
+          ]
+        },
+        "forearm_l": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "c39080a7-5914-44b1-b717-f42c4da09bce",
+              "name": "ForeArm.L"
+            }
+          ]
+        },
+        "thigh_l": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "15f0c40b-f247-4dd8-92b6-b2de59f8d22c",
+              "name": "Thigh.L"
+            }
+          ]
+        },
+        "shin_l": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "c4fe2836-17b3-4ba1-bdd8-3cab0046cf58",
+              "name": "Shin.L"
+            }
+          ]
+        },
+        "foot_l": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "f9f2ed20-975f-46ff-a1bd-05abacd268f2",
+              "name": "Foot.L"
+            }
+          ]
+        },
+        "upperarm_r": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "f28978fb-3f86-4c23-91a5-00e0cfec16e6",
+              "name": "UpperArm.R"
+            }
+          ]
+        },
+        "forearm_r": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "76081918-c06a-41d4-a058-f9e74749ac83",
+              "name": "ForeArm.R"
+            }
+          ]
+        },
+        "thigh_r": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "7128cf84-8a63-4b0c-bc53-b4198d80bd9c",
+              "name": "Thigh.R"
+            }
+          ]
+        },
+        "shin_r": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "01cfd5c3-6189-4b45-ba64-dad942062927",
+              "name": "Shin.R"
+            }
+          ]
+        },
+        "foot_r": {
+          "count": 1,
+          "objects": [
+            {
+              "id": "4d6f8b06-7fc0-4c01-8c38-f5b1b36c54f3",
+              "name": "Foot.R"
+            }
+          ]
+        }
+      },
+      "operations": [],
+      "queries": [],
+      "warnings": [],
+      "timings": {
+        "parse": 0.000763,
+        "bind": 0.008562,
+        "resources": 9e-06,
+        "objects": 0.000259,
+        "operations": 0.000554,
+        "apply": 0.000889,
+        "queries": 1e-06,
+        "total": 0.010226
+      },
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 1,
+        "dirty": true,
+        "objects": 17
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 4,
+    "tool": "run_script",
+    "arguments": {
+      "script": {
+        "format": "aether3d.animation-script",
+        "version": 1,
+        "label": "Rig and walk",
+        "operations": [
+          {
+            "op": "timeline",
+            "fps": 24,
+            "start": 0,
+            "end": 4
+          },
+          {
+            "op": "add_rig",
+            "armature": "Hero",
+            "joints": [
+              {
+                "name": "Hips",
+                "position": [
+                  0,
+                  0,
+                  0.95
+                ]
+              },
+              {
+                "name": "Spine",
+                "parent": "Hips",
+                "position": [
+                  0,
+                  0,
+                  0.12
+                ]
+              },
+              {
+                "name": "Chest",
+                "parent": "Spine",
+                "position": [
+                  0,
+                  0,
+                  0.2
+                ]
+              },
+              {
+                "name": "Neck",
+                "parent": "Chest",
+                "position": [
+                  0,
+                  0,
+                  0.22
+                ]
+              },
+              {
+                "name": "Head",
+                "parent": "Neck",
+                "position": [
+                  0,
+                  0,
+                  0.1
+                ],
+                "tail": [
+                  0,
+                  0,
+                  0.24
+                ]
+              },
+              {
+                "name": "UpperArm.L",
+                "parent": "Chest",
+                "position": [
+                  0.21,
+                  0,
+                  0.17
+                ],
+                "tail": [
+                  0,
+                  0,
+                  -0.29
+                ]
+              },
+              {
+                "name": "ForeArm.L",
+                "parent": "UpperArm.L",
+                "position": [
+                  0,
+                  0,
+                  -0.29
+                ],
+                "tail": [
+                  0,
+                  0,
+                  -0.25
+                ]
+              },
+              {
+                "name": "Hand.L",
+                "parent": "ForeArm.L",
+                "position": [
+                  0,
+                  0,
+                  -0.25
+                ]
+              },
+              {
+                "name": "Thigh.L",
+                "parent": "Hips",
+                "position": [
+                  0.1,
+                  0,
+                  -0.02
+                ],
+                "tail": [
+                  0,
+                  0,
+                  -0.44
+                ]
+              },
+              {
+                "name": "Shin.L",
+                "parent": "Thigh.L",
+                "position": [
+                  0,
+                  0,
+                  -0.44
+                ],
+                "tail": [
+                  0,
+                  0,
+                  -0.41
+                ]
+              },
+              {
+                "name": "Foot.L",
+                "parent": "Shin.L",
+                "position": [
+                  0,
+                  0,
+                  -0.41
+                ],
+                "tail": [
+                  0,
+                  -0.15,
+                  -0.08
+                ]
+              },
+              {
+                "name": "UpperArm.R",
+                "parent": "Chest",
+                "position": [
+                  -0.21,
+                  0,
+                  0.17
+                ],
+                "tail": [
+                  0,
+                  0,
+                  -0.29
+                ]
+              },
+              {
+                "name": "ForeArm.R",
+                "parent": "UpperArm.R",
+                "position": [
+                  0,
+                  0,
+                  -0.29
+                ],
+                "tail": [
+                  0,
+                  0,
+                  -0.25
+                ]
+              },
+              {
+                "name": "Hand.R",
+                "parent": "ForeArm.R",
+                "position": [
+                  0,
+                  0,
+                  -0.25
+                ]
+              },
+              {
+                "name": "Thigh.R",
+                "parent": "Hips",
+                "position": [
+                  -0.1,
+                  0,
+                  -0.02
+                ],
+                "tail": [
+                  0,
+                  0,
+                  -0.44
+                ]
+              },
+              {
+                "name": "Shin.R",
+                "parent": "Thigh.R",
+                "position": [
+                  0,
+                  0,
+                  -0.44
+                ],
+                "tail": [
+                  0,
+                  0,
+                  -0.41
+                ]
+              },
+              {
+                "name": "Foot.R",
+                "parent": "Shin.R",
+                "position": [
+                  0,
+                  0,
+                  -0.41
+                ],
+                "tail": [
+                  0,
+                  -0.15,
+                  -0.08
+                ]
+              }
+            ]
+          },
+          {
+            "op": "attach",
+            "object": "Pelvis",
+            "armature": "Hero",
+            "joint": "Hips"
+          },
+          {
+            "op": "attach",
+            "object": "Torso",
+            "armature": "Hero",
+            "joint": "Chest"
+          },
+          {
+            "op": "attach",
+            "object": "Head",
+            "armature": "Hero",
+            "joint": "Head"
+          },
+          {
+            "op": "attach",
+            "object": "UpperArm.L",
+            "armature": "Hero",
+            "joint": "UpperArm.L"
+          },
+          {
+            "op": "attach",
+            "object": "ForeArm.L",
+            "armature": "Hero",
+            "joint": "ForeArm.L"
+          },
+          {
+            "op": "attach",
+            "object": "Thigh.L",
+            "armature": "Hero",
+            "joint": "Thigh.L"
+          },
+          {
+            "op": "attach",
+            "object": "Shin.L",
+            "armature": "Hero",
+            "joint": "Shin.L"
+          },
+          {
+            "op": "attach",
+            "object": "Foot.L",
+            "armature": "Hero",
+            "joint": "Foot.L"
+          },
+          {
+            "op": "attach",
+            "object": "UpperArm.R",
+            "armature": "Hero",
+            "joint": "UpperArm.R"
+          },
+          {
+            "op": "attach",
+            "object": "ForeArm.R",
+            "armature": "Hero",
+            "joint": "ForeArm.R"
+          },
+          {
+            "op": "attach",
+            "object": "Thigh.R",
+            "armature": "Hero",
+            "joint": "Thigh.R"
+          },
+          {
+            "op": "attach",
+            "object": "Shin.R",
+            "armature": "Hero",
+            "joint": "Shin.R"
+          },
+          {
+            "op": "attach",
+            "object": "Foot.R",
+            "armature": "Hero",
+            "joint": "Foot.R"
+          },
+          {
+            "op": "generate",
+            "armature": "Hero",
+            "motion": "walk",
+            "forward": "-y",
+            "name": "Walk"
+          },
+          {
+            "op": "follow_camera",
+            "camera": "Cam",
+            "target": "Hero",
+            "offset": [
+              3.2,
+              -3.0,
+              1.5
+            ],
+            "lag": 0.3,
+            "aim": [
+              0,
+              0,
+              1.0
+            ],
+            "start": 0,
+            "end": 4
+          }
+        ]
+      }
+    },
+    "ok": true,
+    "ms": 848.0,
+    "result": {
+      "format": "aether3d.animation-script",
+      "operations": [
+        {
+          "op": "timeline"
+        },
+        {
+          "op": "add_rig",
+          "result": "Rig(object='6cb108c8-0a16-4c33-aeba-45ab9786dbab', joints=(Joint(id='a85d040a-61e2-40ec-94a5-dd9b0d8d59b1', name='Hips', parent=-1, position=(0.0, 0.0, 0.95), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='2e322e86-f014-47bc-8057-051d5dfe045a', name='Spine', parent=0, position=(0.0, 0.0, 0.12), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='96c59b5e-07d4-41cd-ba4e-490bb093c39f', name='Chest', parent=1, position=(0.0, 0.0, 0.2), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='791fb741-e6bf-4063-a7bb-c4be5945f852', name='Neck', parent=2, position=(0.0, 0.0, 0.22), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='50b3117b-a1b1-4fea-a42a-4566e9d073ea', name='Head', parent=3, position=(0.0, 0.0, 0.1), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, 0.24), limits='null'), Joint(id='729c4d1e-a41f-4422-8ba2-0226374fdf71', name='UpperArm.L', parent=2, position=(0.21, 0.0, 0.17), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.29), limits='null'), Joint(id='bf20c060-a900-4ff4-9eb7-06845c9f03e0', name='ForeArm.L', parent=5, position=(0.0, 0.0, -0.29), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.25), limits='null'), Joint(id='c949be85-5c7c-4872-a320-d69b3754b2ef', name='Hand.L', parent=6, position=(0.0, 0.0, -0.25), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='7e55af3b-4328-4186-9657-e7507e81e4b4', name='Thigh.L', parent=0, position=(0.1, 0.0, -0.02), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.44), limits='null'), Joint(id='ba021c00-94a5-4236-9b9b-2e79b390390b', name='Shin.L', parent=8, position=(0.0, 0.0, -0.44), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.41), limits='null'), Joint(id='725a73fc-cd9e-4909-93a7-580ccb25d099', name='Foot.L', parent=9, position=(0.0, 0.0, -0.41), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, -0.15, -0.08), limits='null'), Joint(id='6a97837f-a254-4654-8183-caa5868089e5', name='UpperArm.R', parent=2, position=(-0.21, 0.0, 0.17), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.29), limits='null'), Joint(id='555e225f-bf57-4ccf-ab9f-8a9755f79385', name='ForeArm.R', parent=11, position=(0.0, 0.0, -0.29), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.25), limits='null'), Joint(id='97e6d029-2d15-41f4-a21b-2345bbd1271a', name='Hand.R', parent=12, position=(0.0, 0.0, -0.25), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='10529b45-e923-43cb-82b0-ee207e76a55a', name='Thigh.R', parent=0, position=(-0.1, 0.0, -0.02), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.44), limits='null'), Joint(id='d4e8d232-9de4-480e-a4fa-73469b54eb1e', name='Shin.R', parent=14, position=(0.0, 0.0, -0.44), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.41), limits='null'), Joint(id='565f72b1-0b5d-43f2-ae9d-6690fb23d18f', name='Foot.R', parent=15, position=(0.0, 0.0, -0.41), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, -0.15, -0.08), limits='null')), attachments=(), constraints=(), mirror=(('.L', '.R'), ('Left', 'Right'), ('_l', '_r')))"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "attach"
+        },
+        {
+          "op": "generate",
+          "result": {
+            "clip": "Walk",
+            "kind": "walk",
+            "roles": {
+              "hips": "Hips",
+              "spine": "Spine",
+              "chest": "Chest",
+              "neck": "Neck",
+              "head": "Head",
+              "upper_arm.L": "UpperArm.L",
+              "lower_arm.L": "ForeArm.L",
+              "hand.L": "Hand.L",
+              "thigh.L": "Thigh.L",
+              "shin.L": "Shin.L",
+              "foot.L": "Foot.L",
+              "upper_arm.R": "UpperArm.R",
+              "lower_arm.R": "ForeArm.R",
+              "hand.R": "Hand.R",
+              "thigh.R": "Thigh.R",
+              "shin.R": "Shin.R",
+              "foot.R": "Foot.R"
+            },
+            "missing": [],
+            "channels": 48,
+            "keys": 544,
+            "samples": 268,
+            "max_error": {
+              "degrees": 0.04971329314266981,
+              "units": 0.0007761586442199438
+            },
+            "quaternion_joints": [],
+            "ik_residual": 6.206335383118183e-17,
+            "cyclic": true,
+            "duration": 1.1111111111111112,
+            "travel": 1.105,
+            "leg_length": 0.85,
+            "period": 1.1111111111111112,
+            "speed": 0.9945,
+            "step": 0.5525,
+            "cadence": 1.8
+          }
+        },
+        {
+          "op": "follow_camera",
+          "result": {
+            "camera": "Cam",
+            "target": "Hero",
+            "samples": 241,
+            "max_error": 0.0028411887085173504,
+            "lag": 0.3,
+            "basis": "sampled"
+          }
+        }
+      ],
+      "animation": {
+        "timeline": {
+          "fps": 24,
+          "start": 0.0,
+          "end": 4.0,
+          "time": 0.0
+        },
+        "clips": [
+          {
+            "name": "Walk",
+            "channels": 48,
+            "keys": 544,
+            "range": [
+              0.0,
+              1.1111111111111112
+            ]
+          },
+          {
+            "name": "Cam Action",
+            "channels": 3,
+            "keys": 9,
+            "range": [
+              0.0,
+              4.0
+            ]
+          }
+        ],
+        "bindings": [
+          {
+            "target": "Hero",
+            "action": "Walk",
+            "layers": [],
+            "mute": false
+          },
+          {
+            "target": "Cam",
+            "action": "Cam Action",
+            "layers": [],
+            "mute": false
+          }
+        ],
+        "rigs": 1,
+        "skins": 0,
+        "constraints": 1,
+        "morphs": 0,
+        "paths": 0,
+        "shots": 0
+      },
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 2,
+        "dirty": true,
+        "objects": 17
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 5,
+    "tool": "inspect_animation",
+    "arguments": {
+      "what": "contacts",
+      "target": "Hero",
+      "feet": [
+        "Foot.L",
+        "Foot.R"
+      ],
+      "start": 0.5,
+      "end": 4
+    },
+    "ok": true,
+    "ms": 1546.4,
+    "result": {
+      "what": "contacts",
+      "ground": 0.0,
+      "height": 0.03,
+      "speed": 0.3,
+      "feet": {
+        "Foot.L": {
+          "contacts": [
+            {
+              "start": 0.5,
+              "end": 0.6916666666666667,
+              "sliding": 0.002266047334448591,
+              "anchor": [
+                0.09944801768665604,
+                -0.34268612684704525,
+                0.07997028401726047
+              ]
+            },
+            {
+              "start": 1.1083333333333334,
+              "end": 1.8,
+              "sliding": 0.0036312823213316527,
+              "anchor": [
+                0.10000051281505376,
+                -1.4306820262213322,
+                0.07838041794716383
+              ]
+            },
+            {
+              "start": 2.216666666666667,
+              "end": 2.9166666666666665,
+              "sliding": 0.0035149276264539926,
+              "anchor": [
+                0.10000224512380214,
+                -2.535196155102201,
+                0.07865120920041346
+              ]
+            },
+            {
+              "start": 3.3333333333333335,
+              "end": 4.0,
+              "sliding": 0.0036008428438590243,
+              "anchor": [
+                0.09999999999999999,
+                -3.6409170647345794,
+                0.07825180805870441
+              ]
+            }
+          ],
+          "sliding_max": 0.0036312823213316527,
+          "penetration": 0.0006395448234081669,
+          "lowest": -0.0006395448234081669
+        },
+        "Foot.R": {
+          "contacts": [
+            {
+              "start": 0.55,
+              "end": 1.25,
+              "sliding": 0.003934150896575708,
+              "anchor": [
+                -0.1007361884972871,
+                -0.8779392380473896,
+                0.07882562546093136
+              ]
+            },
+            {
+              "start": 1.6666666666666667,
+              "end": 2.3583333333333334,
+              "sliding": 0.00392369817154619,
+              "anchor": [
+                -0.1008177897588464,
+                -1.9837853105268786,
+                0.07857366101251784
+              ]
+            },
+            {
+              "start": 2.775,
+              "end": 3.475,
+              "sliding": 0.0042552040601893945,
+              "anchor": [
+                -0.10077542020682605,
+                -3.0884427004504817,
+                0.07865724114266953
+              ]
+            },
+            {
+              "start": 3.8833333333333333,
+              "end": 4.0,
+              "sliding": 0.003934150896576761,
+              "anchor": [
+                -0.10073618849728712,
+                -4.19293923804739,
+                0.07882562546093141
+              ]
+            }
+          ],
+          "sliding_max": 0.0042552040601893945,
+          "penetration": 0.00038202674667400793,
+          "lowest": -0.00038202674667400793
+        }
+      },
+      "basis": "sampled",
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 2,
+        "dirty": true,
+        "objects": 17
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 6,
+    "tool": "inspect_animation",
+    "arguments": {
+      "what": "trajectory",
+      "target": "Hero",
+      "start": 0,
+      "end": 4
+    },
+    "ok": true,
+    "ms": 304.2,
+    "result": {
+      "what": "trajectory",
+      "range": [
+        0.0,
+        4.0
+      ],
+      "samples": 241,
+      "basis": "sampled",
+      "path_length": 3.9779999999999998,
+      "displacement": 3.9779999999999998,
+      "speed": {
+        "max": 0.994500000000027,
+        "mean": 0.9944999999999998,
+        "at": 2.95
+      },
+      "acceleration": {
+        "max": 1.199040866595169e-12,
+        "at": 2.933333333333333
+      },
+      "jerk": {
+        "max": 7.194245199571014e-11,
+        "rms": 1.8571667229487005e-11
+      },
+      "angular_speed": {
+        "max": 0.0
+      },
+      "smoothness_ldlj": 43.861867336139646,
+      "start": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end": [
+        0.0,
+        -3.9779999999999998,
+        0.0
+      ],
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 2,
+        "dirty": true,
+        "objects": 17
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 7,
+    "tool": "history",
+    "arguments": {
+      "action": "checkpoint",
+      "name": "walk"
+    },
+    "ok": true,
+    "ms": 1.8,
+    "result": {
+      "action": "checkpoint",
+      "moved": [],
+      "steps": [
+        {
+          "index": 1,
+          "label": "Robot parts",
+          "changes": 21
+        },
+        {
+          "index": 2,
+          "label": "Rig and walk",
+          "changes": 7
+        }
+      ],
+      "undone": [],
+      "checkpoints": {
+        "walk": 2
+      },
+      "bytes": 80120,
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 2,
+        "dirty": true,
+        "objects": 17
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 8,
+    "tool": "run_script",
+    "arguments": {
+      "script": {
+        "format": "aether3d.animation-script",
+        "version": 1,
+        "label": "Cover it faster",
+        "operations": [
+          {
+            "op": "edit_keys",
+            "target": "Hero",
+            "clip": "Walk",
+            "path": "transform.position.y",
+            "edit": "scale_values",
+            "factor": 1.3,
+            "pivot": 0.0
+          }
+        ]
+      }
+    },
+    "ok": true,
+    "ms": 2.4,
+    "result": {
+      "format": "aether3d.animation-script",
+      "operations": [
+        {
+          "op": "edit_keys"
+        }
+      ],
+      "animation": {
+        "timeline": {
+          "fps": 24,
+          "start": 0.0,
+          "end": 4.0,
+          "time": 0.0
+        },
+        "clips": [
+          {
+            "name": "Walk",
+            "channels": 48,
+            "keys": 544,
+            "range": [
+              0.0,
+              1.1111111111111112
+            ]
+          },
+          {
+            "name": "Cam Action",
+            "channels": 3,
+            "keys": 9,
+            "range": [
+              0.0,
+              4.0
+            ]
+          }
+        ],
+        "bindings": [
+          {
+            "target": "Hero",
+            "action": "Walk",
+            "layers": [],
+            "mute": false
+          },
+          {
+            "target": "Cam",
+            "action": "Cam Action",
+            "layers": [],
+            "mute": false
+          }
+        ],
+        "rigs": 1,
+        "skins": 0,
+        "constraints": 1,
+        "morphs": 0,
+        "paths": 0,
+        "shots": 0
+      },
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 3,
+        "dirty": true,
+        "objects": 17
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 9,
+    "tool": "inspect_animation",
+    "arguments": {
+      "what": "contacts",
+      "target": "Hero",
+      "feet": [
+        "Foot.L",
+        "Foot.R"
+      ],
+      "start": 0.5,
+      "end": 4
+    },
+    "ok": true,
+    "ms": 1540.5,
+    "result": {
+      "what": "contacts",
+      "ground": 0.0,
+      "height": 0.03,
+      "speed": 0.3,
+      "feet": {
+        "Foot.L": {
+          "contacts": [
+            {
+              "start": 0.5,
+              "end": 0.6916666666666667,
+              "sliding": 0.0570534183192189,
+              "anchor": [
+                0.09944801768665604,
+                -0.4918611268470453,
+                0.07997028401726047
+              ]
+            },
+            {
+              "start": 1.1083333333333334,
+              "end": 1.8,
+              "sliding": 0.20389374338357089,
+              "anchor": [
+                0.10000051281505376,
+                -1.7613532762213326,
+                0.07838041794716383
+              ]
+            },
+            {
+              "start": 2.216666666666667,
+              "end": 2.9166666666666665,
+              "sliding": 0.20479453272050038,
+              "anchor": [
+                0.10000224512380214,
+                -3.1965386551022013,
+                0.07865120920041346
+              ]
+            },
+            {
+              "start": 3.3333333333333335,
+              "end": 4.0,
+              "sliding": 0.19682294754178487,
+              "anchor": [
+                0.09999999999999999,
+                -4.635417064734579,
+                0.07825180805870441
+              ]
+            }
+          ],
+          "sliding_max": 0.20479453272050038,
+          "penetration": 0.0006395448234081669,
+          "lowest": -0.0006395448234081669
+        },
+        "Foot.R": {
+          "contacts": [
+            {
+              "start": 0.55,
+              "end": 1.25,
+              "sliding": 0.20521709208872702,
+              "anchor": [
+                -0.1007361884972871,
+                -1.0420317380473896,
+                0.07882562546093136
+              ]
+            },
+            {
+              "start": 1.6666666666666667,
+              "end": 2.3583333333333334,
+              "sliding": 0.20476233893563064,
+              "anchor": [
+                -0.1008177897588464,
+                -2.4810353105268788,
+                0.07857366101251784
+              ]
+            },
+            {
+              "start": 2.775,
+              "end": 3.475,
+              "sliding": 0.20560070500492267,
+              "anchor": [
+                -0.10077542020682605,
+                -3.916363950450482,
+                0.07865724114266953
+              ]
+            },
+            {
+              "start": 3.8833333333333333,
+              "end": 4.0,
+              "sliding": 0.03573200109592559,
+              "anchor": [
+                -0.10073618849728712,
+                -5.351531738047389,
+                0.07882562546093141
+              ]
+            }
+          ],
+          "sliding_max": 0.20560070500492267,
+          "penetration": 0.00038202674667400793,
+          "lowest": -0.00038202674667400793
+        }
+      },
+      "basis": "sampled",
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 3,
+        "dirty": true,
+        "objects": 17
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 10,
+    "tool": "diagnose_scene",
+    "arguments": {
+      "expectations": {
+        "format": "aether3d.expectations",
+        "version": 1,
+        "defaults": false,
+        "checks": [
+          {
+            "check": "foot_contacts",
+            "objects": "Hero",
+            "feet": [
+              "Foot.L",
+              "Foot.R"
+            ]
+          },
+          {
+            "check": "animation_continuity",
+            "objects": "Hero"
+          }
+        ]
+      },
+      "include_image": false
+    },
+    "ok": true,
+    "ms": 1783.8,
+    "result": {
+      "format": "aether3d.diagnosis",
+      "version": 1,
+      "id": "diag-d0b2aa67d028",
+      "revision": 3,
+      "stale": false,
+      "expectations": "expectations",
+      "accepted": false,
+      "acceptance": {
+        "max_errors": 0,
+        "max_warnings": null,
+        "unknown_checks": [],
+        "basis": "deterministic checks"
+      },
+      "summary": {
+        "errors": 2,
+        "warnings": 0,
+        "info": 0,
+        "score": 2.0,
+        "checks": {
+          "pass": 1,
+          "fail": 1,
+          "unknown": 0
+        }
+      },
+      "checks": [
+        {
+          "id": "foot_contacts-1",
+          "check": "foot_contacts",
+          "severity": "error",
+          "status": "fail",
+          "findings": [
+            "F2",
+            "F2"
+          ],
+          "measured": {
+            "Hero": {
+              "Foot.L": 0.204795,
+              "Foot.R": 0.205601
+            }
+          }
+        },
+        {
+          "id": "animation_continuity-2",
+          "check": "animation_continuity",
+          "severity": "error",
+          "status": "pass",
+          "findings": [],
+          "measured": {
+            "Hero": 0
+          }
+        }
+      ],
+      "findings": [
+        {
+          "id": "F1",
+          "check": "foot_contacts-1",
+          "kind": "foot_contacts",
+          "code": "FOOT_SLIDING",
+          "severity": "error",
+          "basis": "geometry",
+          "exact": false,
+          "message": "'Hero' Foot.L slides 0.2048 m while planted (2.22..2.92 s)",
+          "subjects": [
+            {
+              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "name": "Hero",
+              "role": "subject"
+            }
+          ],
+          "magnitude": 0.20479453272050038,
+          "unit": "m",
+          "evidence": {
+            "foot": "Foot.L",
+            "sliding": 0.20479453272050038,
+            "contacts": [
+              {
+                "start": 0.0,
+                "end": 0.6916666666666667,
+                "sliding": 0.20428647920703463,
+                "anchor": [
+                  0.09999999999999999,
+                  -0.3259170647345795,
+                  0.07825180805870441
+                ]
+              },
+              {
+                "start": 1.1083333333333334,
+                "end": 1.8,
+                "sliding": 0.20389374338357089,
+                "anchor": [
+                  0.10000051281505376,
+                  -1.7613532762213326,
+                  0.07838041794716383
+                ]
+              },
+              {
+                "start": 2.216666666666667,
+                "end": 2.9166666666666665,
+                "sliding": 0.20479453272050038,
+                "anchor": [
+                  0.10000224512380214,
+                  -3.1965386551022013,
+                  0.07865120920041346
+                ]
+              },
+              {
+                "start": 3.3333333333333335,
+                "end": 4.0,
+                "sliding": 0.19682294754178487,
+                "anchor": [
+                  0.09999999999999999,
+                  -4.635417064734579,
+                  0.07825180805870441
+                ]
+              }
+            ],
+            "limit": 0.005
+          },
+          "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
+          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+        },
+        {
+          "id": "F2",
+          "check": "foot_contacts-1",
+          "kind": "foot_contacts",
+          "code": "FOOT_SLIDING",
+          "severity": "error",
+          "basis": "geometry",
+          "exact": false,
+          "message": "'Hero' Foot.R slides 0.2056 m while planted (2.77..3.48 s)",
+          "subjects": [
+            {
+              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "name": "Hero",
+              "role": "subject"
+            }
+          ],
+          "magnitude": 0.20560070500492267,
+          "unit": "m",
+          "evidence": {
+            "foot": "Foot.R",
+            "sliding": 0.20560070500492267,
+            "contacts": [
+              {
+                "start": 0.0,
+                "end": 0.14166666666666666,
+                "sliding": 0.043721717935638484,
+                "anchor": [
+                  -0.09999999999999998,
+                  0.20790115686978386,
+                  0.08372846099680026
+                ]
+              },
+              {
+                "start": 0.55,
+                "end": 1.25,
+                "sliding": 0.20521709208872702,
+                "anchor": [
+                  -0.1007361884972871,
+                  -1.0420317380473896,
+                  0.07882562546093136
+                ]
+              },
+              {
+                "start": 1.6666666666666667,
+                "end": 2.3583333333333334,
+                "sliding": 0.20476233893563064,
+                "anchor": [
+                  -0.1008177897588464,
+                  -2.4810353105268788,
+                  0.07857366101251784
+                ]
+              },
+              {
+                "start": 2.775,
+                "end": 3.475,
+                "sliding": 0.20560070500492267,
+                "anchor": [
+                  -0.10077542020682605,
+                  -3.916363950450482,
+                  0.07865724114266953
+                ]
+              },
+              {
+                "start": 3.8833333333333333,
+                "end": 4.0,
+                "sliding": 0.03573200109592559,
+                "anchor": [
+                  -0.10073618849728712,
+                  -5.351531738047389,
+                  0.07882562546093141
+                ]
+              }
+            ],
+            "limit": 0.005
+          },
+          "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
+          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+        }
+      ],
+      "observations": {},
+      "timings": {
+        "observe": 0.0,
+        "checks": 1.781161,
+        "total": 1.781267
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 11,
+    "tool": "propose_corrections",
+    "arguments": {
+      "expectations": {
+        "format": "aether3d.expectations",
+        "version": 1,
+        "defaults": false,
+        "checks": [
+          {
+            "check": "foot_contacts",
+            "objects": "Hero",
+            "feet": [
+              "Foot.L",
+              "Foot.R"
+            ]
+          },
+          {
+            "check": "animation_continuity",
+            "objects": "Hero"
+          }
+        ]
+      }
+    },
+    "ok": true,
+    "ms": 4.4,
+    "result": {
+      "format": "aether3d.corrections",
+      "version": 1,
+      "id": "corr-508994bfabe4",
+      "diagnosis": "diag-d0b2aa67d028",
+      "revision": 3,
+      "stale": false,
+      "proposals": [
+        {
+          "id": "P1",
+          "title": "Plant the feet of 'Hero'",
+          "safety": "verify",
+          "basis": "geometry",
+          "findings": [
+            "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+            "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          ],
+          "actions": [
+            {
+              "action": "plant_feet",
+              "armature": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "legs": {
+                "Foot.L": [
+                  "Thigh.L",
+                  "Shin.L",
+                  "Foot.L"
+                ],
+                "Foot.R": [
+                  "Thigh.R",
+                  "Shin.R",
+                  "Foot.R"
+                ]
+              }
+            }
+          ],
+          "rationale": "check 'foot_contacts-1': Foot.L slides 0.2048 m (sampled). Keyed IK pins each contact where it touched down; the rest of the motion is unchanged.",
+          "expected": [
+            {
+              "finding": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "code": "FOOT_SLIDING",
+              "before": 0.20479453272050038,
+              "after": null,
+              "unit": "m"
+            },
+            {
+              "finding": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "code": "FOOT_SLIDING",
+              "before": 0.20560070500492267,
+              "after": null,
+              "unit": "m"
+            }
+          ],
+          "validation": [
+            "re-check 'foot_contacts-1': sliding and sinking within the limits"
+          ],
+          "changes": [
+            {
+              "object": "Hero",
+              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "field": "feet",
+              "before": "sliding",
+              "after": "planted (keyed IK)"
+            }
+          ],
+          "policy": {
+            "auto": false,
+            "violations": [
+              "plant_feet: animation changes are not allowed (allow_animation)"
+            ]
+          },
+          "signature": "8a719e433d5c6df2",
+          "compiled": {
+            "plan": {
+              "format": "aether3d.scene-plan",
+              "version": 1,
+              "label": "Feedback: Plant the feet of 'Hero'",
+              "expected_revision": 3,
+              "operations": [
+                {
+                  "op": "animation",
+                  "script": {
+                    "format": "aether3d.animation-script",
+                    "version": 1,
+                    "operations": [
+                      {
+                        "op": "plant_feet",
+                        "armature": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+                        "legs": {
+                          "Foot.L": [
+                            "Thigh.L",
+                            "Shin.L",
+                            "Foot.L"
+                          ],
+                          "Foot.R": [
+                            "Thigh.R",
+                            "Shin.R",
+                            "Foot.R"
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "scene_script": null
+          }
+        }
+      ],
+      "unresolved": [],
+      "policy": {
+        "auto_apply": [
+          "safe"
+        ],
+        "allow_placement": true,
+        "allow_camera": true,
+        "allow_lighting": true,
+        "allow_materials": true,
+        "allow_visibility": true,
+        "allow_procedural": false,
+        "allow_animation": false,
+        "max_actions": 20,
+        "max_objects": 10,
+        "max_translation": null,
+        "max_rotation": 90.0,
+        "max_scale": 4.0,
+        "max_exposure_change": 4.0,
+        "max_light_factor": 8.0,
+        "verify": true,
+        "rollback_on_regression": true,
+        "rollback_if_ineffective": true,
+        "min_vision_confidence": 0.6
+      },
+      "diagnosis_summary": {
+        "errors": 2,
+        "warnings": 0,
+        "info": 0,
+        "score": 2.0,
+        "checks": {
+          "pass": 1,
+          "fail": 1,
+          "unknown": 0
+        }
+      },
+      "findings": [
+        {
+          "id": "F1",
+          "check": "foot_contacts-1",
+          "kind": "foot_contacts",
+          "code": "FOOT_SLIDING",
+          "severity": "error",
+          "basis": "geometry",
+          "exact": false,
+          "message": "'Hero' Foot.L slides 0.2048 m while planted (2.22..2.92 s)",
+          "subjects": [
+            {
+              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "name": "Hero",
+              "role": "subject"
+            }
+          ],
+          "magnitude": 0.20479453272050038,
+          "unit": "m",
+          "evidence": {
+            "foot": "Foot.L",
+            "sliding": 0.20479453272050038,
+            "contacts": [
+              {
+                "start": 0.0,
+                "end": 0.6916666666666667,
+                "sliding": 0.20428647920703463,
+                "anchor": [
+                  0.09999999999999999,
+                  -0.3259170647345795,
+                  0.07825180805870441
+                ]
+              },
+              {
+                "start": 1.1083333333333334,
+                "end": 1.8,
+                "sliding": 0.20389374338357089,
+                "anchor": [
+                  0.10000051281505376,
+                  -1.7613532762213326,
+                  0.07838041794716383
+                ]
+              },
+              {
+                "start": 2.216666666666667,
+                "end": 2.9166666666666665,
+                "sliding": 0.20479453272050038,
+                "anchor": [
+                  0.10000224512380214,
+                  -3.1965386551022013,
+                  0.07865120920041346
+                ]
+              },
+              {
+                "start": 3.3333333333333335,
+                "end": 4.0,
+                "sliding": 0.19682294754178487,
+                "anchor": [
+                  0.09999999999999999,
+                  -4.635417064734579,
+                  0.07825180805870441
+                ]
+              }
+            ],
+            "limit": 0.005
+          },
+          "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
+          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+        },
+        {
+          "id": "F2",
+          "check": "foot_contacts-1",
+          "kind": "foot_contacts",
+          "code": "FOOT_SLIDING",
+          "severity": "error",
+          "basis": "geometry",
+          "exact": false,
+          "message": "'Hero' Foot.R slides 0.2056 m while planted (2.77..3.48 s)",
+          "subjects": [
+            {
+              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "name": "Hero",
+              "role": "subject"
+            }
+          ],
+          "magnitude": 0.20560070500492267,
+          "unit": "m",
+          "evidence": {
+            "foot": "Foot.R",
+            "sliding": 0.20560070500492267,
+            "contacts": [
+              {
+                "start": 0.0,
+                "end": 0.14166666666666666,
+                "sliding": 0.043721717935638484,
+                "anchor": [
+                  -0.09999999999999998,
+                  0.20790115686978386,
+                  0.08372846099680026
+                ]
+              },
+              {
+                "start": 0.55,
+                "end": 1.25,
+                "sliding": 0.20521709208872702,
+                "anchor": [
+                  -0.1007361884972871,
+                  -1.0420317380473896,
+                  0.07882562546093136
+                ]
+              },
+              {
+                "start": 1.6666666666666667,
+                "end": 2.3583333333333334,
+                "sliding": 0.20476233893563064,
+                "anchor": [
+                  -0.1008177897588464,
+                  -2.4810353105268788,
+                  0.07857366101251784
+                ]
+              },
+              {
+                "start": 2.775,
+                "end": 3.475,
+                "sliding": 0.20560070500492267,
+                "anchor": [
+                  -0.10077542020682605,
+                  -3.916363950450482,
+                  0.07865724114266953
+                ]
+              },
+              {
+                "start": 3.8833333333333333,
+                "end": 4.0,
+                "sliding": 0.03573200109592559,
+                "anchor": [
+                  -0.10073618849728712,
+                  -5.351531738047389,
+                  0.07882562546093141
+                ]
+              }
+            ],
+            "limit": 0.005
+          },
+          "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
+          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+        }
+      ]
+    },
+    "images": []
+  },
+  {
+    "step": 12,
+    "tool": "propose_corrections",
+    "arguments": {
+      "expectations": {
+        "format": "aether3d.expectations",
+        "version": 1,
+        "defaults": false,
+        "checks": [
+          {
+            "check": "foot_contacts",
+            "objects": "Hero",
+            "feet": [
+              "Foot.L",
+              "Foot.R"
+            ]
+          },
+          {
+            "check": "animation_continuity",
+            "objects": "Hero"
+          }
+        ]
+      },
+      "policy": {
+        "allow_animation": true
+      }
+    },
+    "ok": true,
+    "ms": 2.5,
+    "result": {
+      "format": "aether3d.corrections",
+      "version": 1,
+      "id": "corr-508994bfabe4",
+      "diagnosis": "diag-d0b2aa67d028",
+      "revision": 3,
+      "stale": false,
+      "proposals": [
+        {
+          "id": "P1",
+          "title": "Plant the feet of 'Hero'",
+          "safety": "verify",
+          "basis": "geometry",
+          "findings": [
+            "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+            "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          ],
+          "actions": [
+            {
+              "action": "plant_feet",
+              "armature": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "legs": {
+                "Foot.L": [
+                  "Thigh.L",
+                  "Shin.L",
+                  "Foot.L"
+                ],
+                "Foot.R": [
+                  "Thigh.R",
+                  "Shin.R",
+                  "Foot.R"
+                ]
+              }
+            }
+          ],
+          "rationale": "check 'foot_contacts-1': Foot.L slides 0.2048 m (sampled). Keyed IK pins each contact where it touched down; the rest of the motion is unchanged.",
+          "expected": [
+            {
+              "finding": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "code": "FOOT_SLIDING",
+              "before": 0.20479453272050038,
+              "after": null,
+              "unit": "m"
+            },
+            {
+              "finding": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "code": "FOOT_SLIDING",
+              "before": 0.20560070500492267,
+              "after": null,
+              "unit": "m"
+            }
+          ],
+          "validation": [
+            "re-check 'foot_contacts-1': sliding and sinking within the limits"
+          ],
+          "changes": [
+            {
+              "object": "Hero",
+              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "field": "feet",
+              "before": "sliding",
+              "after": "planted (keyed IK)"
+            }
+          ],
+          "policy": {
+            "auto": false,
+            "violations": []
+          },
+          "signature": "8a719e433d5c6df2",
+          "compiled": {
+            "plan": {
+              "format": "aether3d.scene-plan",
+              "version": 1,
+              "label": "Feedback: Plant the feet of 'Hero'",
+              "expected_revision": 3,
+              "operations": [
+                {
+                  "op": "animation",
+                  "script": {
+                    "format": "aether3d.animation-script",
+                    "version": 1,
+                    "operations": [
+                      {
+                        "op": "plant_feet",
+                        "armature": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+                        "legs": {
+                          "Foot.L": [
+                            "Thigh.L",
+                            "Shin.L",
+                            "Foot.L"
+                          ],
+                          "Foot.R": [
+                            "Thigh.R",
+                            "Shin.R",
+                            "Foot.R"
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "scene_script": null
+          }
+        }
+      ],
+      "unresolved": [],
+      "policy": {
+        "auto_apply": [
+          "safe"
+        ],
+        "allow_placement": true,
+        "allow_camera": true,
+        "allow_lighting": true,
+        "allow_materials": true,
+        "allow_visibility": true,
+        "allow_procedural": false,
+        "allow_animation": true,
+        "max_actions": 20,
+        "max_objects": 10,
+        "max_translation": null,
+        "max_rotation": 90.0,
+        "max_scale": 4.0,
+        "max_exposure_change": 4.0,
+        "max_light_factor": 8.0,
+        "verify": true,
+        "rollback_on_regression": true,
+        "rollback_if_ineffective": true,
+        "min_vision_confidence": 0.6
+      },
+      "diagnosis_summary": {
+        "errors": 2,
+        "warnings": 0,
+        "info": 0,
+        "score": 2.0,
+        "checks": {
+          "pass": 1,
+          "fail": 1,
+          "unknown": 0
+        }
+      },
+      "findings": [
+        {
+          "id": "F1",
+          "check": "foot_contacts-1",
+          "kind": "foot_contacts",
+          "code": "FOOT_SLIDING",
+          "severity": "error",
+          "basis": "geometry",
+          "exact": false,
+          "message": "'Hero' Foot.L slides 0.2048 m while planted (2.22..2.92 s)",
+          "subjects": [
+            {
+              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "name": "Hero",
+              "role": "subject"
+            }
+          ],
+          "magnitude": 0.20479453272050038,
+          "unit": "m",
+          "evidence": {
+            "foot": "Foot.L",
+            "sliding": 0.20479453272050038,
+            "contacts": [
+              {
+                "start": 0.0,
+                "end": 0.6916666666666667,
+                "sliding": 0.20428647920703463,
+                "anchor": [
+                  0.09999999999999999,
+                  -0.3259170647345795,
+                  0.07825180805870441
+                ]
+              },
+              {
+                "start": 1.1083333333333334,
+                "end": 1.8,
+                "sliding": 0.20389374338357089,
+                "anchor": [
+                  0.10000051281505376,
+                  -1.7613532762213326,
+                  0.07838041794716383
+                ]
+              },
+              {
+                "start": 2.216666666666667,
+                "end": 2.9166666666666665,
+                "sliding": 0.20479453272050038,
+                "anchor": [
+                  0.10000224512380214,
+                  -3.1965386551022013,
+                  0.07865120920041346
+                ]
+              },
+              {
+                "start": 3.3333333333333335,
+                "end": 4.0,
+                "sliding": 0.19682294754178487,
+                "anchor": [
+                  0.09999999999999999,
+                  -4.635417064734579,
+                  0.07825180805870441
+                ]
+              }
+            ],
+            "limit": 0.005
+          },
+          "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
+          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+        },
+        {
+          "id": "F2",
+          "check": "foot_contacts-1",
+          "kind": "foot_contacts",
+          "code": "FOOT_SLIDING",
+          "severity": "error",
+          "basis": "geometry",
+          "exact": false,
+          "message": "'Hero' Foot.R slides 0.2056 m while planted (2.77..3.48 s)",
+          "subjects": [
+            {
+              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "name": "Hero",
+              "role": "subject"
+            }
+          ],
+          "magnitude": 0.20560070500492267,
+          "unit": "m",
+          "evidence": {
+            "foot": "Foot.R",
+            "sliding": 0.20560070500492267,
+            "contacts": [
+              {
+                "start": 0.0,
+                "end": 0.14166666666666666,
+                "sliding": 0.043721717935638484,
+                "anchor": [
+                  -0.09999999999999998,
+                  0.20790115686978386,
+                  0.08372846099680026
+                ]
+              },
+              {
+                "start": 0.55,
+                "end": 1.25,
+                "sliding": 0.20521709208872702,
+                "anchor": [
+                  -0.1007361884972871,
+                  -1.0420317380473896,
+                  0.07882562546093136
+                ]
+              },
+              {
+                "start": 1.6666666666666667,
+                "end": 2.3583333333333334,
+                "sliding": 0.20476233893563064,
+                "anchor": [
+                  -0.1008177897588464,
+                  -2.4810353105268788,
+                  0.07857366101251784
+                ]
+              },
+              {
+                "start": 2.775,
+                "end": 3.475,
+                "sliding": 0.20560070500492267,
+                "anchor": [
+                  -0.10077542020682605,
+                  -3.916363950450482,
+                  0.07865724114266953
+                ]
+              },
+              {
+                "start": 3.8833333333333333,
+                "end": 4.0,
+                "sliding": 0.03573200109592559,
+                "anchor": [
+                  -0.10073618849728712,
+                  -5.351531738047389,
+                  0.07882562546093141
+                ]
+              }
+            ],
+            "limit": 0.005
+          },
+          "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
+          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+        }
+      ]
+    },
+    "images": []
+  },
+  {
+    "step": 13,
+    "tool": "apply_corrections",
+    "arguments": {
+      "proposals": [
+        "P1"
+      ],
+      "approve": [
+        "P1"
+      ],
+      "policy": {
+        "allow_animation": true
+      }
+    },
+    "ok": true,
+    "ms": 21421.4,
+    "result": {
+      "status": "applied",
+      "applied": [
+        "P1"
+      ],
+      "rejected": [],
+      "revision": {
+        "before": 3,
+        "after": 4
+      },
+      "step": {
+        "index": 4,
+        "label": "Feedback: Plant the feet of 'Hero'",
+        "changes": 9
+      },
+      "changes": [
+        {
+          "object": "Hero",
+          "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+          "field": "feet",
+          "before": "sliding",
+          "after": "planted (keyed IK)"
+        }
+      ],
+      "compiled": {
+        "plan": {
+          "format": "aether3d.scene-plan",
+          "version": 1,
+          "label": "Feedback: Plant the feet of 'Hero'",
+          "expected_revision": 3,
+          "operations": [
+            {
+              "op": "animation",
+              "script": {
+                "format": "aether3d.animation-script",
+                "version": 1,
+                "operations": [
+                  {
+                    "op": "plant_feet",
+                    "armature": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+                    "legs": {
+                      "Foot.L": [
+                        "Thigh.L",
+                        "Shin.L",
+                        "Foot.L"
+                      ],
+                      "Foot.R": [
+                        "Thigh.R",
+                        "Shin.R",
+                        "Foot.R"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "scene_script": null
+      },
+      "verification": {
+        "before": {
+          "errors": 2,
+          "warnings": 0,
+          "score": 2.0,
+          "diagnosis": "diag-d0b2aa67d028"
+        },
+        "after": {
+          "errors": 2,
+          "warnings": 0,
+          "score": 2.0,
+          "diagnosis": "diag-cb6aa467c47b",
+          "accepted": false
+        },
+        "resolved": [],
+        "new_failures": [],
+        "persisting": [
+          {
+            "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+            "code": "FOOT_SLIDING",
+            "before": 0.20560070500492267,
+            "after": 0.01174214016653902,
+            "improved": true
+          }
+        ],
+        "targeted": [
+          "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+        ],
+        "targeted_resolved": [],
+        "targeted_improved": [
+          "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+        ],
+        "improved": false,
+        "decision": "kept",
+        "reason": "the findings it addressed improved and nothing regressed"
+      },
+      "timings": {
+        "apply": 18.494134,
+        "verify": 2.925091,
+        "total": 21.419372
+      },
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 4,
+        "dirty": true,
+        "objects": 19
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 14,
+    "tool": "inspect_animation",
+    "arguments": {
+      "what": "contacts",
+      "target": "Hero",
+      "feet": [
+        "Foot.L",
+        "Foot.R"
+      ],
+      "start": 0.5,
+      "end": 4
+    },
+    "ok": true,
+    "ms": 2564.7,
+    "result": {
+      "what": "contacts",
+      "ground": 0.0,
+      "height": 0.03,
+      "speed": 0.3,
+      "feet": {
+        "Foot.L": {
+          "contacts": [
+            {
+              "start": 0.5,
+              "end": 0.55,
+              "sliding": 0.001284984715176871,
+              "anchor": [
+                0.09999999999999998,
+                -0.3259170647345795,
+                0.0782518080587043
+              ]
+            },
+            {
+              "start": 1.1083333333333334,
+              "end": 1.6583333333333332,
+              "sliding": 0.011560861314838194,
+              "anchor": [
+                0.10001194922210589,
+                -1.7586433243869197,
+                0.07923766916821878
+              ]
+            },
+            {
+              "start": 2.2333333333333334,
+              "end": 2.7666666666666666,
+              "sliding": 0.006585773209929735,
+              "anchor": [
+                0.10000224512380214,
+                -3.1965386551022013,
+                0.07865120920041363
+              ]
+            },
+            {
+              "start": 3.341666666666667,
+              "end": 3.8833333333333333,
+              "sliding": 0.006400829508717597,
+              "anchor": [
+                0.09999999999999999,
+                -4.635417064734579,
+                0.07825180805870424
+              ]
+            }
+          ],
+          "sliding_max": 0.011560861314838194,
+          "penetration": 3.7470027081099033e-16,
+          "lowest": -3.7470027081099033e-16
+        },
+        "Foot.R": {
+          "contacts": [
+            {
+              "start": 0.5666666666666667,
+              "end": 1.1,
+              "sliding": 0.0066693757881125075,
+              "anchor": [
+                -0.10073618849728709,
+                -1.0420317380473896,
+                0.07882562546093119
+              ]
+            },
+            {
+              "start": 1.675,
+              "end": 2.216666666666667,
+              "sliding": 0.00641034824838581,
+              "anchor": [
+                -0.1008177897588464,
+                -2.4810353105268788,
+                0.07857366101251773
+              ]
+            },
+            {
+              "start": 2.775,
+              "end": 3.325,
+              "sliding": 0.01174214016653902,
+              "anchor": [
+                -0.10073432588204667,
+                -3.9137492073624562,
+                0.07925812869007237
+              ]
+            },
+            {
+              "start": 3.9,
+              "end": 4.0,
+              "sliding": 4.163336342344337e-17,
+              "anchor": [
+                -0.1007361884972871,
+                -5.351531738047389,
+                0.07882562546093119
+              ]
+            }
+          ],
+          "sliding_max": 0.01174214016653902,
+          "penetration": 0.0,
+          "lowest": 0.000296980721310125
+        }
+      },
+      "basis": "sampled",
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 4,
+        "dirty": true,
+        "objects": 19
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 15,
+    "tool": "diagnose_scene",
+    "arguments": {
+      "expectations": {
+        "format": "aether3d.expectations",
+        "version": 1,
+        "defaults": false,
+        "checks": [
+          {
+            "check": "foot_contacts",
+            "objects": "Hero",
+            "feet": [
+              "Foot.L",
+              "Foot.R"
+            ]
+          },
+          {
+            "check": "animation_continuity",
+            "objects": "Hero"
+          }
+        ]
+      },
+      "include_image": false
+    },
+    "ok": true,
+    "ms": 2.0,
+    "result": {
+      "format": "aether3d.diagnosis",
+      "version": 1,
+      "id": "diag-cb6aa467c47b",
+      "revision": 4,
+      "stale": false,
+      "expectations": "expectations",
+      "accepted": false,
+      "acceptance": {
+        "max_errors": 0,
+        "max_warnings": null,
+        "unknown_checks": [],
+        "basis": "deterministic checks"
+      },
+      "summary": {
+        "errors": 2,
+        "warnings": 0,
+        "info": 0,
+        "score": 2.0,
+        "checks": {
+          "pass": 1,
+          "fail": 1,
+          "unknown": 0
+        }
+      },
+      "checks": [
+        {
+          "id": "foot_contacts-1",
+          "check": "foot_contacts",
+          "severity": "error",
+          "status": "fail",
+          "findings": [
+            "F2",
+            "F2"
+          ],
+          "measured": {
+            "Hero": {
+              "Foot.L": 0.011561,
+              "Foot.R": 0.011742
+            }
+          }
+        },
+        {
+          "id": "animation_continuity-2",
+          "check": "animation_continuity",
+          "severity": "error",
+          "status": "pass",
+          "findings": [],
+          "measured": {
+            "Hero": 0
+          }
+        }
+      ],
+      "findings": [
+        {
+          "id": "F1",
+          "check": "foot_contacts-1",
+          "kind": "foot_contacts",
+          "code": "FOOT_SLIDING",
+          "severity": "error",
+          "basis": "geometry",
+          "exact": false,
+          "message": "'Hero' Foot.L slides 0.01156 m while planted (1.11..1.66 s)",
+          "subjects": [
+            {
+              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "name": "Hero",
+              "role": "subject"
+            }
+          ],
+          "magnitude": 0.011560861314838194,
+          "unit": "m",
+          "evidence": {
+            "foot": "Foot.L",
+            "sliding": 0.011560861314838194,
+            "contacts": [
+              {
+                "start": 0.0,
+                "end": 0.55,
+                "sliding": 0.006400829508717043,
+                "anchor": [
+                  0.09999999999999999,
+                  -0.3259170647345796,
+                  0.07825180805870458
+                ]
+              },
+              {
+                "start": 1.1083333333333334,
+                "end": 1.6583333333333332,
+                "sliding": 0.011560861314838194,
+                "anchor": [
+                  0.10001194922210589,
+                  -1.7586433243869197,
+                  0.07923766916821878
+                ]
+              },
+              {
+                "start": 2.2333333333333334,
+                "end": 2.7666666666666666,
+                "sliding": 0.006585773209929735,
+                "anchor": [
+                  0.10000224512380214,
+                  -3.1965386551022013,
+                  0.07865120920041363
+                ]
+              },
+              {
+                "start": 3.341666666666667,
+                "end": 3.8833333333333333,
+                "sliding": 0.006400829508717597,
+                "anchor": [
+                  0.09999999999999999,
+                  -4.635417064734579,
+                  0.07825180805870424
+                ]
+              }
+            ],
+            "limit": 0.005
+          },
+          "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
+          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+        },
+        {
+          "id": "F2",
+          "check": "foot_contacts-1",
+          "kind": "foot_contacts",
+          "code": "FOOT_SLIDING",
+          "severity": "error",
+          "basis": "geometry",
+          "exact": false,
+          "message": "'Hero' Foot.R slides 0.01174 m while planted (2.77..3.32 s)",
+          "subjects": [
+            {
+              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "name": "Hero",
+              "role": "subject"
+            }
+          ],
+          "magnitude": 0.01174214016653902,
+          "unit": "m",
+          "evidence": {
+            "foot": "Foot.R",
+            "sliding": 0.01174214016653902,
+            "contacts": [
+              {
+                "start": 0.0,
+                "end": 0.09166666666666666,
+                "sliding": 1.646588897080376e-05,
+                "anchor": [
+                  -0.09999999999999998,
+                  0.20790115686978392,
+                  0.08372846099680026
+                ]
+              },
+              {
+                "start": 0.5666666666666667,
+                "end": 1.1,
+                "sliding": 0.0066693757881125075,
+                "anchor": [
+                  -0.10073618849728709,
+                  -1.0420317380473896,
+                  0.07882562546093119
+                ]
+              },
+              {
+                "start": 1.675,
+                "end": 2.216666666666667,
+                "sliding": 0.00641034824838581,
+                "anchor": [
+                  -0.1008177897588464,
+                  -2.4810353105268788,
+                  0.07857366101251773
+                ]
+              },
+              {
+                "start": 2.775,
+                "end": 3.3249999999999997,
+                "sliding": 0.01174214016653902,
+                "anchor": [
+                  -0.10073432588204667,
+                  -3.9137492073624562,
+                  0.07925812869007237
+                ]
+              },
+              {
+                "start": 3.9,
+                "end": 4.0,
+                "sliding": 4.163336342344337e-17,
+                "anchor": [
+                  -0.1007361884972871,
+                  -5.351531738047389,
+                  0.07882562546093119
+                ]
+              }
+            ],
+            "limit": 0.005
+          },
+          "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
+          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+        }
+      ],
+      "observations": {},
+      "timings": {
+        "observe": 0.0,
+        "checks": 2.924964,
+        "total": 2.925064
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 16,
+    "tool": "history",
+    "arguments": {
+      "action": "goto",
+      "name": "walk"
+    },
+    "ok": true,
+    "ms": 1.9,
+    "result": {
+      "action": "goto",
+      "moved": [
+        {
+          "index": 4,
+          "label": "Feedback: Plant the feet of 'Hero'"
+        },
+        {
+          "index": 3,
+          "label": "Cover it faster"
+        }
+      ],
+      "steps": [
+        {
+          "index": 1,
+          "label": "Robot parts",
+          "changes": 21
+        },
+        {
+          "index": 2,
+          "label": "Rig and walk",
+          "changes": 7
+        }
+      ],
+      "undone": [
+        {
+          "index": 3,
+          "label": "Cover it faster"
+        },
+        {
+          "index": 4,
+          "label": "Feedback: Plant the feet of 'Hero'"
+        }
+      ],
+      "checkpoints": {
+        "walk": 2
+      },
+      "bytes": 288536,
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 6,
+        "dirty": true,
+        "objects": 17
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 17,
+    "tool": "run_script",
+    "arguments": {
+      "script": {
+        "format": "aether3d.animation-script",
+        "version": 1,
+        "label": "Walk 30% faster",
+        "operations": [
+          {
+            "op": "set_binding",
+            "target": "Hero",
+            "data": {
+              "layers": [
+                {
+                  "name": "walk",
+                  "strips": [
+                    {
+                      "clip": "Walk",
+                      "speed": 1.3,
+                      "repeat": 8,
+                      "accumulate": true
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "op": "follow_camera",
+            "camera": "Cam",
+            "target": "Hero",
+            "offset": [
+              3.2,
+              -3.0,
+              1.5
+            ],
+            "lag": 0.3,
+            "aim": [
+              0,
+              0,
+              1.0
+            ],
+            "start": 0,
+            "end": 4
+          }
+        ]
+      }
+    },
+    "ok": true,
+    "ms": 4458.8,
+    "result": {
+      "format": "aether3d.animation-script",
+      "operations": [
+        {
+          "op": "set_binding"
+        },
+        {
+          "op": "follow_camera",
+          "result": {
+            "camera": "Cam",
+            "target": "Hero",
+            "samples": 241,
+            "max_error": 0.0036935453210724667,
+            "lag": 0.3,
+            "basis": "sampled"
+          }
+        }
+      ],
+      "animation": {
+        "timeline": {
+          "fps": 24,
+          "start": 0.0,
+          "end": 4.0,
+          "time": 0.0
+        },
+        "clips": [
+          {
+            "name": "Walk",
+            "channels": 48,
+            "keys": 544,
+            "range": [
+              0.0,
+              1.1111111111111112
+            ]
+          },
+          {
+            "name": "Cam Action",
+            "channels": 3,
+            "keys": 9,
+            "range": [
+              0.0,
+              4.0
+            ]
+          }
+        ],
+        "bindings": [
+          {
+            "target": "Cam",
+            "action": "Cam Action",
+            "layers": [],
+            "mute": false
+          },
+          {
+            "target": "Hero",
+            "action": null,
+            "layers": [
+              "walk"
+            ],
+            "mute": false
+          }
+        ],
+        "rigs": 1,
+        "skins": 0,
+        "constraints": 1,
+        "morphs": 0,
+        "paths": 0,
+        "shots": 0
+      },
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 7,
+        "dirty": true,
+        "objects": 17
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 18,
+    "tool": "inspect_animation",
+    "arguments": {
+      "what": "contacts",
+      "target": "Hero",
+      "feet": [
+        "Foot.L",
+        "Foot.R"
+      ],
+      "start": 0.5,
+      "end": 4
+    },
+    "ok": true,
+    "ms": 1572.5,
+    "result": {
+      "what": "contacts",
+      "ground": 0.0,
+      "height": 0.03,
+      "speed": 0.3,
+      "feet": {
+        "Foot.L": {
+          "contacts": [
+            {
+              "start": 0.8583333333333334,
+              "end": 1.3833333333333333,
+              "sliding": 0.0036230184673001456,
+              "anchor": [
+                0.1000140941252559,
+                -1.4310879603665783,
+                0.07819250055254945
+              ]
+            },
+            {
+              "start": 1.7083333333333333,
+              "end": 2.2416666666666667,
+              "sliding": 0.00346832539751375,
+              "anchor": [
+                0.1000001163093998,
+                -2.5358310575795286,
+                0.07829795466970985
+              ]
+            },
+            {
+              "start": 2.5666666666666664,
+              "end": 3.091666666666667,
+              "sliding": 0.0036386114329877376,
+              "anchor": [
+                0.10000733762610695,
+                -3.6410382313702847,
+                0.07820262250342241
+              ]
+            },
+            {
+              "start": 3.4166666666666665,
+              "end": 3.9499999999999997,
+              "sliding": 0.0035328140926695994,
+              "anchor": [
+                0.10000051281505376,
+                -4.745682026221332,
+                0.07838041794716383
+              ]
+            }
+          ],
+          "sliding_max": 0.0036386114329877376,
+          "penetration": 0.0007239209401436186,
+          "lowest": -0.0007239209401436186
+        },
+        "Foot.R": {
+          "contacts": [
+            {
+              "start": 0.5,
+              "end": 0.9583333333333333,
+              "sliding": 0.00208148241622941,
+              "anchor": [
+                -0.09977692260560132,
+                -0.895809551996408,
+                0.08005225412335043
+              ]
+            },
+            {
+              "start": 1.2833333333333332,
+              "end": 1.8083333333333333,
+              "sliding": 0.0037214834338751106,
+              "anchor": [
+                -0.10084452264765374,
+                -1.983920686456431,
+                0.07855227366630502
+              ]
+            },
+            {
+              "start": 2.1333333333333333,
+              "end": 2.6666666666666665,
+              "sliding": 0.003935124473439204,
+              "anchor": [
+                -0.10075142920223545,
+                -3.0881615882188376,
+                0.0787463663674362
+              ]
+            },
+            {
+              "start": 2.9916666666666667,
+              "end": 3.525,
+              "sliding": 0.0038169961363583214,
+              "anchor": [
+                -0.10082220089315554,
+                -4.1938111525083395,
+                0.0785688257721675
+              ]
+            },
+            {
+              "start": 3.85,
+              "end": 4.0,
+              "sliding": 0.003905734706217625,
+              "anchor": [
+                -0.10089805914675669,
+                -5.299077354442501,
+                0.07854938912135201
+              ]
+            }
+          ],
+          "sliding_max": 0.003935124473439204,
+          "penetration": 0.00038216595482716553,
+          "lowest": -0.00038216595482716553
+        }
+      },
+      "basis": "sampled",
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 7,
+        "dirty": true,
+        "objects": 17
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 19,
+    "tool": "inspect_animation",
+    "arguments": {
+      "what": "trajectory",
+      "target": "Hero",
+      "start": 0,
+      "end": 4
+    },
+    "ok": true,
+    "ms": 302.0,
+    "result": {
+      "what": "trajectory",
+      "range": [
+        0.0,
+        4.0
+      ],
+      "samples": 241,
+      "basis": "sampled",
+      "path_length": 5.1714,
+      "displacement": 5.1714,
+      "speed": {
+        "max": 1.2928500000000298,
+        "mean": 1.29285,
+        "at": 3.0666666666666664
+      },
+      "acceleration": {
+        "max": 1.5987211554602254e-12,
+        "at": 3.0833333333333335
+      },
+      "jerk": {
+        "max": 9.592326932761353e-11,
+        "rms": 3.386453977926059e-11
+      },
+      "angular_speed": {
+        "max": 0.0
+      },
+      "smoothness_ldlj": 43.18583853905998,
+      "start": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end": [
+        0.0,
+        -5.1714,
+        0.0
+      ],
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": null,
+        "revision": 7,
+        "dirty": true,
+        "objects": 17
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 20,
+    "tool": "diagnose_scene",
+    "arguments": {
+      "expectations": {
+        "format": "aether3d.expectations",
+        "version": 1,
+        "defaults": false,
+        "checks": [
+          {
+            "check": "foot_contacts",
+            "objects": "Hero",
+            "feet": [
+              "Foot.L",
+              "Foot.R"
+            ]
+          },
+          {
+            "check": "animation_continuity",
+            "objects": "Hero"
+          }
+        ]
+      },
+      "include_image": false
+    },
+    "ok": true,
+    "ms": 1811.2,
+    "result": {
+      "format": "aether3d.diagnosis",
+      "version": 1,
+      "id": "diag-e26d6ae68b65",
+      "revision": 7,
+      "stale": false,
+      "expectations": "expectations",
+      "accepted": true,
+      "acceptance": {
+        "max_errors": 0,
+        "max_warnings": null,
+        "unknown_checks": [],
+        "basis": "deterministic checks"
+      },
+      "summary": {
+        "errors": 0,
+        "warnings": 0,
+        "info": 0,
+        "score": 0,
+        "checks": {
+          "pass": 2,
+          "fail": 0,
+          "unknown": 0
+        }
+      },
+      "checks": [
+        {
+          "id": "foot_contacts-1",
+          "check": "foot_contacts",
+          "severity": "error",
+          "status": "pass",
+          "findings": [],
+          "measured": {
+            "Hero": {
+              "Foot.L": 0.003639,
+              "Foot.R": 0.00394
+            }
+          }
+        },
+        {
+          "id": "animation_continuity-2",
+          "check": "animation_continuity",
+          "severity": "error",
+          "status": "pass",
+          "findings": []
+        }
+      ],
+      "findings": [],
+      "observations": {},
+      "timings": {
+        "observe": 0.0,
+        "checks": 1.808942,
+        "total": 1.809007
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 21,
+    "tool": "scene_info",
+    "arguments": {},
+    "ok": true,
+    "ms": 3.6,
+    "result": {
+      "open": true,
+      "name": "Robot walk",
+      "project": null,
+      "revision": 7,
+      "dirty": true,
+      "objects": 17,
+      "source": null,
+      "counts": {
+        "objects": 17,
+        "by_kind": {
+          "camera": 1,
+          "empty": 1,
+          "light": 1,
+          "mesh": 14
+        },
+        "meshes": 9,
+        "materials": 0,
+        "textures": 0,
+        "geometries": 0
+      },
+      "tags": {},
+      "roots": [
+        {
+          "id": "ad2d78f4-1eb6-4c5c-8daa-7fd778c72a81",
+          "name": "Ground",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "a5033fa9-c4f6-48aa-baf3-ea67930276ab",
+          "name": "Sun",
+          "kind": "light",
+          "descendants": 0
+        },
+        {
+          "id": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+          "name": "Cam",
+          "kind": "camera",
+          "descendants": 0
+        },
+        {
+          "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+          "name": "Hero",
+          "kind": "empty",
+          "descendants": 0
+        },
+        {
+          "id": "20501b3e-9bab-4028-8687-1406d9480828",
+          "name": "Pelvis",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "19d21770-605d-4878-84a9-2dfba3b33d70",
+          "name": "Torso",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "cd0d6010-9d21-4ea3-9894-aad33c30ad0b",
+          "name": "Head",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "ed4f1b78-1470-4bd3-81f2-29501178a287",
+          "name": "UpperArm.L",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "c39080a7-5914-44b1-b717-f42c4da09bce",
+          "name": "ForeArm.L",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "15f0c40b-f247-4dd8-92b6-b2de59f8d22c",
+          "name": "Thigh.L",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "c4fe2836-17b3-4ba1-bdd8-3cab0046cf58",
+          "name": "Shin.L",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "f9f2ed20-975f-46ff-a1bd-05abacd268f2",
+          "name": "Foot.L",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "f28978fb-3f86-4c23-91a5-00e0cfec16e6",
+          "name": "UpperArm.R",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "76081918-c06a-41d4-a058-f9e74749ac83",
+          "name": "ForeArm.R",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "7128cf84-8a63-4b0c-bc53-b4198d80bd9c",
+          "name": "Thigh.R",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "01cfd5c3-6189-4b45-ba64-dad942062927",
+          "name": "Shin.R",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "4d6f8b06-7fc0-4c01-8c38-f5b1b36c54f3",
+          "name": "Foot.R",
+          "kind": "mesh",
+          "descendants": 0
+        }
+      ],
+      "cameras": [
+        {
+          "id": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+          "name": "Cam",
+          "active": true
+        }
+      ],
+      "lights": [
+        {
+          "id": "a5033fa9-c4f6-48aa-baf3-ea67930276ab",
+          "name": "Sun",
+          "type": "directional"
+        }
+      ],
+      "materials": [],
+      "history": {
+        "steps": 3,
+        "can_undo": true,
+        "can_redo": false,
+        "last": [
+          "Robot parts",
+          "Rig and walk",
+          "Walk 30% faster"
+        ],
+        "checkpoints": [
+          "walk"
+        ]
+      },
+      "bounds": {
+        "min": [
+          -15.0,
+          -15.0,
+          -0.012475
+        ],
+        "max": [
+          15.0,
+          15.0,
+          1.745684
+        ]
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 22,
+    "tool": "run_script",
+    "arguments": {
+      "script": {
+        "format": "aether3d.animation-script",
+        "version": 1,
+        "operations": [
+          {
+            "op": "keyframe",
+            "target": "Hero",
+            "path": "__class__.__init__",
+            "time": 1,
+            "value": 0
+          }
+        ]
+      }
+    },
+    "ok": false,
+    "ms": 1.6,
+    "result": {
+      "error": {
+        "type": "AnimationScriptError",
+        "code": "UNKNOWN_PROPERTY",
+        "message": "'__class__.__init__' is not an animatable property: unknown property __class__.__init__",
+        "location": "operations[0].path",
+        "hint": "see aether3d.animation.paths (or the 'properties' of an animation script's capabilities) for the supported paths"
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 23,
+    "tool": "run_script",
+    "arguments": {
+      "script": {
+        "format": "aether3d.animation-script",
+        "version": 1,
+        "operations": [
+          {
+            "op": "set_channel",
+            "target": "Hero",
+            "path": "transform.position.z",
+            "keys": [
+              [
+                0,
+                0
+              ],
+              [
+                1,
+                2
+              ]
+            ]
+          },
+          {
+            "op": "keyframe",
+            "target": "Hero",
+            "path": "transform.position.z",
+            "time": 2,
+            "value": "high"
+          }
+        ]
+      }
+    },
+    "ok": false,
+    "ms": 1.9,
+    "result": {
+      "error": {
+        "type": "AnimationScriptError",
+        "code": "INVALID_VALUE",
+        "message": "transform.position.z takes a number, got 'high'",
+        "location": "operations[1].keyframe.value"
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 24,
+    "tool": "scene_save",
+    "arguments": {
+      "path": "../outside.aether"
+    },
+    "ok": false,
+    "ms": 1.7,
+    "result": {
+      "error": {
+        "type": "WorkspaceError",
+        "code": "PATH_OUTSIDE_WORKSPACE",
+        "message": "'../outside.aether' is outside the workspace",
+        "hint": "use a path relative to the workspace root, without '..'"
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 25,
+    "tool": "scene_info",
+    "arguments": {},
+    "ok": true,
+    "ms": 11.1,
+    "result": {
+      "open": true,
+      "name": "Robot walk",
+      "project": null,
+      "revision": 7,
+      "dirty": true,
+      "objects": 17,
+      "source": null,
+      "counts": {
+        "objects": 17,
+        "by_kind": {
+          "camera": 1,
+          "empty": 1,
+          "light": 1,
+          "mesh": 14
+        },
+        "meshes": 9,
+        "materials": 0,
+        "textures": 0,
+        "geometries": 0
+      },
+      "tags": {},
+      "roots": [
+        {
+          "id": "ad2d78f4-1eb6-4c5c-8daa-7fd778c72a81",
+          "name": "Ground",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "a5033fa9-c4f6-48aa-baf3-ea67930276ab",
+          "name": "Sun",
+          "kind": "light",
+          "descendants": 0
+        },
+        {
+          "id": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+          "name": "Cam",
+          "kind": "camera",
+          "descendants": 0
+        },
+        {
+          "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+          "name": "Hero",
+          "kind": "empty",
+          "descendants": 0
+        },
+        {
+          "id": "20501b3e-9bab-4028-8687-1406d9480828",
+          "name": "Pelvis",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "19d21770-605d-4878-84a9-2dfba3b33d70",
+          "name": "Torso",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "cd0d6010-9d21-4ea3-9894-aad33c30ad0b",
+          "name": "Head",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "ed4f1b78-1470-4bd3-81f2-29501178a287",
+          "name": "UpperArm.L",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "c39080a7-5914-44b1-b717-f42c4da09bce",
+          "name": "ForeArm.L",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "15f0c40b-f247-4dd8-92b6-b2de59f8d22c",
+          "name": "Thigh.L",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "c4fe2836-17b3-4ba1-bdd8-3cab0046cf58",
+          "name": "Shin.L",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "f9f2ed20-975f-46ff-a1bd-05abacd268f2",
+          "name": "Foot.L",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "f28978fb-3f86-4c23-91a5-00e0cfec16e6",
+          "name": "UpperArm.R",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "76081918-c06a-41d4-a058-f9e74749ac83",
+          "name": "ForeArm.R",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "7128cf84-8a63-4b0c-bc53-b4198d80bd9c",
+          "name": "Thigh.R",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "01cfd5c3-6189-4b45-ba64-dad942062927",
+          "name": "Shin.R",
+          "kind": "mesh",
+          "descendants": 0
+        },
+        {
+          "id": "4d6f8b06-7fc0-4c01-8c38-f5b1b36c54f3",
+          "name": "Foot.R",
+          "kind": "mesh",
+          "descendants": 0
+        }
+      ],
+      "cameras": [
+        {
+          "id": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+          "name": "Cam",
+          "active": true
+        }
+      ],
+      "lights": [
+        {
+          "id": "a5033fa9-c4f6-48aa-baf3-ea67930276ab",
+          "name": "Sun",
+          "type": "directional"
+        }
+      ],
+      "materials": [],
+      "history": {
+        "steps": 3,
+        "can_undo": true,
+        "can_redo": false,
+        "last": [
+          "Robot parts",
+          "Rig and walk",
+          "Walk 30% faster"
+        ],
+        "checkpoints": [
+          "walk"
+        ]
+      },
+      "bounds": {
+        "min": [
+          -15.0,
+          -15.0,
+          -0.012475
+        ],
+        "max": [
+          15.0,
+          15.0,
+          1.745684
+        ]
+      }
+    },
+    "images": []
+  },
+  {
+    "step": 26,
+    "tool": "render_preview",
+    "arguments": {
+      "time": 0.6,
+      "width": 640,
+      "height": 360,
+      "shadows": true,
+      "save_to": "preview_0.6s.png",
+      "overwrite": true
+    },
+    "ok": true,
+    "ms": 920.6,
+    "result": {
+      "backend": "gpu",
+      "device": "gpu",
+      "width": 640,
+      "height": 360,
+      "status": "ok",
+      "framed": false,
+      "seconds": 0.9088,
+      "diagnostics": [
+        {
+          "code": "BACKEND_SELECTED",
+          "severity": "info",
+          "message": "backend 'auto' rendered on the GPU: NVIDIA GeForce RTX 4060 Laptop GPU (vulkan, discrete)"
+        }
+      ],
+      "adapter": {
+        "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "backend": "vulkan",
+        "software": false
+      },
+      "draw_calls": 18,
+      "visible_objects": 14,
+      "saved": "preview_0.6s.png",
+      "revision": 7
+    },
+    "images": [
+      {
+        "mime": "image/png",
+        "inspected": false
+      }
+    ]
+  },
+  {
+    "step": 27,
+    "tool": "render_preview",
+    "arguments": {
+      "time": 1.8,
+      "width": 640,
+      "height": 360,
+      "shadows": true,
+      "save_to": "preview_1.8s.png",
+      "overwrite": true
+    },
+    "ok": true,
+    "ms": 16.6,
+    "result": {
+      "backend": "gpu",
+      "device": "gpu",
+      "width": 640,
+      "height": 360,
+      "status": "ok",
+      "framed": false,
+      "seconds": 0.0051,
+      "diagnostics": [
+        {
+          "code": "BACKEND_SELECTED",
+          "severity": "info",
+          "message": "backend 'auto' rendered on the GPU: NVIDIA GeForce RTX 4060 Laptop GPU (vulkan, discrete)"
+        }
+      ],
+      "adapter": {
+        "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "backend": "vulkan",
+        "software": false
+      },
+      "draw_calls": 18,
+      "visible_objects": 14,
+      "saved": "preview_1.8s.png",
+      "revision": 7
+    },
+    "images": [
+      {
+        "mime": "image/png",
+        "inspected": false
+      }
+    ]
+  },
+  {
+    "step": 28,
+    "tool": "render_preview",
+    "arguments": {
+      "time": 3.2,
+      "width": 640,
+      "height": 360,
+      "shadows": true,
+      "save_to": "preview_3.2s.png",
+      "overwrite": true
+    },
+    "ok": true,
+    "ms": 15.5,
+    "result": {
+      "backend": "gpu",
+      "device": "gpu",
+      "width": 640,
+      "height": 360,
+      "status": "ok",
+      "framed": false,
+      "seconds": 0.0043,
+      "diagnostics": [
+        {
+          "code": "BACKEND_SELECTED",
+          "severity": "info",
+          "message": "backend 'auto' rendered on the GPU: NVIDIA GeForce RTX 4060 Laptop GPU (vulkan, discrete)"
+        }
+      ],
+      "adapter": {
+        "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "backend": "vulkan",
+        "software": false
+      },
+      "draw_calls": 18,
+      "visible_objects": 14,
+      "saved": "preview_3.2s.png",
+      "revision": 7
+    },
+    "images": [
+      {
+        "mime": "image/png",
+        "inspected": false
+      }
+    ]
+  },
+  {
+    "step": 29,
+    "tool": "export_scene",
+    "arguments": {
+      "path": "robot.glb",
+      "animation": "clips",
+      "overwrite": true
+    },
+    "ok": true,
+    "ms": 38.5,
+    "result": {
+      "path": "robot.glb",
+      "format": "glb",
+      "bytes": 51736,
+      "nodes": 17,
+      "meshes": 9,
+      "animations": [
+        {
+          "name": "Walk",
+          "channels": 17,
+          "clip": "Walk",
+          "actions": [],
+          "fitted_channels": 15,
+          "max_error": {
+            "translation": 2.859934511434403e-13,
+            "rotation": 0.005944765510940228
+          }
+        },
+        {
+          "name": "Cam Action",
+          "channels": 1,
+          "clip": "Cam Action",
+          "actions": [
+            "d50fa8dc-91bc-401a-8269-ab578bd1fe5f"
+          ],
+          "fitted_channels": 0,
+          "max_error": {
+            "translation": 3.9968028886505635e-15
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "ANIMATION_NOT_BAKED",
+          "severity": "warning",
+          "message": "NLA layers, constraints shape the motion but clips are exported alone (animation='bake' exports what the scene shows)"
+        }
+      ]
+    },
+    "images": []
+  },
+  {
+    "step": 30,
+    "tool": "scene_save",
+    "arguments": {
+      "path": "robot.aether",
+      "overwrite": true
+    },
+    "ok": true,
+    "ms": 22.1,
+    "result": {
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": "robot.aether",
+        "revision": 7,
+        "dirty": false,
+        "objects": 17
+      },
+      "saved": "robot.aether",
+      "history_file": null
+    },
+    "images": []
+  },
+  {
+    "step": 31,
+    "tool": "history",
+    "arguments": {
+      "action": "list"
+    },
+    "ok": true,
+    "ms": 1.5,
+    "result": {
+      "action": "list",
+      "moved": [],
+      "steps": [
+        {
+          "index": 1,
+          "label": "Robot parts",
+          "changes": 21
+        },
+        {
+          "index": 2,
+          "label": "Rig and walk",
+          "changes": 7
+        },
+        {
+          "index": 5,
+          "label": "Walk 30% faster",
+          "changes": 4
+        }
+      ],
+      "undone": [],
+      "checkpoints": {
+        "walk": 2
+      },
+      "bytes": 83608,
+      "scene": {
+        "open": true,
+        "name": "Robot walk",
+        "project": "robot.aether",
+        "revision": 7,
+        "dirty": false,
+        "objects": 17
+      }
+    },
+    "images": []
+  }
+]
