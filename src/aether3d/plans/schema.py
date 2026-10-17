@@ -491,6 +491,19 @@ def _defs() -> dict[str, Any]:
                 {"op": {"const": "set_active_camera"}, "camera": _ref("reference")},
                 ("op", "camera"),
             ),
+            _obj(
+                {
+                    "op": {"const": "cad"},
+                    "script": {
+                        "type": "object",
+                        "description": "an aether3d.cad-script (schema: "
+                        "aether3d://schema/cad-script): sketches, parts, buildings, drawings",
+                        "properties": {"format": {"const": "aether3d.cad-script"}},
+                        "required": ["format", "version", "operations"],
+                    },
+                },
+                ("op", "script"),
+            ),
         ]
     }
     return defs

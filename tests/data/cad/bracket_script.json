@@ -1,0 +1,31 @@
+{"format": "aether3d.cad-script", "version": 1, "label": "Bracket",
+ "operations": [
+  {"op": "units", "length": "mm"},
+  {"op": "parameter", "name": "width", "value": "80 mm"},
+  {"op": "parameter", "name": "thickness", "value": "10 mm"},
+  {"op": "add", "kind": "sketch", "name": "Profile", "definition": {"plane": "XY",
+   "entities": [
+     {"id": "p1", "type": "point", "at": [0, 0]}, {"id": "p2", "type": "point", "at": [80, 0]},
+     {"id": "p3", "type": "point", "at": [80, 40]}, {"id": "p4", "type": "point", "at": [0, 40]},
+     {"id": "l1", "type": "line", "start": "p1", "end": "p2"},
+     {"id": "l2", "type": "line", "start": "p2", "end": "p3"},
+     {"id": "l3", "type": "line", "start": "p3", "end": "p4"},
+     {"id": "l4", "type": "line", "start": "p4", "end": "p1"}],
+   "constraints": [
+     {"id": "fix", "type": "fix", "refs": ["p1"]},
+     {"id": "h1", "type": "horizontal", "refs": ["l1"]}, {"id": "v1", "type": "vertical", "refs": ["l2"]},
+     {"id": "h2", "type": "horizontal", "refs": ["l3"]}, {"id": "v2", "type": "vertical", "refs": ["l4"]},
+     {"id": "w", "type": "length", "refs": ["l1"], "value": "=width"},
+     {"id": "d", "type": "length", "refs": ["l2"], "value": 40}]}},
+  {"op": "add", "kind": "part", "name": "Bracket", "definition": {"features": [
+     {"type": "extrude", "id": "base", "sketch": "Profile", "extent": {"type": "blind", "distance": "=thickness"}}]}},
+  {"op": "append", "item": "Bracket", "list": "features", "values": [
+     {"type": "hole", "id": "h", "face": "base:end", "points": [[20, 20, 10], [60, 20, 10]], "diameter": 8}]},
+  {"op": "show", "item": "Bracket"},
+  {"op": "measure", "a": {"part": "Bracket", "face": "base:end"}},
+  {"op": "expect", "measure": {"a": {"part": "Bracket", "face": "base:end"}, "b": {"part": "Bracket", "face": "base:start"}},
+   "checks": {"parallel_distance": {"value": 10, "tolerance": 1e-9}}},
+  {"op": "parameter", "name": "width", "value": "100 mm"},
+  {"op": "expect", "info": "Bracket", "checks": {"bodies.main.valid": true}},
+  {"op": "info", "item": "Profile"}
+ ]}

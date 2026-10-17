@@ -151,6 +151,21 @@ CHECKS: dict[str, dict[str, Any]] = {
         "max_stretch, a texel-density spread of at most max_density_spread and gaps of at "
         "least min_gap texels at resolution (default 1024)",
     },
+    "cad_valid": {
+        "fields": ("items", "fully_constrained"),
+        "required": (),
+        "summary": "the CAD items (default: every item) regenerate without error, every part "
+        "body is a valid solid and every sketch solves; with fully_constrained, no sketch "
+        "has degrees of freedom left (exact, from the CAD document)",
+    },
+    "cad_dimension": {
+        "fields": ("reference", "other", "quantity", "value", "tolerance", "min", "max"),
+        "required": ("reference", "quantity"),
+        "summary": "an exact measurement of a CAD reference (or between reference and "
+        "other: distance, parallel_distance, axis_distance, angle_deg; of one: length, "
+        "area, radius) equals value within tolerance, or lies within min..max (document "
+        "units, degrees)",
+    },
 }
 MESH_TIERS = TIERS
 RELATION_PREDICATES = (
@@ -162,6 +177,15 @@ RELATION_PREDICATES = (
     "contains",
     "near",
     "intersecting",
+)
+CAD_QUANTITIES = (
+    "distance",
+    "parallel_distance",
+    "axis_distance",
+    "angle_deg",
+    "length",
+    "area",
+    "radius",
 )
 FIX_KEYS = ("move", "camera", "allow")
 MOVE_CHOICES = ("objects", "against", "support", "none")
@@ -401,6 +425,8 @@ def _parse_check(
         params["view"] = default_view
     if kind == "distance" and "min" not in params and "max" not in params:
         doc.issues.add("MISSING_KEY", "give min, max or both", ptr)
+    if kind == "cad_dimension" and not ({"value", "min", "max"} & set(params)):
+        doc.issues.add("MISSING_KEY", "give value (and tolerance), min, max", ptr)
     fix: dict[str, Any] = {}
     if "fix" in obj:
         fix = _parse_fix(doc, obj["fix"], join(ptr, "fix"))
@@ -478,6 +504,21 @@ def _parse_field(doc: Doc, kind: str, key: str, value: Any, ptr: str, views: dic
         return doc.string(value, ptr)
     if key == "over":
         return doc.enum(value, ptr, ("objects", "image"))
+    if key == "items":
+        if not isinstance(value, list) or not value or len(value) > 1000:
+            doc.issues.add("INVALID_VALUE", "items is a list of 1 to 1000 CAD item names", ptr)
+            return BAD
+        names = [doc.string(v, join(ptr, k), max_length=128) for k, v in enumerate(value)]
+        return BAD if any(n is BAD for n in names) else names
+    if key == "fully_constrained":
+        return doc.boolean(value, ptr)
+    if key in ("reference", "other"):
+        obj = doc.object(value, ptr, 'a CAD reference {"part": ..., "face": ...}')
+        return BAD if obj is None else dict(obj)
+    if key == "quantity":
+        return doc.enum(value, ptr, CAD_QUANTITIES)
+    if key == "value":
+        return doc.number(value, ptr)
     doc.issues.add("UNKNOWN_KEY", f"unknown key {key!r}", ptr)  # pragma: no cover
     return BAD
 

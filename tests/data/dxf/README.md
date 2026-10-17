@@ -19,9 +19,19 @@ doc.header["$INSUNITS"] = 4  # millimetres
 msp = doc.modelspace()
 b = math.tan(math.pi / 8)  # a quarter circle
 msp.add_lwpolyline(
-    [(10, 0, 0, 0, 0), (90, 0, 0, 0, b), (100, 10, 0, 0, 0), (100, 50, 0, 0, b),
-     (90, 60, 0, 0, 0), (10, 60, 0, 0, b), (0, 50, 0, 0, 0), (0, 10, 0, 0, b)],
-    format="xyseb", close=True, dxfattribs={"layer": "OUTLINE"},
+    [
+        (10, 0, 0, 0, 0),
+        (90, 0, 0, 0, b),
+        (100, 10, 0, 0, 0),
+        (100, 50, 0, 0, b),
+        (90, 60, 0, 0, 0),
+        (10, 60, 0, 0, b),
+        (0, 50, 0, 0, 0),
+        (0, 10, 0, 0, b),
+    ],
+    format="xyseb",
+    close=True,
+    dxfattribs={"layer": "OUTLINE"},
 )
 msp.add_circle((30, 30), 8, dxfattribs={"layer": "HOLES"})
 msp.add_line((60, 25), (80, 25), dxfattribs={"layer": "HOLES"})

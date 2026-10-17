@@ -830,10 +830,20 @@ def _name(args: dict) -> str:
 
 
 def export_scene(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
+    from .cad import WRITE_SUFFIXES, export_cad
+
     scene = session.require_scene()
     target = session.workspace.path(
-        args["path"], suffixes=EXPORT_SUFFIXES, write=True, overwrite=args.get("overwrite", False)
+        args["path"],
+        suffixes=EXPORT_SUFFIXES + WRITE_SUFFIXES,
+        write=True,
+        overwrite=args.get("overwrite", False),
     )
+    if target.suffix.lower() in WRITE_SUFFIXES:
+        return export_cad(session, args, ctx)
+    for key in ("item", "items", "units", "dpi"):
+        if key in args:
+            raise ToolError("INVALID_ARGUMENT", f"{key} applies to CAD exports only")
     result = scene.export(
         target, allow_lossy=args.get("allow_lossy", False), bake_textures=args.get("bake_textures")
     )
@@ -877,12 +887,17 @@ def run_script(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
         from ..texturing.script import run_texture_script
 
         data = run_texture_script(scene, script, should_stop=ctx.cancel.is_set)
+    elif kind == "aether3d.cad-script":
+        from ..cad.script import run_cad_script
+
+        data = run_cad_script(scene, script, should_stop=ctx.cancel.is_set)
     else:
         raise ToolError(
             "INVALID_ARGUMENT",
             f"unknown script format {kind!r}",
             hint="aether3d.edit-script, aether3d.procedural-script, aether3d.scene-script, "
-            "aether3d.sculpt-script or aether3d.texture-script (objects, materials and "
+            "aether3d.sculpt-script, aether3d.texture-script or aether3d.cad-script (objects, "
+            "materials and "
             "placement: use execute_scene_plan)",
         )
     data = {"format": kind, **data, "scene": scene_status(session)}
@@ -1049,6 +1064,8 @@ def capabilities(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
                 "aether3d://schema/sculpt-script",
                 "aether3d://texturing/guide",
                 "aether3d://schema/texture-script",
+                "aether3d://cad/guide",
+                "aether3d://schema/cad-script",
             ],
             "conventions": "+Z up, right-handed, meters; objects face -Y; rotation_euler in "
             "degrees (XYZ); colors are sRGB '#rrggbb'",
@@ -1171,6 +1188,58 @@ def capabilities(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
                 "bake from high-resolution sources onto a low-resolution target with "
                 "apply: true; inspect misses in the report",
                 "render_preview or observe_scene shows the result",
+            ],
+        }
+    elif topic == "cad":
+        from .. import _native
+        from ..cad.assembly import MATE_TYPES
+        from ..cad.document import KINDS
+        from ..cad.drawing.kind import VIEW_NAMES
+        from ..cad.expr import FUNCTIONS
+        from ..cad.features import FEATURE_TYPES
+        from ..cad.measure import SNAP_KINDS
+        from ..cad.script import FORMAT_ID, LIMIT_KEYS, LISTS, OPERATIONS
+        from ..cad.sketch.model import CONSTRAINT_TYPES, ENTITY_TYPES
+        from ..cad.units import UNITS
+
+        data = {
+            "script_format": {"format": FORMAT_ID, "version": 1},
+            "schema_resource": "aether3d://schema/cad-script",
+            "guide_resource": "aether3d://cad/guide",
+            "operations": list(OPERATIONS),
+            "item_kinds": sorted(KINDS),
+            "editable_lists": {k: list(v) for k, v in LISTS.items()},
+            "sketch_entities": list(ENTITY_TYPES),
+            "sketch_constraints": list(CONSTRAINT_TYPES),
+            "features": list(FEATURE_TYPES),
+            "mates": [*MATE_TYPES, "fixed"],
+            "drawing_views": list(VIEW_NAMES),
+            "snap_kinds": list(SNAP_KINDS),
+            "expression_functions": sorted(FUNCTIONS),
+            "units": sorted(UNITS),
+            "formats": {
+                "import": {
+                    "step": "exact solids (AP203/214/242 B-reps)",
+                    "ifc": "IFC4 products (extrusions, faceted B-reps, openings)",
+                    "dxf": "2D lines, arcs, circles, polylines -> a sketch",
+                },
+                "export": {
+                    "step": "parts (AP214)",
+                    "ifc": "a building (IFC4)",
+                    "dxf": "a sketch or a drawing (R12)",
+                    "svg": "a drawing",
+                    "png": "a drawing",
+                },
+            },
+            "booleans": "Manifold (manifold3d) on tessellations, exact B-rep reconstructed",
+            "native_triangulation": _native.module() is not None,
+            "limits": list(LIMIT_KEYS),
+            "tips": [
+                "set units first; every length in a script is in them (or a quantity)",
+                "give every sketch enough constraints: expect status fully_constrained",
+                "reference faces by name (inspect_cad lists them); add near when ambiguous",
+                "end the building script with expect checks of what matters",
+                "inspect_cad image=drawing shows the item; the numbers are the authority",
             ],
         }
     elif topic == "feedback":
@@ -1465,14 +1534,19 @@ TOOLS: tuple[ToolSpec, ...] = (
     ),
     ToolSpec(
         "export_scene",
-        "Export glTF",
+        "Export glTF or CAD data",
         "Export the scene to a .glb or .gltf file in the workspace (materials and textures "
-        "included; bake_textures=SIZE bakes procedural textures to images).",
+        "included; bake_textures=SIZE bakes procedural textures to images); CAD item(s) "
+        "to .step, .ifc, .dxf, .svg or .png.",
         _schema(
             {
                 "path": PATH,
                 "allow_lossy": {"type": "boolean", "default": False},
                 "bake_textures": {"type": "integer", "minimum": 16, "maximum": 8192},
+                "item": {"type": "string", "minLength": 1},
+                "items": {"type": "array", "items": {"type": "string"}},
+                "units": {"enum": ["mm", "cm", "m", "in", "ft"]},
+                "dpi": {"type": "number", "minimum": 20},
                 "overwrite": OVERWRITE,
             },
             ("path",),
@@ -1481,7 +1555,7 @@ TOOLS: tuple[ToolSpec, ...] = (
     ),
     ToolSpec(
         "run_script",
-        "Run an edit, procedural, scene, sculpt or texture script",
+        "Run an edit, procedural, scene, sculpt, texture or CAD script",
         "Run one of the engine's JSON scripts atomically (one undo step): "
         "aether3d.edit-script (polygon mesh editing: extrude, bevel, bridge, knife, ... on an "
         "object), aether3d.procedural-script (procedural definitions), aether3d.scene-script "
@@ -1491,8 +1565,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         "aether3d.texture-script (UV unwrap/projection/island edits, painted textures and "
         "layers, brush strokes in surface/view/UV space, fills, gradients, bakes, texture "
         "transfer; schema: aether3d://schema/texture-script, guide: "
-        "aether3d://texturing/guide). For creating and placing objects use "
-        "execute_scene_plan.",
+        "aether3d://texturing/guide), aether3d.cad-script (precision models; "
+        "aether3d://cad/guide). For creating and placing objects use execute_scene_plan.",
         _schema(
             {
                 "script": {
@@ -1505,6 +1579,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                                 "aether3d.scene-script",
                                 "aether3d.sculpt-script",
                                 "aether3d.texture-script",
+                                "aether3d.cad-script",
                             ]
                         }
                     },
@@ -1602,7 +1677,7 @@ TOOLS: tuple[ToolSpec, ...] = (
         "primitives, modifiers, materials (models, presets), queries, limits, gpu, feedback "
         "(checks, correction actions, views, safety classes), sculpt (brushes, operations, "
         "validity tiers, script limits), texturing (texture script operations, brushes, "
-        "bake maps, blend modes).",
+        "bake maps, blend modes), cad (CAD scripts, kinds, formats).",
         _schema(
             {
                 "topic": {
@@ -1618,6 +1693,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                         "feedback",
                         "sculpt",
                         "texturing",
+                        "cad",
                     ],
                     "default": "overview",
                 }
@@ -1631,9 +1707,10 @@ TOOLS: tuple[ToolSpec, ...] = (
 
 
 def _with_feedback(tools: tuple[ToolSpec, ...]) -> tuple[ToolSpec, ...]:
+    from .cad import specs as cad_specs
     from .feedback import specs
 
-    return tools + specs()
+    return tools + specs() + cad_specs()
 
 
 TOOLS = _with_feedback(TOOLS)

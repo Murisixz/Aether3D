@@ -160,6 +160,12 @@ def _check_schema(kind: str) -> dict[str, Any]:
         "max_stretch": {"type": "number", "minimum": 1},
         "max_density_spread": {"type": "number", "minimum": 0},
         "min_gap": {"type": "number", "minimum": 0, "description": "texels"},
+        "items": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+        "fully_constrained": {"type": "boolean"},
+        "reference": {"type": "object", "description": "a CAD reference (docs/CAD.md)"},
+        "other": {"type": "object", "description": "a second CAD reference"},
+        "quantity": {"enum": list(expectations.CAD_QUANTITIES)},
+        "value": {"type": "number"},
     }
     for key in spec["fields"]:
         if key == "region":

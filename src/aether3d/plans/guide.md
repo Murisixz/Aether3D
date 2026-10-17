@@ -114,6 +114,10 @@ A prefab is a template, not an object: reach its copies through the objects that
   `"expect": N`.
 - `{"op": "set_parameters", "values": {...}}`, `{"op": "frame_camera", "targets": ...}`,
   `{"op": "set_active_camera", "camera": "@cam"}`.
+- `{"op": "cad", "script": {"format": "aether3d.cad-script", ...}}`: precision models
+  (parametric sketches and parts, buildings, drawings) in the plan's step; a CAD item
+  shown with `{"op": "show", "item": ...}` becomes an object later operations can select
+  by its name (guide: `aether3d://cad/guide`).
 - **Selectors:** a reference, a list of them, or
   `{"refs", "ids", "names", "tags", "any_tags", "name_glob", "kind", "under", "material",
   "expect"}`.

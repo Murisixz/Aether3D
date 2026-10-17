@@ -13,6 +13,8 @@ Resources (read-only):
 * ``aether3d://schema/sculpt-script`` -- the JSON Schema of sculpt scripts.
 * ``aether3d://texturing/guide`` -- the texturing guide for agents (Markdown).
 * ``aether3d://schema/texture-script`` -- the JSON Schema of texture scripts.
+* ``aether3d://cad/guide`` -- the precision modeling guide for agents (Markdown).
+* ``aether3d://schema/cad-script`` -- the JSON Schema of CAD scripts.
 * ``aether3d://schema/expectations``, ``.../vision-evaluation``, ``.../corrections`` -- the
   JSON Schemas of the feedback documents.
 * ``aether3d://observations/{id}`` -- an observation's measured facts (JSON), and
@@ -58,6 +60,12 @@ def texturing_guide() -> str:
         importlib_resources.files("aether3d.texturing")
         .joinpath("guide.md")
         .read_text(encoding="utf-8")
+    )
+
+
+def cad_guide() -> str:
+    return (
+        importlib_resources.files("aether3d.cad").joinpath("guide.md").read_text(encoding="utf-8")
     )
 
 
@@ -172,6 +180,25 @@ def resources(session: Session) -> list[types.Resource]:
             mime_type="application/schema+json",
         )
     )
+    out.append(
+        types.Resource(
+            uri="aether3d://cad/guide",
+            name="cad-guide",
+            title="Precision modeling guide",
+            description="Units, parametric sketches, part features, persistent names, "
+            "buildings, drawings, measurements, exchange formats and CAD scripts",
+            mime_type="text/markdown",
+        )
+    )
+    out.append(
+        types.Resource(
+            uri="aether3d://schema/cad-script",
+            name="cad-script-schema",
+            title="CAD script JSON Schema",
+            description="The JSON Schema (2020-12) of aether3d.cad-script version 1",
+            mime_type="application/schema+json",
+        )
+    )
     for uri, (name, title) in FEEDBACK_SCHEMAS.items():
         out.append(
             types.Resource(
@@ -278,6 +305,12 @@ def read_resource(session: Session, uri: str) -> list[Any]:
         from ..texturing.schema import texture_script_schema
 
         return data(texture_script_schema(), "application/schema+json")
+    if uri == "aether3d://cad/guide":
+        return text(cad_guide(), "text/markdown")
+    if uri == "aether3d://schema/cad-script":
+        from ..cad.schema import cad_script_schema
+
+        return data(cad_script_schema(), "application/schema+json")
     if uri in FEEDBACK_SCHEMAS:
         return data(feedback_schema(uri), "application/schema+json")
     if uri.startswith("aether3d://observations/"):
