@@ -503,6 +503,44 @@ def test_planting_feet_removes_sliding():
     assert a.constraints(arm) in ((), [], None) or len(a.constraints(arm)) == 0
 
 
+def test_planting_a_rushed_walk_pins_whole_stances_without_pushing_feet_into_the_ground():
+    # The root motion scaled by 1.3: the body outruns its steps and the feet skate, fast
+    # enough that a 0.3 m/s contact test breaks each stance into pieces. Planting finds the
+    # whole stances, pins each in one touch-down pose (position and orientation of one
+    # instant), and never lowers a heel or toe below the ground.
+    s = Scene("Rushed")
+    arm = humanoid(s)
+    a = s.animation
+    rep = a.generate(arm, "walk")
+    a.set_timeline(start=0.0, end=3.0)
+    a.edit_keys(arm, "transform.position.y", "scale_values", clip=rep["clip"], factor=1.3,
+                pivot=0.0)  # fmt: skip
+    feet = ["Foot.L", "Foot.R"]
+    before = a.foot_contacts(arm, feet)
+    out = a.plant_feet(arm, {f: [f"Thigh.{f[-1]}", f"Shin.{f[-1]}", f] for f in feet})
+    after = a.foot_contacts(arm, feet)
+    cycles = 3.0 / rep["period"]
+    for f in feet:
+        assert before["feet"][f]["sliding_max"] > 0.03  # (skating)
+        assert len(out["contacts"][f]) <= math.ceil(cycles) + 1  # (whole stances, not pieces)
+        assert after["feet"][f]["sliding_max"] < 0.25 * before["feet"][f]["sliding_max"]
+        assert after["feet"][f]["penetration"] <= max(before["feet"][f]["penetration"], 5e-4)
+        assert out["before"][f] == before["feet"][f]["sliding_max"]  # (measured alike)
+
+
+def test_contact_measurements_share_the_feedback_checks_defaults():
+    import inspect
+
+    from aether3d.animation.motion import foot_contacts
+    from aether3d.feedback.schema import expectations_schema
+
+    defaults = {k: p.default for k, p in inspect.signature(foot_contacts).parameters.items()}
+    check = next(c for c in expectations_schema()["properties"]["checks"]["items"]["oneOf"]
+                 if c["properties"]["check"].get("const") == "foot_contacts")  # fmt: skip
+    for key in ("height", "speed"):
+        assert check["properties"][key]["default"] == defaults[key]
+
+
 # --------------------------------------------------------------------------------------- #
 # Cameras, baking, trajectories, diagnostics
 # --------------------------------------------------------------------------------------- #

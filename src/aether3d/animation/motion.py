@@ -166,6 +166,12 @@ def _contact_points(rig: Any, joint: str) -> dict[str, np.ndarray]:
     return points
 
 
+def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    """``(first, last)`` index of every run of True in ``mask``."""
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], mask.astype(np.int8), [0]))))
+    return [(int(a), int(b) - 1) for a, b in zip(edges[::2], edges[1::2], strict=True)]
+
+
 def foot_contacts(
     system: AnimationSystem,
     armature: Any,
@@ -173,9 +179,9 @@ def foot_contacts(
     *,
     start: float | None = None,
     end: float | None = None,
-    rate: float = 60.0,
+    rate: float = 120.0,
     ground: float = 0.0,
-    height: float = 0.05,
+    height: float = 0.03,
     speed: float = 0.3,
     min_duration: float = 0.05,
 ) -> dict[str, Any]:
@@ -184,9 +190,16 @@ def foot_contacts(
     Each foot is watched at its ground points (the toe -- its bone's end -- and the heel
     under the joint, see :func:`_contact_points`): a point is planted while it is within
     ``height`` of the ground (world ``z = ground``) and moves slower than ``speed``
-    horizontally; a foot is planted while either point is. **Sliding** is how far a
-    planted point moves horizontally while it stays planted (a heel-to-toe roll is not
-    sliding); **penetration** how far any point goes below the ground."""
+    horizontally than the steady velocity of its stance. A stance is a run of samples near
+    the ground and slower than the body (the rig's root joint; at least ``speed``) -- a
+    swinging foot moves about twice as fast as its body -- and its steady velocity is the
+    run's median: zero for a planted foot, so this is the plain ``speed`` test, and the
+    skating velocity for a body outrunning its steps, whose sliding is measured rather than
+    missed. A foot is planted while either point is.
+    **Sliding** is how far a planted point moves horizontally while it stays planted (a
+    heel-to-toe roll is not sliding); **penetration** how far any point goes below the
+    ground. The defaults are the feedback check's (``foot_contacts`` expectations), so
+    every interface measures alike."""
     from .report import sample_world
 
     obj = system._object(armature, "armature")
@@ -216,6 +229,9 @@ def foot_contacts(
         "feet": {},
         "basis": "sampled",
     }
+    root = next(j.name for j in rig.joints if j.parent < 0)
+    body = sample_world(system, obj, ts, joint=root)[:, :2, 3]
+    stance_bound = np.maximum(speed, np.linalg.norm(np.gradient(body, dt, axis=0), axis=1))
     for foot in feet:
         if rig.index(foot) is None:
             raise _err("JOINT_MISSING", f"no joint {foot!r}", "feet")
@@ -225,8 +241,14 @@ def foot_contacts(
         ankle = w[:, :3, 3]
         planted_by = {}
         for name, pos in pts.items():
-            horiz = np.linalg.norm(np.gradient(pos[:, :2], dt, axis=0), axis=1)
-            planted_by[name] = (pos[:, 2] - ground <= height) & (horiz <= speed)
+            vel = np.gradient(pos[:, :2], dt, axis=0)
+            stance = (pos[:, 2] - ground <= height) & (np.linalg.norm(vel, axis=1) <= stance_bound)
+            planted_by[name] = np.zeros(n, bool)
+            for a, b in _runs(stance):
+                steady = np.median(vel[a : b + 1], axis=0)
+                planted_by[name][a : b + 1] = (
+                    np.linalg.norm(vel[a : b + 1] - steady, axis=1) <= speed
+                )
         planted = np.zeros(n, bool)
         for m in planted_by.values():
             planted |= m
@@ -313,21 +335,25 @@ def plant_feet(
     end: float | None = None,
     rate: float = 30.0,
     ground: float = 0.0,
-    height: float = 0.05,
+    height: float = 0.03,
     speed: float = 0.3,
     blend: float = 0.08,
     pole: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Plant feet during their contacts (see the module docstring). ``legs``: foot joint
     -> its leg chain (three joints, hip to foot). One undo step; returns the contacts and
-    the sliding before and after. Each foot is pinned at the position and orientation it
-    touched down with (its IK chain ends at the target's rotation)."""
+    the sliding before and after. Each foot is pinned in the pose it touched down with --
+    its position and orientation at the contact's start, together (its IK chain ends at
+    the target's rotation) -- lifted if a heel or toe point of that pose was below the
+    ground, so planting never pushes a foot into it. The contacts are found as
+    :func:`foot_contacts` finds them (a skating stance included); the sliding before and
+    after is measured with its defaults."""
     arm = system._object(armature, "armature")
     rig = system.rig(arm)
     if rig is None:
         raise _err("RIG_MISSING", "the armature has no rig", "armature")
     feet = list(legs)
-    before = foot_contacts(
+    stances = foot_contacts(
         system,
         arm,
         feet,
@@ -338,6 +364,7 @@ def plant_feet(
         height=height,
         speed=speed,
     )
+    before = foot_contacts(system, arm, feet, start=start, end=end, ground=ground)
     s = system.start if start is None else float(start)
     e = system.end if end is None else float(end)
     from .report import sample_world
@@ -356,14 +383,22 @@ def plant_feet(
             pos = w[:, :3, 3].copy()
             lin = w[:, :3, :3]
             rot = R.from_matrices(lin / np.linalg.norm(lin, axis=1, keepdims=True))
-            contacts = before["feet"][foot]["contacts"]
-            for c in contacts:
-                # Pinned where (and as) it touched down: position and orientation.
+            contacts = stances["feet"][foot]["contacts"]
+            if contacts:
+                # The touch-down poses, each sampled at its contact's start (one matrix:
+                # the position and the orientation of the same instant).
+                down = sample_world(system, arm, np.array([c["start"] for c in contacts]),
+                                    joint=foot)  # fmt: skip
+                points = np.array([[*p, 1.0] for p in _contact_points(rig, foot).values()])
+            for k, c in enumerate(contacts):
                 inside = np.flatnonzero((ts >= c["start"]) & (ts <= c["end"]))
                 if inside.size == 0:
                     continue
-                pos[inside] = [c["anchor"][0], c["anchor"][1], max(ground, c["anchor"][2])]
-                rot[inside] = rot[inside[0]]
+                lowest = float(np.min((down[k] @ points.T)[2]))
+                lift = max(0.0, ground - lowest)  # (no heel or toe below the ground)
+                pos[inside] = down[k][:3, 3] + np.array([0.0, 0.0, lift])
+                lin0 = down[k][:3, :3]
+                rot[inside] = R.from_matrices((lin0 / np.linalg.norm(lin0, axis=0))[None])[0]
             for i in range(1, n):
                 rot[i] = R.align(rot[i - 1], rot[i])
             target = system.scene.add_object(
@@ -395,21 +430,11 @@ def plant_feet(
                 f'constraints["{name}"].influence',
                 FCurve.from_keys(keys, interpolation="sine", handles="auto_clamped"),
             )
-    after = foot_contacts(
-        system,
-        arm,
-        feet,
-        start=start,
-        end=end,
-        rate=rate * 2,
-        ground=ground,
-        height=height,
-        speed=speed,
-    )
+    after = foot_contacts(system, arm, feet, start=start, end=end, ground=ground)
     return {
         "before": {f: before["feet"][f]["sliding_max"] for f in feet},
         "after": {f: after["feet"][f]["sliding_max"] for f in feet},
-        "contacts": {f: before["feet"][f]["contacts"] for f in feet},
+        "contacts": {f: stances["feet"][f]["contacts"] for f in feet},
         "basis": "sampled",
     }
 
