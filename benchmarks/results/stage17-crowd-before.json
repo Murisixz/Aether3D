@@ -20,18 +20,18 @@
       "version": "0.17.0",
       "reason": "loaded"
     },
-    "git": "d09dc1e",
+    "git": "1d32848",
     "wgpu": "0.32.0"
   },
   "groups": {
     "crowd": {
       "objects": 10337,
       "rigs": 48,
-      "crowd_build_s": 0.388,
-      "evaluate_ms": 3.794,
-      "overlay_ms": 111.518,
-      "posed_worlds_ms": 118.152,
-      "peak_rss_mib": 212.7
+      "crowd_build_s": 0.384,
+      "evaluate_ms": 3.746,
+      "overlay_ms": 110.242,
+      "posed_worlds_ms": 118.74,
+      "peak_rss_mib": 213.2
     }
   }
 }

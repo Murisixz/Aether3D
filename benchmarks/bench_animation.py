@@ -242,10 +242,10 @@ def group_crowd(quick: bool) -> dict[str, Any]:
         radius = 28.0 + 2.5 * (k // 12)
         a.add_path(f"Ring {k}", kind="circle", center=[0, 0, 0], radius=radius, start=0.0)
         laps = walk["speed"] * 8.0 / (2 * 3.141592653589793 * radius)
-        a.follow_path(arm, f"Ring {k}", start=0.0, end=8.0, offsets=(k / 48, k / 48 + laps),
-                      easing=None, loop=True)  # fmt: skip
         strip = {"clip": "Walk", "start": -(k % 7) * 0.1, "repeat": 12.0}
         a.set_binding(arm, {"layers": [{"name": "walk", "strips": [strip]}]})
+        a.follow_path(arm, f"Ring {k}", start=0.0, end=8.0, offsets=(k / 48, k / 48 + laps),
+                      easing=None, loop=True)  # fmt: skip
     build = time.perf_counter() - t0
     counter = [0]
 
