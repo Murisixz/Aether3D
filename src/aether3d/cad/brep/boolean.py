@@ -328,6 +328,17 @@ def reconstruct(verts, tris, src, sources, owner, bodies, chord, size) -> Body:
     for v, fs in vertex_faces.items():
         if len(fs) >= 3:
             junction.add(v)
+    # Vertices of the operands that survive stay vertices (a cone's apex joins only its
+    # two halves, but the seams on either side of it are separate edges).
+    corners = np.concatenate([b.vertices for b in bodies if len(b.vertices)])
+    if len(corners):
+        cand = np.array(sorted({v for loops in face_loops.values() for lp in loops for v, _ in lp}))
+        if len(cand):
+            pos = verts[cand]
+            for c in corners:
+                d = np.max(np.abs(pos - c), axis=1)
+                for k in np.flatnonzero(d <= merge_tol):
+                    junction.add(int(cand[k]))
     # Loops with fewer than two junctions (a hole's rim) get canonical split vertices --
     # chosen from the vertex set alone (the lowest vertex and the vertex farthest from it),
     # so the faces on both sides choose the same ones.

@@ -1046,25 +1046,44 @@ def f_sweep(part: _Part, f, state, outputs, loc) -> FeatureOutput:
     if flip:
         regions = [_mirror_region_x(r) for r in regions]
     pn = path.frame.z
+    from .brep.sew import face_named, sew
+    from .tolerance import Tolerance
+
+    tol = Tolerance.for_scale(_state_size(state, frame)).resolution * 1e3
+    chains: list[Body | None] = [None] * len(regions)
+    prev_end = ""
     for k, c in enumerate(chain):
         prefix = f"{f['id']}.{k}" if len(chain) > 1 else f["id"]
         if isinstance(c, Segment):
             length = float(np.linalg.norm(c.p1 - c.p0))
             pieces = [build.extrude(reg, frame, 0.0, length, prefix=prefix) for reg in regions]
             nxt = Frame(frame.origin + length * frame.z, frame.x, frame.y, frame.z)
+            caps = (":start", ":end")
         else:
             center = path.frame.to_world(np.array([*c.center, 0.0]))
             axis_dir = pn if c.sweep > 0 else -pn
             local_c = frame.to_local(center)[:2]
             local_d = frame.to_local(frame.origin + axis_dir)[:2]
-            pieces = []
-            for reg in regions:
-                pieces.append(_revolve_about(reg, frame, local_c, local_d, abs(c.sweep), prefix))
+            pieces = [
+                _revolve_about(reg, frame, local_c, local_d, abs(c.sweep), prefix)
+                for reg in regions
+            ]
             rot = _rot(axis_dir, abs(c.sweep), center)
             nxt = frame.transformed(rot)
-        for p in pieces:
-            tool = p if tool is None else boolean(tool, p, "union")
+            caps = (":cap0", ":cap1")
+        for r, piece in enumerate(pieces):
+            prev = chains[r]
+            if prev is None:
+                chains[r] = piece
+            else:
+                chains[r] = sew(
+                    prev, face_named(prev, prev_end), piece, face_named(piece, caps[0]), tol
+                )
+        prev_end = caps[1]
         frame = nxt
+    tool = chains[0]
+    for extra in chains[1:]:
+        tool = boolean(tool, extra, "union")
     op = f.get("operation", "new" if not state else "add")
     target = f.get("body", "main")
     return FeatureOutput(

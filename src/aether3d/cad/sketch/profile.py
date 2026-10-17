@@ -43,6 +43,7 @@ class Piece:
     curve: Segment | Arc | Spline
     source: str  # sketch entity id
     index: int  # piece number on that entity (0 when unsplit)
+    split: bool = False  # one of the two halves of a closed curve
 
     @property
     def start(self) -> np.ndarray:
@@ -63,7 +64,9 @@ class Loop:
         return float(sum(p.curve.signed_area_term() for p in self.pieces))
 
     def reversed(self) -> Loop:
-        return Loop([Piece(p.curve.reversed(), p.source, p.index) for p in reversed(self.pieces)])
+        return Loop(
+            [Piece(p.curve.reversed(), p.source, p.index, p.split) for p in reversed(self.pieces)]
+        )
 
     def polyline(self, chord: float) -> np.ndarray:
         pts = []
@@ -172,7 +175,7 @@ def build_profile(
                     splits[i].append(h.overlap[0])
                     splits[j].append(h.overlap[1])
     # 2. Pieces.
-    pieces: list[tuple[str, int, object]] = []
+    pieces: list[tuple[str, int, object, bool]] = []
     for (cid, curve), ts in zip(curves, splits, strict=True):
         length = max(curve.length, 1e-300)
         cuts = sorted(t for t in ts if tol / length < t < 1.0 - tol / length)
@@ -188,7 +191,8 @@ def build_profile(
             # A full circle with no cuts: two halves, so the graph has two vertices.
             params = [0.0, 0.5, 1.0]
         for k, (a, b) in enumerate(zip(params[:-1], params[1:], strict=True)):
-            pieces.append((cid, k, curve.sub(a, b) if (a, b) != (0.0, 1.0) else curve))
+            sub = curve.sub(a, b) if (a, b) != (0.0, 1.0) else curve
+            pieces.append((cid, k, sub, closed_circle and len(params) == 3))
     # 3. Vertices: merge endpoints within tol.
     ends = np.array([[p[2].start, p[2].end] for p in pieces], dtype=np.float64).reshape(-1, 2)
     vid = _merge_points(ends, tol)
@@ -283,7 +287,9 @@ def build_profile(
         cycles.append(cyc)
 
     def loop_of(cyc: list[int]) -> Loop:
-        return Loop([Piece(oriented(h), pieces[half[h][0]][0], pieces[half[h][0]][1]) for h in cyc])
+        return Loop(
+            [Piece(oriented(h), *pieces[half[h][0]][:2], split=pieces[half[h][0]][3]) for h in cyc]
+        )
 
     loops = [loop_of(c) for c in cycles]
     areas = [lp.area for lp in loops]

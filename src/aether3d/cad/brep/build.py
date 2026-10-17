@@ -91,7 +91,9 @@ class Builder:
 
 
 def _piece_name(p: Piece) -> str:
-    return f"{p.source}" if p.index == 0 else f"{p.source}.{p.index}"
+    """``l3`` for a whole sketch curve, ``l3.1`` for its second piece; the halves of a
+    closed curve (a circle) are ``c1.0`` and ``c1.1``."""
+    return f"{p.source}.{p.index}" if (p.index or p.split) else p.source
 
 
 def _split_closed(loop: Loop) -> Loop:
@@ -100,7 +102,9 @@ def _split_closed(loop: Loop) -> Loop:
         return loop
     p = loop.pieces[0]
     c = p.curve
-    return Loop([Piece(c.sub(0.0, 0.5), p.source, 0), Piece(c.sub(0.5, 1.0), p.source, 1)])
+    return Loop(
+        [Piece(c.sub(0.0, 0.5), p.source, 0, True), Piece(c.sub(0.5, 1.0), p.source, 1, True)]
+    )
 
 
 def _curve3(c, frame: Frame, z: float):
@@ -275,8 +279,11 @@ def revolve(
             prefix,
             hint="keep the profile on one side (it may touch the axis)",
         )
-    if np.all(sd <= tol):
-        ad2 = -ad2  # profile on the right: revolve about the reversed axis
+    flipped = bool(np.all(sd <= tol))
+    if flipped:
+        # Profile on the right: the frame's axis is reversed (its x must point at the
+        # profile), so turning by +angle about the given axis is -angle about it.
+        ad2 = -ad2
     rf = _rho_h(frame, ap, ad2)
     # Profile point -> (rho, h) and back.
 
@@ -285,7 +292,10 @@ def revolve(
         loc = rf.to_local(p3)
         return np.array([math.hypot(loc[0], loc[1]), loc[2]])
 
-    spans = [(0.0, math.pi), (math.pi, TAU)] if full else [(0.0, angle)]
+    if full:
+        spans = [(0.0, math.pi), (math.pi, TAU)]
+    else:
+        spans = [(-angle, 0.0)] if flipped else [(0.0, angle)]
     b = Builder()
     loops = [_split_closed(lp) for lp in region.loops]
 
@@ -359,7 +369,9 @@ def revolve(
                     window = float(surf.inverse(p_on[None])[0, 0])
                 b.face(surf, sense, [loop], fname, group, window)
     if not full:
-        for ci, u in enumerate((0.0, angle)):
+        # cap0 lies in the profile's plane, cap1 where the turn ends (in the caller's sense).
+        ends = (0.0, -angle) if flipped else (0.0, angle)
+        for ci, u in enumerate(ends):
             cap_loops = []
             for li, lp in enumerate(loops):
                 n = len(lp.pieces)
@@ -387,7 +399,9 @@ def revolve(
                 cap_loops.append(co)
             # The cap plane: the sketch plane rotated by u; outward is -e_u at u=0, +e_u at end.
             e_u = rf.direction_to_world(np.array([-math.sin(u), math.cos(u), 0.0]))
-            outward = -e_u if ci == 0 else e_u
+            # Outward: against the turn at its start, along it at its end.
+            turn = -1.0 if flipped else 1.0
+            outward = -turn * e_u if ci == 0 else turn * e_u
             x_axis = rf.direction_to_world(np.array([math.cos(u), math.sin(u), 0.0]))
             plane = Plane(Frame.from_axes(rf.origin, outward, x_axis))
             oriented = []

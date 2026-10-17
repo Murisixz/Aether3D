@@ -365,17 +365,14 @@ class PartKind(ItemKind):
         return feat.regenerate(ctx, ctx.item._definition, cache)
 
     def display(self, doc, item, result: feat.PartResult):
-        from .brep.tessellate import tessellate
-
-        tol = doc.display_tolerance()
         parts = []
         mats = {
             int(k) if k != "all" else -1: v
             for k, v in item._definition.get("materials", {}).items()
         }
         color = item._definition.get("color")
-        for name, body in sorted(result.bodies.items()):
-            mesh = tessellate(body, tol).to_mesh(groups=np.array([f.group for f in body.faces]))
+        for name in sorted(result.bodies):
+            mesh = doc.body_mesh(item, name)
             parts.append(
                 DisplayPart(mesh, name, mats, tuple(color) if color else (0.62, 0.65, 0.7))
             )

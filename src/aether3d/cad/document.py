@@ -42,6 +42,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from ..errors import CadError
 from .tolerance import TessellationTolerance
 from .units import ANGLE, LENGTH, RATIO, Dimension, Quantity, unit
@@ -267,6 +269,7 @@ class CadDocument:
         self._keys: dict[str, str] = {}
         self._results: dict[str, Any] = {}
         self._shown: dict[tuple[str, str], str] = {}
+        self._meshes: OrderedDict[str, Any] = OrderedDict()
         self._drivers: dict[str, str] = {}  # object id -> item id
         self._writing = False
         self._deadline: float | None = None
@@ -871,6 +874,35 @@ class CadDocument:
                 if item._links:
                     self._dirty.add(item.id)
                     self._keys.pop(item.id, None)
+
+    def mesh_for(self, key: str, build: Callable[[], Any]) -> Any:
+        """A display mesh by content key: identical geometry gives the identical Mesh
+        object, so linked objects are not rewritten and instances share one mesh."""
+        cache = self._meshes
+        full = content_key(key, self._settings["display"])
+        hit = cache.get(full)
+        if hit is not None:
+            cache.move_to_end(full)
+            return hit
+        mesh = build()
+        cache[full] = mesh
+        if len(cache) > CACHE_ENTRIES:
+            cache.popitem(last=False)
+        return mesh
+
+    def body_mesh(self, part: Any, body: str = "main") -> Any:
+        """The display mesh of a part's body (shared by every instance of it)."""
+        from .brep.tessellate import tessellate
+
+        item = self.item(part, "part")
+        result = self.result(item)
+        b = result.body(body)
+        return self.mesh_for(
+            f"body:{self._keys[item.id]}:{body}",
+            lambda: tessellate(b, self.display_tolerance()).to_mesh(
+                groups=np.array([f.group for f in b.faces])
+            ),
+        )
 
     def display_tolerance(self) -> TessellationTolerance:
         d = self._settings["display"]
