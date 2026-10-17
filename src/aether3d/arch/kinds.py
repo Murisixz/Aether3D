@@ -670,21 +670,32 @@ def _rooms(ctx: Context, d: dict, walls: dict, level: Level, above: Level | None
         diags.append({"code": "NO_OUTLINE", "message": exc.message})
         outline = None
     height = (above.elevation - level.elevation) if above else level.height
+    points = []
     for k, room in enumerate(d.get("rooms", [])):
         loc = f"{ctx.location}.rooms[{k}]({room['id']})"
         p = room.get("point")
         if not isinstance(p, (list, tuple)) or len(p) != 2:
             raise CadError("INVALID_ROOM", "a room needs a point [x, y] inside it", loc)
-        q = [_len(ctx, p[0], f"rooms[{k}].point[0]"), _len(ctx, p[1], f"rooms[{k}].point[1]")]
+        points.append(
+            [_len(ctx, p[0], f"rooms[{k}].point[0]"), _len(ctx, p[1], f"rooms[{k}].point[1]")]
+        )
+    # One arrangement of the wall faces for every room (each point selects its face).
+    regions = []
+    if points:
         try:
-            reg = build_profile(defn, select=[q]).regions[0]
+            regions = build_profile(defn, select=points).regions
         except CadError as exc:
+            k = _region_index(exc.location)
+            room = d["rooms"][k] if k is not None else {"id": "?"}
             raise CadError(
                 "ROOM_NOT_ENCLOSED",
                 f"room {room.get('name', room['id'])!r}: {exc.message}",
-                loc,
+                f"{ctx.location}.rooms[{k}]({room['id']})" if k is not None else ctx.location,
                 hint="close the walls around it (rooms are bounded by wall faces)",
             ) from None
+    for k, room in enumerate(d.get("rooms", [])):
+        loc = f"{ctx.location}.rooms[{k}]({room['id']})"
+        q, reg = points[k], regions[k]
         # The point must not be inside a wall.
         for w in walls.values():
             if _inside(q, w.footprint):
@@ -705,6 +716,14 @@ def _rooms(ctx: Context, d: dict, walls: dict, level: Level, above: Level | None
             level.elevation,
         )
     return outline, rooms, diags
+
+
+def _region_index(location: str | None) -> int | None:
+    """``k`` of a ``...regions[k]`` location (the failing selection point), or None."""
+    import re
+
+    m = re.search(r"regions\[(\d+)\]", location or "")
+    return int(m.group(1)) if m else None
 
 
 def _inside(q, poly) -> bool:

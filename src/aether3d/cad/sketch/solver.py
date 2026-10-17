@@ -43,6 +43,9 @@ from .structure import Decomposition, components, decompose
 MAX_ITERATIONS = 60
 DENSE_ANALYSIS_LIMIT = 3000
 """Components with more variables are analysed per decomposition block (labeled)."""
+BLOCK_CHECK_MIN = 128
+"""Structurally well-constrained components with at least this many variables are first
+checked per diagonal block (exact: see ``_analyze``) before any dense SVD."""
 
 
 @dataclass
@@ -90,6 +93,20 @@ class Evaluator:
             r, _ = KERNELS[name](x[idx[local]], cs[local])
             out[pos] = r
         return out
+
+    def entries(self, x: np.ndarray, rows: np.ndarray) -> tuple:
+        """Sparse Jacobian of ``rows``: (row positions, variables, values), flat."""
+        rr, cc, vv = [], [], []
+        for name, pos, local in self._groups(rows):
+            idx, cs, _ = self.p.kernels[name]
+            sub = idx[local]
+            _, j = KERNELS[name](x[sub], cs[local])
+            rr.append(np.broadcast_to(pos[:, None], sub.shape).ravel())
+            cc.append(sub.ravel())
+            vv.append(j.ravel())
+        if not rr:
+            return np.zeros(0, np.int64), np.zeros(0, np.int64), np.zeros(0)
+        return np.concatenate(rr), np.concatenate(cc), np.concatenate(vv)
 
     def jacobian(self, x: np.ndarray, rows: np.ndarray, cols: np.ndarray) -> tuple:
         """(residuals, dense Jacobian over ``cols``) for ``rows``."""
@@ -282,19 +299,33 @@ def solve(
     st = structure or analyze_structure(problem)
     x = problem.x0.copy()
     converged = True
+    # Incremental solving: a piece whose equations already hold at the starting values
+    # (the stored solution), and none of whose variables an earlier piece moved, is left
+    # as it is -- after one dimension edit only the pieces downstream of it are solved.
+    r0 = np.abs(ev.residual(x)) if problem.m else np.zeros(0)
+    moved = np.zeros(problem.n, dtype=bool)
     for (rows, cols), seq in zip(st.comps, st.pieces, strict=True):
         if not rows:
             continue
         ok = True
         for prow, pcol in seq:
+            if (
+                len(prow)
+                and float(r0[prow].max()) <= ctx.tolerance
+                and not any(moved[problem.adj[r]].any() for r in prow)
+            ):
+                continue
+            before = x[pcol].copy()
             if not solve_piece(ev, x, prow, pcol, ctx):
                 ok = False
                 break
+            moved[pcol] |= x[pcol] != before
         if not ok:
             # Solve the component as a whole from its starting values.
             ca = np.array(cols)
             x[ca] = problem.x0[ca]
             ok = solve_piece(ev, x, np.array(rows), ca, ctx)
+            moved[ca] = True
         converged &= ok
     res = ev.residual(x) if problem.m else np.zeros(0)
     result = SolveResult(
@@ -330,6 +361,15 @@ def _analyze(
         return ComponentAnalysis([], list(cols), 0, n, None, list(cols), [], "svd")
     ctx.check()
     rows_sorted = sorted(rows, key=lambda r: (int(problem.eq_constraint[r]), r))
+    if n >= BLOCK_CHECK_MIN and d.structurally_well_constrained:
+        # The Jacobian, permuted to the decomposition, is block triangular with square
+        # diagonal blocks: it has full rank exactly when every diagonal block does. Then
+        # there is nothing free and nothing dependent -- found without the O(n^3) SVD of
+        # the whole component. A singular block falls through to the dense analysis
+        # (off-diagonal blocks can make the rank exceed the sum of the blocks' ranks).
+        full = _blocks_full_rank(ev, x, rows, cols, d)
+        if full is not None:
+            return ComponentAnalysis(rows_sorted, list(cols), n, 0, full, [], [], "blocks")
     if n > DENSE_ANALYSIS_LIMIT:
         return _analyze_blocks(ev, x, rows, cols, d, problem)
     _, jac = ev.jacobian(x, np.array(rows_sorted), np.array(cols))
@@ -346,6 +386,49 @@ def _analyze(
     if len(rows) > rank:
         dependent = _dependent_rows(jac, rows_sorted, thresh)
     return ComponentAnalysis(rows_sorted, list(cols), rank, n - rank, cond, free, dependent, "svd")
+
+
+def _blocks_full_rank(ev, x, rows, cols, d: Decomposition) -> float | None:
+    """The largest condition number of the diagonal blocks if every block has full rank
+    (by the same threshold as the dense analysis), else None. One sparse Jacobian
+    evaluation; blocks of one size are decomposed together."""
+    rows_a = np.asarray(rows)
+    col_index = np.full(ev.p.n, -1, dtype=np.int64)
+    col_index[np.asarray(cols)] = np.arange(len(cols))
+    nb = len(d.blocks)
+    blk_row = np.full(len(rows), -1, dtype=np.int64)
+    loc_row = np.zeros(len(rows), dtype=np.int64)
+    blk_col = np.full(len(cols), -1, dtype=np.int64)
+    loc_col = np.zeros(len(cols), dtype=np.int64)
+    sizes = np.zeros(nb, dtype=np.int64)
+    for b, (br, bc) in enumerate(d.blocks):
+        blk_row[br], loc_row[br] = b, np.arange(len(br))
+        blk_col[bc], loc_col[bc] = b, np.arange(len(bc))
+        sizes[b] = len(bc)
+    rpos, var, val = ev.entries(x, rows_a)
+    c = col_index[var]
+    keep = c >= 0
+    rpos, c, val = rpos[keep], c[keep], val[keep]
+    diag = blk_row[rpos] == blk_col[c]
+    rpos, c, val = rpos[diag], c[diag], val[diag]
+    blk = blk_row[rpos]
+    worst = 1.0
+    for size in np.unique(sizes):
+        ids = np.flatnonzero(sizes == size)
+        slot = np.full(nb, -1, dtype=np.int64)
+        slot[ids] = np.arange(len(ids))
+        mats = np.zeros((len(ids), size, size))
+        sel = sizes[blk] == size
+        np.add.at(mats, (slot[blk[sel]], loc_row[rpos[sel]], loc_col[c[sel]]), val[sel])
+        sv = np.abs(mats[:, 0, :]) if size == 1 else np.linalg.svd(mats, compute_uv=False)
+        top = sv[:, 0]
+        if np.any(top <= 0):
+            return None
+        thresh = top * 1e3 * UNIT_ROUNDOFF * size
+        if np.any(np.sum(sv > thresh[:, None], axis=1) < size):
+            return None
+        worst = max(worst, float(np.max(top / sv[:, -1])))
+    return worst
 
 
 def _dependent_rows(jac: np.ndarray, rows: list[int], thresh: float) -> list[tuple[int, list[int]]]:

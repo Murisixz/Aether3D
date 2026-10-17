@@ -9,6 +9,7 @@ import math
 import numpy as np
 import pytest
 
+import aether3d
 from aether3d.cad.sketch.equations import KERNELS
 from aether3d.cad.sketch.model import validate
 from aether3d.cad.sketch.profile import build_profile
@@ -475,3 +476,70 @@ def test_profile_with_arcs_and_tangent_contacts():
     assert build_profile({"entities": ents}).regions[0].area == pytest.approx(
         8 + math.pi / 2, rel=1e-13
     )
+
+
+def _rectangles(n):
+    ents, cons = [], []
+    for i in range(n):
+        x0 = i * 0.03
+        for k, p in enumerate([(x0, 0.0), (x0 + 0.02, 0.0), (x0 + 0.02, 0.01), (x0, 0.01)]):
+            ents.append({"id": f"p{i}_{k}", "type": "point", "at": list(p)})
+        for k in range(4):
+            ents.append({"id": f"l{i}_{k}", "type": "line", "start": f"p{i}_{k}",
+                         "end": f"p{i}_{(k + 1) % 4}"})  # fmt: skip
+            cons.append({"id": f"hv{i}_{k}", "type": "horizontal" if k % 2 == 0 else "vertical",
+                         "refs": [f"l{i}_{k}"]})  # fmt: skip
+        cons.append({"id": f"w{i}", "type": "length", "refs": [f"l{i}_0"], "value": 20})
+        cons.append({"id": f"h{i}", "type": "length", "refs": [f"l{i}_1"], "value": 10})
+        if i == 0:
+            cons.append({"id": "fix", "type": "fix", "refs": ["p0_0"]})
+        else:
+            for axis in ("x", "y"):
+                cons.append({"id": f"d{i}{axis}", "type": "distance", "along": axis,
+                             "refs": [f"p{i - 1}_0", f"p{i}_0"],
+                             "value": 30 if axis == "x" else 0})  # fmt: skip
+    return {"plane": "XY", "entities": ents, "constraints": cons}
+
+
+def test_large_sketches_block_analysis_and_incremental_solving_match_the_dense_path(monkeypatch):
+    import json
+
+    from aether3d.cad.sketch import solver
+
+    def solved(defn, dense):
+        with monkeypatch.context() as m:
+            if dense:
+                m.setattr(solver, "BLOCK_CHECK_MIN", 10**9)
+            doc = aether3d.Scene("s").cad
+            doc.set_units(length="mm")
+            doc.add("sketch", "S", defn)
+            info = doc.info("S")
+            pts = {e["id"]: e["at"] for e in doc.result("S").definition["entities"]
+                   if e["type"] == "point"}  # fmt: skip
+            return info, pts, doc
+
+    defn = _rectangles(40)  # 320 constraints, one component
+    fast, pts_fast, doc = solved(defn, False)
+    dense, pts_dense, _ = solved(defn, True)
+    assert fast["analysis"] == "blocks" and dense["analysis"] == "svd"
+    assert (
+        (fast["status"], fast["dof"]) == (dense["status"], dense["dof"]) == ("fully_constrained", 0)
+    )
+    assert pts_fast == pts_dense
+    # Incremental: one dimension changed; the result equals a solve from scratch.
+    item = doc.item("S")
+    d = json.loads(json.dumps(item.definition))
+    next(c for c in d["constraints"] if c["id"] == "w7")["value"] = 25
+    doc.set_definition(item, d)
+    d2 = json.loads(json.dumps(defn))
+    next(c for c in d2["constraints"] if c["id"] == "w7")["value"] = 25
+    _, cold, _ = solved(d2, False)
+    inc = {e["id"]: e["at"] for e in doc.result("S").definition["entities"] if e["type"] == "point"}
+    assert max(abs(a - b) for k in cold for a, b in zip(cold[k], inc[k], strict=True)) < 1e-12
+    assert inc["p7_1"][0] == pytest.approx(inc["p7_0"][0] + 0.025, abs=1e-15)
+    # A redundant constraint in a large sketch: still found (dense fall-through).
+    d3 = json.loads(json.dumps(defn))
+    d3["constraints"].append({"id": "again", "type": "length", "refs": ["l5_2"], "value": 20})
+    red, _, _ = solved(d3, False)
+    assert red["status"] == "redundant" and red["analysis"] == "svd"
+    assert any(r["constraint"] == "again" for r in red["redundant"])

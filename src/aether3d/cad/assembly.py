@@ -578,6 +578,13 @@ def clashes(doc: CadDocument, assembly: Any, *, limit: int = 200) -> list[dict[s
         body = doc.result(leaf.part).body(leaf.body).transformed(leaf.placement)
         lo, hi = body.bounds
         placed.append((leaf.path, body, lo, hi))
+    volumes: dict[int, float] = {}
+
+    def volume(k: int) -> float:
+        if k not in volumes:
+            volumes[k] = mass_properties(placed[k][1]).volume
+        return volumes[k]
+
     out = []
     tol = 1e-9 * max(1.0, max((b.size for _, b, _, _ in placed), default=1.0))
     for i in range(len(placed)):
@@ -589,12 +596,14 @@ def clashes(doc: CadDocument, assembly: Any, *, limit: int = 200) -> list[dict[s
                 inter = boolean(a[1], b[1], "intersection")
                 vol = mass_properties(inter).volume
             except CadError as exc:
-                if exc.code != "EMPTY_RESULT":
+                # An empty result, or a sliver with no positive volume (coincident
+                # surfaces): no overlap.
+                if exc.code not in ("EMPTY_RESULT", "INVALID_SOLID"):
                     raise
                 vol = 0.0
             # Coincident surfaces (a pin in a hole of its own diameter) leave a sliver of
             # rounding-size volume: below 1e-9 of the smaller body it is contact.
-            small = min(mass_properties(a[1]).volume, mass_properties(b[1]).volume)
+            small = min(volume(i), volume(j))
             if vol > 1e-9 * small:
                 out.append({"a": a[0], "b": b[0], "kind": "interference", "volume": vol / s**3})
             else:
