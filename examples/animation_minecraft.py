@@ -44,7 +44,9 @@ from animation_common import (  # noqa: E402
     lights,
     pixel_skin,
     pixel_world,
+    save_png,
     shadows,
+    use_backend,
     validate_glb,
     write_json,
 )
@@ -52,7 +54,7 @@ from animation_common import (  # noqa: E402
 from aether3d import Scene  # noqa: E402
 from aether3d.animation.frames import assemble_video, contact_sheet, render_frames  # noqa: E402
 from aether3d.materials.images import decode_png  # noqa: E402
-from aether3d.rendering.png import encode_png, write_png  # noqa: E402
+from aether3d.rendering.png import encode_png  # noqa: E402
 
 FPS = 24
 FEET = ["Leg.L", "Leg.R"]
@@ -106,19 +108,20 @@ def camera(scene: Scene, name: str, position, look_at, fov: float = 38.0):
     return cam
 
 
-def render_sequence(scene, name, out, *, start, end, width, height, camera_obj=None, blur=None):
+def render_sequence(scene, name, out, *, start, end, width, height, camera_obj=None, blur=None,
+                    step=1):  # fmt: skip
     t0 = time.perf_counter()
     options = {"width": width, "height": height, "backend": backend(), "shadows": shadows()}
     if camera_obj is not None:
         options["camera"] = camera_obj
     report = render_frames(scene, out / "frames" / name, start=start, end=end, fps=FPS,
-                           motion_blur=blur, **options)  # fmt: skip
+                           step=step, motion_blur=blur, **options)  # fmt: skip
     seconds = time.perf_counter() - t0
     frames = report["frames"]
     pick = frames[:: max(1, len(frames) // 12)][:12]
     images = [decode_png(Path(f["path"]).read_bytes()).pixels[..., :3] for f in pick]
     sheet = contact_sheet(images, columns=4, labels=[f"{f['time']:.2f} s" for f in pick])
-    write_png(out / f"{name}_sheet.png", sheet)
+    save_png(out / f"{name}_sheet.png", sheet, "a contact sheet of Aether3D renders")
     return {"frames": len(frames), "seconds": round(seconds, 2),
             "ms_per_frame": round(1000 * seconds / max(1, len(frames)), 1),
             "backend": options["backend"], "paths": [f["path"] for f in frames]}  # fmt: skip
@@ -131,26 +134,40 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--no-video", action="store_true")
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=360)
+    parser.add_argument("--backend", choices=("auto", "gpu", "cpu"), default="auto")
     args = parser.parse_args(argv)
+    use_backend(args.backend)
     out = Path(args.output)
     if (out / "frames").exists():
         shutil.rmtree(out / "frames")
     out.mkdir(parents=True, exist_ok=True)
-    w, h = (320, 180) if args.quick else (args.width, args.height)
+    # --quick: a smoke test (small frames, every third frame of each sequence)
+    w, h = (160, 90) if args.quick else (args.width, args.height)
+    hero_size = (320, 180) if args.quick else (1280, 720)
+    step = 3 if args.quick else 1
     report: dict = {"backend": backend(), "fps": FPS, "size": [w, h]}
 
     scene, nova = build()
     a = scene.animation
     skin = pixel_skin()
-    write_png(out / "nova_skin.png", np.kron(skin[..., :3], np.ones((8, 8, 1), np.uint8)))
+    save_png(
+        out / "nova_skin.png",
+        np.kron(skin[..., :3], np.ones((8, 8, 1), np.uint8)),
+        "Nova's 64x64 skin (8x), pixel art drawn by examples/animation_common.py",
+    )
     views = []
     for pos in ((0, -4.6, 1.4), (3.0, -3.6, 1.9), (0, 4.6, 1.4)):
         cam = camera(scene, f"View {len(views)}", pos, (0, 0, 1.0))
-        views.append(scene.render(camera=cam, width=360, height=360, backend=backend(),
+        side = 180 if args.quick else 360
+        views.append(scene.render(camera=cam, width=side, height=side, backend=backend(),
                                   shadows=shadows()).image)  # fmt: skip
         scene.remove(cam)
     labels = ["front", "three-quarter", "back"]
-    write_png(out / "nova_views.png", contact_sheet(views, columns=3, labels=labels))
+    save_png(
+        out / "nova_views.png",
+        contact_sheet(views, columns=3, labels=labels),
+        "Aether3D renders of Nova: front, three-quarter, back",
+    )
     report["clips"] = generate(scene, nova)
     print(
         "clips:",
@@ -175,11 +192,13 @@ def main(argv: list[str]) -> int:
                             start=0.0, end=end)  # fmt: skip
             cam = follow
         sequences[clip] = render_sequence(scene, clip.lower(), out, start=0.0, end=end,
-                                          width=w, height=h, camera_obj=cam)  # fmt: skip
+                                          width=w, height=h, camera_obj=cam,
+                                          step=step)  # fmt: skip
         c = a.foot_contacts(nova, FEET, start=0.0, end=end, rate=120, height=0.03, speed=0.3)
         contacts[clip] = feet_summary(c)
         mid = end * (0.3 if clip != "Jump" else 0.55)
-        hero = scene.render(camera=cam, time=mid, width=1280, height=720, backend=backend(),
+        hero = scene.render(camera=cam, time=mid, width=hero_size[0], height=hero_size[1],
+                            backend=backend(),
                             shadows=shadows())  # fmt: skip
         hero.save(out / f"hero_{clip.lower()}.png")
         print(clip, sequences[clip]["frames"], "frames", contacts[clip])
@@ -200,12 +219,14 @@ def main(argv: list[str]) -> int:
          "transition": {"type": "blend", "duration": 0.3}},
         {"camera": "Low", "start": t_hit + 1.5, "end": end, "name": "rise"},
     ])  # fmt: skip
+    blur = {"shutter": 0.5, "samples": 2 if args.quick else 8}  # (8: no separate ghosts)
     sequences["Land"] = render_sequence(scene, "cinematic", out, start=0.0, end=end, width=w,
-                                        height=h, blur={"shutter": 0.5, "samples": 8})  # fmt: skip
+                                        height=h, blur=blur, step=step)  # fmt: skip
     c = a.foot_contacts(nova, FEET, start=0.0, end=end, rate=120, height=0.03, speed=0.3)
     contacts["Land"] = feet_summary(c)
     for label, t in (("impact", t_hit + 0.45), ("rise", t_hit + 1.9)):
-        frame = scene.render(time=min(t, end), width=1280, height=720, backend=backend(),
+        frame = scene.render(time=min(t, end), width=hero_size[0], height=hero_size[1],
+                             backend=backend(),
                              shadows=shadows())  # fmt: skip
         frame.save(out / f"hero_land_{label}.png")
     report["shots"] = a.shots()
@@ -232,12 +253,13 @@ def main(argv: list[str]) -> int:
                 shutil.copyfile(src, combined / f"frame_{n:05d}.png")
                 n += 1
         try:
-            report["video"] = assemble_video(combined, "frame_{frame:05d}.png", FPS,
+            report["video"] = assemble_video(combined, "frame_{frame:05d}.png", FPS / step,
                                              out / "nova.mp4", crf=26)  # fmt: skip
         except Exception as exc:  # (FFmpeg is optional)
             report["video"] = {"skipped": str(exc)}
     write_json(out / "report.json", report)
-    print("done:", out)
+    print("outputs:", out)
+    print("done")
     return 0
 
 

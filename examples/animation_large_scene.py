@@ -22,6 +22,8 @@ Run from the repository root:
 
     python examples/animation_large_scene.py [OUTPUT_DIR] [--quick] [--no-video]
 
+(``--quick``: a smoke test -- 2,500 blocks and 12 walkers, every 8th frame, small images.)
+
 Writes to ``OUTPUT_DIR`` (default ``examples/output/animation/large``):
 ``sequence_sheet.png``, ``hero_{crowd,pool}.png`` (1280x720), ``large.aether``,
 ``large.mp4`` (FFmpeg, optional) and ``report.json``.
@@ -46,8 +48,10 @@ from animation_common import (  # noqa: E402
     backend,
     blocky_character,
     pixel_skin,
+    save_png,
     shadows,
     skin_material,
+    use_backend,
     write_json,
 )
 
@@ -56,7 +60,7 @@ from aether3d.animation import FCurve  # noqa: E402
 from aether3d.animation.clip import Clip  # noqa: E402
 from aether3d.animation.frames import assemble_video, contact_sheet, render_frames  # noqa: E402
 from aether3d.materials.images import decode_png  # noqa: E402
-from aether3d.rendering.png import encode_png, write_png  # noqa: E402
+from aether3d.rendering.png import encode_png  # noqa: E402
 from aether3d.rendering.scene_data import world_matrices  # noqa: E402
 
 FPS = 24
@@ -74,7 +78,7 @@ VARIANTS = [  # (jacket, jacket shade, pants, hair)
 WATER = [(0.16, 0.42, 0.72), (0.2, 0.5, 0.78), (0.26, 0.58, 0.82), (0.36, 0.68, 0.88)]
 
 
-def build() -> tuple[Scene, dict]:
+def build(blocks: int = BLOCKS, per_ring: int = PER_RING) -> tuple[Scene, dict]:
     s = Scene("Large")
     s.world.background = (0.62, 0.78, 0.95)
     s.world.ambient_intensity = 0.3
@@ -100,11 +104,11 @@ def build() -> tuple[Scene, dict]:
     materials = [s.create_material(f"Water {i}", roughness=0.35) for i in range(len(WATER))]
     for m, color in zip(materials, WATER, strict=True):
         m.base_color = color
-    n = 2 * math.ceil(math.sqrt(BLOCKS / math.pi)) + 4
+    n = 2 * math.ceil(math.sqrt(blocks / math.pi)) + 4
     grid = (np.indices((n, n)).reshape(2, -1).T - (n - 1) / 2) * PITCH
-    grid = grid[np.argsort(np.hypot(grid[:, 0], grid[:, 1]), kind="stable")[:BLOCKS]]
+    grid = grid[np.argsort(np.hypot(grid[:, 0], grid[:, 1]), kind="stable")[:blocks]]
     info["pool_radius_m"] = round(float(np.hypot(*grid[-1])), 3)
-    tones = np.random.default_rng(9).integers(0, len(materials), BLOCKS).tolist()
+    tones = np.random.default_rng(9).integers(0, len(materials), blocks).tolist()
     with s.history._suspended():  # (building: no undo steps for 10,000 objects)
         mesh = s.add_cube(name="Block", size=0.44, position=(0, 0, -50)).mesh
         for i, (x, y) in enumerate(grid.tolist()):
@@ -124,17 +128,17 @@ def build() -> tuple[Scene, dict]:
     walk = a.generate(first, "walk", forward="-y", name="Walk", travel=False, bind=False)
     period, speed = walk["period"], walk["speed"]
     walkers = [first]
-    for k in range(1, len(RINGS) * PER_RING):
+    for k in range(1, len(RINGS) * per_ring):
         walkers.append(blocky_character(s, f"Walker {k}", position=(RINGS[0], 0, 0),
                                         material=skins[k % len(skins)]))  # fmt: skip
     rng = np.random.default_rng(4)
     for k, w in enumerate(walkers):
-        ring, slot = divmod(k, PER_RING)
+        ring, slot = divmod(k, per_ring)
         radius = RINGS[ring]
         direction = 1 if ring % 2 == 0 else -1  # (neighbouring rings walk opposite ways)
         a.add_path(f"Ring {k}", kind="circle", center=[0, 0, 0], radius=radius,
                    normal=[0, 0, direction], start=0.0)  # fmt: skip
-        phase = slot / PER_RING + float(rng.uniform(-0.02, 0.02))
+        phase = slot / per_ring + float(rng.uniform(-0.02, 0.02))
         laps = speed * DURATION / (2 * math.pi * radius)
         # (the binding first: follow_path keys the path offset into the action beside it)
         a.set_binding(w, {"layers": [{"name": "walk", "strips": [{
@@ -162,7 +166,7 @@ def build() -> tuple[Scene, dict]:
     s.active_camera = cam
     info["objects"] = len(list(s.objects))
     info["triangles"] = int(sum(o.mesh.triangle_count for o in s.objects if o.mesh is not None))
-    info["strips"] = BLOCKS + len(walkers)
+    info["strips"] = blocks + len(walkers)
     info["walkers"] = len(walkers)
     return s, info
 
@@ -189,14 +193,14 @@ def stage_timings(s: Scene, times) -> dict:
     }
 
 
-def feet(s: Scene) -> dict:
-    """Planted contacts and foot sliding of a few walkers over four seconds (measured;
+def feet(s: Scene, walkers=(0, 13, 26, 39), end: float = 5.0) -> dict:
+    """Planted contacts and foot sliding of a few walkers from 1 s to ``end`` (measured;
     a walker with no contacts would be sliding or floating, and shows as such)."""
     a = s.animation
     out = {}
-    for k in (0, 13, 26, 39):
+    for k in walkers:
         name = f"Walker {k}"
-        c = a.foot_contacts(name, ["Leg.L", "Leg.R"], start=1.0, end=5.0, rate=120,
+        c = a.foot_contacts(name, ["Leg.L", "Leg.R"], start=1.0, end=end, rate=120,
                             height=0.03, speed=0.3)  # fmt: skip
         out[name] = {
             "contacts": sum(len(d["contacts"]) for d in c["feet"].values()),
@@ -211,28 +215,31 @@ def main(argv: list[str]) -> int:
     parser.add_argument("output", nargs="?", default=str(HERE / "output/animation/large"))
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--no-video", action="store_true")
+    parser.add_argument("--backend", choices=("auto", "gpu", "cpu"), default="auto")
     args = parser.parse_args(argv)
+    use_backend(args.backend)
     out = Path(args.output)
     if (out / "frames").exists():
         shutil.rmtree(out / "frames")
     out.mkdir(parents=True, exist_ok=True)
-    w, h = (480, 270) if args.quick else (960, 540)
+    # --quick: a small version of the scene (2,500 blocks, 12 walkers) for smoke tests
+    w, h = (320, 180) if args.quick else (960, 540)
     t0 = time.perf_counter()
-    s, info = build()
+    s, info = build(2_500, 3) if args.quick else build()
     report: dict = {"backend": backend(), "fps": FPS, "size": [w, h], **info}
     report["build_s"] = round(time.perf_counter() - t0, 3)
     print("built:", {k: report[k] for k in ("objects", "triangles", "strips", "build_s")})
     sample = np.linspace(0.3, DURATION - 0.3, 9).tolist()
     report["per_frame"] = stage_timings(s, sample)
     print("per frame:", report["per_frame"])
-    report["foot_sliding_m"] = feet(s)
+    report["foot_sliding_m"] = feet(s, (0,), 3.0) if args.quick else feet(s)
     t0 = time.perf_counter()
     s.save(out / "large.aether")
     report["save_s"] = round(time.perf_counter() - t0, 3)
     report["file_bytes"] = (out / "large.aether").stat().st_size
 
     # The sequence on the GPU (when available), then a few frames on the CPU.
-    step = 4 if args.quick else 1
+    step = 8 if args.quick else 1
     opts = {"width": w, "height": h, "shadows": shadows()}
     render_frames(s, out / "frames" / "warm", frames=[0], backend=backend(), **opts)
     t0 = time.perf_counter()
@@ -246,8 +253,9 @@ def main(argv: list[str]) -> int:
                           "frame_ms_median": round(1000 * statistics.median(per), 1),
                           "frame_ms_max": round(1000 * max(per), 1)}  # fmt: skip
     print("sequence:", report["sequence"])
-    if backend() == "gpu":  # the same three frames on both renderers (no shadows: the
-        # CPU renderer draws none), after a warm-up frame on each
+    if backend() == "gpu" and not args.quick:
+        # the same three frames on both renderers (no shadows: the CPU renderer draws
+        # none), after a warm-up frame on each
         same = {"frames": [24, 96, 168], "width": w, "height": h, "shadows": False}
         for name in ("gpu", "cpu"):
             render_frames(s, out / "frames" / f"warm_{name}", frames=[0], width=w, height=h,
@@ -261,9 +269,14 @@ def main(argv: list[str]) -> int:
     images = [decode_png(Path(f["path"]).read_bytes()).pixels[..., :3] for f in pick]
     fps = s.animation.fps
     labels = [fps.timecode(f["time"]) for f in pick]
-    write_png(out / "sequence_sheet.png", contact_sheet(images, columns=4, labels=labels))
+    save_png(
+        out / "sequence_sheet.png",
+        contact_sheet(images, columns=4, labels=labels),
+        "a contact sheet of Aether3D renders",
+    )
+    hw, hh = (640, 360) if args.quick else (1280, 720)
     for name, t in (("crowd", 0.9), ("pool", DURATION - 0.4)):
-        s.render(time=t, width=1280, height=720, backend=backend(), shadows=shadows()).save(
+        s.render(time=t, width=hw, height=hh, backend=backend(), shadows=shadows()).save(
             out / f"hero_{name}.png"
         )
     try:
@@ -283,7 +296,8 @@ def main(argv: list[str]) -> int:
 
     report["peak_rss_mib"] = peak_rss_mib()
     write_json(out / "report.json", report)
-    print("done:", out)
+    print("outputs:", out)
+    print("done")
     return 0
 
 

@@ -44,7 +44,9 @@ from animation_common import (  # noqa: E402
     humanoid_rig,
     mannequin,
     mannequin_mesh,
+    save_png,
     shadows,
+    use_backend,
     validate_glb,
     write_json,
 )
@@ -53,7 +55,6 @@ from aether3d import Scene  # noqa: E402
 from aether3d.animation import rotation as R  # noqa: E402
 from aether3d.animation.frames import contact_sheet  # noqa: E402
 from aether3d.rendering.overlay import animation_overlay  # noqa: E402
-from aether3d.rendering.png import write_png  # noqa: E402
 
 SKIN = (0.84, 0.71, 0.58)
 FEET = ["Foot.L", "Foot.R"]
@@ -76,9 +77,9 @@ def sheet(scene, camera, times, out, name, size=(320, 320)):
                      shadows=shadows()).image
         for t in times
     ]  # fmt: skip
-    write_png(out / f"{name}_sheet.png",
-              contact_sheet(images, columns=min(6, len(images)),
-                            labels=[f"{t:.2f} s" for t in times]))  # fmt: skip
+    sheet_image = contact_sheet(images, columns=min(6, len(images)),
+                                labels=[f"{t:.2f} s" for t in times])  # fmt: skip
+    save_png(out / f"{name}_sheet.png", sheet_image, "a contact sheet of Aether3D renders")
 
 
 def walk(out: Path, quick: bool) -> dict:
@@ -229,7 +230,11 @@ def twist(out: Path) -> dict:
     options = {"width": 640, "height": 420, "backend": backend(), "shadows": shadows()}
     images = [s.render(camera=cam, time=t, **options).image for t in (0.0, 1.0)]
     labels = ["rest: LBS (left), DQS (right)", "hand twisted 160 degrees"]
-    write_png(out / "twist_lbs_vs_dqs.png", contact_sheet(images, columns=2, labels=labels))
+    save_png(
+        out / "twist_lbs_vs_dqs.png",
+        contact_sheet(images, columns=2, labels=labels),
+        "Aether3D renders: linear blend (left) and dual quaternion (right) skinning",
+    )
     return results
 
 
@@ -237,7 +242,9 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("output", nargs="?", default=str(HERE / "output/animation/skinned"))
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--backend", choices=("auto", "gpu", "cpu"), default="auto")
     args = parser.parse_args(argv)
+    use_backend(args.backend)
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
     report = {"backend": backend()}
@@ -250,6 +257,7 @@ def main(argv: list[str]) -> int:
     report["twist"] = twist(out)
     print("twist:", report["twist"])
     write_json(out / "report.json", report)
+    print("done")
     return 0
 
 

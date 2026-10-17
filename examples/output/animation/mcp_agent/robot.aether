@@ -4,7 +4,7 @@
   "generator": "aether3d 0.17.0",
   "scene": {
     "name": "Robot walk",
-    "active_camera": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+    "active_camera": "2504304f-9036-4720-b4c4-ffdbe5250626",
     "world": {
       "background": [0.2, 0.2, 0.2],
       "ambient_color": [1.0, 1.0, 1.0],
@@ -33,7 +33,7 @@
     "textures": [],
     "objects": [
       {
-        "id": "ad2d78f4-1eb6-4c5c-8daa-7fd778c72a81",
+        "id": "44289552-0503-411b-8503-0326cd9ef942",
         "name": "Ground",
         "tags": [],
         "metadata": {},
@@ -57,7 +57,7 @@
         "group_materials": {}
       },
       {
-        "id": "a5033fa9-c4f6-48aa-baf3-ea67930276ab",
+        "id": "1dd1871a-ea95-43d9-959c-b490b8ec509a",
         "name": "Sun",
         "tags": [],
         "metadata": {},
@@ -85,7 +85,7 @@
         "group_materials": {}
       },
       {
-        "id": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+        "id": "2504304f-9036-4720-b4c4-ffdbe5250626",
         "name": "Cam",
         "tags": [],
         "metadata": {},
@@ -113,7 +113,7 @@
         "group_materials": {}
       },
       {
-        "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+        "id": "5c496859-c925-4664-8be8-986cb43ac788",
         "name": "Hero",
         "tags": [],
         "metadata": {},
@@ -133,7 +133,7 @@
         "group_materials": {}
       },
       {
-        "id": "20501b3e-9bab-4028-8687-1406d9480828",
+        "id": "bbbcd3e4-e12f-472f-ae3b-cdff49109370",
         "name": "Pelvis",
         "tags": [],
         "metadata": {},
@@ -157,7 +157,7 @@
         "group_materials": {}
       },
       {
-        "id": "19d21770-605d-4878-84a9-2dfba3b33d70",
+        "id": "b5eac05b-b9f7-4340-9aa9-490ed7d68fe0",
         "name": "Torso",
         "tags": [],
         "metadata": {},
@@ -181,7 +181,7 @@
         "group_materials": {}
       },
       {
-        "id": "cd0d6010-9d21-4ea3-9894-aad33c30ad0b",
+        "id": "8f24a04c-4879-46c8-85e1-92c0b1ad885c",
         "name": "Head",
         "tags": [],
         "metadata": {},
@@ -205,7 +205,7 @@
         "group_materials": {}
       },
       {
-        "id": "ed4f1b78-1470-4bd3-81f2-29501178a287",
+        "id": "40f566f8-f03e-4e4b-bb5c-1eb5782f8279",
         "name": "UpperArm.L",
         "tags": [],
         "metadata": {},
@@ -229,7 +229,7 @@
         "group_materials": {}
       },
       {
-        "id": "c39080a7-5914-44b1-b717-f42c4da09bce",
+        "id": "0d8ccd10-fba3-4608-a945-452c122bf1f7",
         "name": "ForeArm.L",
         "tags": [],
         "metadata": {},
@@ -253,7 +253,7 @@
         "group_materials": {}
       },
       {
-        "id": "15f0c40b-f247-4dd8-92b6-b2de59f8d22c",
+        "id": "e61e6dcb-88df-42cf-8903-852191d0066d",
         "name": "Thigh.L",
         "tags": [],
         "metadata": {},
@@ -277,7 +277,7 @@
         "group_materials": {}
       },
       {
-        "id": "c4fe2836-17b3-4ba1-bdd8-3cab0046cf58",
+        "id": "a7fe6470-259e-45a4-b867-d9719e14b13f",
         "name": "Shin.L",
         "tags": [],
         "metadata": {},
@@ -301,7 +301,7 @@
         "group_materials": {}
       },
       {
-        "id": "f9f2ed20-975f-46ff-a1bd-05abacd268f2",
+        "id": "f1d84166-a0a4-4a43-b146-ba26f7edb3b1",
         "name": "Foot.L",
         "tags": [],
         "metadata": {},
@@ -325,7 +325,7 @@
         "group_materials": {}
       },
       {
-        "id": "f28978fb-3f86-4c23-91a5-00e0cfec16e6",
+        "id": "d2892f39-7afb-4356-ac3e-176dd3a065c2",
         "name": "UpperArm.R",
         "tags": [],
         "metadata": {},
@@ -349,7 +349,7 @@
         "group_materials": {}
       },
       {
-        "id": "76081918-c06a-41d4-a058-f9e74749ac83",
+        "id": "f4d603e0-3eb9-4361-9ed6-43e808d82401",
         "name": "ForeArm.R",
         "tags": [],
         "metadata": {},
@@ -373,7 +373,7 @@
         "group_materials": {}
       },
       {
-        "id": "7128cf84-8a63-4b0c-bc53-b4198d80bd9c",
+        "id": "23cf4eeb-9e53-4d53-9ae5-eac1ed2db6b6",
         "name": "Thigh.R",
         "tags": [],
         "metadata": {},
@@ -397,7 +397,7 @@
         "group_materials": {}
       },
       {
-        "id": "01cfd5c3-6189-4b45-ba64-dad942062927",
+        "id": "338724ae-8e03-4d6e-914b-45aa3376d7a9",
         "name": "Shin.R",
         "tags": [],
         "metadata": {},
@@ -421,7 +421,7 @@
         "group_materials": {}
       },
       {
-        "id": "4d6f8b06-7fc0-4c01-8c38-f5b1b36c54f3",
+        "id": "ff71bf8e-370b-4d2c-a4d1-1ec735afe7d5",
         "name": "Foot.R",
         "tags": [],
         "metadata": {},
@@ -469,42 +469,42 @@
       },
       "items": [
         {
-          "id": "4063dee3-aa95-4d94-a46f-3401515b8606",
+          "id": "3103980d-207a-43b9-8500-36111f3d6496",
           "kind": "rig",
           "name": "Hero Rig",
           "definition": {
-            "object": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+            "object": "5c496859-c925-4664-8be8-986cb43ac788",
             "joints": [
               {
-                "id": "a85d040a-61e2-40ec-94a5-dd9b0d8d59b1",
+                "id": "56f132a9-b70d-441b-bc3d-bf5a51dd4166",
                 "name": "Hips",
                 "parent": null,
                 "position": [0.0, 0.0, 0.95],
                 "rotation": [0.0, 0.0, 0.0, 1.0]
               },
               {
-                "id": "2e322e86-f014-47bc-8057-051d5dfe045a",
+                "id": "3158358d-c641-4f47-a4c2-b3519cd7da37",
                 "name": "Spine",
                 "parent": "Hips",
                 "position": [0.0, 0.0, 0.12],
                 "rotation": [0.0, 0.0, 0.0, 1.0]
               },
               {
-                "id": "96c59b5e-07d4-41cd-ba4e-490bb093c39f",
+                "id": "875d6211-9e46-41ac-b78c-3b4292863fe6",
                 "name": "Chest",
                 "parent": "Spine",
                 "position": [0.0, 0.0, 0.2],
                 "rotation": [0.0, 0.0, 0.0, 1.0]
               },
               {
-                "id": "791fb741-e6bf-4063-a7bb-c4be5945f852",
+                "id": "53a329cb-4165-49d5-8b88-4ea88d48ef7b",
                 "name": "Neck",
                 "parent": "Chest",
                 "position": [0.0, 0.0, 0.22],
                 "rotation": [0.0, 0.0, 0.0, 1.0]
               },
               {
-                "id": "50b3117b-a1b1-4fea-a42a-4566e9d073ea",
+                "id": "23b16bc7-fd84-404b-8cc6-94fb4bfaf4da",
                 "name": "Head",
                 "parent": "Neck",
                 "position": [0.0, 0.0, 0.1],
@@ -512,7 +512,7 @@
                 "tail": [0.0, 0.0, 0.24]
               },
               {
-                "id": "729c4d1e-a41f-4422-8ba2-0226374fdf71",
+                "id": "445d17aa-7f49-482c-b642-87f608015996",
                 "name": "UpperArm.L",
                 "parent": "Chest",
                 "position": [0.21, 0.0, 0.17],
@@ -520,7 +520,7 @@
                 "tail": [0.0, 0.0, -0.29]
               },
               {
-                "id": "bf20c060-a900-4ff4-9eb7-06845c9f03e0",
+                "id": "c98c638e-43d4-4f59-b6ab-f378a4da5911",
                 "name": "ForeArm.L",
                 "parent": "UpperArm.L",
                 "position": [0.0, 0.0, -0.29],
@@ -528,14 +528,14 @@
                 "tail": [0.0, 0.0, -0.25]
               },
               {
-                "id": "c949be85-5c7c-4872-a320-d69b3754b2ef",
+                "id": "316f37b8-0e2d-4c83-8572-0117ab514c7d",
                 "name": "Hand.L",
                 "parent": "ForeArm.L",
                 "position": [0.0, 0.0, -0.25],
                 "rotation": [0.0, 0.0, 0.0, 1.0]
               },
               {
-                "id": "7e55af3b-4328-4186-9657-e7507e81e4b4",
+                "id": "ea744fe6-ba12-4c68-bb58-7b831700e51d",
                 "name": "Thigh.L",
                 "parent": "Hips",
                 "position": [0.1, 0.0, -0.02],
@@ -543,7 +543,7 @@
                 "tail": [0.0, 0.0, -0.44]
               },
               {
-                "id": "ba021c00-94a5-4236-9b9b-2e79b390390b",
+                "id": "97deedc1-cb2f-43fd-9f17-c0a5dcf90e53",
                 "name": "Shin.L",
                 "parent": "Thigh.L",
                 "position": [0.0, 0.0, -0.44],
@@ -551,7 +551,7 @@
                 "tail": [0.0, 0.0, -0.41]
               },
               {
-                "id": "725a73fc-cd9e-4909-93a7-580ccb25d099",
+                "id": "5c55273e-ec91-49bc-aca1-be4a67c31ae9",
                 "name": "Foot.L",
                 "parent": "Shin.L",
                 "position": [0.0, 0.0, -0.41],
@@ -559,7 +559,7 @@
                 "tail": [0.0, -0.15, -0.08]
               },
               {
-                "id": "6a97837f-a254-4654-8183-caa5868089e5",
+                "id": "ba5dc706-3de0-4041-aaba-b688327d25d6",
                 "name": "UpperArm.R",
                 "parent": "Chest",
                 "position": [-0.21, 0.0, 0.17],
@@ -567,7 +567,7 @@
                 "tail": [0.0, 0.0, -0.29]
               },
               {
-                "id": "555e225f-bf57-4ccf-ab9f-8a9755f79385",
+                "id": "99e96375-8c2a-4c6a-8f48-c243a66fa755",
                 "name": "ForeArm.R",
                 "parent": "UpperArm.R",
                 "position": [0.0, 0.0, -0.29],
@@ -575,14 +575,14 @@
                 "tail": [0.0, 0.0, -0.25]
               },
               {
-                "id": "97e6d029-2d15-41f4-a21b-2345bbd1271a",
+                "id": "b63f7643-d166-4d51-99d2-0fb1fe5842b6",
                 "name": "Hand.R",
                 "parent": "ForeArm.R",
                 "position": [0.0, 0.0, -0.25],
                 "rotation": [0.0, 0.0, 0.0, 1.0]
               },
               {
-                "id": "10529b45-e923-43cb-82b0-ee207e76a55a",
+                "id": "d73651c6-f208-4064-b943-5f4fd3dbeaf2",
                 "name": "Thigh.R",
                 "parent": "Hips",
                 "position": [-0.1, 0.0, -0.02],
@@ -590,7 +590,7 @@
                 "tail": [0.0, 0.0, -0.44]
               },
               {
-                "id": "d4e8d232-9de4-480e-a4fa-73469b54eb1e",
+                "id": "7fc1870e-13d2-4004-b12b-0755147f1dba",
                 "name": "Shin.R",
                 "parent": "Thigh.R",
                 "position": [0.0, 0.0, -0.44],
@@ -598,7 +598,7 @@
                 "tail": [0.0, 0.0, -0.41]
               },
               {
-                "id": "565f72b1-0b5d-43f2-ae9d-6690fb23d18f",
+                "id": "e74d2bed-5f2e-4d94-ad24-7d5d333b6ebd",
                 "name": "Foot.R",
                 "parent": "Shin.R",
                 "position": [0.0, 0.0, -0.41],
@@ -608,62 +608,62 @@
             ],
             "attachments": [
               {
-                "object": "20501b3e-9bab-4028-8687-1406d9480828",
+                "object": "bbbcd3e4-e12f-472f-ae3b-cdff49109370",
                 "joint": "Hips"
               },
               {
-                "object": "19d21770-605d-4878-84a9-2dfba3b33d70",
+                "object": "b5eac05b-b9f7-4340-9aa9-490ed7d68fe0",
                 "joint": "Chest"
               },
               {
-                "object": "cd0d6010-9d21-4ea3-9894-aad33c30ad0b",
+                "object": "8f24a04c-4879-46c8-85e1-92c0b1ad885c",
                 "joint": "Head"
               },
               {
-                "object": "ed4f1b78-1470-4bd3-81f2-29501178a287",
+                "object": "40f566f8-f03e-4e4b-bb5c-1eb5782f8279",
                 "joint": "UpperArm.L"
               },
               {
-                "object": "c39080a7-5914-44b1-b717-f42c4da09bce",
+                "object": "0d8ccd10-fba3-4608-a945-452c122bf1f7",
                 "joint": "ForeArm.L"
               },
               {
-                "object": "15f0c40b-f247-4dd8-92b6-b2de59f8d22c",
+                "object": "e61e6dcb-88df-42cf-8903-852191d0066d",
                 "joint": "Thigh.L"
               },
               {
-                "object": "c4fe2836-17b3-4ba1-bdd8-3cab0046cf58",
+                "object": "a7fe6470-259e-45a4-b867-d9719e14b13f",
                 "joint": "Shin.L"
               },
               {
-                "object": "f9f2ed20-975f-46ff-a1bd-05abacd268f2",
+                "object": "f1d84166-a0a4-4a43-b146-ba26f7edb3b1",
                 "joint": "Foot.L"
               },
               {
-                "object": "f28978fb-3f86-4c23-91a5-00e0cfec16e6",
+                "object": "d2892f39-7afb-4356-ac3e-176dd3a065c2",
                 "joint": "UpperArm.R"
               },
               {
-                "object": "76081918-c06a-41d4-a058-f9e74749ac83",
+                "object": "f4d603e0-3eb9-4361-9ed6-43e808d82401",
                 "joint": "ForeArm.R"
               },
               {
-                "object": "7128cf84-8a63-4b0c-bc53-b4198d80bd9c",
+                "object": "23cf4eeb-9e53-4d53-9ae5-eac1ed2db6b6",
                 "joint": "Thigh.R"
               },
               {
-                "object": "01cfd5c3-6189-4b45-ba64-dad942062927",
+                "object": "338724ae-8e03-4d6e-914b-45aa3376d7a9",
                 "joint": "Shin.R"
               },
               {
-                "object": "4d6f8b06-7fc0-4c01-8c38-f5b1b36c54f3",
+                "object": "ff71bf8e-370b-4d2c-a4d1-1ec735afe7d5",
                 "joint": "Foot.R"
               }
             ]
           }
         },
         {
-          "id": "235adc8d-993b-491a-b4ef-026df3862f92",
+          "id": "a33154e3-86ed-47ac-b694-03d1d4a3760e",
           "kind": "clip",
           "name": "Walk",
           "definition": {
@@ -2577,18 +2577,18 @@
           }
         },
         {
-          "id": "6b566e2b-3a24-43b3-9757-7362f2ceeff2",
+          "id": "5be74e92-a9c3-4a77-bf23-7acc97649ebc",
           "kind": "binding",
           "name": "Hero",
           "definition": {
-            "object": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+            "object": "5c496859-c925-4664-8be8-986cb43ac788",
             "layers": [
               {
                 "name": "walk",
                 "mode": "replace",
                 "strips": [
                   {
-                    "clip": "235adc8d-993b-491a-b4ef-026df3862f92",
+                    "clip": "a33154e3-86ed-47ac-b694-03d1d4a3760e",
                     "name": "strip",
                     "start": 0.0,
                     "speed": 1.3,
@@ -2601,16 +2601,16 @@
           }
         },
         {
-          "id": "c919ae08-bfe5-4964-86da-e9eadaaa2cae",
+          "id": "c90aaa00-4515-48e7-b259-6e97f69a8a5b",
           "kind": "binding",
           "name": "Cam",
           "definition": {
-            "object": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
-            "action": "aaadffdd-4578-4302-8e6e-51fc6104e039"
+            "object": "2504304f-9036-4720-b4c4-ffdbe5250626",
+            "action": "79015f4d-dc7f-4ccd-8580-391f50027b39"
           }
         },
         {
-          "id": "aaadffdd-4578-4302-8e6e-51fc6104e039",
+          "id": "79015f4d-dc7f-4ccd-8580-391f50027b39",
           "kind": "clip",
           "name": "Cam Action",
           "definition": {
@@ -2686,18 +2686,18 @@
           }
         },
         {
-          "id": "1f667cf4-6a91-4411-b5ff-97d20a71eab1",
+          "id": "1b88090a-9a77-459b-8a39-f6f3c235abb4",
           "kind": "constraints",
           "name": "Cam Constraints",
           "definition": {
-            "object": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+            "object": "2504304f-9036-4720-b4c4-ffdbe5250626",
             "constraints": [
               {
                 "name": "follow",
                 "type": "look_at",
                 "axis": "-y",
                 "target": {
-                  "object": "6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+                  "object": "5c496859-c925-4664-8be8-986cb43ac788"
                 },
                 "target_offset": [0.0, 0.0, 1.0],
                 "up": "+z",

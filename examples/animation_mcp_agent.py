@@ -56,7 +56,13 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from animation_common import validate_glb, write_json  # noqa: E402
+from animation_common import (  # noqa: E402
+    backend,
+    shadows,
+    use_backend,
+    validate_glb,
+    write_json,
+)
 
 FEET = ["Foot.L", "Foot.R"]
 PARTS = {  # name: (joint, center at rest, size) -- a robot of boxes (faces -Y)
@@ -295,8 +301,9 @@ async def agent(workspace: Path) -> dict:
         }
 
         for t in (0.6, 1.8, 3.2):
-            preview = {"time": t, "width": 640, "height": 360, "shadows": True,
-                       "save_to": f"preview_{t:.1f}s.png", "overwrite": True}  # fmt: skip
+            preview = {"time": t, "width": 640, "height": 360, "backend": backend(),
+                       "shadows": shadows(), "save_to": f"preview_{t:.1f}s.png",
+                       "overwrite": True}  # fmt: skip
             await call("render_preview", preview)
         exported = await call("export_scene", {"path": "robot.glb", "animation": "clips",
                                                "overwrite": True})  # fmt: skip
@@ -335,7 +342,9 @@ def markdown(transcript: list[dict], report: dict) -> str:
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("output", nargs="?", default=str(HERE / "output/animation/mcp_agent"))
+    parser.add_argument("--backend", choices=("auto", "gpu", "cpu"), default="auto")
     args = parser.parse_args(argv)
+    use_backend(args.backend)
     out = Path(args.output).resolve()
     out.mkdir(parents=True, exist_ok=True)
     try:
@@ -354,6 +363,7 @@ def main(argv: list[str]) -> int:
             "diagnosis_after_planting", "retimed", "retimed_distance_m", "final_diagnosis",
             "accepted", "refusals")  # fmt: skip
     print(json.dumps({k: report.get(k) for k in keys}, indent=1))
+    print("done")
     return 0
 
 

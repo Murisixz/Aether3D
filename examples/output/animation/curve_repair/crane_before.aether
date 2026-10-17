@@ -4,7 +4,7 @@
   "generator": "aether3d 0.17.0",
   "scene": {
     "name": "Crane",
-    "active_camera": "1d0a01f3-7a9a-48d7-a072-10063eda97d5",
+    "active_camera": "cce5f351-2b37-4dfc-8b75-31f9876074c8",
     "world": {
       "background": [0.83, 0.86, 0.9],
       "ambient_color": [1.0, 1.0, 1.0],
@@ -33,7 +33,7 @@
     "textures": [],
     "objects": [
       {
-        "id": "8f41b38d-1306-4091-8973-c22c165418fb",
+        "id": "3c9101d1-04c6-4921-9318-9cac094c624e",
         "name": "Floor",
         "tags": [],
         "metadata": {},
@@ -57,7 +57,7 @@
         "group_materials": {}
       },
       {
-        "id": "34dbd4a4-b42d-4c61-ba0e-3122f06f6907",
+        "id": "c2183332-f15c-457c-a614-de65f3d5cb3d",
         "name": "Shelf",
         "tags": [],
         "metadata": {},
@@ -81,7 +81,7 @@
         "group_materials": {}
       },
       {
-        "id": "621f8584-8a96-4b8a-adbf-dc8272b41a67",
+        "id": "05dd9cc0-18ac-4cef-bb7b-8e58c8a1c2f7",
         "name": "Crate",
         "tags": [],
         "metadata": {},
@@ -105,7 +105,7 @@
         "group_materials": {}
       },
       {
-        "id": "1d1b0957-e23d-4cad-a0f3-4bd725e84bdb",
+        "id": "3661d460-5af8-44b9-a3f7-4e3cf2342e4e",
         "name": "Cable",
         "tags": [],
         "metadata": {},
@@ -129,7 +129,7 @@
         "group_materials": {}
       },
       {
-        "id": "d6f99023-b46c-40ac-8922-78019fc8cc1a",
+        "id": "8ed9e66b-b4ee-4b8a-ae09-ffe5bb3a73d9",
         "name": "Sun",
         "tags": [],
         "metadata": {},
@@ -157,7 +157,7 @@
         "group_materials": {}
       },
       {
-        "id": "1d0a01f3-7a9a-48d7-a072-10063eda97d5",
+        "id": "cce5f351-2b37-4dfc-8b75-31f9876074c8",
         "name": "Cam",
         "tags": [],
         "metadata": {},
@@ -209,16 +209,16 @@
       },
       "items": [
         {
-          "id": "622c4d22-5d33-4ba7-a5ff-a0a768cc342f",
+          "id": "3880504b-7bc1-437f-a4f4-38c191472015",
           "kind": "binding",
           "name": "Crate",
           "definition": {
-            "object": "621f8584-8a96-4b8a-adbf-dc8272b41a67",
-            "action": "0fbb121a-831c-43fa-aaf1-dde77c5234ac"
+            "object": "05dd9cc0-18ac-4cef-bb7b-8e58c8a1c2f7",
+            "action": "770880da-9bf4-45ab-8797-76b954c4f1b5"
           }
         },
         {
-          "id": "0fbb121a-831c-43fa-aaf1-dde77c5234ac",
+          "id": "770880da-9bf4-45ab-8797-76b954c4f1b5",
           "kind": "clip",
           "name": "Crate Action",
           "definition": {
@@ -255,16 +255,16 @@
           }
         },
         {
-          "id": "776a0c0a-1d73-4f5d-adb9-e7f4f5cb9d81",
+          "id": "6a1f158e-2bbd-4ac7-96dc-726ba34e2932",
           "kind": "binding",
           "name": "Cable",
           "definition": {
-            "object": "1d1b0957-e23d-4cad-a0f3-4bd725e84bdb",
-            "action": "c87415c8-ad05-485c-ac20-ce7c564a08ed"
+            "object": "3661d460-5af8-44b9-a3f7-4e3cf2342e4e",
+            "action": "ed3898d6-9e69-4597-a60e-7640f1034175"
           }
         },
         {
-          "id": "c87415c8-ad05-485c-ac20-ce7c564a08ed",
+          "id": "ed3898d6-9e69-4597-a60e-7640f1034175",
           "kind": "clip",
           "name": "Cable Action",
           "definition": {

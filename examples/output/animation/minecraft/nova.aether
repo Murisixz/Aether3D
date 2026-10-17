@@ -4,7 +4,7 @@
   "generator": "aether3d 0.17.0",
   "scene": {
     "name": "Nova",
-    "active_camera": "fc140ba4-cc1b-408a-85d9-8260d200946a",
+    "active_camera": "e619599f-33bd-4395-ba2a-2b3bd7404ca2",
     "world": {
       "background": [0.56, 0.74, 0.95],
       "ambient_color": [0.78, 0.86, 1.0],
@@ -31,7 +31,7 @@
     "geometry": [],
     "materials": [
       {
-        "id": "f75f20f5-763d-4ce0-a2fb-64ff74c05eb2",
+        "id": "a565ee34-6229-4822-b85d-350da2cfb26f",
         "name": "Grass",
         "model": "standard",
         "base_color": [1.0, 1.0, 1.0],
@@ -48,14 +48,14 @@
         "double_sided": true,
         "textures": {
           "base_color": {
-            "texture": "66fc9f5f-7b66-406b-8153-5507208838ab",
+            "texture": "7c3200c5-9ecd-4ad8-98bb-52327972f808",
             "coordinates": "world",
             "projection": "xy"
           }
         }
       },
       {
-        "id": "e67256fb-e4d0-497e-a9d9-ac77c9c0a1b8",
+        "id": "fbb23163-36c4-4b88-af2f-36290bb43566",
         "name": "Bark",
         "model": "standard",
         "base_color": [1.0, 1.0, 1.0],
@@ -72,13 +72,13 @@
         "double_sided": true,
         "textures": {
           "base_color": {
-            "texture": "b90b4ee3-4616-4ffe-9243-da72d420a4c9",
+            "texture": "03f5d786-d122-4f01-ba9c-af83cb338a14",
             "coordinates": "object"
           }
         }
       },
       {
-        "id": "f1f69a90-eb3b-4821-935b-9eac9f50b677",
+        "id": "cf64f24d-16a9-4edc-966f-9970a595d0ae",
         "name": "Leaves",
         "model": "standard",
         "base_color": [1.0, 1.0, 1.0],
@@ -95,13 +95,13 @@
         "double_sided": true,
         "textures": {
           "base_color": {
-            "texture": "e77091ad-ac87-413d-891d-18db68f8dc6f",
+            "texture": "bd5956d2-35fd-4949-944a-eb8a1f022a3c",
             "coordinates": "object"
           }
         }
       },
       {
-        "id": "b66bd305-0c49-45fc-ac65-26a670cf76ed",
+        "id": "85493c6b-f09a-471f-b16a-13c025ce6764",
         "name": "Nova skin",
         "model": "standard",
         "base_color": [1.0, 1.0, 1.0],
@@ -118,14 +118,14 @@
         "double_sided": true,
         "textures": {
           "base_color": {
-            "texture": "c0fc53d4-59ba-4537-b032-4db9a511e9e8"
+            "texture": "feed6462-afa2-40fc-810a-54672575e0c7"
           }
         }
       }
     ],
     "textures": [
       {
-        "id": "66fc9f5f-7b66-406b-8153-5507208838ab",
+        "id": "7c3200c5-9ecd-4ad8-98bb-52327972f808",
         "name": "grass",
         "type": "image",
         "embedded": {
@@ -138,7 +138,7 @@
         "color_space": "auto"
       },
       {
-        "id": "b90b4ee3-4616-4ffe-9243-da72d420a4c9",
+        "id": "03f5d786-d122-4f01-ba9c-af83cb338a14",
         "name": "bark",
         "type": "image",
         "embedded": {
@@ -151,7 +151,7 @@
         "color_space": "auto"
       },
       {
-        "id": "e77091ad-ac87-413d-891d-18db68f8dc6f",
+        "id": "bd5956d2-35fd-4949-944a-eb8a1f022a3c",
         "name": "leaves",
         "type": "image",
         "embedded": {
@@ -164,7 +164,7 @@
         "color_space": "auto"
       },
       {
-        "id": "c0fc53d4-59ba-4537-b032-4db9a511e9e8",
+        "id": "feed6462-afa2-40fc-810a-54672575e0c7",
         "name": "Nova skin",
         "type": "image",
         "embedded": {
@@ -179,7 +179,7 @@
     ],
     "objects": [
       {
-        "id": "e92e7bad-1f90-4f7c-bc9a-8d7705d14e15",
+        "id": "5a9cc671-2897-43f1-bec9-d7b9f59e223d",
         "name": "Ground",
         "tags": [],
         "metadata": {},
@@ -195,11 +195,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "f75f20f5-763d-4ce0-a2fb-64ff74c05eb2",
+        "material": "a565ee34-6229-4822-b85d-350da2cfb26f",
         "group_materials": {}
       },
       {
-        "id": "e5bd4f31-6691-44fb-8882-4b2c24908eee",
+        "id": "8df4dc00-fc78-43e8-97e3-d3e7ac5300ec",
         "name": "Trunk 0",
         "tags": [],
         "metadata": {},
@@ -215,11 +215,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "e67256fb-e4d0-497e-a9d9-ac77c9c0a1b8",
+        "material": "fbb23163-36c4-4b88-af2f-36290bb43566",
         "group_materials": {}
       },
       {
-        "id": "81c79933-ba48-48bd-91ff-ca93f83ec22f",
+        "id": "7faec9cc-5c1c-45d1-97bb-3a564b05a71e",
         "name": "Leaves 0",
         "tags": [],
         "metadata": {},
@@ -235,11 +235,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "f1f69a90-eb3b-4821-935b-9eac9f50b677",
+        "material": "cf64f24d-16a9-4edc-966f-9970a595d0ae",
         "group_materials": {}
       },
       {
-        "id": "25e95345-5242-49be-aec9-289c874fe61b",
+        "id": "d2379eaa-eb63-41ed-9a0a-4fc6e0888cf9",
         "name": "Trunk 1",
         "tags": [],
         "metadata": {},
@@ -255,11 +255,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "e67256fb-e4d0-497e-a9d9-ac77c9c0a1b8",
+        "material": "fbb23163-36c4-4b88-af2f-36290bb43566",
         "group_materials": {}
       },
       {
-        "id": "b6748f6a-ec33-4c3c-8cbe-1c58868c8640",
+        "id": "580dfd94-a1c7-4a39-840d-11a597091c14",
         "name": "Leaves 1",
         "tags": [],
         "metadata": {},
@@ -275,11 +275,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "f1f69a90-eb3b-4821-935b-9eac9f50b677",
+        "material": "cf64f24d-16a9-4edc-966f-9970a595d0ae",
         "group_materials": {}
       },
       {
-        "id": "be0ec359-8e9f-48a6-87d4-e43e296cbb49",
+        "id": "6e229184-974e-4c68-82b3-bf0a6ff602b8",
         "name": "Trunk 2",
         "tags": [],
         "metadata": {},
@@ -295,11 +295,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "e67256fb-e4d0-497e-a9d9-ac77c9c0a1b8",
+        "material": "fbb23163-36c4-4b88-af2f-36290bb43566",
         "group_materials": {}
       },
       {
-        "id": "3c793490-9b49-4808-b9fd-534f16c86e3d",
+        "id": "a7506855-9d13-4084-a90a-5d180d571620",
         "name": "Leaves 2",
         "tags": [],
         "metadata": {},
@@ -315,11 +315,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "f1f69a90-eb3b-4821-935b-9eac9f50b677",
+        "material": "cf64f24d-16a9-4edc-966f-9970a595d0ae",
         "group_materials": {}
       },
       {
-        "id": "df6cd810-d87a-4893-b7d5-4fa46e047508",
+        "id": "13a99ec8-937d-4002-99b8-2cd54c9a38b0",
         "name": "Trunk 3",
         "tags": [],
         "metadata": {},
@@ -335,11 +335,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "e67256fb-e4d0-497e-a9d9-ac77c9c0a1b8",
+        "material": "fbb23163-36c4-4b88-af2f-36290bb43566",
         "group_materials": {}
       },
       {
-        "id": "3517e08d-90c0-4e36-b9c7-8b0493b4ac56",
+        "id": "ed452e84-ad3b-4cd1-b161-e4806fdac2be",
         "name": "Leaves 3",
         "tags": [],
         "metadata": {},
@@ -355,11 +355,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "f1f69a90-eb3b-4821-935b-9eac9f50b677",
+        "material": "cf64f24d-16a9-4edc-966f-9970a595d0ae",
         "group_materials": {}
       },
       {
-        "id": "b3729574-f891-4fbe-8120-df076c942774",
+        "id": "a41bd869-228e-4f5c-93ec-6fefac0fd53a",
         "name": "Trunk 4",
         "tags": [],
         "metadata": {},
@@ -375,11 +375,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "e67256fb-e4d0-497e-a9d9-ac77c9c0a1b8",
+        "material": "fbb23163-36c4-4b88-af2f-36290bb43566",
         "group_materials": {}
       },
       {
-        "id": "9c91cd54-fe5a-4fd6-a45e-9d6dd09696d8",
+        "id": "24f7be62-ed64-4348-a10a-4b4223e6fac7",
         "name": "Leaves 4",
         "tags": [],
         "metadata": {},
@@ -395,11 +395,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "f1f69a90-eb3b-4821-935b-9eac9f50b677",
+        "material": "cf64f24d-16a9-4edc-966f-9970a595d0ae",
         "group_materials": {}
       },
       {
-        "id": "07d8765c-9687-4d60-b05f-4e5134160322",
+        "id": "99db786e-edf0-4d03-b336-001298981325",
         "name": "Flower 0",
         "tags": [],
         "metadata": {},
@@ -423,7 +423,7 @@
         "group_materials": {}
       },
       {
-        "id": "92399f9f-d61e-4cb1-b8f3-aeadc8a3fbec",
+        "id": "d6eeb63f-501a-4794-8058-cc8cd12c57ce",
         "name": "Flower 2",
         "tags": [],
         "metadata": {},
@@ -447,7 +447,7 @@
         "group_materials": {}
       },
       {
-        "id": "e590dd09-7848-40c8-b169-97620d9a598c",
+        "id": "7199d5f4-69d4-4af5-b3b1-b023008cedad",
         "name": "Flower 3",
         "tags": [],
         "metadata": {},
@@ -471,7 +471,7 @@
         "group_materials": {}
       },
       {
-        "id": "f2821367-f6b6-49ba-ae8b-15cfea9439b0",
+        "id": "cc86d001-7a79-4408-890e-5be717eafa03",
         "name": "Flower 6",
         "tags": [],
         "metadata": {},
@@ -495,7 +495,7 @@
         "group_materials": {}
       },
       {
-        "id": "5cd9fcf9-0243-45ef-9aae-8b637b6623d5",
+        "id": "591e7b48-7084-48b7-a777-619f5f1ac1a2",
         "name": "Flower 8",
         "tags": [],
         "metadata": {},
@@ -519,7 +519,7 @@
         "group_materials": {}
       },
       {
-        "id": "4e6bfb9c-9f97-49c7-9143-9461ae841822",
+        "id": "d8da9e3c-8961-4d5d-ae50-d48be8cc9566",
         "name": "Flower 9",
         "tags": [],
         "metadata": {},
@@ -543,7 +543,7 @@
         "group_materials": {}
       },
       {
-        "id": "2bfaa055-d817-4462-98dd-835a505e693b",
+        "id": "20567fb4-eebe-4014-9552-487f837c2de1",
         "name": "Flower 10",
         "tags": [],
         "metadata": {},
@@ -567,7 +567,7 @@
         "group_materials": {}
       },
       {
-        "id": "7bd3efa9-0fc2-414b-9ab1-e20e6883c617",
+        "id": "89222b9b-07f0-4f45-801f-c41799c5ace6",
         "name": "Flower 12",
         "tags": [],
         "metadata": {},
@@ -591,7 +591,7 @@
         "group_materials": {}
       },
       {
-        "id": "e06df4c3-d453-4cc8-96b5-1c62dbf79544",
+        "id": "1af3de81-137c-4c9c-b691-e9ac2ad84cfb",
         "name": "Flower 13",
         "tags": [],
         "metadata": {},
@@ -615,7 +615,7 @@
         "group_materials": {}
       },
       {
-        "id": "d3c17c75-86ef-4796-8d4d-54038cf33085",
+        "id": "50acac84-9d8b-4b9d-bff4-c367646aaaed",
         "name": "Flower 14",
         "tags": [],
         "metadata": {},
@@ -639,7 +639,7 @@
         "group_materials": {}
       },
       {
-        "id": "43382d43-b305-4e1d-b30a-f2c8f73d2b4f",
+        "id": "00acdbc1-3342-4589-92c6-800751ae68c3",
         "name": "Flower 15",
         "tags": [],
         "metadata": {},
@@ -663,7 +663,7 @@
         "group_materials": {}
       },
       {
-        "id": "6f3829bd-8fc9-4643-bad7-256e9d13e31f",
+        "id": "25e614e6-d6a4-45ae-b9dc-86940eaf9f93",
         "name": "Flower 17",
         "tags": [],
         "metadata": {},
@@ -687,7 +687,7 @@
         "group_materials": {}
       },
       {
-        "id": "665a3789-3858-436e-9c6f-1dfb7ba4b5f6",
+        "id": "da3a7f0c-8619-41da-981c-564720330c4d",
         "name": "Sun",
         "tags": [],
         "metadata": {},
@@ -715,7 +715,7 @@
         "group_materials": {}
       },
       {
-        "id": "c7e15cea-9467-44cd-b2c4-75a0abb03f68",
+        "id": "e8c83b60-97e9-4d21-8e7b-8c8eafaf4374",
         "name": "Nova",
         "tags": [],
         "metadata": {},
@@ -735,7 +735,7 @@
         "group_materials": {}
       },
       {
-        "id": "2599d3a6-4027-4e47-9825-6d03c4c8910e",
+        "id": "5b196416-4fef-477d-bd14-ec860f699375",
         "name": "Nova head",
         "tags": [],
         "metadata": {},
@@ -751,11 +751,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "b66bd305-0c49-45fc-ac65-26a670cf76ed",
+        "material": "85493c6b-f09a-471f-b16a-13c025ce6764",
         "group_materials": {}
       },
       {
-        "id": "80018316-575d-43dd-afe7-8667e6c4d2a1",
+        "id": "4936271b-c731-4d0a-8903-88ac7017c8fe",
         "name": "Nova body",
         "tags": [],
         "metadata": {},
@@ -771,11 +771,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "b66bd305-0c49-45fc-ac65-26a670cf76ed",
+        "material": "85493c6b-f09a-471f-b16a-13c025ce6764",
         "group_materials": {}
       },
       {
-        "id": "d711fd80-cd32-4851-bdb6-9d9ef0be1f7a",
+        "id": "2bb40a39-4e9e-4870-8f7d-fed5cdc7e4df",
         "name": "Nova arm_r",
         "tags": [],
         "metadata": {},
@@ -791,11 +791,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "b66bd305-0c49-45fc-ac65-26a670cf76ed",
+        "material": "85493c6b-f09a-471f-b16a-13c025ce6764",
         "group_materials": {}
       },
       {
-        "id": "2c090bd8-7722-4a3e-a3f2-d1ca6a62b978",
+        "id": "c6b42b17-ee11-48ba-b365-b18643d2434f",
         "name": "Nova arm_l",
         "tags": [],
         "metadata": {},
@@ -811,11 +811,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "b66bd305-0c49-45fc-ac65-26a670cf76ed",
+        "material": "85493c6b-f09a-471f-b16a-13c025ce6764",
         "group_materials": {}
       },
       {
-        "id": "1e519eec-ef5a-4117-88d2-06fba303162a",
+        "id": "012ffae8-4905-45fe-889d-23430eb0ad25",
         "name": "Nova leg_r",
         "tags": [],
         "metadata": {},
@@ -831,11 +831,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "b66bd305-0c49-45fc-ac65-26a670cf76ed",
+        "material": "85493c6b-f09a-471f-b16a-13c025ce6764",
         "group_materials": {}
       },
       {
-        "id": "a2640706-f1f4-4213-bf1a-7a9b0c711882",
+        "id": "70e24183-e96f-40ab-b853-ae0a409e3dcb",
         "name": "Nova leg_l",
         "tags": [],
         "metadata": {},
@@ -851,11 +851,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "b66bd305-0c49-45fc-ac65-26a670cf76ed",
+        "material": "85493c6b-f09a-471f-b16a-13c025ce6764",
         "group_materials": {}
       },
       {
-        "id": "fc140ba4-cc1b-408a-85d9-8260d200946a",
+        "id": "e619599f-33bd-4395-ba2a-2b3bd7404ca2",
         "name": "Follow",
         "tags": [],
         "metadata": {},
@@ -883,7 +883,7 @@
         "group_materials": {}
       },
       {
-        "id": "7a3b6fa4-ccaf-4de7-b5f2-5b89759747ca",
+        "id": "b4233682-dfd4-4852-b724-d7d3ff44f070",
         "name": "Three-quarter",
         "tags": [],
         "metadata": {},
@@ -911,7 +911,7 @@
         "group_materials": {}
       },
       {
-        "id": "f1f1724f-838a-408a-9ea9-3e4be75a6453",
+        "id": "2b29b3f1-811a-446a-8b50-b5fd552994b9",
         "name": "Wide",
         "tags": [],
         "metadata": {},
@@ -939,7 +939,7 @@
         "group_materials": {}
       },
       {
-        "id": "9f83e3d6-5afb-4b26-9d77-b2d558de4deb",
+        "id": "7114c8a0-8f5d-46a1-9416-6995c580273f",
         "name": "Close",
         "tags": [],
         "metadata": {},
@@ -967,7 +967,7 @@
         "group_materials": {}
       },
       {
-        "id": "11a6fe5b-d059-44c3-92c8-19a7cad65792",
+        "id": "2005ae3c-e21f-469b-8529-8007de6d70be",
         "name": "Low",
         "tags": [],
         "metadata": {},
@@ -1019,21 +1019,21 @@
       },
       "items": [
         {
-          "id": "bd366db1-abb3-41bf-a56b-acfb50861874",
+          "id": "464f5da5-b610-4190-900f-6684af168c06",
           "kind": "rig",
           "name": "Nova Rig",
           "definition": {
-            "object": "c7e15cea-9467-44cd-b2c4-75a0abb03f68",
+            "object": "e8c83b60-97e9-4d21-8e7b-8c8eafaf4374",
             "joints": [
               {
-                "id": "0e9ad9a7-cb4d-4873-aaab-ab32bb3fa625",
+                "id": "8c25492d-faa9-4b40-859b-25a83b57b482",
                 "name": "Hips",
                 "parent": null,
                 "position": [0.0, 0.0, 0.75],
                 "rotation": [0.0, 0.0, 0.0, 1.0]
               },
               {
-                "id": "e133c773-3efd-4bda-8c6b-8b9e20d3cea1",
+                "id": "660b4860-0e06-42b0-8ea8-3b3d321ed01b",
                 "name": "Body",
                 "parent": "Hips",
                 "position": [0.0, 0.0, 0.0],
@@ -1041,7 +1041,7 @@
                 "tail": [0.0, 0.0, 0.75]
               },
               {
-                "id": "de4a0a55-5a7f-4d1e-b6b9-1134e0e2828d",
+                "id": "d434e590-9b5f-45fc-a99f-d209b9255753",
                 "name": "Head",
                 "parent": "Body",
                 "position": [0.0, 0.0, 0.75],
@@ -1049,7 +1049,7 @@
                 "tail": [0.0, 0.0, 0.5]
               },
               {
-                "id": "46b83159-5211-493b-81e6-7c656939d25d",
+                "id": "aebe390e-8344-4b7f-83a3-d0fdc0a89488",
                 "name": "Arm.R",
                 "parent": "Body",
                 "position": [-0.375, 0.0, 0.625],
@@ -1057,7 +1057,7 @@
                 "tail": [0.0, 0.0, -0.75]
               },
               {
-                "id": "a92a37c2-f7fa-4c8b-a74a-aa918460ed22",
+                "id": "f62c2473-2033-40b9-9100-0ba2696dc511",
                 "name": "Arm.L",
                 "parent": "Body",
                 "position": [0.375, 0.0, 0.625],
@@ -1065,7 +1065,7 @@
                 "tail": [0.0, 0.0, -0.75]
               },
               {
-                "id": "6990e5f3-322e-4c4b-9fad-bbed06454925",
+                "id": "24fe5b8f-bbd7-4bde-a246-f7c831169f95",
                 "name": "Leg.R",
                 "parent": "Hips",
                 "position": [-0.125, 0.0, 0.0],
@@ -1073,7 +1073,7 @@
                 "tail": [0.0, 0.0, -0.75]
               },
               {
-                "id": "e557dc0a-23b4-48c4-b677-8d801d1789b0",
+                "id": "7ab78a99-7432-47c7-8f02-751d03fdc292",
                 "name": "Leg.L",
                 "parent": "Hips",
                 "position": [0.125, 0.0, 0.0],
@@ -1083,34 +1083,34 @@
             ],
             "attachments": [
               {
-                "object": "2599d3a6-4027-4e47-9825-6d03c4c8910e",
+                "object": "5b196416-4fef-477d-bd14-ec860f699375",
                 "joint": "Head"
               },
               {
-                "object": "80018316-575d-43dd-afe7-8667e6c4d2a1",
+                "object": "4936271b-c731-4d0a-8903-88ac7017c8fe",
                 "joint": "Body"
               },
               {
-                "object": "d711fd80-cd32-4851-bdb6-9d9ef0be1f7a",
+                "object": "2bb40a39-4e9e-4870-8f7d-fed5cdc7e4df",
                 "joint": "Arm.R"
               },
               {
-                "object": "2c090bd8-7722-4a3e-a3f2-d1ca6a62b978",
+                "object": "c6b42b17-ee11-48ba-b365-b18643d2434f",
                 "joint": "Arm.L"
               },
               {
-                "object": "1e519eec-ef5a-4117-88d2-06fba303162a",
+                "object": "012ffae8-4905-45fe-889d-23430eb0ad25",
                 "joint": "Leg.R"
               },
               {
-                "object": "a2640706-f1f4-4213-bf1a-7a9b0c711882",
+                "object": "70e24183-e96f-40ab-b853-ae0a409e3dcb",
                 "joint": "Leg.L"
               }
             ]
           }
         },
         {
-          "id": "bc4e65c1-cd99-4b6c-8104-0f28f2f8961a",
+          "id": "1b1a07f0-7b13-4be3-997a-899460c66e29",
           "kind": "clip",
           "name": "Idle",
           "definition": {
@@ -1457,7 +1457,7 @@
           }
         },
         {
-          "id": "a983a4ea-6c91-4309-92a4-0fdbf4ead517",
+          "id": "01e178f8-6e10-465a-98bc-a739ee643607",
           "kind": "clip",
           "name": "Walk",
           "definition": {
@@ -2025,7 +2025,7 @@
           }
         },
         {
-          "id": "e48fb424-c4e5-4a67-8db9-86684dc15364",
+          "id": "24705e1c-09dd-4c4b-8a93-9c2d8711ae56",
           "kind": "clip",
           "name": "Run",
           "definition": {
@@ -2675,7 +2675,7 @@
           }
         },
         {
-          "id": "3ebcf92f-504f-428b-8241-894020fd3a51",
+          "id": "3db367bb-2d8b-49fe-beca-20521eb5985b",
           "kind": "clip",
           "name": "Jump",
           "definition": {
@@ -3706,7 +3706,7 @@
           }
         },
         {
-          "id": "cbba1ce4-06ba-4277-9b7d-c8b440364cb7",
+          "id": "48ef93dd-abca-467b-b1c2-b806bbb0d29e",
           "kind": "clip",
           "name": "Land",
           "definition": {
@@ -4894,25 +4894,25 @@
           }
         },
         {
-          "id": "218c9c7e-22b6-4f8d-a9c1-d52ebdf1b6e2",
+          "id": "46a5afd0-79d3-4772-b046-1e90541f40be",
           "kind": "binding",
           "name": "Nova",
           "definition": {
-            "object": "c7e15cea-9467-44cd-b2c4-75a0abb03f68",
-            "action": "bc4e65c1-cd99-4b6c-8104-0f28f2f8961a"
+            "object": "e8c83b60-97e9-4d21-8e7b-8c8eafaf4374",
+            "action": "1b1a07f0-7b13-4be3-997a-899460c66e29"
           }
         },
         {
-          "id": "9f27b73c-46b3-47bc-8249-12dcd0a5ec7c",
+          "id": "81b2b726-94a3-4e77-913b-d8b64e20f710",
           "kind": "binding",
           "name": "Follow",
           "definition": {
-            "object": "fc140ba4-cc1b-408a-85d9-8260d200946a",
-            "action": "739eb5be-27a5-44a4-a4ca-6d428900a369"
+            "object": "e619599f-33bd-4395-ba2a-2b3bd7404ca2",
+            "action": "4490bb47-f0b4-4cad-987a-4bbe0c66867d"
           }
         },
         {
-          "id": "739eb5be-27a5-44a4-a4ca-6d428900a369",
+          "id": "4490bb47-f0b4-4cad-987a-4bbe0c66867d",
           "kind": "clip",
           "name": "Follow Action",
           "definition": {
@@ -4988,18 +4988,18 @@
           }
         },
         {
-          "id": "a9c6ab50-7a59-4bf0-8cfd-e9ebe60d99fb",
+          "id": "b8bcf93f-4ba2-4d27-95a9-3b5715dba6e2",
           "kind": "constraints",
           "name": "Follow Constraints",
           "definition": {
-            "object": "fc140ba4-cc1b-408a-85d9-8260d200946a",
+            "object": "e619599f-33bd-4395-ba2a-2b3bd7404ca2",
             "constraints": [
               {
                 "name": "follow",
                 "type": "look_at",
                 "axis": "-y",
                 "target": {
-                  "object": "c7e15cea-9467-44cd-b2c4-75a0abb03f68"
+                  "object": "e8c83b60-97e9-4d21-8e7b-8c8eafaf4374"
                 },
                 "target_offset": [0.0, 0.0, 1.0],
                 "up": "+z",
@@ -5009,16 +5009,16 @@
           }
         },
         {
-          "id": "8fefd976-a5eb-4489-819b-0059dc642db1",
+          "id": "10b2cdd6-c046-4500-a532-7f30278c0fcc",
           "kind": "binding",
           "name": "Wide",
           "definition": {
-            "object": "f1f1724f-838a-408a-9ea9-3e4be75a6453",
-            "action": "fedf028f-b42c-472b-9261-f263ca6d71a8"
+            "object": "2b29b3f1-811a-446a-8b50-b5fd552994b9",
+            "action": "056f8b04-3334-4063-8222-65b1cb50bf77"
           }
         },
         {
-          "id": "fedf028f-b42c-472b-9261-f263ca6d71a8",
+          "id": "056f8b04-3334-4063-8222-65b1cb50bf77",
           "kind": "clip",
           "name": "Wide Action",
           "definition": {

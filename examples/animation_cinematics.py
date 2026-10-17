@@ -50,7 +50,9 @@ from animation_common import (  # noqa: E402
     lights,
     pixel_skin,
     pixel_world,
+    save_png,
     shadows,
+    use_backend,
     write_json,
 )
 
@@ -59,7 +61,7 @@ from aether3d.animation.fitting import fit_samples  # noqa: E402
 from aether3d.animation.frames import assemble_video, contact_sheet, render_frames  # noqa: E402
 from aether3d.materials.images import decode_png  # noqa: E402
 from aether3d.rendering.overlay import animation_overlay  # noqa: E402
-from aether3d.rendering.png import encode_png, write_png  # noqa: E402
+from aether3d.rendering.png import encode_png  # noqa: E402
 from aether3d.rendering.scene_data import world_matrices  # noqa: E402
 
 FPS = 24
@@ -155,19 +157,23 @@ def main(argv: list[str]) -> int:
     parser.add_argument("output", nargs="?", default=str(HERE / "output/animation/cinematics"))
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--no-video", action="store_true")
+    parser.add_argument("--backend", choices=("auto", "gpu", "cpu"), default="auto")
     args = parser.parse_args(argv)
+    use_backend(args.backend)
     out = Path(args.output)
     if (out / "frames").exists():
         shutil.rmtree(out / "frames")
     out.mkdir(parents=True, exist_ok=True)
-    w, h = (320, 180) if args.quick else (640, 360)
+    # --quick: a smoke test (small frames, every sixth frame)
+    w, h = (160, 90) if args.quick else (640, 360)
+    step = 6 if args.quick else 1
     s, nova, info = build()
     report = {"backend": backend(), "fps": FPS, "size": [w, h], **info, **measure(s, nova)}
     report["shots"] = s.animation.shots()
     s.save(out / "cinematics.aether")
     t0 = time.perf_counter()
     rep = render_frames(s, out / "frames", start=0.0, end=12.0, fps=FPS,
-                        step=2 if args.quick else 1, width=w, height=h, backend=backend(),
+                        step=step, width=w, height=h, backend=backend(),
                         shadows=shadows())  # fmt: skip
     report["render"] = {"frames": len(rep["frames"]), "seconds": round(time.perf_counter() - t0, 2)}
     frames = rep["frames"]
@@ -178,10 +184,15 @@ def main(argv: list[str]) -> int:
         f"{fps.timecode(f['time'])} {f['camera'] if isinstance(f['camera'], str) else 'blend'}"
         for f in pick
     ]
-    write_png(out / "sequence_sheet.png", contact_sheet(images, columns=4, labels=labels))
+    save_png(
+        out / "sequence_sheet.png",
+        contact_sheet(images, columns=4, labels=labels),
+        "a contact sheet of Aether3D renders (shot camera names and timecodes)",
+    )
     for cam, t0_, t1, _ in SHOTS:
         mid = 0.5 * (t0_ + t1)
-        s.render(time=mid, width=1280, height=720, backend=backend(), shadows=shadows()).save(
+        sw, sh = (320, 180) if args.quick else (1280, 720)
+        s.render(time=mid, width=sw, height=sh, backend=backend(), shadows=shadows()).save(
             out / f"shot_{cam.lower()}.png"
         )
     # Motion blur: the crane's fastest frame, without and with temporal sampling.
@@ -191,20 +202,22 @@ def main(argv: list[str]) -> int:
                              height=h, backend=backend(), shadows=shadows(),
                              motion_blur={"shutter": 0.5, "samples": 6})  # fmt: skip
     blurred = decode_png(Path(blur_rep["frames"][0]["path"]).read_bytes()).pixels[..., :3]
-    write_png(out / "motion_blur.png",
+    save_png(out / "motion_blur.png",
               contact_sheet([still, blurred], columns=2,
-                            labels=["no blur", "shutter 0.5, 6 samples"]))  # fmt: skip
+                            labels=["no blur", "shutter 0.5, 6 samples"]),
+             "one frame rendered by Aether3D without and with motion blur")  # fmt: skip
     report["motion_blur_ms"] = round(1000 * blur_rep["frames"][0]["seconds"], 1)
     if not args.no_video:
         try:
             report["video"] = assemble_video(out / "frames", "frame_{frame:05d}.png",
-                                             FPS if not args.quick else FPS / 2,
+                                             FPS / step,
                                              out / "cinematics.mp4", crf=26)  # fmt: skip
         except Exception as exc:  # (FFmpeg is optional)
             report["video"] = {"skipped": str(exc)}
     write_json(out / "report.json", report)
     print({k: report[k] for k in ("path_length_m", "run_speed_m_s", "orbit_radius_m",
                                   "vertigo_subject_height_fraction", "render")})  # fmt: skip
+    print("done")
     return 0
 
 

@@ -17,7 +17,7 @@
       "duration": 8.0,
       "cyclic": true,
       "travel": 0.0,
-      "seconds": 0.385,
+      "seconds": 0.39,
       "quaternion_joints": []
     },
     "Walk": {
@@ -31,7 +31,7 @@
       "duration": 1.1111111111111112,
       "cyclic": true,
       "travel": 0.9750000000000001,
-      "seconds": 0.104,
+      "seconds": 0.105,
       "quaternion_joints": []
     },
     "Run": {
@@ -45,7 +45,7 @@
       "duration": 0.7142857142857143,
       "cyclic": true,
       "travel": 2.25,
-      "seconds": 0.075,
+      "seconds": 0.076,
       "quaternion_joints": []
     },
     "Jump": {
@@ -59,7 +59,7 @@
       "duration": 1.989992618322741,
       "cyclic": false,
       "travel": 0.0,
-      "seconds": 0.154,
+      "seconds": 0.156,
       "quaternion_joints": []
     },
     "Land": {
@@ -73,19 +73,19 @@
       "duration": 3.8584353655456325,
       "cyclic": false,
       "travel": 0.0,
-      "seconds": 0.296,
+      "seconds": 0.299,
       "quaternion_joints": []
     }
   },
   "shots": [
     {
-      "camera": "f1f1724f-838a-408a-9ea9-3e4be75a6453",
+      "camera": "2b29b3f1-811a-446a-8b50-b5fd552994b9",
       "start": 0.0,
       "end": 1.1096375546923045,
       "name": "fall"
     },
     {
-      "camera": "9f83e3d6-5afb-4b26-9d77-b2d558de4deb",
+      "camera": "7114c8a0-8f5d-46a1-9416-6995c580273f",
       "start": 0.8096375546923045,
       "end": 2.509637554692304,
       "name": "impact",
@@ -95,7 +95,7 @@
       }
     },
     {
-      "camera": "11a6fe5b-d059-44c3-92c8-19a7cad65792",
+      "camera": "2005ae3c-e21f-469b-8529-8007de6d70be",
       "start": 2.509637554692304,
       "end": 3.8584353655456325,
       "name": "rise"
@@ -167,7 +167,7 @@
   "sequences": {
     "Idle": {
       "frames": 97,
-      "seconds": 1.51,
+      "seconds": 1.52,
       "ms_per_frame": 15.6,
       "backend": "gpu"
     },
@@ -179,8 +179,8 @@
     },
     "Run": {
       "frames": 35,
-      "seconds": 0.79,
-      "ms_per_frame": 22.6,
+      "seconds": 0.78,
+      "ms_per_frame": 22.3,
       "backend": "gpu"
     },
     "Jump": {
@@ -191,8 +191,8 @@
     },
     "Land": {
       "frames": 93,
-      "seconds": 9.83,
-      "ms_per_frame": 105.7,
+      "seconds": 9.87,
+      "ms_per_frame": 106.2,
       "backend": "gpu"
     }
   },
@@ -204,7 +204,7 @@
         "channels": 4,
         "clip": "Idle",
         "actions": [
-          "c7e15cea-9467-44cd-b2c4-75a0abb03f68"
+          "e8c83b60-97e9-4d21-8e7b-8c8eafaf4374"
         ],
         "fitted_channels": 4,
         "max_error": {
@@ -260,7 +260,7 @@
         "channels": 1,
         "clip": "Follow Action",
         "actions": [
-          "fc140ba4-cc1b-408a-85d9-8260d200946a"
+          "e619599f-33bd-4395-ba2a-2b3bd7404ca2"
         ],
         "fitted_channels": 0,
         "max_error": {
@@ -272,7 +272,7 @@
         "channels": 1,
         "clip": "Wide Action",
         "actions": [
-          "f1f1724f-838a-408a-9ea9-3e4be75a6453"
+          "2b29b3f1-811a-446a-8b50-b5fd552994b9"
         ],
         "fitted_channels": 1,
         "max_error": {

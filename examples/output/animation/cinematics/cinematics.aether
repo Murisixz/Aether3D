@@ -4,7 +4,7 @@
   "generator": "aether3d 0.17.0",
   "scene": {
     "name": "Cinematics",
-    "active_camera": "c936c355-bca4-4709-b97b-d43a229e4c45",
+    "active_camera": "d7bb5189-250c-4f1a-a87c-d43158379861",
     "world": {
       "background": [0.56, 0.74, 0.95],
       "ambient_color": [0.78, 0.86, 1.0],
@@ -31,7 +31,7 @@
     "geometry": [],
     "materials": [
       {
-        "id": "999c9821-be11-4823-8b75-f646562a57d2",
+        "id": "1954cd1a-b610-4830-8aef-b5e61a811ee9",
         "name": "Grass",
         "model": "standard",
         "base_color": [1.0, 1.0, 1.0],
@@ -48,14 +48,14 @@
         "double_sided": true,
         "textures": {
           "base_color": {
-            "texture": "662c09b2-c68c-4bd8-ba2c-bf6b801341aa",
+            "texture": "bb83fc61-948d-442a-847d-e0fd686f00da",
             "coordinates": "world",
             "projection": "xy"
           }
         }
       },
       {
-        "id": "1189c28f-a2f7-4b8c-8bf9-ca32ea65538f",
+        "id": "b44b292a-6cac-4851-8816-28012a0ac645",
         "name": "Bark",
         "model": "standard",
         "base_color": [1.0, 1.0, 1.0],
@@ -72,13 +72,13 @@
         "double_sided": true,
         "textures": {
           "base_color": {
-            "texture": "e3a5d2a4-a542-4f58-a5b2-4c4636c17435",
+            "texture": "ee2a243a-d590-4b72-97cd-2b90bf30ba2c",
             "coordinates": "object"
           }
         }
       },
       {
-        "id": "63bdb123-ce00-4fe9-b15b-e038628c5caa",
+        "id": "68a0c5c8-7fff-4552-a7ed-c40953f622be",
         "name": "Leaves",
         "model": "standard",
         "base_color": [1.0, 1.0, 1.0],
@@ -95,13 +95,13 @@
         "double_sided": true,
         "textures": {
           "base_color": {
-            "texture": "13fe29b4-71b3-48cc-b7a7-4c24e15b5247",
+            "texture": "a78c909c-56c5-4f8a-8691-59cbaadbc287",
             "coordinates": "object"
           }
         }
       },
       {
-        "id": "665a592a-298e-4bf5-b3f0-22b408365123",
+        "id": "72bc3b3c-5496-4719-a299-a519e1bf47b3",
         "name": "Nova skin",
         "model": "standard",
         "base_color": [1.0, 1.0, 1.0],
@@ -118,14 +118,14 @@
         "double_sided": true,
         "textures": {
           "base_color": {
-            "texture": "2e0831cf-2040-45b2-be11-d13833299b95"
+            "texture": "7327622b-eb70-4333-b2ea-c3c9402d8032"
           }
         }
       }
     ],
     "textures": [
       {
-        "id": "662c09b2-c68c-4bd8-ba2c-bf6b801341aa",
+        "id": "bb83fc61-948d-442a-847d-e0fd686f00da",
         "name": "grass",
         "type": "image",
         "embedded": {
@@ -138,7 +138,7 @@
         "color_space": "auto"
       },
       {
-        "id": "e3a5d2a4-a542-4f58-a5b2-4c4636c17435",
+        "id": "ee2a243a-d590-4b72-97cd-2b90bf30ba2c",
         "name": "bark",
         "type": "image",
         "embedded": {
@@ -151,7 +151,7 @@
         "color_space": "auto"
       },
       {
-        "id": "13fe29b4-71b3-48cc-b7a7-4c24e15b5247",
+        "id": "a78c909c-56c5-4f8a-8691-59cbaadbc287",
         "name": "leaves",
         "type": "image",
         "embedded": {
@@ -164,7 +164,7 @@
         "color_space": "auto"
       },
       {
-        "id": "2e0831cf-2040-45b2-be11-d13833299b95",
+        "id": "7327622b-eb70-4333-b2ea-c3c9402d8032",
         "name": "Nova skin",
         "type": "image",
         "embedded": {
@@ -179,7 +179,7 @@
     ],
     "objects": [
       {
-        "id": "7ea340e6-b494-40de-a041-cbfe1d48ff12",
+        "id": "17e9b3cd-dab2-4f90-b3d6-219b862dcea7",
         "name": "Ground",
         "tags": [],
         "metadata": {},
@@ -195,11 +195,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "999c9821-be11-4823-8b75-f646562a57d2",
+        "material": "1954cd1a-b610-4830-8aef-b5e61a811ee9",
         "group_materials": {}
       },
       {
-        "id": "22c94adc-a4fd-4add-95b7-ab3329137e4e",
+        "id": "2c228c1d-3de7-4894-bc6c-d0f7b192d653",
         "name": "Trunk 0",
         "tags": [],
         "metadata": {},
@@ -215,11 +215,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "1189c28f-a2f7-4b8c-8bf9-ca32ea65538f",
+        "material": "b44b292a-6cac-4851-8816-28012a0ac645",
         "group_materials": {}
       },
       {
-        "id": "375493da-e0f5-4dae-9964-6aa46cefe065",
+        "id": "18de7fa4-b999-4c11-9c53-4652215cf60e",
         "name": "Leaves 0",
         "tags": [],
         "metadata": {},
@@ -235,11 +235,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "63bdb123-ce00-4fe9-b15b-e038628c5caa",
+        "material": "68a0c5c8-7fff-4552-a7ed-c40953f622be",
         "group_materials": {}
       },
       {
-        "id": "cdd7e4e4-9233-45c8-baf3-42eacd762246",
+        "id": "356d8e98-1c30-442b-b66e-cc185673e12e",
         "name": "Trunk 1",
         "tags": [],
         "metadata": {},
@@ -255,11 +255,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "1189c28f-a2f7-4b8c-8bf9-ca32ea65538f",
+        "material": "b44b292a-6cac-4851-8816-28012a0ac645",
         "group_materials": {}
       },
       {
-        "id": "75267aeb-bd79-4b33-bf24-c62bbfe5f342",
+        "id": "3c262e03-a669-45b9-8ea4-7a49457a8841",
         "name": "Leaves 1",
         "tags": [],
         "metadata": {},
@@ -275,11 +275,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "63bdb123-ce00-4fe9-b15b-e038628c5caa",
+        "material": "68a0c5c8-7fff-4552-a7ed-c40953f622be",
         "group_materials": {}
       },
       {
-        "id": "190cbcd1-39f5-4eae-b2cb-70f76f4b7194",
+        "id": "5c576200-850b-4f38-9cdd-73a6fd8e46c1",
         "name": "Trunk 2",
         "tags": [],
         "metadata": {},
@@ -295,11 +295,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "1189c28f-a2f7-4b8c-8bf9-ca32ea65538f",
+        "material": "b44b292a-6cac-4851-8816-28012a0ac645",
         "group_materials": {}
       },
       {
-        "id": "3bff6e36-56bc-4c4f-bc7c-0573c9c26d50",
+        "id": "c663d64d-e943-4873-afa3-8fda2cb771ed",
         "name": "Leaves 2",
         "tags": [],
         "metadata": {},
@@ -315,11 +315,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "63bdb123-ce00-4fe9-b15b-e038628c5caa",
+        "material": "68a0c5c8-7fff-4552-a7ed-c40953f622be",
         "group_materials": {}
       },
       {
-        "id": "f5db8be6-46df-421e-b809-680687eed59a",
+        "id": "da4a89a5-6d79-4272-b69d-d62e23f90826",
         "name": "Trunk 3",
         "tags": [],
         "metadata": {},
@@ -335,11 +335,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "1189c28f-a2f7-4b8c-8bf9-ca32ea65538f",
+        "material": "b44b292a-6cac-4851-8816-28012a0ac645",
         "group_materials": {}
       },
       {
-        "id": "98ba84a5-595f-453a-aa4f-9900070fed0b",
+        "id": "610d0834-e402-4bd0-b70f-c9ade64f09c5",
         "name": "Leaves 3",
         "tags": [],
         "metadata": {},
@@ -355,11 +355,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "63bdb123-ce00-4fe9-b15b-e038628c5caa",
+        "material": "68a0c5c8-7fff-4552-a7ed-c40953f622be",
         "group_materials": {}
       },
       {
-        "id": "e416ab14-e4b9-4262-9eb4-c44ef7e1f214",
+        "id": "9c6c9193-2a13-4008-b910-e531aea71bc7",
         "name": "Trunk 4",
         "tags": [],
         "metadata": {},
@@ -375,11 +375,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "1189c28f-a2f7-4b8c-8bf9-ca32ea65538f",
+        "material": "b44b292a-6cac-4851-8816-28012a0ac645",
         "group_materials": {}
       },
       {
-        "id": "12a1ea0b-77fa-499c-a9a9-5d6505ac70b9",
+        "id": "e691c077-a261-4b64-92b9-93c74986f2f9",
         "name": "Leaves 4",
         "tags": [],
         "metadata": {},
@@ -395,11 +395,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "63bdb123-ce00-4fe9-b15b-e038628c5caa",
+        "material": "68a0c5c8-7fff-4552-a7ed-c40953f622be",
         "group_materials": {}
       },
       {
-        "id": "0886ffae-4f90-44f9-b4ad-8ec6539fc5cc",
+        "id": "48d54e20-9492-43e8-9698-ada2852e8f01",
         "name": "Flower 0",
         "tags": [],
         "metadata": {},
@@ -423,7 +423,7 @@
         "group_materials": {}
       },
       {
-        "id": "51df4adb-b989-4fc8-9755-2f31f98e43b8",
+        "id": "9f0dc5b0-7676-4f9b-98be-ee9eb323facd",
         "name": "Flower 2",
         "tags": [],
         "metadata": {},
@@ -447,7 +447,7 @@
         "group_materials": {}
       },
       {
-        "id": "3c442824-a436-41de-98db-48d2764da680",
+        "id": "0819a159-1df6-4ba0-82a7-7b2bbc89483a",
         "name": "Flower 3",
         "tags": [],
         "metadata": {},
@@ -471,7 +471,7 @@
         "group_materials": {}
       },
       {
-        "id": "0ec7195a-d0e2-4fae-88c0-9dd24506fa2e",
+        "id": "ed65d8d6-a933-4f81-a524-552a95e0dee9",
         "name": "Flower 6",
         "tags": [],
         "metadata": {},
@@ -495,7 +495,7 @@
         "group_materials": {}
       },
       {
-        "id": "92045be3-c312-49fc-ace8-17eefec5763c",
+        "id": "6a28b2ad-853e-45b8-93f1-befa9ff22c11",
         "name": "Flower 8",
         "tags": [],
         "metadata": {},
@@ -519,7 +519,7 @@
         "group_materials": {}
       },
       {
-        "id": "967fe70e-580d-40b1-a0ff-96edf97444bc",
+        "id": "a943e7a6-dd01-40e1-a80b-4810cd90b61e",
         "name": "Flower 9",
         "tags": [],
         "metadata": {},
@@ -543,7 +543,7 @@
         "group_materials": {}
       },
       {
-        "id": "ac12f59f-3608-4a70-a31b-a70d34d7910f",
+        "id": "0696c5c1-eb97-48d7-9e06-0efb3ac36876",
         "name": "Flower 10",
         "tags": [],
         "metadata": {},
@@ -567,7 +567,7 @@
         "group_materials": {}
       },
       {
-        "id": "d0680f41-e717-4dc4-b6bd-eb165ef9d26b",
+        "id": "d068e99f-a6ae-49cd-a80c-5ab10637174f",
         "name": "Flower 12",
         "tags": [],
         "metadata": {},
@@ -591,7 +591,7 @@
         "group_materials": {}
       },
       {
-        "id": "4786315d-706a-49e9-8afa-08e1000f0916",
+        "id": "2c523f07-38b1-438a-a4e6-e6a651f45748",
         "name": "Flower 13",
         "tags": [],
         "metadata": {},
@@ -615,7 +615,7 @@
         "group_materials": {}
       },
       {
-        "id": "0a7f5b97-2ca0-4642-bf11-1b08af5f27a1",
+        "id": "ae2770bb-c7d6-43b4-9da0-932c2c5ddad6",
         "name": "Flower 14",
         "tags": [],
         "metadata": {},
@@ -639,7 +639,7 @@
         "group_materials": {}
       },
       {
-        "id": "92748fdc-829b-4bd6-a9ad-1a2ff5247438",
+        "id": "b1bc8622-3c02-463f-afb7-80158caa8de2",
         "name": "Flower 15",
         "tags": [],
         "metadata": {},
@@ -663,7 +663,7 @@
         "group_materials": {}
       },
       {
-        "id": "d3c1b5c1-e016-4354-a685-2e154128564b",
+        "id": "5f9f7f63-dc4a-4c5b-9d29-df720f25a524",
         "name": "Flower 17",
         "tags": [],
         "metadata": {},
@@ -687,7 +687,7 @@
         "group_materials": {}
       },
       {
-        "id": "c42cb393-d230-4f94-9186-56dc8851b738",
+        "id": "9af44ad4-1b27-4c70-840a-13039e94846c",
         "name": "Sun",
         "tags": [],
         "metadata": {},
@@ -715,7 +715,7 @@
         "group_materials": {}
       },
       {
-        "id": "cfe7a6b7-e06c-4f3f-b454-5917f070389e",
+        "id": "ed49e490-7d4d-47fc-8135-22d1730af080",
         "name": "Nova",
         "tags": [],
         "metadata": {},
@@ -735,7 +735,7 @@
         "group_materials": {}
       },
       {
-        "id": "1d1726ad-fe7f-4304-be50-7b82d34f279f",
+        "id": "52ae795b-b102-4f53-aed8-90286b256272",
         "name": "Nova head",
         "tags": [],
         "metadata": {},
@@ -751,11 +751,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "665a592a-298e-4bf5-b3f0-22b408365123",
+        "material": "72bc3b3c-5496-4719-a299-a519e1bf47b3",
         "group_materials": {}
       },
       {
-        "id": "1bea76b2-73ad-49f1-91d7-6b6e8b6e10b0",
+        "id": "c440aa7f-8869-429e-a94f-e4a73995f691",
         "name": "Nova body",
         "tags": [],
         "metadata": {},
@@ -771,11 +771,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "665a592a-298e-4bf5-b3f0-22b408365123",
+        "material": "72bc3b3c-5496-4719-a299-a519e1bf47b3",
         "group_materials": {}
       },
       {
-        "id": "782302bc-bcbd-4f79-88cf-0ef2ecab6143",
+        "id": "5bc410e9-94d6-4cd2-b184-9a446e1f1a32",
         "name": "Nova arm_r",
         "tags": [],
         "metadata": {},
@@ -791,11 +791,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "665a592a-298e-4bf5-b3f0-22b408365123",
+        "material": "72bc3b3c-5496-4719-a299-a519e1bf47b3",
         "group_materials": {}
       },
       {
-        "id": "a1f4fe16-4863-4203-8993-31f631072378",
+        "id": "98973ab1-c00f-48ab-9ea1-d6f16eec1922",
         "name": "Nova arm_l",
         "tags": [],
         "metadata": {},
@@ -811,11 +811,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "665a592a-298e-4bf5-b3f0-22b408365123",
+        "material": "72bc3b3c-5496-4719-a299-a519e1bf47b3",
         "group_materials": {}
       },
       {
-        "id": "770f7390-b2be-43c4-892e-960bada1c71c",
+        "id": "b02e7177-0267-4cde-bc71-c67b67ca8352",
         "name": "Nova leg_r",
         "tags": [],
         "metadata": {},
@@ -831,11 +831,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "665a592a-298e-4bf5-b3f0-22b408365123",
+        "material": "72bc3b3c-5496-4719-a299-a519e1bf47b3",
         "group_materials": {}
       },
       {
-        "id": "c980d22d-259f-409f-b4b0-a72876d7f60c",
+        "id": "889f439b-2682-4724-96b7-a2fedc55c4fc",
         "name": "Nova leg_l",
         "tags": [],
         "metadata": {},
@@ -851,11 +851,11 @@
         "light": null,
         "appearance": null,
         "visible": true,
-        "material": "665a592a-298e-4bf5-b3f0-22b408365123",
+        "material": "72bc3b3c-5496-4719-a299-a519e1bf47b3",
         "group_materials": {}
       },
       {
-        "id": "c936c355-bca4-4709-b97b-d43a229e4c45",
+        "id": "d7bb5189-250c-4f1a-a87c-d43158379861",
         "name": "Crane",
         "tags": [],
         "metadata": {},
@@ -883,7 +883,7 @@
         "group_materials": {}
       },
       {
-        "id": "8a6f77fe-f91a-40a6-ac48-ee39cbbe5155",
+        "id": "ca6de807-9f8d-4216-be74-e630dbb258f4",
         "name": "Orbit",
         "tags": [],
         "metadata": {},
@@ -911,7 +911,7 @@
         "group_materials": {}
       },
       {
-        "id": "de31405d-15a5-495f-8866-86d919054558",
+        "id": "591d7b49-a477-49f7-9bb1-021960ef073d",
         "name": "Vertigo",
         "tags": [],
         "metadata": {},
@@ -939,7 +939,7 @@
         "group_materials": {}
       },
       {
-        "id": "eaf69aae-7e10-4730-b53a-c689ab2f251a",
+        "id": "e24a86a0-1dad-456d-a945-23ed680dbe0e",
         "name": "Follow",
         "tags": [],
         "metadata": {},
@@ -991,21 +991,21 @@
       },
       "items": [
         {
-          "id": "8400c31d-4601-49ee-992e-e09f8e73cce8",
+          "id": "0f93e058-4a95-40c0-8ff7-b7911315abc0",
           "kind": "rig",
           "name": "Nova Rig",
           "definition": {
-            "object": "cfe7a6b7-e06c-4f3f-b454-5917f070389e",
+            "object": "ed49e490-7d4d-47fc-8135-22d1730af080",
             "joints": [
               {
-                "id": "692226a9-54fd-4193-9d8c-6b3df7128d0d",
+                "id": "d6a812af-945f-43c6-84c4-1e6cbc7febb7",
                 "name": "Hips",
                 "parent": null,
                 "position": [0.0, 0.0, 0.75],
                 "rotation": [0.0, 0.0, 0.0, 1.0]
               },
               {
-                "id": "b50861a8-4b78-4675-8f7f-6467ec479665",
+                "id": "1db00384-a4c5-4c90-ae37-5a4c186d0745",
                 "name": "Body",
                 "parent": "Hips",
                 "position": [0.0, 0.0, 0.0],
@@ -1013,7 +1013,7 @@
                 "tail": [0.0, 0.0, 0.75]
               },
               {
-                "id": "68fffcf6-cedf-42b9-ba06-98dcd882e2b6",
+                "id": "74d5b952-d094-4b20-8b72-35c8aa5f2241",
                 "name": "Head",
                 "parent": "Body",
                 "position": [0.0, 0.0, 0.75],
@@ -1021,7 +1021,7 @@
                 "tail": [0.0, 0.0, 0.5]
               },
               {
-                "id": "cfb93460-94a5-4529-8e62-503420705312",
+                "id": "d5242d30-b282-4305-9dc3-c8bc0fa65917",
                 "name": "Arm.R",
                 "parent": "Body",
                 "position": [-0.375, 0.0, 0.625],
@@ -1029,7 +1029,7 @@
                 "tail": [0.0, 0.0, -0.75]
               },
               {
-                "id": "ac61ab84-65cc-457b-9553-fe6e261e7016",
+                "id": "a1cc3727-f956-49bd-a048-ab5ec7c7b3d2",
                 "name": "Arm.L",
                 "parent": "Body",
                 "position": [0.375, 0.0, 0.625],
@@ -1037,7 +1037,7 @@
                 "tail": [0.0, 0.0, -0.75]
               },
               {
-                "id": "9b2a82de-9001-4f76-b065-cdaab1041b26",
+                "id": "5a7c9807-9b60-4c82-9be1-d82702488431",
                 "name": "Leg.R",
                 "parent": "Hips",
                 "position": [-0.125, 0.0, 0.0],
@@ -1045,7 +1045,7 @@
                 "tail": [0.0, 0.0, -0.75]
               },
               {
-                "id": "1f816f8a-6e54-4244-b7ff-f02cdbb8f1ac",
+                "id": "5928f34d-7e4e-4f4e-98c4-bf35163b9eda",
                 "name": "Leg.L",
                 "parent": "Hips",
                 "position": [0.125, 0.0, 0.0],
@@ -1055,34 +1055,34 @@
             ],
             "attachments": [
               {
-                "object": "1d1726ad-fe7f-4304-be50-7b82d34f279f",
+                "object": "52ae795b-b102-4f53-aed8-90286b256272",
                 "joint": "Head"
               },
               {
-                "object": "1bea76b2-73ad-49f1-91d7-6b6e8b6e10b0",
+                "object": "c440aa7f-8869-429e-a94f-e4a73995f691",
                 "joint": "Body"
               },
               {
-                "object": "782302bc-bcbd-4f79-88cf-0ef2ecab6143",
+                "object": "5bc410e9-94d6-4cd2-b184-9a446e1f1a32",
                 "joint": "Arm.R"
               },
               {
-                "object": "a1f4fe16-4863-4203-8993-31f631072378",
+                "object": "98973ab1-c00f-48ab-9ea1-d6f16eec1922",
                 "joint": "Arm.L"
               },
               {
-                "object": "770f7390-b2be-43c4-892e-960bada1c71c",
+                "object": "b02e7177-0267-4cde-bc71-c67b67ca8352",
                 "joint": "Leg.R"
               },
               {
-                "object": "c980d22d-259f-409f-b4b0-a72876d7f60c",
+                "object": "889f439b-2682-4724-96b7-a2fedc55c4fc",
                 "joint": "Leg.L"
               }
             ]
           }
         },
         {
-          "id": "a60ff4eb-328d-4a6d-81ff-1eec2f3b864b",
+          "id": "22c397dc-a4bb-4577-8aab-b4f7142e46b2",
           "kind": "clip",
           "name": "Idle",
           "definition": {
@@ -1447,7 +1447,7 @@
           }
         },
         {
-          "id": "dac3079d-074d-4b02-bea2-261a6b6bb29f",
+          "id": "03d08cb7-0b48-476f-8cb1-9dc856f009e0",
           "kind": "clip",
           "name": "Wave",
           "definition": {
@@ -1886,7 +1886,7 @@
           }
         },
         {
-          "id": "06c7688a-45a5-437c-9b9d-e9f8f97077fb",
+          "id": "a44127e5-35b7-475c-9dc4-8cb1734ae02d",
           "kind": "clip",
           "name": "Run",
           "definition": {
@@ -2526,12 +2526,12 @@
           }
         },
         {
-          "id": "b60f6848-a0f5-46ca-a29f-84b9f988ea20",
+          "id": "60c7143c-6348-4056-8d40-18e1deadd459",
           "kind": "binding",
           "name": "Nova",
           "definition": {
-            "object": "cfe7a6b7-e06c-4f3f-b454-5917f070389e",
-            "action": "a60ff4eb-328d-4a6d-81ff-1eec2f3b864b",
+            "object": "ed49e490-7d4d-47fc-8135-22d1730af080",
+            "action": "22c397dc-a4bb-4577-8aab-b4f7142e46b2",
             "layers": [
               {
                 "name": "gestures",
@@ -2545,7 +2545,7 @@
                 ],
                 "strips": [
                   {
-                    "clip": "dac3079d-074d-4b02-bea2-261a6b6bb29f",
+                    "clip": "03d08cb7-0b48-476f-8cb1-9dc856f009e0",
                     "name": "strip",
                     "start": 3.0,
                     "blend_in": 0.3,
@@ -2558,7 +2558,7 @@
                 "mode": "replace",
                 "strips": [
                   {
-                    "clip": "06c7688a-45a5-437c-9b9d-e9f8f97077fb",
+                    "clip": "a44127e5-35b7-475c-9dc4-8cb1734ae02d",
                     "name": "strip",
                     "start": 8.0,
                     "repeat": 6.0,
@@ -2570,7 +2570,7 @@
           }
         },
         {
-          "id": "93ee8d4d-ede6-4791-a111-d26b2e98e38b",
+          "id": "8e7af7dc-0a7f-42c5-910d-752a79ac5e65",
           "kind": "path",
           "name": "Track",
           "definition": {
@@ -2585,11 +2585,11 @@
           }
         },
         {
-          "id": "056be482-043b-4c07-8d3c-030daa01bcdd",
+          "id": "a31d67e3-eaae-4648-903a-16844e936f78",
           "kind": "constraints",
           "name": "Nova Constraints",
           "definition": {
-            "object": "cfe7a6b7-e06c-4f3f-b454-5917f070389e",
+            "object": "ed49e490-7d4d-47fc-8135-22d1730af080",
             "constraints": [
               {
                 "name": "run",
@@ -2598,14 +2598,14 @@
                 "follow": true,
                 "loop": false,
                 "offset": 0.0,
-                "path": "93ee8d4d-ede6-4791-a111-d26b2e98e38b",
+                "path": "8e7af7dc-0a7f-42c5-910d-752a79ac5e65",
                 "up": "+z"
               }
             ]
           }
         },
         {
-          "id": "f59f264f-1ef7-44cc-ad52-d2282ba9e9f8",
+          "id": "e6f277f8-f0f8-4cfa-9266-6f2d53047e47",
           "kind": "path",
           "name": "Crane path",
           "definition": {
@@ -2619,11 +2619,11 @@
           }
         },
         {
-          "id": "e391e5fb-4fe8-4c59-a6e8-5260f286c28b",
+          "id": "da02f16f-29cc-46f4-a321-2d6a5f1db94e",
           "kind": "constraints",
           "name": "Crane Constraints",
           "definition": {
-            "object": "c936c355-bca4-4709-b97b-d43a229e4c45",
+            "object": "d7bb5189-250c-4f1a-a87c-d43158379861",
             "constraints": [
               {
                 "name": "fly",
@@ -2632,7 +2632,7 @@
                 "follow": false,
                 "loop": false,
                 "offset": 0.0,
-                "path": "f59f264f-1ef7-44cc-ad52-d2282ba9e9f8",
+                "path": "e6f277f8-f0f8-4cfa-9266-6f2d53047e47",
                 "up": "+z"
               },
               {
@@ -2640,7 +2640,7 @@
                 "type": "look_at",
                 "axis": "-y",
                 "target": {
-                  "object": "cfe7a6b7-e06c-4f3f-b454-5917f070389e"
+                  "object": "ed49e490-7d4d-47fc-8135-22d1730af080"
                 },
                 "target_offset": [0.0, 0.0, 1.0],
                 "up": "+z",
@@ -2650,16 +2650,16 @@
           }
         },
         {
-          "id": "65a6c10b-1e6b-4f18-8c25-fa9c7d6c169e",
+          "id": "4b17238d-0628-4692-bbe7-df4235cf6c40",
           "kind": "binding",
           "name": "Crane",
           "definition": {
-            "object": "c936c355-bca4-4709-b97b-d43a229e4c45",
-            "action": "93307f56-64f2-4b24-b173-628fde66cb60"
+            "object": "d7bb5189-250c-4f1a-a87c-d43158379861",
+            "action": "fcb29bd6-1ba3-4e87-b1c7-33b7a31cb5da"
           }
         },
         {
-          "id": "93307f56-64f2-4b24-b173-628fde66cb60",
+          "id": "fcb29bd6-1ba3-4e87-b1c7-33b7a31cb5da",
           "kind": "clip",
           "name": "Crane Action",
           "definition": {
@@ -2678,7 +2678,7 @@
           }
         },
         {
-          "id": "d39ae558-919d-4d85-a94f-abebc216140d",
+          "id": "718fad7f-8373-4663-b5df-ef51ed78f420",
           "kind": "path",
           "name": "Orbit Orbit",
           "definition": {
@@ -2690,11 +2690,11 @@
           }
         },
         {
-          "id": "a20f62fd-943a-4233-b332-6544732f2f19",
+          "id": "3ba2d1cd-6b4f-47b8-aa0c-4be598ced4b8",
           "kind": "constraints",
           "name": "Orbit Constraints",
           "definition": {
-            "object": "8a6f77fe-f91a-40a6-ac48-ee39cbbe5155",
+            "object": "ca6de807-9f8d-4216-be74-e630dbb258f4",
             "constraints": [
               {
                 "name": "orbit",
@@ -2703,7 +2703,7 @@
                 "follow": false,
                 "loop": true,
                 "offset": 0.0,
-                "path": "d39ae558-919d-4d85-a94f-abebc216140d",
+                "path": "718fad7f-8373-4663-b5df-ef51ed78f420",
                 "up": "+z"
               },
               {
@@ -2711,7 +2711,7 @@
                 "type": "look_at",
                 "axis": "-y",
                 "target": {
-                  "object": "cfe7a6b7-e06c-4f3f-b454-5917f070389e"
+                  "object": "ed49e490-7d4d-47fc-8135-22d1730af080"
                 },
                 "target_offset": [0.0, 0.0, 0.0],
                 "up": "+z",
@@ -2721,16 +2721,16 @@
           }
         },
         {
-          "id": "8eea2659-7afd-4890-af92-8db0b8eca8cb",
+          "id": "7671cf15-b177-4809-8ca6-88d87e71720c",
           "kind": "binding",
           "name": "Orbit",
           "definition": {
-            "object": "8a6f77fe-f91a-40a6-ac48-ee39cbbe5155",
-            "action": "a3d61d86-7a52-47cc-b269-cc6662f6ed60"
+            "object": "ca6de807-9f8d-4216-be74-e630dbb258f4",
+            "action": "325704ca-5f65-439c-83a9-d0fa4a20155c"
           }
         },
         {
-          "id": "a3d61d86-7a52-47cc-b269-cc6662f6ed60",
+          "id": "325704ca-5f65-439c-83a9-d0fa4a20155c",
           "kind": "clip",
           "name": "Orbit Action",
           "definition": {
@@ -2749,16 +2749,16 @@
           }
         },
         {
-          "id": "371d325d-eac5-4a83-8e60-25188fd1a421",
+          "id": "3d8389b3-66af-40cb-ae77-c4e671d68819",
           "kind": "binding",
           "name": "Vertigo",
           "definition": {
-            "object": "de31405d-15a5-495f-8866-86d919054558",
-            "action": "2959a903-20b9-4a94-be38-065c47faa595"
+            "object": "591d7b49-a477-49f7-9bb1-021960ef073d",
+            "action": "b170fe9a-cdd4-41ba-9e82-644d2844c9a1"
           }
         },
         {
-          "id": "2959a903-20b9-4a94-be38-065c47faa595",
+          "id": "b170fe9a-cdd4-41ba-9e82-644d2844c9a1",
           "kind": "clip",
           "name": "Vertigo Action",
           "definition": {
@@ -2829,16 +2829,16 @@
           }
         },
         {
-          "id": "fef44765-610b-4679-bc5a-e816e0a1626d",
+          "id": "8e57696b-3254-4d59-9573-40fd49c83322",
           "kind": "binding",
           "name": "Follow",
           "definition": {
-            "object": "eaf69aae-7e10-4730-b53a-c689ab2f251a",
-            "action": "1bfd0f5a-5495-400f-9c8b-90e34a342ff4"
+            "object": "e24a86a0-1dad-456d-a945-23ed680dbe0e",
+            "action": "c4086c9f-afa7-4f18-a4ef-d27c2f0d5d81"
           }
         },
         {
-          "id": "1bfd0f5a-5495-400f-9c8b-90e34a342ff4",
+          "id": "c4086c9f-afa7-4f18-a4ef-d27c2f0d5d81",
           "kind": "clip",
           "name": "Follow Action",
           "definition": {
@@ -2936,18 +2936,18 @@
           }
         },
         {
-          "id": "3ef38574-3010-4a13-951e-e0b0460260a4",
+          "id": "bd5c74cb-5827-4930-ae97-e0e23d466fc6",
           "kind": "constraints",
           "name": "Follow Constraints",
           "definition": {
-            "object": "eaf69aae-7e10-4730-b53a-c689ab2f251a",
+            "object": "e24a86a0-1dad-456d-a945-23ed680dbe0e",
             "constraints": [
               {
                 "name": "follow",
                 "type": "look_at",
                 "axis": "-y",
                 "target": {
-                  "object": "cfe7a6b7-e06c-4f3f-b454-5917f070389e"
+                  "object": "ed49e490-7d4d-47fc-8135-22d1730af080"
                 },
                 "target_offset": [0.0, 0.0, 1.0],
                 "up": "+z",
@@ -2957,19 +2957,19 @@
           }
         },
         {
-          "id": "7e6464fe-927a-406c-a6ba-0a24d9bc3f58",
+          "id": "93425f45-aa44-4539-945f-d3c52c175873",
           "kind": "sequence",
           "name": "Sequence",
           "definition": {
             "shots": [
               {
-                "camera": "c936c355-bca4-4709-b97b-d43a229e4c45",
+                "camera": "d7bb5189-250c-4f1a-a87c-d43158379861",
                 "start": 0.0,
                 "end": 3.0,
                 "name": "crane"
               },
               {
-                "camera": "8a6f77fe-f91a-40a6-ac48-ee39cbbe5155",
+                "camera": "ca6de807-9f8d-4216-be74-e630dbb258f4",
                 "start": 2.6,
                 "end": 5.5,
                 "name": "orbit",
@@ -2979,13 +2979,13 @@
                 }
               },
               {
-                "camera": "de31405d-15a5-495f-8866-86d919054558",
+                "camera": "591d7b49-a477-49f7-9bb1-021960ef073d",
                 "start": 5.5,
                 "end": 8.0,
                 "name": "vertigo"
               },
               {
-                "camera": "eaf69aae-7e10-4730-b53a-c689ab2f251a",
+                "camera": "e24a86a0-1dad-456d-a945-23ed680dbe0e",
                 "start": 7.7,
                 "end": 12.0,
                 "name": "follow",

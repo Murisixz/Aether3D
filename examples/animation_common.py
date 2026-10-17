@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 
 from aether3d import Mesh, Scene
-from aether3d.rendering.png import encode_png
+from aether3d.rendering.png import encode_png, write_png
 
 ROOT = Path(__file__).resolve().parent.parent
 VALIDATOR = ROOT / "tools" / "gltf-validator"
@@ -365,14 +365,39 @@ def _portable(value: Any) -> Any:
     return value
 
 
+def save_png(path: Path, image: Any, description: str) -> None:
+    """Write an image composed from Aether3D's own output (a contact sheet, a graph, a
+    comparison), tagged as its renders are: ``Software`` names Aether3D and
+    ``Description`` says what the image is."""
+    from aether3d import __version__
+
+    text = {"Software": f"Aether3D {__version__}", "Description": description}
+    write_png(path, image, text=text)
+
+
 def write_json(path: Path, data: Any) -> None:
     text = json.dumps(_portable(data), indent=2, sort_keys=False)
     path.write_text(text + "\n", encoding="utf-8")
 
 
-@functools.cache
+_CHOSEN: list[str] = []  # (set by use_backend)
+
+
+def use_backend(name: str) -> None:
+    """Render on ``gpu`` or ``cpu``, or (``auto``) on the GPU when one works here."""
+    if name not in ("auto", "gpu", "cpu"):
+        raise ValueError("backend is auto, gpu or cpu")
+    _CHOSEN[:] = [] if name == "auto" else [name]
+
+
 def backend() -> str:
-    """``gpu`` when a GPU renders here, else ``cpu`` (the report says which)."""
+    """The renderer the showcases use (the reports say which): the one chosen with
+    :func:`use_backend`, else ``gpu`` when a GPU renders here, else ``cpu``."""
+    return _CHOSEN[0] if _CHOSEN else _detected()
+
+
+@functools.cache
+def _detected() -> str:
     try:
         from aether3d.rendering.gpu import gpu_status
 

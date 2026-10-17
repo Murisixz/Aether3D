@@ -4,7 +4,7 @@
     "tool": "capabilities",
     "arguments": {},
     "ok": true,
-    "ms": 7.0,
+    "ms": 8.1,
     "result": {
       "topic": "overview",
       "aether3d": "0.17.0",
@@ -72,7 +72,7 @@
       "name": "Robot walk"
     },
     "ok": true,
-    "ms": 2.2,
+    "ms": 2.3,
     "result": {
       "scene": {
         "open": true,
@@ -358,7 +358,7 @@
       }
     },
     "ok": true,
-    "ms": 12.5,
+    "ms": 9.4,
     "result": {
       "ok": true,
       "mode": "execute",
@@ -396,7 +396,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "ad2d78f4-1eb6-4c5c-8daa-7fd778c72a81",
+              "id": "44289552-0503-411b-8503-0326cd9ef942",
               "name": "Ground"
             }
           ]
@@ -405,7 +405,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "a5033fa9-c4f6-48aa-baf3-ea67930276ab",
+              "id": "1dd1871a-ea95-43d9-959c-b490b8ec509a",
               "name": "Sun"
             }
           ]
@@ -414,7 +414,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+              "id": "2504304f-9036-4720-b4c4-ffdbe5250626",
               "name": "Cam"
             }
           ]
@@ -423,7 +423,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "id": "5c496859-c925-4664-8be8-986cb43ac788",
               "name": "Hero"
             }
           ]
@@ -432,7 +432,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "20501b3e-9bab-4028-8687-1406d9480828",
+              "id": "bbbcd3e4-e12f-472f-ae3b-cdff49109370",
               "name": "Pelvis"
             }
           ]
@@ -441,7 +441,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "19d21770-605d-4878-84a9-2dfba3b33d70",
+              "id": "b5eac05b-b9f7-4340-9aa9-490ed7d68fe0",
               "name": "Torso"
             }
           ]
@@ -450,7 +450,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "cd0d6010-9d21-4ea3-9894-aad33c30ad0b",
+              "id": "8f24a04c-4879-46c8-85e1-92c0b1ad885c",
               "name": "Head"
             }
           ]
@@ -459,7 +459,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "ed4f1b78-1470-4bd3-81f2-29501178a287",
+              "id": "40f566f8-f03e-4e4b-bb5c-1eb5782f8279",
               "name": "UpperArm.L"
             }
           ]
@@ -468,7 +468,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "c39080a7-5914-44b1-b717-f42c4da09bce",
+              "id": "0d8ccd10-fba3-4608-a945-452c122bf1f7",
               "name": "ForeArm.L"
             }
           ]
@@ -477,7 +477,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "15f0c40b-f247-4dd8-92b6-b2de59f8d22c",
+              "id": "e61e6dcb-88df-42cf-8903-852191d0066d",
               "name": "Thigh.L"
             }
           ]
@@ -486,7 +486,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "c4fe2836-17b3-4ba1-bdd8-3cab0046cf58",
+              "id": "a7fe6470-259e-45a4-b867-d9719e14b13f",
               "name": "Shin.L"
             }
           ]
@@ -495,7 +495,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "f9f2ed20-975f-46ff-a1bd-05abacd268f2",
+              "id": "f1d84166-a0a4-4a43-b146-ba26f7edb3b1",
               "name": "Foot.L"
             }
           ]
@@ -504,7 +504,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "f28978fb-3f86-4c23-91a5-00e0cfec16e6",
+              "id": "d2892f39-7afb-4356-ac3e-176dd3a065c2",
               "name": "UpperArm.R"
             }
           ]
@@ -513,7 +513,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "76081918-c06a-41d4-a058-f9e74749ac83",
+              "id": "f4d603e0-3eb9-4361-9ed6-43e808d82401",
               "name": "ForeArm.R"
             }
           ]
@@ -522,7 +522,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "7128cf84-8a63-4b0c-bc53-b4198d80bd9c",
+              "id": "23cf4eeb-9e53-4d53-9ae5-eac1ed2db6b6",
               "name": "Thigh.R"
             }
           ]
@@ -531,7 +531,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "01cfd5c3-6189-4b45-ba64-dad942062927",
+              "id": "338724ae-8e03-4d6e-914b-45aa3376d7a9",
               "name": "Shin.R"
             }
           ]
@@ -540,7 +540,7 @@
           "count": 1,
           "objects": [
             {
-              "id": "4d6f8b06-7fc0-4c01-8c38-f5b1b36c54f3",
+              "id": "ff71bf8e-370b-4d2c-a4d1-1ec735afe7d5",
               "name": "Foot.R"
             }
           ]
@@ -550,14 +550,14 @@
       "queries": [],
       "warnings": [],
       "timings": {
-        "parse": 0.000763,
-        "bind": 0.008562,
-        "resources": 9e-06,
-        "objects": 0.000259,
-        "operations": 0.000554,
-        "apply": 0.000889,
+        "parse": 0.000555,
+        "bind": 0.005696,
+        "resources": 1e-05,
+        "objects": 0.000262,
+        "operations": 0.00057,
+        "apply": 0.00091,
         "queries": 1e-06,
-        "total": 0.010226
+        "total": 0.007175
       },
       "scene": {
         "open": true,
@@ -905,7 +905,7 @@
       }
     },
     "ok": true,
-    "ms": 848.0,
+    "ms": 843.2,
     "result": {
       "format": "aether3d.animation-script",
       "operations": [
@@ -914,7 +914,7 @@
         },
         {
           "op": "add_rig",
-          "result": "Rig(object='6cb108c8-0a16-4c33-aeba-45ab9786dbab', joints=(Joint(id='a85d040a-61e2-40ec-94a5-dd9b0d8d59b1', name='Hips', parent=-1, position=(0.0, 0.0, 0.95), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='2e322e86-f014-47bc-8057-051d5dfe045a', name='Spine', parent=0, position=(0.0, 0.0, 0.12), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='96c59b5e-07d4-41cd-ba4e-490bb093c39f', name='Chest', parent=1, position=(0.0, 0.0, 0.2), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='791fb741-e6bf-4063-a7bb-c4be5945f852', name='Neck', parent=2, position=(0.0, 0.0, 0.22), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='50b3117b-a1b1-4fea-a42a-4566e9d073ea', name='Head', parent=3, position=(0.0, 0.0, 0.1), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, 0.24), limits='null'), Joint(id='729c4d1e-a41f-4422-8ba2-0226374fdf71', name='UpperArm.L', parent=2, position=(0.21, 0.0, 0.17), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.29), limits='null'), Joint(id='bf20c060-a900-4ff4-9eb7-06845c9f03e0', name='ForeArm.L', parent=5, position=(0.0, 0.0, -0.29), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.25), limits='null'), Joint(id='c949be85-5c7c-4872-a320-d69b3754b2ef', name='Hand.L', parent=6, position=(0.0, 0.0, -0.25), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='7e55af3b-4328-4186-9657-e7507e81e4b4', name='Thigh.L', parent=0, position=(0.1, 0.0, -0.02), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.44), limits='null'), Joint(id='ba021c00-94a5-4236-9b9b-2e79b390390b', name='Shin.L', parent=8, position=(0.0, 0.0, -0.44), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.41), limits='null'), Joint(id='725a73fc-cd9e-4909-93a7-580ccb25d099', name='Foot.L', parent=9, position=(0.0, 0.0, -0.41), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, -0.15, -0.08), limits='null'), Joint(id='6a97837f-a254-4654-8183-caa5868089e5', name='UpperArm.R', parent=2, position=(-0.21, 0.0, 0.17), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.29), limits='null'), Joint(id='555e225f-bf57-4ccf-ab9f-8a9755f79385', name='ForeArm.R', parent=11, position=(0.0, 0.0, -0.29), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.25), limits='null'), Joint(id='97e6d029-2d15-41f4-a21b-2345bbd1271a', name='Hand.R', parent=12, position=(0.0, 0.0, -0.25), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='10529b45-e923-43cb-82b0-ee207e76a55a', name='Thigh.R', parent=0, position=(-0.1, 0.0, -0.02), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.44), limits='null'), Joint(id='d4e8d232-9de4-480e-a4fa-73469b54eb1e', name='Shin.R', parent=14, position=(0.0, 0.0, -0.44), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.41), limits='null'), Joint(id='565f72b1-0b5d-43f2-ae9d-6690fb23d18f', name='Foot.R', parent=15, position=(0.0, 0.0, -0.41), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, -0.15, -0.08), limits='null')), attachments=(), constraints=(), mirror=(('.L', '.R'), ('Left', 'Right'), ('_l', '_r')))"
+          "result": "Rig(object='5c496859-c925-4664-8be8-986cb43ac788', joints=(Joint(id='56f132a9-b70d-441b-bc3d-bf5a51dd4166', name='Hips', parent=-1, position=(0.0, 0.0, 0.95), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='3158358d-c641-4f47-a4c2-b3519cd7da37', name='Spine', parent=0, position=(0.0, 0.0, 0.12), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='875d6211-9e46-41ac-b78c-3b4292863fe6', name='Chest', parent=1, position=(0.0, 0.0, 0.2), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='53a329cb-4165-49d5-8b88-4ea88d48ef7b', name='Neck', parent=2, position=(0.0, 0.0, 0.22), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='23b16bc7-fd84-404b-8cc6-94fb4bfaf4da', name='Head', parent=3, position=(0.0, 0.0, 0.1), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, 0.24), limits='null'), Joint(id='445d17aa-7f49-482c-b642-87f608015996', name='UpperArm.L', parent=2, position=(0.21, 0.0, 0.17), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.29), limits='null'), Joint(id='c98c638e-43d4-4f59-b6ab-f378a4da5911', name='ForeArm.L', parent=5, position=(0.0, 0.0, -0.29), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.25), limits='null'), Joint(id='316f37b8-0e2d-4c83-8572-0117ab514c7d', name='Hand.L', parent=6, position=(0.0, 0.0, -0.25), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='ea744fe6-ba12-4c68-bb58-7b831700e51d', name='Thigh.L', parent=0, position=(0.1, 0.0, -0.02), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.44), limits='null'), Joint(id='97deedc1-cb2f-43fd-9f17-c0a5dcf90e53', name='Shin.L', parent=8, position=(0.0, 0.0, -0.44), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.41), limits='null'), Joint(id='5c55273e-ec91-49bc-aca1-be4a67c31ae9', name='Foot.L', parent=9, position=(0.0, 0.0, -0.41), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, -0.15, -0.08), limits='null'), Joint(id='ba5dc706-3de0-4041-aaba-b688327d25d6', name='UpperArm.R', parent=2, position=(-0.21, 0.0, 0.17), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.29), limits='null'), Joint(id='99e96375-8c2a-4c6a-8f48-c243a66fa755', name='ForeArm.R', parent=11, position=(0.0, 0.0, -0.29), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.25), limits='null'), Joint(id='b63f7643-d166-4d51-99d2-0fb1fe5842b6', name='Hand.R', parent=12, position=(0.0, 0.0, -0.25), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=None, limits='null'), Joint(id='d73651c6-f208-4064-b943-5f4fd3dbeaf2', name='Thigh.R', parent=0, position=(-0.1, 0.0, -0.02), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.44), limits='null'), Joint(id='7fc1870e-13d2-4004-b12b-0755147f1dba', name='Shin.R', parent=14, position=(0.0, 0.0, -0.44), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, 0.0, -0.41), limits='null'), Joint(id='e74d2bed-5f2e-4d94-ad24-7d5d333b6ebd', name='Foot.R', parent=15, position=(0.0, 0.0, -0.41), rotation=(0.0, 0.0, 0.0, 1.0), scale=(1.0, 1.0, 1.0), tail=(0.0, -0.15, -0.08), limits='null')), attachments=(), constraints=(), mirror=(('.L', '.R'), ('Left', 'Right'), ('_l', '_r')))"
         },
         {
           "op": "attach"
@@ -1084,7 +1084,7 @@
       "end": 4
     },
     "ok": true,
-    "ms": 1546.4,
+    "ms": 519.4,
     "result": {
       "what": "contacts",
       "ground": 0.0,
@@ -1208,7 +1208,7 @@
       "end": 4
     },
     "ok": true,
-    "ms": 304.2,
+    "ms": 293.9,
     "result": {
       "what": "trajectory",
       "range": [
@@ -1265,7 +1265,7 @@
       "name": "walk"
     },
     "ok": true,
-    "ms": 1.8,
+    "ms": 2.0,
     "result": {
       "action": "checkpoint",
       "moved": [],
@@ -1319,7 +1319,7 @@
       }
     },
     "ok": true,
-    "ms": 2.4,
+    "ms": 2.3,
     "result": {
       "format": "aether3d.animation-script",
       "operations": [
@@ -1400,7 +1400,7 @@
       "end": 4
     },
     "ok": true,
-    "ms": 1540.5,
+    "ms": 514.8,
     "result": {
       "what": "contacts",
       "ground": 0.0,
@@ -1540,11 +1540,11 @@
       "include_image": false
     },
     "ok": true,
-    "ms": 1783.8,
+    "ms": 617.3,
     "result": {
       "format": "aether3d.diagnosis",
       "version": 1,
-      "id": "diag-d0b2aa67d028",
+      "id": "diag-7fe8a85c4729",
       "revision": 3,
       "stale": false,
       "expectations": "expectations",
@@ -1606,7 +1606,7 @@
           "message": "'Hero' Foot.L slides 0.2048 m while planted (2.22..2.92 s)",
           "subjects": [
             {
-              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "id": "5c496859-c925-4664-8be8-986cb43ac788",
               "name": "Hero",
               "role": "subject"
             }
@@ -1661,7 +1661,7 @@
             "limit": 0.005
           },
           "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
-          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          "key": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
         },
         {
           "id": "F2",
@@ -1674,7 +1674,7 @@
           "message": "'Hero' Foot.R slides 0.2056 m while planted (2.77..3.48 s)",
           "subjects": [
             {
-              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "id": "5c496859-c925-4664-8be8-986cb43ac788",
               "name": "Hero",
               "role": "subject"
             }
@@ -1739,14 +1739,14 @@
             "limit": 0.005
           },
           "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
-          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          "key": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
         }
       ],
       "observations": {},
       "timings": {
         "observe": 0.0,
-        "checks": 1.781161,
-        "total": 1.781267
+        "checks": 0.614238,
+        "total": 0.614342
       }
     },
     "images": []
@@ -1776,12 +1776,12 @@
       }
     },
     "ok": true,
-    "ms": 4.4,
+    "ms": 4.6,
     "result": {
       "format": "aether3d.corrections",
       "version": 1,
-      "id": "corr-508994bfabe4",
-      "diagnosis": "diag-d0b2aa67d028",
+      "id": "corr-adbfe20e2f20",
+      "diagnosis": "diag-7fe8a85c4729",
       "revision": 3,
       "stale": false,
       "proposals": [
@@ -1791,13 +1791,13 @@
           "safety": "verify",
           "basis": "geometry",
           "findings": [
-            "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
-            "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+            "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788",
+            "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
           ],
           "actions": [
             {
               "action": "plant_feet",
-              "armature": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "armature": "5c496859-c925-4664-8be8-986cb43ac788",
               "legs": {
                 "Foot.L": [
                   "Thigh.L",
@@ -1815,14 +1815,14 @@
           "rationale": "check 'foot_contacts-1': Foot.L slides 0.2048 m (sampled). Keyed IK pins each contact where it touched down; the rest of the motion is unchanged.",
           "expected": [
             {
-              "finding": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "finding": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788",
               "code": "FOOT_SLIDING",
               "before": 0.20479453272050038,
               "after": null,
               "unit": "m"
             },
             {
-              "finding": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "finding": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788",
               "code": "FOOT_SLIDING",
               "before": 0.20560070500492267,
               "after": null,
@@ -1835,7 +1835,7 @@
           "changes": [
             {
               "object": "Hero",
-              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "id": "5c496859-c925-4664-8be8-986cb43ac788",
               "field": "feet",
               "before": "sliding",
               "after": "planted (keyed IK)"
@@ -1847,7 +1847,7 @@
               "plant_feet: animation changes are not allowed (allow_animation)"
             ]
           },
-          "signature": "8a719e433d5c6df2",
+          "signature": "e908283eed2d221e",
           "compiled": {
             "plan": {
               "format": "aether3d.scene-plan",
@@ -1863,7 +1863,7 @@
                     "operations": [
                       {
                         "op": "plant_feet",
-                        "armature": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+                        "armature": "5c496859-c925-4664-8be8-986cb43ac788",
                         "legs": {
                           "Foot.L": [
                             "Thigh.L",
@@ -1933,7 +1933,7 @@
           "message": "'Hero' Foot.L slides 0.2048 m while planted (2.22..2.92 s)",
           "subjects": [
             {
-              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "id": "5c496859-c925-4664-8be8-986cb43ac788",
               "name": "Hero",
               "role": "subject"
             }
@@ -1988,7 +1988,7 @@
             "limit": 0.005
           },
           "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
-          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          "key": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
         },
         {
           "id": "F2",
@@ -2001,7 +2001,7 @@
           "message": "'Hero' Foot.R slides 0.2056 m while planted (2.77..3.48 s)",
           "subjects": [
             {
-              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "id": "5c496859-c925-4664-8be8-986cb43ac788",
               "name": "Hero",
               "role": "subject"
             }
@@ -2066,7 +2066,7 @@
             "limit": 0.005
           },
           "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
-          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          "key": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
         }
       ]
     },
@@ -2100,12 +2100,12 @@
       }
     },
     "ok": true,
-    "ms": 2.5,
+    "ms": 3.1,
     "result": {
       "format": "aether3d.corrections",
       "version": 1,
-      "id": "corr-508994bfabe4",
-      "diagnosis": "diag-d0b2aa67d028",
+      "id": "corr-adbfe20e2f20",
+      "diagnosis": "diag-7fe8a85c4729",
       "revision": 3,
       "stale": false,
       "proposals": [
@@ -2115,13 +2115,13 @@
           "safety": "verify",
           "basis": "geometry",
           "findings": [
-            "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
-            "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+            "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788",
+            "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
           ],
           "actions": [
             {
               "action": "plant_feet",
-              "armature": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "armature": "5c496859-c925-4664-8be8-986cb43ac788",
               "legs": {
                 "Foot.L": [
                   "Thigh.L",
@@ -2139,14 +2139,14 @@
           "rationale": "check 'foot_contacts-1': Foot.L slides 0.2048 m (sampled). Keyed IK pins each contact where it touched down; the rest of the motion is unchanged.",
           "expected": [
             {
-              "finding": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "finding": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788",
               "code": "FOOT_SLIDING",
               "before": 0.20479453272050038,
               "after": null,
               "unit": "m"
             },
             {
-              "finding": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "finding": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788",
               "code": "FOOT_SLIDING",
               "before": 0.20560070500492267,
               "after": null,
@@ -2159,7 +2159,7 @@
           "changes": [
             {
               "object": "Hero",
-              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "id": "5c496859-c925-4664-8be8-986cb43ac788",
               "field": "feet",
               "before": "sliding",
               "after": "planted (keyed IK)"
@@ -2169,7 +2169,7 @@
             "auto": false,
             "violations": []
           },
-          "signature": "8a719e433d5c6df2",
+          "signature": "e908283eed2d221e",
           "compiled": {
             "plan": {
               "format": "aether3d.scene-plan",
@@ -2185,7 +2185,7 @@
                     "operations": [
                       {
                         "op": "plant_feet",
-                        "armature": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+                        "armature": "5c496859-c925-4664-8be8-986cb43ac788",
                         "legs": {
                           "Foot.L": [
                             "Thigh.L",
@@ -2255,7 +2255,7 @@
           "message": "'Hero' Foot.L slides 0.2048 m while planted (2.22..2.92 s)",
           "subjects": [
             {
-              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "id": "5c496859-c925-4664-8be8-986cb43ac788",
               "name": "Hero",
               "role": "subject"
             }
@@ -2310,7 +2310,7 @@
             "limit": 0.005
           },
           "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
-          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          "key": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
         },
         {
           "id": "F2",
@@ -2323,7 +2323,7 @@
           "message": "'Hero' Foot.R slides 0.2056 m while planted (2.77..3.48 s)",
           "subjects": [
             {
-              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "id": "5c496859-c925-4664-8be8-986cb43ac788",
               "name": "Hero",
               "role": "subject"
             }
@@ -2388,7 +2388,7 @@
             "limit": 0.005
           },
           "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
-          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          "key": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
         }
       ]
     },
@@ -2409,7 +2409,7 @@
       }
     },
     "ok": true,
-    "ms": 21421.4,
+    "ms": 8027.3,
     "result": {
       "status": "applied",
       "applied": [
@@ -2428,7 +2428,7 @@
       "changes": [
         {
           "object": "Hero",
-          "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+          "id": "5c496859-c925-4664-8be8-986cb43ac788",
           "field": "feet",
           "before": "sliding",
           "after": "planted (keyed IK)"
@@ -2449,7 +2449,7 @@
                 "operations": [
                   {
                     "op": "plant_feet",
-                    "armature": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+                    "armature": "5c496859-c925-4664-8be8-986cb43ac788",
                     "legs": {
                       "Foot.L": [
                         "Thigh.L",
@@ -2475,20 +2475,20 @@
           "errors": 2,
           "warnings": 0,
           "score": 2.0,
-          "diagnosis": "diag-d0b2aa67d028"
+          "diagnosis": "diag-7fe8a85c4729"
         },
         "after": {
           "errors": 2,
           "warnings": 0,
           "score": 2.0,
-          "diagnosis": "diag-cb6aa467c47b",
+          "diagnosis": "diag-930f721ea530",
           "accepted": false
         },
         "resolved": [],
         "new_failures": [],
         "persisting": [
           {
-            "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+            "key": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788",
             "code": "FOOT_SLIDING",
             "before": 0.20560070500492267,
             "after": 0.01174214016653902,
@@ -2496,20 +2496,20 @@
           }
         ],
         "targeted": [
-          "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
         ],
         "targeted_resolved": [],
         "targeted_improved": [
-          "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
         ],
         "improved": false,
         "decision": "kept",
         "reason": "the findings it addressed improved and nothing regressed"
       },
       "timings": {
-        "apply": 18.494134,
-        "verify": 2.925091,
-        "total": 21.419372
+        "apply": 7.025096,
+        "verify": 0.999795,
+        "total": 8.025041
       },
       "scene": {
         "open": true,
@@ -2536,7 +2536,7 @@
       "end": 4
     },
     "ok": true,
-    "ms": 2564.7,
+    "ms": 863.8,
     "result": {
       "what": "contacts",
       "ground": 0.0,
@@ -2676,11 +2676,11 @@
       "include_image": false
     },
     "ok": true,
-    "ms": 2.0,
+    "ms": 2.7,
     "result": {
       "format": "aether3d.diagnosis",
       "version": 1,
-      "id": "diag-cb6aa467c47b",
+      "id": "diag-930f721ea530",
       "revision": 4,
       "stale": false,
       "expectations": "expectations",
@@ -2742,7 +2742,7 @@
           "message": "'Hero' Foot.L slides 0.01156 m while planted (1.11..1.66 s)",
           "subjects": [
             {
-              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "id": "5c496859-c925-4664-8be8-986cb43ac788",
               "name": "Hero",
               "role": "subject"
             }
@@ -2797,7 +2797,7 @@
             "limit": 0.005
           },
           "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
-          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          "key": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
         },
         {
           "id": "F2",
@@ -2810,7 +2810,7 @@
           "message": "'Hero' Foot.R slides 0.01174 m while planted (2.77..3.32 s)",
           "subjects": [
             {
-              "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+              "id": "5c496859-c925-4664-8be8-986cb43ac788",
               "name": "Hero",
               "role": "subject"
             }
@@ -2875,14 +2875,14 @@
             "limit": 0.005
           },
           "hint": "plant the feet (plant_feet: keyed IK pins each contact) or match the root motion to the stride",
-          "key": "foot_contacts-1|FOOT_SLIDING|6cb108c8-0a16-4c33-aeba-45ab9786dbab"
+          "key": "foot_contacts-1|FOOT_SLIDING|5c496859-c925-4664-8be8-986cb43ac788"
         }
       ],
       "observations": {},
       "timings": {
         "observe": 0.0,
-        "checks": 2.924964,
-        "total": 2.925064
+        "checks": 0.999667,
+        "total": 0.999769
       }
     },
     "images": []
@@ -2895,7 +2895,7 @@
       "name": "walk"
     },
     "ok": true,
-    "ms": 1.9,
+    "ms": 2.2,
     "result": {
       "action": "goto",
       "moved": [
@@ -2995,7 +2995,7 @@
       }
     },
     "ok": true,
-    "ms": 4458.8,
+    "ms": 4504.9,
     "result": {
       "format": "aether3d.animation-script",
       "operations": [
@@ -3089,7 +3089,7 @@
       "end": 4
     },
     "ok": true,
-    "ms": 1572.5,
+    "ms": 542.3,
     "result": {
       "what": "contacts",
       "ground": 0.0,
@@ -3223,7 +3223,7 @@
       "end": 4
     },
     "ok": true,
-    "ms": 302.0,
+    "ms": 305.6,
     "result": {
       "what": "trajectory",
       "range": [
@@ -3298,7 +3298,7 @@
       "include_image": false
     },
     "ok": true,
-    "ms": 1811.2,
+    "ms": 612.3,
     "result": {
       "format": "aether3d.diagnosis",
       "version": 1,
@@ -3350,8 +3350,8 @@
       "observations": {},
       "timings": {
         "observe": 0.0,
-        "checks": 1.808942,
-        "total": 1.809007
+        "checks": 0.609664,
+        "total": 0.609734
       }
     },
     "images": []
@@ -3361,7 +3361,7 @@
     "tool": "scene_info",
     "arguments": {},
     "ok": true,
-    "ms": 3.6,
+    "ms": 4.1,
     "result": {
       "open": true,
       "name": "Robot walk",
@@ -3386,103 +3386,103 @@
       "tags": {},
       "roots": [
         {
-          "id": "ad2d78f4-1eb6-4c5c-8daa-7fd778c72a81",
+          "id": "44289552-0503-411b-8503-0326cd9ef942",
           "name": "Ground",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "a5033fa9-c4f6-48aa-baf3-ea67930276ab",
+          "id": "1dd1871a-ea95-43d9-959c-b490b8ec509a",
           "name": "Sun",
           "kind": "light",
           "descendants": 0
         },
         {
-          "id": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+          "id": "2504304f-9036-4720-b4c4-ffdbe5250626",
           "name": "Cam",
           "kind": "camera",
           "descendants": 0
         },
         {
-          "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+          "id": "5c496859-c925-4664-8be8-986cb43ac788",
           "name": "Hero",
           "kind": "empty",
           "descendants": 0
         },
         {
-          "id": "20501b3e-9bab-4028-8687-1406d9480828",
+          "id": "bbbcd3e4-e12f-472f-ae3b-cdff49109370",
           "name": "Pelvis",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "19d21770-605d-4878-84a9-2dfba3b33d70",
+          "id": "b5eac05b-b9f7-4340-9aa9-490ed7d68fe0",
           "name": "Torso",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "cd0d6010-9d21-4ea3-9894-aad33c30ad0b",
+          "id": "8f24a04c-4879-46c8-85e1-92c0b1ad885c",
           "name": "Head",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "ed4f1b78-1470-4bd3-81f2-29501178a287",
+          "id": "40f566f8-f03e-4e4b-bb5c-1eb5782f8279",
           "name": "UpperArm.L",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "c39080a7-5914-44b1-b717-f42c4da09bce",
+          "id": "0d8ccd10-fba3-4608-a945-452c122bf1f7",
           "name": "ForeArm.L",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "15f0c40b-f247-4dd8-92b6-b2de59f8d22c",
+          "id": "e61e6dcb-88df-42cf-8903-852191d0066d",
           "name": "Thigh.L",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "c4fe2836-17b3-4ba1-bdd8-3cab0046cf58",
+          "id": "a7fe6470-259e-45a4-b867-d9719e14b13f",
           "name": "Shin.L",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "f9f2ed20-975f-46ff-a1bd-05abacd268f2",
+          "id": "f1d84166-a0a4-4a43-b146-ba26f7edb3b1",
           "name": "Foot.L",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "f28978fb-3f86-4c23-91a5-00e0cfec16e6",
+          "id": "d2892f39-7afb-4356-ac3e-176dd3a065c2",
           "name": "UpperArm.R",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "76081918-c06a-41d4-a058-f9e74749ac83",
+          "id": "f4d603e0-3eb9-4361-9ed6-43e808d82401",
           "name": "ForeArm.R",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "7128cf84-8a63-4b0c-bc53-b4198d80bd9c",
+          "id": "23cf4eeb-9e53-4d53-9ae5-eac1ed2db6b6",
           "name": "Thigh.R",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "01cfd5c3-6189-4b45-ba64-dad942062927",
+          "id": "338724ae-8e03-4d6e-914b-45aa3376d7a9",
           "name": "Shin.R",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "4d6f8b06-7fc0-4c01-8c38-f5b1b36c54f3",
+          "id": "ff71bf8e-370b-4d2c-a4d1-1ec735afe7d5",
           "name": "Foot.R",
           "kind": "mesh",
           "descendants": 0
@@ -3490,14 +3490,14 @@
       ],
       "cameras": [
         {
-          "id": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+          "id": "2504304f-9036-4720-b4c4-ffdbe5250626",
           "name": "Cam",
           "active": true
         }
       ],
       "lights": [
         {
-          "id": "a5033fa9-c4f6-48aa-baf3-ea67930276ab",
+          "id": "1dd1871a-ea95-43d9-959c-b490b8ec509a",
           "name": "Sun",
           "type": "directional"
         }
@@ -3550,7 +3550,7 @@
       }
     },
     "ok": false,
-    "ms": 1.6,
+    "ms": 2.2,
     "result": {
       "error": {
         "type": "AnimationScriptError",
@@ -3596,7 +3596,7 @@
       }
     },
     "ok": false,
-    "ms": 1.9,
+    "ms": 2.7,
     "result": {
       "error": {
         "type": "AnimationScriptError",
@@ -3614,7 +3614,7 @@
       "path": "../outside.aether"
     },
     "ok": false,
-    "ms": 1.7,
+    "ms": 2.5,
     "result": {
       "error": {
         "type": "WorkspaceError",
@@ -3630,7 +3630,7 @@
     "tool": "scene_info",
     "arguments": {},
     "ok": true,
-    "ms": 11.1,
+    "ms": 11.9,
     "result": {
       "open": true,
       "name": "Robot walk",
@@ -3655,103 +3655,103 @@
       "tags": {},
       "roots": [
         {
-          "id": "ad2d78f4-1eb6-4c5c-8daa-7fd778c72a81",
+          "id": "44289552-0503-411b-8503-0326cd9ef942",
           "name": "Ground",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "a5033fa9-c4f6-48aa-baf3-ea67930276ab",
+          "id": "1dd1871a-ea95-43d9-959c-b490b8ec509a",
           "name": "Sun",
           "kind": "light",
           "descendants": 0
         },
         {
-          "id": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+          "id": "2504304f-9036-4720-b4c4-ffdbe5250626",
           "name": "Cam",
           "kind": "camera",
           "descendants": 0
         },
         {
-          "id": "6cb108c8-0a16-4c33-aeba-45ab9786dbab",
+          "id": "5c496859-c925-4664-8be8-986cb43ac788",
           "name": "Hero",
           "kind": "empty",
           "descendants": 0
         },
         {
-          "id": "20501b3e-9bab-4028-8687-1406d9480828",
+          "id": "bbbcd3e4-e12f-472f-ae3b-cdff49109370",
           "name": "Pelvis",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "19d21770-605d-4878-84a9-2dfba3b33d70",
+          "id": "b5eac05b-b9f7-4340-9aa9-490ed7d68fe0",
           "name": "Torso",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "cd0d6010-9d21-4ea3-9894-aad33c30ad0b",
+          "id": "8f24a04c-4879-46c8-85e1-92c0b1ad885c",
           "name": "Head",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "ed4f1b78-1470-4bd3-81f2-29501178a287",
+          "id": "40f566f8-f03e-4e4b-bb5c-1eb5782f8279",
           "name": "UpperArm.L",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "c39080a7-5914-44b1-b717-f42c4da09bce",
+          "id": "0d8ccd10-fba3-4608-a945-452c122bf1f7",
           "name": "ForeArm.L",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "15f0c40b-f247-4dd8-92b6-b2de59f8d22c",
+          "id": "e61e6dcb-88df-42cf-8903-852191d0066d",
           "name": "Thigh.L",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "c4fe2836-17b3-4ba1-bdd8-3cab0046cf58",
+          "id": "a7fe6470-259e-45a4-b867-d9719e14b13f",
           "name": "Shin.L",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "f9f2ed20-975f-46ff-a1bd-05abacd268f2",
+          "id": "f1d84166-a0a4-4a43-b146-ba26f7edb3b1",
           "name": "Foot.L",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "f28978fb-3f86-4c23-91a5-00e0cfec16e6",
+          "id": "d2892f39-7afb-4356-ac3e-176dd3a065c2",
           "name": "UpperArm.R",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "76081918-c06a-41d4-a058-f9e74749ac83",
+          "id": "f4d603e0-3eb9-4361-9ed6-43e808d82401",
           "name": "ForeArm.R",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "7128cf84-8a63-4b0c-bc53-b4198d80bd9c",
+          "id": "23cf4eeb-9e53-4d53-9ae5-eac1ed2db6b6",
           "name": "Thigh.R",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "01cfd5c3-6189-4b45-ba64-dad942062927",
+          "id": "338724ae-8e03-4d6e-914b-45aa3376d7a9",
           "name": "Shin.R",
           "kind": "mesh",
           "descendants": 0
         },
         {
-          "id": "4d6f8b06-7fc0-4c01-8c38-f5b1b36c54f3",
+          "id": "ff71bf8e-370b-4d2c-a4d1-1ec735afe7d5",
           "name": "Foot.R",
           "kind": "mesh",
           "descendants": 0
@@ -3759,14 +3759,14 @@
       ],
       "cameras": [
         {
-          "id": "d50fa8dc-91bc-401a-8269-ab578bd1fe5f",
+          "id": "2504304f-9036-4720-b4c4-ffdbe5250626",
           "name": "Cam",
           "active": true
         }
       ],
       "lights": [
         {
-          "id": "a5033fa9-c4f6-48aa-baf3-ea67930276ab",
+          "id": "1dd1871a-ea95-43d9-959c-b490b8ec509a",
           "name": "Sun",
           "type": "directional"
         }
@@ -3807,12 +3807,13 @@
       "time": 0.6,
       "width": 640,
       "height": 360,
+      "backend": "gpu",
       "shadows": true,
       "save_to": "preview_0.6s.png",
       "overwrite": true
     },
     "ok": true,
-    "ms": 920.6,
+    "ms": 884.6,
     "result": {
       "backend": "gpu",
       "device": "gpu",
@@ -3820,14 +3821,8 @@
       "height": 360,
       "status": "ok",
       "framed": false,
-      "seconds": 0.9088,
-      "diagnostics": [
-        {
-          "code": "BACKEND_SELECTED",
-          "severity": "info",
-          "message": "backend 'auto' rendered on the GPU: NVIDIA GeForce RTX 4060 Laptop GPU (vulkan, discrete)"
-        }
-      ],
+      "seconds": 0.8719,
+      "diagnostics": [],
       "adapter": {
         "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
         "backend": "vulkan",
@@ -3852,12 +3847,13 @@
       "time": 1.8,
       "width": 640,
       "height": 360,
+      "backend": "gpu",
       "shadows": true,
       "save_to": "preview_1.8s.png",
       "overwrite": true
     },
     "ok": true,
-    "ms": 16.6,
+    "ms": 16.0,
     "result": {
       "backend": "gpu",
       "device": "gpu",
@@ -3865,14 +3861,8 @@
       "height": 360,
       "status": "ok",
       "framed": false,
-      "seconds": 0.0051,
-      "diagnostics": [
-        {
-          "code": "BACKEND_SELECTED",
-          "severity": "info",
-          "message": "backend 'auto' rendered on the GPU: NVIDIA GeForce RTX 4060 Laptop GPU (vulkan, discrete)"
-        }
-      ],
+      "seconds": 0.0046,
+      "diagnostics": [],
       "adapter": {
         "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
         "backend": "vulkan",
@@ -3897,12 +3887,13 @@
       "time": 3.2,
       "width": 640,
       "height": 360,
+      "backend": "gpu",
       "shadows": true,
       "save_to": "preview_3.2s.png",
       "overwrite": true
     },
     "ok": true,
-    "ms": 15.5,
+    "ms": 15.8,
     "result": {
       "backend": "gpu",
       "device": "gpu",
@@ -3911,13 +3902,7 @@
       "status": "ok",
       "framed": false,
       "seconds": 0.0043,
-      "diagnostics": [
-        {
-          "code": "BACKEND_SELECTED",
-          "severity": "info",
-          "message": "backend 'auto' rendered on the GPU: NVIDIA GeForce RTX 4060 Laptop GPU (vulkan, discrete)"
-        }
-      ],
+      "diagnostics": [],
       "adapter": {
         "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
         "backend": "vulkan",
@@ -3944,7 +3929,7 @@
       "overwrite": true
     },
     "ok": true,
-    "ms": 38.5,
+    "ms": 39.3,
     "result": {
       "path": "robot.glb",
       "format": "glb",
@@ -3968,7 +3953,7 @@
           "channels": 1,
           "clip": "Cam Action",
           "actions": [
-            "d50fa8dc-91bc-401a-8269-ab578bd1fe5f"
+            "2504304f-9036-4720-b4c4-ffdbe5250626"
           ],
           "fitted_channels": 0,
           "max_error": {
@@ -3994,7 +3979,7 @@
       "overwrite": true
     },
     "ok": true,
-    "ms": 22.1,
+    "ms": 22.7,
     "result": {
       "scene": {
         "open": true,
@@ -4016,7 +4001,7 @@
       "action": "list"
     },
     "ok": true,
-    "ms": 1.5,
+    "ms": 1.4,
     "result": {
       "action": "list",
       "moved": [],

@@ -6,8 +6,8 @@
     540
   ],
   "pool_radius_m": 28.242,
-  "pool_build_s": 0.504,
-  "crowd_build_s": 0.337,
+  "pool_build_s": 0.517,
+  "crowd_build_s": 0.34,
   "walk": {
     "period_s": 1.1111,
     "speed_m_s": 0.8775,
@@ -17,11 +17,11 @@
   "triangles": 123470,
   "strips": 10048,
   "walkers": 48,
-  "build_s": 1.54,
+  "build_s": 1.556,
   "per_frame": {
-    "evaluate_ms": 5.47,
-    "overlay_with_rigging_ms": 33.55,
-    "world_matrices_ms": 8.2
+    "evaluate_ms": 5.4,
+    "overlay_with_rigging_ms": 34.05,
+    "world_matrices_ms": 8.33
   },
   "foot_sliding_m": {
     "Walker 0": {
@@ -45,24 +45,24 @@
       "penetration_m": 0.0003
     }
   },
-  "save_s": 0.776,
+  "save_s": 0.785,
   "file_bytes": 12542203,
   "sequence": {
     "backend": "gpu",
     "frames": 193,
-    "seconds": 28.91,
-    "frame_ms_median": 144.4,
-    "frame_ms_max": 230.1
+    "seconds": 28.26,
+    "frame_ms_median": 142.6,
+    "frame_ms_max": 214.8
   },
   "gpu_frame_ms_no_shadows": [
-    119.1,
-    135.4,
-    91.5
+    117.7,
+    127.3,
+    86.7
   ],
   "cpu_frame_ms_no_shadows": [
-    1356.1,
-    1203.7,
-    1049.8
+    1432.0,
+    1315.8,
+    1063.4
   ],
   "gpu": {
     "available": true,
@@ -100,7 +100,7 @@
         8
       ],
       "timestamps": true,
-      "device_init_seconds": 0.3514589290134609,
+      "device_init_seconds": 0.3514027939818334,
       "renders": 200,
       "cache": {
         "meshes": 8,
@@ -135,5 +135,5 @@
     "output": "examples/output/animation/large/large.mp4",
     "bytes": 1144231
   },
-  "peak_rss_mib": 1532.0
+  "peak_rss_mib": 1455.5
 }

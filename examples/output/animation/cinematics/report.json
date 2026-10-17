@@ -28,13 +28,13 @@
   ],
   "shots": [
     {
-      "camera": "c936c355-bca4-4709-b97b-d43a229e4c45",
+      "camera": "d7bb5189-250c-4f1a-a87c-d43158379861",
       "start": 0.0,
       "end": 3.0,
       "name": "crane"
     },
     {
-      "camera": "8a6f77fe-f91a-40a6-ac48-ee39cbbe5155",
+      "camera": "ca6de807-9f8d-4216-be74-e630dbb258f4",
       "start": 2.6,
       "end": 5.5,
       "name": "orbit",
@@ -44,13 +44,13 @@
       }
     },
     {
-      "camera": "de31405d-15a5-495f-8866-86d919054558",
+      "camera": "591d7b49-a477-49f7-9bb1-021960ef073d",
       "start": 5.5,
       "end": 8.0,
       "name": "vertigo"
     },
     {
-      "camera": "eaf69aae-7e10-4730-b53a-c689ab2f251a",
+      "camera": "e24a86a0-1dad-456d-a945-23ed680dbe0e",
       "start": 7.7,
       "end": 12.0,
       "name": "follow",
@@ -62,9 +62,9 @@
   ],
   "render": {
     "frames": 289,
-    "seconds": 5.93
+    "seconds": 5.96
   },
-  "motion_blur_ms": 129.8,
+  "motion_blur_ms": 126.2,
   "video": {
     "command": [
       "ffmpeg",

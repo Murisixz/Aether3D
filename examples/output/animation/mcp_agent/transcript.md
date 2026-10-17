@@ -4,37 +4,37 @@ A scripted client (deterministic code standing in for an agent) drove a real `ae
 
 | # | tool | ok | ms | what came back |
 | --- | --- | --- | --- | --- |
-| 1 | `capabilities` | yes | 7.0 | {"aether3d": "0.17.0", "tools": 26} |
-| 2 | `scene_new` | yes | 2.2 | {} |
-| 3 | `execute_scene_plan` | yes | 12.5 | {"revision": {"before": 0, "after": 1}, "status": "applied"} |
-| 4 | `run_script` | yes | 848.0 | {"operations": 17} |
-| 5 | `inspect_animation` | yes | 1546.4 | {"Foot.L": {"contacts": 4, "sliding_max_m": 0.0036, "penetration_m": 0.0006}, "Foot.R": {"contacts": 4, "sliding_max_m": 0.0043, "penetration_m": 0.0004}} |
-| 6 | `inspect_animation` | yes | 304.2 | {"path_length_m": 3.978, "displacement_m": 3.978} |
-| 7 | `history` | yes | 1.8 | {"action": "checkpoint", "moved": 0, "steps": ["Robot parts", "Rig and walk"], "checkpoints": {"walk": 2}} |
-| 8 | `run_script` | yes | 2.4 | {"operations": 1} |
-| 9 | `inspect_animation` | yes | 1540.5 | {"Foot.L": {"contacts": 4, "sliding_max_m": 0.2048, "penetration_m": 0.0006}, "Foot.R": {"contacts": 4, "sliding_max_m": 0.2056, "penetration_m": 0.0004}} |
-| 10 | `diagnose_scene` | yes | 1783.8 | {"findings": ["FOOT_SLIDING (0.20479453272050038)", "FOOT_SLIDING (0.20560070500492267)"]} |
-| 11 | `propose_corrections` | yes | 4.4 | {"findings": ["FOOT_SLIDING (0.20479453272050038)", "FOOT_SLIDING (0.20560070500492267)"], "proposals": [{"id": "P1", "action": "plant_feet", "safety": "verify"}]} |
-| 12 | `propose_corrections` | yes | 2.5 | {"findings": ["FOOT_SLIDING (0.20479453272050038)", "FOOT_SLIDING (0.20560070500492267)"], "proposals": [{"id": "P1", "action": "plant_feet", "safety": "verify"}]} |
-| 13 | `apply_corrections` | yes | 21421.4 | {"status": "applied", "applied": ["P1"], "decision": "kept", "reason": "the findings it addressed improved and nothing regressed", "findings": [{"code": "FOOT_SLIDING", "before": 0.2056, "after": 0.0117}], "new_failures" |
-| 14 | `inspect_animation` | yes | 2564.7 | {"Foot.L": {"contacts": 4, "sliding_max_m": 0.0116, "penetration_m": 0.0}, "Foot.R": {"contacts": 4, "sliding_max_m": 0.0117, "penetration_m": 0.0}} |
-| 15 | `diagnose_scene` | yes | 2.0 | {"findings": ["FOOT_SLIDING (0.011560861314838194)", "FOOT_SLIDING (0.01174214016653902)"]} |
-| 16 | `history` | yes | 1.9 | {"action": "goto", "moved": 2, "steps": ["Robot parts", "Rig and walk"], "checkpoints": {"walk": 2}} |
-| 17 | `run_script` | yes | 4458.8 | {"operations": 2} |
-| 18 | `inspect_animation` | yes | 1572.5 | {"Foot.L": {"contacts": 4, "sliding_max_m": 0.0036, "penetration_m": 0.0007}, "Foot.R": {"contacts": 5, "sliding_max_m": 0.0039, "penetration_m": 0.0004}} |
-| 19 | `inspect_animation` | yes | 302.0 | {"path_length_m": 5.1714, "displacement_m": 5.1714} |
-| 20 | `diagnose_scene` | yes | 1811.2 | {"findings": []} |
-| 21 | `scene_info` | yes | 3.6 | {"revision": 7, "objects": 17} |
-| 22 | `run_script` | refused | 1.6 | {"refused": "UNKNOWN_PROPERTY", "location": "operations[0].path", "message": "'__class__.__init__' is not an animatable property: unknown property __class__.__init__"} |
-| 23 | `run_script` | refused | 1.9 | {"refused": "INVALID_VALUE", "location": "operations[1].keyframe.value", "message": "transform.position.z takes a number, got 'high'"} |
-| 24 | `scene_save` | refused | 1.7 | {"refused": "PATH_OUTSIDE_WORKSPACE", "location": null, "message": "'../outside.aether' is outside the workspace"} |
-| 25 | `scene_info` | yes | 11.1 | {"revision": 7, "objects": 17} |
-| 26 | `render_preview` | yes | 920.6 | {"revision": 7, "width": 640, "height": 360, "saved": "preview_0.6s.png", "status": "ok", "images": "1 (not inspected)"} |
-| 27 | `render_preview` | yes | 16.6 | {"revision": 7, "width": 640, "height": 360, "saved": "preview_1.8s.png", "status": "ok", "images": "1 (not inspected)"} |
-| 28 | `render_preview` | yes | 15.5 | {"revision": 7, "width": 640, "height": 360, "saved": "preview_3.2s.png", "status": "ok", "images": "1 (not inspected)"} |
-| 29 | `export_scene` | yes | 38.5 | {"path": "robot.glb", "bytes": 51736} |
-| 30 | `scene_save` | yes | 22.1 | {"saved": "robot.aether"} |
-| 31 | `history` | yes | 1.5 | {"action": "list", "moved": 0, "steps": ["Robot parts", "Rig and walk", "Walk 30% faster"], "checkpoints": {"walk": 2}} |
+| 1 | `capabilities` | yes | 8.1 | {"aether3d": "0.17.0", "tools": 26} |
+| 2 | `scene_new` | yes | 2.3 | {} |
+| 3 | `execute_scene_plan` | yes | 9.4 | {"revision": {"before": 0, "after": 1}, "status": "applied"} |
+| 4 | `run_script` | yes | 843.2 | {"operations": 17} |
+| 5 | `inspect_animation` | yes | 519.4 | {"Foot.L": {"contacts": 4, "sliding_max_m": 0.0036, "penetration_m": 0.0006}, "Foot.R": {"contacts": 4, "sliding_max_m": 0.0043, "penetration_m": 0.0004}} |
+| 6 | `inspect_animation` | yes | 293.9 | {"path_length_m": 3.978, "displacement_m": 3.978} |
+| 7 | `history` | yes | 2.0 | {"action": "checkpoint", "moved": 0, "steps": ["Robot parts", "Rig and walk"], "checkpoints": {"walk": 2}} |
+| 8 | `run_script` | yes | 2.3 | {"operations": 1} |
+| 9 | `inspect_animation` | yes | 514.8 | {"Foot.L": {"contacts": 4, "sliding_max_m": 0.2048, "penetration_m": 0.0006}, "Foot.R": {"contacts": 4, "sliding_max_m": 0.2056, "penetration_m": 0.0004}} |
+| 10 | `diagnose_scene` | yes | 617.3 | {"findings": ["FOOT_SLIDING (0.20479453272050038)", "FOOT_SLIDING (0.20560070500492267)"]} |
+| 11 | `propose_corrections` | yes | 4.6 | {"findings": ["FOOT_SLIDING (0.20479453272050038)", "FOOT_SLIDING (0.20560070500492267)"], "proposals": [{"id": "P1", "action": "plant_feet", "safety": "verify"}]} |
+| 12 | `propose_corrections` | yes | 3.1 | {"findings": ["FOOT_SLIDING (0.20479453272050038)", "FOOT_SLIDING (0.20560070500492267)"], "proposals": [{"id": "P1", "action": "plant_feet", "safety": "verify"}]} |
+| 13 | `apply_corrections` | yes | 8027.3 | {"status": "applied", "applied": ["P1"], "decision": "kept", "reason": "the findings it addressed improved and nothing regressed", "findings": [{"code": "FOOT_SLIDING", "before": 0.2056, "after": 0.0117}], "new_failures" |
+| 14 | `inspect_animation` | yes | 863.8 | {"Foot.L": {"contacts": 4, "sliding_max_m": 0.0116, "penetration_m": 0.0}, "Foot.R": {"contacts": 4, "sliding_max_m": 0.0117, "penetration_m": 0.0}} |
+| 15 | `diagnose_scene` | yes | 2.7 | {"findings": ["FOOT_SLIDING (0.011560861314838194)", "FOOT_SLIDING (0.01174214016653902)"]} |
+| 16 | `history` | yes | 2.2 | {"action": "goto", "moved": 2, "steps": ["Robot parts", "Rig and walk"], "checkpoints": {"walk": 2}} |
+| 17 | `run_script` | yes | 4504.9 | {"operations": 2} |
+| 18 | `inspect_animation` | yes | 542.3 | {"Foot.L": {"contacts": 4, "sliding_max_m": 0.0036, "penetration_m": 0.0007}, "Foot.R": {"contacts": 5, "sliding_max_m": 0.0039, "penetration_m": 0.0004}} |
+| 19 | `inspect_animation` | yes | 305.6 | {"path_length_m": 5.1714, "displacement_m": 5.1714} |
+| 20 | `diagnose_scene` | yes | 612.3 | {"findings": []} |
+| 21 | `scene_info` | yes | 4.1 | {"revision": 7, "objects": 17} |
+| 22 | `run_script` | refused | 2.2 | {"refused": "UNKNOWN_PROPERTY", "location": "operations[0].path", "message": "'__class__.__init__' is not an animatable property: unknown property __class__.__init__"} |
+| 23 | `run_script` | refused | 2.7 | {"refused": "INVALID_VALUE", "location": "operations[1].keyframe.value", "message": "transform.position.z takes a number, got 'high'"} |
+| 24 | `scene_save` | refused | 2.5 | {"refused": "PATH_OUTSIDE_WORKSPACE", "location": null, "message": "'../outside.aether' is outside the workspace"} |
+| 25 | `scene_info` | yes | 11.9 | {"revision": 7, "objects": 17} |
+| 26 | `render_preview` | yes | 884.6 | {"revision": 7, "width": 640, "height": 360, "saved": "preview_0.6s.png", "status": "ok", "images": "1 (not inspected)"} |
+| 27 | `render_preview` | yes | 16.0 | {"revision": 7, "width": 640, "height": 360, "saved": "preview_1.8s.png", "status": "ok", "images": "1 (not inspected)"} |
+| 28 | `render_preview` | yes | 15.8 | {"revision": 7, "width": 640, "height": 360, "saved": "preview_3.2s.png", "status": "ok", "images": "1 (not inspected)"} |
+| 29 | `export_scene` | yes | 39.3 | {"path": "robot.glb", "bytes": 51736} |
+| 30 | `scene_save` | yes | 22.7 | {"saved": "robot.aether"} |
+| 31 | `history` | yes | 1.4 | {"action": "list", "moved": 0, "steps": ["Robot parts", "Rig and walk", "Walk 30% faster"], "checkpoints": {"walk": 2}} |
 
 ## Outcome
 
@@ -220,7 +220,7 @@ A scripted client (deterministic code standing in for an agent) drove a real `ae
         "channels": 1,
         "clip": "Cam Action",
         "actions": [
-          "d50fa8dc-91bc-401a-8269-ab578bd1fe5f"
+          "2504304f-9036-4720-b4c4-ffdbe5250626"
         ],
         "fitted_channels": 0,
         "max_error": {

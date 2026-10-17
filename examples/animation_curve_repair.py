@@ -47,11 +47,15 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 ROOT = HERE.parent
 
-from animation_common import backend, write_json  # noqa: E402
+from animation_common import (  # noqa: E402
+    backend,
+    save_png,
+    use_backend,
+    write_json,
+)
 
 from aether3d import Scene  # noqa: E402
 from aether3d.animation.frames import contact_sheet  # noqa: E402
-from aether3d.rendering.png import write_png  # noqa: E402
 
 SHELF_TOP = 1.2
 CRATE_HALF = 0.25
@@ -173,13 +177,18 @@ def graphs(scene: Scene, crate, when: str):
 
 
 def onion(s: Scene, path: Path, frames: int = 9) -> None:
-    """The motion's path: frames rendered at evenly spaced times, averaged."""
+    """The motion's path: frames rendered at evenly spaced times, combined by the darkest
+    value of each pixel (so every pose shows)."""
     acc = None
     for k in range(frames):
         r = s.render(time=4.0 * k / (frames - 1), width=640, height=360, backend=backend())
         img = r.image.astype(np.float64)
         acc = img if acc is None else np.minimum(acc, img)  # (darkest: every pose shows)
-    write_png(path, acc.astype(np.uint8))
+    save_png(
+        path,
+        acc.astype(np.uint8),
+        "Aether3D renders at nine times, combined (darkest value per pixel)",
+    )
 
 
 async def repair_mcp(workspace: Path, project: str) -> dict:
@@ -221,7 +230,9 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("output", nargs="?", default=str(HERE / "output/animation/curve_repair"))
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--backend", choices=("auto", "gpu", "cpu"), default="auto")
     args = parser.parse_args(argv)
+    use_backend(args.backend)
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
     report: dict = {"backend": backend()}
@@ -232,8 +243,9 @@ def main(argv: list[str]) -> int:
     report["before"] = measure(scene)
     crate = scene.get_by_name("Crate")
     before = graphs(scene, crate, "before repair")
-    write_png(out / "graph_before.png", before[0])
-    write_png(out / "graph_swing_before.png", before[1])
+    graph = "a graph drawn by Aether3D: value, velocity and acceleration"
+    save_png(out / "graph_before.png", before[0], graph)
+    save_png(out / "graph_swing_before.png", before[1], graph)
     (out / "graph_before.svg").write_text(scene.animation.graph([(crate, p) for p in PATHS[:2]]))
     onion(scene, out / "onion_before.png")
 
@@ -242,12 +254,12 @@ def main(argv: list[str]) -> int:
     scene.save(out / "crane_after_python.aether")
     report["after"] = measure(scene)
     after = graphs(scene, crate, "after repair")
-    write_png(out / "graph_after.png", after[0])
-    write_png(out / "graph_swing_after.png", after[1])
+    save_png(out / "graph_after.png", after[0], graph)
+    save_png(out / "graph_swing_after.png", after[1], graph)
     (out / "graph_after.svg").write_text(scene.animation.graph([(crate, p) for p in PATHS[:2]]))
     labels = ["height, travel: before", "after", "swing: before", "after"]
     sheet = contact_sheet([before[0], after[0], before[1], after[1]], columns=2, labels=labels)
-    write_png(out / "graphs_side_by_side.png", sheet)
+    save_png(out / "graphs_side_by_side.png", sheet, "graphs drawn by Aether3D, before and after")
     onion(scene, out / "onion_after.png")
 
     # 2. The JSON script, through the CLI (a separate process).
@@ -278,7 +290,11 @@ def main(argv: list[str]) -> int:
     print("penetrates the shelf before/after:", report["before"]["penetrates_shelf"],
           report["after"]["penetrates_shelf"])  # fmt: skip
     ok = report["same_python_json"] and report.get("same_python_mcp", True)
-    return 0 if ok and not report["after"]["penetrates_shelf"] else 1
+    if not ok or report["after"]["penetrates_shelf"]:
+        print("FAILED: the routes differ or the crate still goes into the shelf")
+        return 1
+    print("done")
+    return 0
 
 
 if __name__ == "__main__":
