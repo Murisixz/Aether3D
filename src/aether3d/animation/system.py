@@ -1512,6 +1512,194 @@ class AnimationSystem:
         return ch.evaluate(np.asarray(times, np.float64), order=order)
 
     # ------------------------------------------------------------------ #
+    # Motion tools: reports, curve fitting, generators, retargeting, contacts
+    # ------------------------------------------------------------------ #
+
+    def _curve_ref(self, target: Any, path: str, clip: Any) -> tuple[Any, str, Any]:
+        """``(clip item, canonical path, channel)`` of a channel in ``target``'s action or
+        in ``clip``."""
+        if clip is not None:
+            item = self._clip_item(clip)
+            kind = item._definition.target
+        else:
+            key = self._target(target)
+            item = self._action_item(key, create=False)
+            kind = key[0]
+            if item is None:
+                raise _err("CHANNEL_MISSING", f"{self._target_name(key)!r} has no action", "target")
+        spec = P.parse(path, kind, location="path")
+        assert not isinstance(spec, list)
+        ch = item._definition.channel(spec.path)
+        if ch is None:
+            raise _err("CHANNEL_MISSING", f"no channel {spec.path}", "path")
+        return item, spec.path, ch
+
+    def curve_report(
+        self, target: Any, path: str, *, clip: Any = None, samples: int = 0
+    ) -> dict[str, Any]:
+        """Everything measurable about one channel (see :mod:`.report`)."""
+        from .report import curve_report
+
+        _, canonical, ch = self._curve_ref(target, path, clip)
+        if not isinstance(ch, FCurve):
+            raise _err("INVALID_CHANNEL", f"{canonical} is a rotation track", "path")
+        out = curve_report(ch, samples=samples)
+        out["path"] = canonical
+        return out
+
+    def trajectory(self, target: Any, **options: Any) -> dict[str, Any]:
+        """The world-space motion of an object or (``joint=``) a joint (see
+        :func:`.report.trajectory_report`)."""
+        from .report import trajectory_report
+
+        return trajectory_report(self, target, **options)
+
+    def diagnose(self, **options: Any) -> dict[str, Any]:
+        """Findings over the whole animation (see :func:`.report.diagnose`)."""
+        from .report import diagnose
+
+        return diagnose(self, **options)
+
+    def simplify(
+        self, target: Any, path: str, tolerance: float, *, clip: Any = None, **options: Any
+    ) -> dict[str, Any]:
+        """Replace a channel with fewer keys within ``tolerance`` (one undo step); returns
+        ``{keys_before, keys_after, max_error, basis}``."""
+        from .fitting import simplify
+
+        item, canonical, ch = self._curve_ref(target, path, clip)
+        if not isinstance(ch, FCurve):
+            raise _err("INVALID_CHANNEL", f"{canonical} is a rotation track", "path")
+        new, report = simplify(ch, tolerance, **options)
+        with self._op(f"Simplify {canonical}"):
+            self._set(item, definition=item._definition.with_channel(canonical, new))
+        return report
+
+    def resample(
+        self, target: Any, path: str, *, fps: Any = None, clip: Any = None, **options: Any
+    ) -> int:
+        """Replace a channel with a key on every frame (of ``fps``, default the
+        timeline's); returns the key count. One undo step."""
+        from .fitting import resample
+
+        item, canonical, ch = self._curve_ref(target, path, clip)
+        if not isinstance(ch, FCurve):
+            raise _err("INVALID_CHANNEL", f"{canonical} is a rotation track", "path")
+        new = resample(ch, self.fps if fps is None else fps, **options)
+        with self._op(f"Resample {canonical}"):
+            self._set(item, definition=item._definition.with_channel(canonical, new))
+        return len(new)
+
+    def bake(self, targets: list[Any], **options: Any) -> dict[str, Any]:
+        """What the scene shows (layers, rigs, constraints) as plain keys in new clips
+        (see :func:`.fitting.bake`)."""
+        from .fitting import bake
+
+        return bake(self, list(targets), **options)
+
+    def generate(self, armature: Any, kind: str, **options: Any) -> dict[str, Any]:
+        """A motion (``idle``, ``walk``, ``run``, ``jump``, ``land``, ``wave``,
+        ``head_turn``) written as an editable clip (see :mod:`.generators`)."""
+        from .generators import generate
+
+        return generate(self, armature, kind, **options)
+
+    def follow_camera(self, camera: Any, target: Any, **options: Any) -> dict[str, Any]:
+        """Key a camera to follow a target with lag, aimed at it (see
+        :func:`.generators.follow_camera`)."""
+        from .generators import follow_camera
+
+        return follow_camera(self, camera, target, **options)
+
+    def mirror_clip(self, clip: Any, armature: Any, *, name: str | None = None) -> ClipHandle:
+        """A new clip: ``clip`` with left and right swapped by ``armature``'s rig (see
+        :func:`.motion.mirror_clip`)."""
+        from .motion import mirror_clip
+
+        source = self._clip_item(clip)
+        rig = self.rig(armature)
+        if rig is None:
+            raise _err("RIG_MISSING", "the armature has no rig", "armature")
+        data = mirror_clip(source._definition, rig)
+        new_name = name or self._unique_clip_name(f"{source._name} Mirrored")
+        return self.add_clip(new_name, data)
+
+    def extract_root_motion(
+        self, clip: Any, joint: str, *, mode: str = "extract", yaw: bool = False
+    ) -> dict[str, Any]:
+        """Move (or drop) a root joint's travel out of its channels (see
+        :func:`.motion.extract_root_motion`). One undo step."""
+        from .motion import extract_root_motion
+
+        item = self._clip_item(clip)
+        new, report = extract_root_motion(item._definition, joint, mode=mode, yaw=yaw)
+        self._set_clip(item, new, f"Extract root motion of {item._name!r}")
+        return report
+
+    def foot_contacts(self, armature: Any, feet: list[str], **options: Any) -> dict[str, Any]:
+        """Planted intervals of feet, their sliding and penetration (see
+        :func:`.motion.foot_contacts`)."""
+        from .motion import foot_contacts
+
+        return foot_contacts(self, armature, list(feet), **options)
+
+    def plant_feet(
+        self, armature: Any, legs: dict[str, list[str]], **options: Any
+    ) -> dict[str, Any]:
+        """Correct foot sliding with keyed IK (see :func:`.motion.plant_feet`)."""
+        from .motion import plant_feet
+
+        return plant_feet(self, armature, dict(legs), **options)
+
+    def retarget(self, source: Any, target: Any, clip: Any, **options: Any) -> dict[str, Any]:
+        """A clip for ``target``'s rig from ``source``'s (see :func:`.motion.retarget`)."""
+        from .motion import retarget
+
+        return retarget(self, source, target, clip, **options)
+
+    def graph(
+        self,
+        channels: list[tuple[Any, str]] | None = None,
+        *,
+        clip: Any = None,
+        format: str = "svg",
+        **options: Any,
+    ) -> Any:
+        """A graph of channels -- ``[(target, path), ...]`` from actions, or every
+        scalar channel of ``clip`` (up to 32) -- as SVG text (``format="svg"``) or an RGB
+        image (``"png"``); see :mod:`.graph`."""
+        from .graph import graph_png, graph_svg
+
+        curves: dict[str, FCurve] = {}
+        if clip is not None and channels is None:
+            item = self._clip_item(clip)
+            for path, ch in item._definition.channels:
+                if isinstance(ch, FCurve):
+                    curves[path] = ch
+        else:
+            for i, entry in enumerate(channels or []):
+                if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+                    raise _err(
+                        "INVALID_ARGUMENT", "channels are [target, path] pairs", f"channels[{i}]"
+                    )
+                _, canonical, ch = self._curve_ref(entry[0], entry[1], clip)
+                if not isinstance(ch, FCurve):
+                    raise _err(
+                        "INVALID_CHANNEL", f"{canonical} is a rotation track", f"channels[{i}]"
+                    )
+                label = (
+                    canonical
+                    if clip is not None
+                    else f"{self._target_name(self._target(entry[0]))}: {canonical}"
+                )
+                curves[label] = ch
+        if format not in ("svg", "png"):
+            raise _err("INVALID_ARGUMENT", "format is 'svg' or 'png'", "format")
+        if not curves:
+            raise _err("CHANNEL_MISSING", "no curves to graph", "channels")
+        return (graph_svg if format == "svg" else graph_png)(curves, **options)
+
+    # ------------------------------------------------------------------ #
     # Applying a pose (explicit)
     # ------------------------------------------------------------------ #
 

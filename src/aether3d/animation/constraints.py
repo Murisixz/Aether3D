@@ -19,7 +19,8 @@ Types:
   ``target``: it takes the target's world rotation). The residual distance is reported.
 * ``look_at`` (object or joint): point ``axis`` (``-y`` by default: cameras and lights
   look along local -Y; bones point along ``+y``) at the target, keeping ``up`` (owner
-  axis, ``+z``) toward ``world_up`` (``[0, 0, 1]``).
+  axis, ``+z``) toward ``world_up`` (``[0, 0, 1]``); ``target_offset`` (world axes) moves
+  the aim point off the target's origin (a character's chest rather than its feet).
 * ``copy_location`` / ``copy_rotation`` / ``copy_scale`` / ``copy_transforms``: the
   target's world values (``axes``: which of ``xyz``; ``offset``: added in world space).
 * ``child_of``: follow the target as if parented to it, from where it was when the
@@ -89,7 +90,12 @@ _PARAMS: dict[str, dict[str, Any]] = {
     },
     "look_at": {
         "required": ("target",),
-        "optional": {"axis": "-y", "up": "+z", "world_up": [0.0, 0.0, 1.0]},
+        "optional": {
+            "axis": "-y",
+            "up": "+z",
+            "world_up": [0.0, 0.0, 1.0],
+            "target_offset": [0.0, 0.0, 0.0],
+        },
     },
     "copy_location": {
         "required": ("target",),
@@ -286,6 +292,14 @@ def parse_constraint(raw: Any, location: str, *, joints: bool) -> Constraint:
         p["world_up"] = [_num(v, f"{location}.world_up[{i}]", "world_up") for i, v in enumerate(wu)]
         if math.hypot(*p["world_up"]) < 1e-9:
             raise _err("INVALID_CONSTRAINT", "world_up must not be zero", f"{location}.world_up")
+        off = p["target_offset"]
+        if not isinstance(off, (list, tuple)) or len(off) != 3:
+            raise _err(
+                "INVALID_CONSTRAINT", "target_offset is [x, y, z]", f"{location}.target_offset"
+            )
+        p["target_offset"] = [
+            _num(v, f"{location}.target_offset[{i}]", "target_offset") for i, v in enumerate(off)
+        ]
     if kind in ("copy_location", "copy_scale"):
         axes = p["axes"]
         if (
@@ -439,7 +453,8 @@ def apply_constraint(
     kind = c.type
     if kind == "look_at":
         pos = owner[:3, 3]
-        rot = look_rotation(target_pos - pos, np.asarray(p["world_up"]), p["axis"], p["up"])
+        aim = target_pos + np.asarray(p["target_offset"], np.float64)
+        rot = look_rotation(aim - pos, np.asarray(p["world_up"]), p["axis"], p["up"])
         _, _, s = decompose(owner)
         out = owner.copy()
         out[:3, :3] = rot * s

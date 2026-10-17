@@ -46,7 +46,11 @@ handle (``dt = 0``, ``dv != 0``) gives an infinite derivative at its key (report
 **Extrapolation** before the first and after the last key: ``constant`` (hold),
 ``linear`` (the end handle's slope for Bezier ends, else the end segment's), ``cycle``
 (repeat), ``cycle_offset`` (repeat, each cycle shifted by the value change across the
-keys: walk cycles that advance), ``mirror`` (repeat back and forth).
+keys: walk cycles that advance), ``mirror`` (repeat back and forth). Automatic handles
+are *cycle-aware* (as Blender's): an end key whose side repeats takes its missing
+neighbour from the repetition (for ``cycle``, the key next to the other end, shifted by
+the period -- and by the value change for ``cycle_offset``; for ``mirror``, its own
+neighbour reflected), so a loop whose end keys agree is smooth across the wrap.
 """
 
 from __future__ import annotations
@@ -153,7 +157,7 @@ class FCurve:
         a = dict(arrays)
         _check_arrays(a, location)
         if recompute:
-            _recompute_handles(a)
+            _recompute_handles(a, before, after)
         for name in _FIELDS:
             object.__setattr__(self, f"_{name}", _frozen(a[name]))
         self._before = before
@@ -832,11 +836,12 @@ def _check_arrays(a: dict[str, np.ndarray], location: str) -> None:
 # --------------------------------------------------------------------------------------- #
 
 
-def _recompute_handles(a: dict[str, Any]) -> None:
+def _recompute_handles(a: dict[str, Any], before: int = 0, after: int = 0) -> None:
     """Fill and update handle offsets from handle types (in place).
 
     Missing (NaN) offsets are filled; ``slope``-given handles (rows of a key table) turn
-    into offsets; automatic types are recomputed; unweighted keys get time extents of a
+    into offsets; automatic types are recomputed (cycle-aware at ends that repeat:
+    ``before``/``after`` are extrapolation codes); unweighted keys get time extents of a
     third of their intervals (their slopes kept)."""
     t = a["times"].astype(np.float64)
     v = a["values"].astype(np.float64)
@@ -871,6 +876,29 @@ def _recompute_handles(a: dict[str, Any]) -> None:
     # a lone key gets 1/3 s for display and extrapolation).
     left_len = np.where(has_prev, prev_dt / 3.0, np.where(has_next, next_dt / 3.0, 1.0 / 3.0))
     right_len = np.where(has_next, next_dt / 3.0, np.where(has_prev, prev_dt / 3.0, 1.0 / 3.0))
+    # Cycle-aware ends: the neighbour an end key lacks, from the repetition (automatic
+    # slopes only; the time extents above are kept).
+    span = float(t[-1] - t[0]) if n > 1 else 0.0
+    if span > 0.0 and n > 1:
+        delta = float(v[-1] - v[0])
+        ends = []
+        if before in (2, 3) and t[-2] < t[-1]:  # previous cycle: key n-2, shifted back
+            ends.append((0, "prev", t[-2] - span, v[-2] - (delta if before == 3 else 0.0)))
+        elif before == 4 and t[1] > t[0]:  # mirrored: key 1 reflected
+            ends.append((0, "prev", 2.0 * t[0] - t[1], v[1]))
+        if after in (2, 3) and t[1] > t[0]:  # next cycle: key 1, shifted forward
+            ends.append((n - 1, "next", t[1] + span, v[1] + (delta if after == 3 else 0.0)))
+        elif after == 4 and t[-2] < t[-1]:
+            ends.append((n - 1, "next", 2.0 * t[-1] - t[-2], v[-2]))
+        for k, side, tn, vn in ends:
+            gap = abs(float(t[k]) - float(tn))
+            if not gap > 0.0:
+                continue
+            secant = (float(v[k]) - vn) / gap if side == "prev" else (vn - float(v[k])) / gap
+            if side == "prev" and not has_prev[k]:
+                prev_dt[k], sec_prev[k], has_prev[k] = gap, secant, True
+            elif side == "next" and not has_next[k]:
+                next_dt[k], sec_next[k], has_next[k] = gap, secant, True
 
     # Slope-given handles: offsets from the slopes.
     if slope_left is not None:
