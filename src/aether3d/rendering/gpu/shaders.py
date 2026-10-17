@@ -56,8 +56,12 @@ def shader_source(name: str) -> str:
 def module_source(kind: str, multisampled: bool = False) -> str:
     """The complete WGSL of a shader module: ``"scene"``, ``"shadow"``, ``"finalize"`` or
     ``"pathtrace"`` (the GPU path tracer, which evaluates materials with the same code)."""
-    if kind in ("scene", "shadow", "pathtrace"):
+    if kind in ("scene", "shadow"):
         return "\n".join(shader_source(k) for k in ("common", "material", kind))
+    if kind == "pathtrace":
+        return "\n".join(shader_source(k) for k in ("common", "material", "traverse", kind))
+    if kind == "bake":
+        return "\n".join(shader_source(k) for k in ("traverse", "bake"))
     if kind == "finalize":
         text = shader_source("finalize")
         for marker, value in _FINALIZE_VARIANTS[bool(multisampled)].items():
@@ -202,6 +206,18 @@ class ShaderLibrary:
                 # accumulators, counters
                 *[{"binding": b, "visibility": compute, "buffer": writable} for b in (10, 11)],
             ]
+        elif name == "bake":
+            compute = wgpu.ShaderStage.COMPUTE
+            entries = [
+                {"binding": 0, "visibility": compute, "buffer": storage},
+                {"binding": 1, "visibility": compute, "buffer": uniform},
+                {"binding": 2, "visibility": compute, "buffer": storage},
+                {
+                    "binding": 3,
+                    "visibility": compute,
+                    "buffer": {"type": wgpu.BufferBindingType.storage},
+                },
+            ]
         elif name == "pathtrace-mesh":
             compute = wgpu.ShaderStage.COMPUTE
             entries = [{"binding": b, "visibility": compute, "buffer": storage} for b in range(6)]
@@ -306,6 +322,21 @@ class ShaderLibrary:
             )
 
         return self._cached(("pathtrace",), create)
+
+    def bake_pipeline(self) -> Any:
+        """The bake-ray kernel (``aether3d/texturing/gpu_bake.py``)."""
+
+        def create() -> Any:
+            layout = self.context.device.create_pipeline_layout(
+                bind_group_layouts=[self.layout("bake")]
+            )
+            return self.context.device.create_compute_pipeline(
+                label="aether3d-bake",
+                layout=layout,
+                compute={"module": self.module("bake"), "entry_point": "bake_main"},
+            )
+
+        return self._cached(("bake",), create)
 
     def finalize_pipeline(self, multisampled: bool) -> Any:
         name = "finalize-ms" if multisampled else "finalize"

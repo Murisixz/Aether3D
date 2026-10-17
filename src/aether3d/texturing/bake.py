@@ -377,18 +377,25 @@ def _radical_inverse(i: np.ndarray) -> np.ndarray:
     return x.astype(np.float64) * (1.0 / 4294967296.0)
 
 
-def hemisphere_rays(normal: np.ndarray, keys: np.ndarray, count: int, slot: int) -> np.ndarray:
+def hemisphere_shifts(keys: np.ndarray, slot: int) -> np.ndarray:
+    """``(n, 2)`` random Cranley-Patterson shifts of each sample's direction set."""
+    from ..rendering.pathtrace.sampling import uniform
+
+    return np.stack([uniform(keys, slot), uniform(keys, slot + 1)], axis=1)
+
+
+def hemisphere_rays(normal: np.ndarray, shifts: np.ndarray, count: int) -> np.ndarray:
     """``(n, count, 3)`` cosine-weighted directions around ``normal``: a Hammersley set of
-    ``count`` points rotated by a random shift per sample (Cranley-Patterson), so every
-    sample gets a stratified, reproducible set."""
-    from ..rendering.pathtrace.sampling import cosine_hemisphere, frame, uniform
+    ``count`` points rotated by each sample's random shift (Cranley-Patterson), so every
+    sample gets a stratified, reproducible set (``wgsl/bake.wgsl`` generates the same)."""
+    from ..rendering.pathtrace.sampling import cosine_hemisphere, frame
 
     n = normal.shape[0]
     i = np.arange(count)
     base1 = (i + 0.5) / count
     base2 = _radical_inverse(i)
-    s1 = uniform(keys, slot)
-    s2 = uniform(keys, slot + 1)
+    s1 = shifts[:, 0]
+    s2 = shifts[:, 1]
     u1 = np.mod(base1[None, :] + s1[:, None], 1.0)
     u2 = np.mod(base2[None, :] + s2[:, None], 1.0)
     local = cosine_hemisphere(u1.reshape(-1), u2.reshape(-1)).reshape(n, count, 3)
@@ -438,6 +445,7 @@ def bake(
     height_range: float | None = None,
     seed: int = 0,
     backend: str = "auto",
+    adapter: Any = None,
     should_stop=None,
     progress=None,
 ) -> BakeResult:
@@ -448,7 +456,9 @@ def bake(
     ``ao_distance`` and ``thickness_distance`` default to 10% of that diagonal,
     ``curvature_radius`` to 2% of it and ``height_range`` to ``max(cage, depth)``.
     ``backend``: ``"cpu"``, ``"gpu"`` or ``"auto"`` (the GPU when one works, for the rays
-    only; results agree to float32 precision).
+    only: :mod:`.gpu_bake`; results agree to float32 precision, and AO and thickness may
+    differ by the rare ray whose hit float32 rounding flips); ``adapter`` selects the GPU
+    adapter as for ``scene.render``.
     """
     from ..uv.unwrap import _check_resolution
 
@@ -531,7 +541,7 @@ def bake(
             "ao_rays",
             hint="lower the resolution, samples or ray counts",
         )
-    tracer = _tracer(ps, backend)
+    tracer = _tracer(ps, backend, adapter)
     t_setup = time.perf_counter() - t0
     # Texel samples.
     t0 = time.perf_counter()
@@ -763,8 +773,29 @@ class _CPUTracer:
     name = "cpu"
 
     def __init__(self, ps: Any) -> None:
+        import os
+
         self.ps = ps
         self.rays = 0
+        # A bake is one process: trace with every core unless AETHER3D_NATIVE_THREADS says.
+        if not os.environ.get("AETHER3D_NATIVE_THREADS", "").strip():
+            ps.accel.threads = max(1, os.cpu_count() or 1)
+
+    def hemisphere(self, mode, origin, normal, shifts, count, distance, skip_inst, skip_tri):
+        """Mode 1: the visible fraction of ``count`` cosine-weighted rays around ``normal``;
+        mode 2: their mean distance to a hit (misses: ``distance``) over ``distance``."""
+        m = origin.shape[0]
+        d = hemisphere_rays(normal, shifts, count).reshape(-1, 3)
+        o = np.repeat(origin, count, axis=0)
+        si = np.repeat(skip_inst, count)
+        st = np.repeat(skip_tri, count)
+        tmax = np.full(o.shape[0], distance)
+        if mode == 1:
+            blocked = self.occluded(o, d, tmax, si, st)
+            return 1.0 - blocked.reshape(m, count).mean(axis=1)
+        hits = self.closest(o, d, tmax, si, st)
+        t = np.where(hits.inst >= 0, np.minimum(hits.t, distance), distance)
+        return t.reshape(m, count).mean(axis=1) / distance
 
     def closest(self, origin, direction, tmax, skip_inst=None, skip_tri=None):
         self.rays += origin.shape[0]
@@ -775,45 +806,35 @@ class _CPUTracer:
         return self.ps.accel.occluded(origin, direction, 0.0, tmax, skip_inst, skip_tri)
 
 
-def _tracer(ps: Any, backend: str):
-    if backend in ("gpu", "auto"):
-        try:
-            from .gpu_bake import GPUTracer
+def _tracer(ps: Any, backend: str, adapter: Any = None):
+    if backend == "cpu":
+        return _CPUTracer(ps)
+    import os
 
-            return GPUTracer(ps)
-        except ImportError:
-            pass
-        except TexturingError:
-            if backend == "gpu":
-                raise
+    if backend == "auto" and os.environ.get("AETHER3D_GPU_TESTS") == "skip":
+        return _CPUTracer(ps)  # portable test runs never touch the GPU
+    try:
+        from .gpu_bake import GPUTracer
+
+        return GPUTracer(ps, adapter)
+    except TexturingError:
+        if backend == "gpu":
+            raise
     return _CPUTracer(ps)
 
 
 def _ao(tracer, ps, it, n_side, keys, count, distance) -> np.ndarray:
     from ..rendering.pathtrace.sampling import SLOT_AO
 
-    m = it.p.shape[0]
-    dirs = hemisphere_rays(n_side, keys, count, SLOT_AO)
     origin = ps.offset_origin(it.p, it.ng)
-    o = np.repeat(origin, count, axis=0)
-    d = dirs.reshape(-1, 3)
-    skip_i = np.repeat(it.inst, count)
-    skip_t = np.repeat(it.prim, count)
-    blocked = tracer.occluded(o, d, np.full(o.shape[0], distance), skip_i, skip_t)
-    return 1.0 - blocked.reshape(m, count).mean(axis=1)
+    shifts = hemisphere_shifts(keys, SLOT_AO)
+    return tracer.hemisphere(1, origin, n_side, shifts, count, distance, it.inst, it.prim)
 
 
 def _thickness(tracer, ps, it, n_side, keys, count, distance) -> np.ndarray:
-    m = it.p.shape[0]
-    dirs = hemisphere_rays(-n_side, keys, count, 64)
     origin = ps.offset_origin(it.p, -it.ng)
-    o = np.repeat(origin, count, axis=0)
-    d = dirs.reshape(-1, 3)
-    hits = tracer.closest(
-        o, d, np.full(o.shape[0], distance), np.repeat(it.inst, count), np.repeat(it.prim, count)
-    )
-    t = np.where(hits.inst >= 0, np.minimum(hits.t, distance), distance)
-    return (t.reshape(m, count).mean(axis=1)) / distance
+    shifts = hemisphere_shifts(keys, 64)
+    return tracer.hemisphere(2, origin, -n_side, shifts, count, distance, it.inst, it.prim)
 
 
 def _curvature_at(ps, it, curvature) -> np.ndarray:

@@ -339,3 +339,38 @@ def test_scene_bake_applies_maps_in_one_undo_step():
     assert len(scene.history.entries) == before + 1
     scene.history.undo()
     assert low.material is None and not scene.materials.textures
+
+
+def test_gpu_bake_agrees_with_the_cpu(gpu):
+    scene = Scene()
+    low = scene.add_object("Low", mesh=create_sphere(1.0, 24, 12))
+    low.unwrap(resolution=128)
+    scene.add_object("High", mesh=create_sphere(1.0, 96, 48))
+    scene.add_object("Floor", mesh=plane(4.0, 4, z=-1.05))
+    options = {"maps": ["normal", "ao", "thickness", "height"], "resolution": 128, "ao_rays": 16}
+    cpu = bake(scene, low, ["High", "Floor"], backend="cpu", **options)
+    on_gpu = bake(scene, low, ["High", "Floor"], backend="gpu", adapter=gpu.adapter, **options)
+    assert on_gpu.report["backend"] == "gpu" and cpu.report["backend"] == "cpu"
+    assert np.array_equal(cpu.hit, on_gpu.hit)
+    for name in ("normal", "height"):
+        assert np.abs(cpu.maps[name] - on_gpu.maps[name]).max() < 1e-5, name
+    # AO and thickness: the same rays; float32 rounding may flip the odd grazing hit.
+    for name in ("ao", "thickness"):
+        diff = np.abs(cpu.maps[name] - on_gpu.maps[name])[..., 0]
+        assert diff.mean() < 1e-3 and np.mean(diff > 1e-4) < 0.01, name
+
+
+def test_gpu_backend_without_a_gpu_is_refused(monkeypatch):
+    from aether3d.texturing import gpu_bake
+
+    def unavailable(*args, **kwargs):
+        raise TexturingError("GPU_UNAVAILABLE", "no GPU here", "backend")
+
+    monkeypatch.setattr(gpu_bake, "GPUTracer", unavailable)
+    scene = Scene()
+    low = scene.add_object("Low", mesh=create_sphere(1.0, 12, 6))
+    low.unwrap(resolution=64)
+    with pytest.raises(TexturingError) as exc:
+        bake(scene, low, maps=["normal"], resolution=64, backend="gpu")
+    assert exc.value.code == "GPU_UNAVAILABLE"
+    assert bake(scene, low, maps=["normal"], resolution=64).report["backend"] == "cpu"
