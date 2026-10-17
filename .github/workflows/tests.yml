@@ -27,6 +27,7 @@ jobs:
           import glob, sys, zipfile
           names = set(zipfile.ZipFile(glob.glob("dist/aether3d-*.whl")[0]).namelist())
           need = ["aether3d/plans/guide.md", "aether3d/feedback/guide.md", "aether3d/mcp/server.py"]
+          need += ["aether3d/cad/guide.md", "aether3d/animation/guide.md"]
           need += [f"aether3d/plans/examples/{n}.json" for n in ("basics", "castle", "village")]
           need += ["aether3d/rendering/gpu/wgsl/scene.wgsl"]
           missing = [n for n in need if n not in names]
@@ -283,7 +284,7 @@ jobs:
       - name: Validate exports with the Khronos glTF Validator
         env:
           AETHER3D_REQUIRE_GLTF_VALIDATOR: "1"
-        run: pytest tests/test_khronos_validator.py tests/test_editing_gltf.py tests/test_procedural_gltf.py tests/test_render_gltf.py tests/test_material_gltf_validator.py -v
+        run: pytest tests/test_khronos_validator.py tests/test_editing_gltf.py tests/test_procedural_gltf.py tests/test_render_gltf.py tests/test_material_gltf_validator.py tests/test_animation_gltf.py -v
       - name: Validate the demonstration scenes
         run: |
           python examples/gltf_roundtrip.py ci_gltf --require-validator

@@ -7,6 +7,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -37,13 +38,20 @@ def validator_available() -> bool:
 
 
 def assert_valid(*paths: Path) -> None:
+    """Every file passes the Khronos glTF Validator with no errors and no warnings (when it
+    is installed; ``AETHER3D_REQUIRE_GLTF_VALIDATOR=1``, as in CI, requires it)."""
     if not validator_available():
+        if os.environ.get("AETHER3D_REQUIRE_GLTF_VALIDATOR") == "1":
+            pytest.fail("Khronos glTF Validator required but not installed "
+                        "(run `npm ci --prefix tools/gltf-validator`)", pytrace=False)  # fmt: skip
         return
     result = subprocess.run(
         ["node", str(TOOL / "validate.mjs"), *map(str, paths)],
         capture_output=True, text=True, encoding="utf-8", check=False,
     )  # fmt: skip
-    for line in result.stdout.splitlines():
+    lines = result.stdout.splitlines()
+    assert len(lines) == len(paths), result.stdout + result.stderr
+    for line in lines:
         report = json.loads(line)
         assert report["errors"] == 0 and report["warnings"] == 0, report["messages"]
 
