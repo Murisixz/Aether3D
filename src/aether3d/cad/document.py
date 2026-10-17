@@ -245,6 +245,7 @@ def _load_kinds() -> None:
         "aether3d.cad.assembly",
         "aether3d.arch.kinds",
         "aether3d.cad.interop",
+        "aether3d.cad.measure",
         "aether3d.cad.drawing.kind",
     ):
         try:
