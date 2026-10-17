@@ -464,3 +464,46 @@ class CadError(AetherError, ValueError):
             "hint": self.hint,
             "details": self.details,
         }
+
+
+class AnimationError(AetherError, ValueError):
+    """An animation request cannot be carried out; the scene, its animation document and
+    its history are unchanged and no file was written.
+
+    Raised for times and frame rates, keyframes and curves, rotation tracks, clips,
+    layers and strips, skeletons, skins and morph targets, IK and constraints,
+    retargeting, cinematics, animation scripts and animation interchange (see
+    ``docs/ANIMATION.md``). ``code`` is a stable identifier (e.g. ``"INVALID_KEYS"``,
+    ``"INVALID_HANDLE"``, ``"UNKNOWN_PROPERTY"``, ``"TARGET_MISSING"``,
+    ``"SKELETON_CYCLE"``, ``"CONSTRAINT_CYCLE"``), ``location`` names the offending
+    element (``clips[Walk].channels[transform.position.x].keys[3].right``), ``hint``
+    suggests how to proceed and ``details`` carries structured context.
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        location: str | None = None,
+        *,
+        hint: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.location = location
+        self.hint = hint
+        self.details = dict(details or {})
+        text = f"[{code}] " + (f"{location}: " if location else "") + message
+        if hint:
+            text += f". Hint: {hint}"
+        super().__init__(text)
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "location": self.location,
+            "hint": self.hint,
+            "details": self.details,
+        }
