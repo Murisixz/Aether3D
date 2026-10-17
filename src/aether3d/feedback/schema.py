@@ -154,6 +154,12 @@ def _check_schema(kind: str) -> dict[str, Any]:
         "max_black_fraction": {"type": "number", "minimum": 0, "maximum": 1},
         "min_coverage": {"type": "number", "minimum": 0, "maximum": 1},
         "tier": {"enum": list(expectations.MESH_TIERS), "default": "closed"},
+        "resolution": {"type": "integer", "minimum": 16, "maximum": 16384, "default": 1024},
+        "max_flipped": {"type": "integer", "minimum": 0, "default": 0},
+        "max_overlapping": {"type": "integer", "minimum": 0, "default": 0},
+        "max_stretch": {"type": "number", "minimum": 1},
+        "max_density_spread": {"type": "number", "minimum": 0},
+        "min_gap": {"type": "number", "minimum": 0, "description": "texels"},
     }
     for key in spec["fields"]:
         if key == "region":

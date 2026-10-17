@@ -399,8 +399,11 @@ def test_stacked_and_overlapping_islands():
     stacked = uv.transform_islands(mesh, [1], translate=tuple(shift)).mesh
     rep = uv.uv_report(stacked, resolution=256)
     assert rep["stacked_pairs"] == [[0, 1]] and rep["overlapping_pair_count"] == 0
+    assert rep["overlapping_triangles"] == 0 and rep["stacked_triangles"] > 0
     half = uv.transform_islands(mesh, [1], translate=tuple(shift + 0.01), scale=1.3).mesh
-    assert [0, 1] in uv.uv_report(half, resolution=256)["overlapping_pairs"]
+    rep = uv.uv_report(half, resolution=256)
+    assert [0, 1] in rep["overlapping_pairs"]
+    assert rep["overlapping_triangles"] > 0 and rep["stacked_triangles"] == 0
 
 
 def test_normalize_density_and_repack():
@@ -492,3 +495,26 @@ def test_scene_object_uv_steps_are_undoable():
     assert box.mesh is original
     with pytest.raises(TexturingError):
         box.edit_uvs("bogus")
+
+
+def test_layout_images():
+    mesh = uv.unwrap(create_sphere(1.0, 24, 12), resolution=256).mesh
+    for mode in ("islands", "density", "stretch", "overlaps"):
+        image = uv.layout_image(mesh, 128, mode=mode)
+        assert image.shape == (128, 128, 3) and image.dtype == np.uint8
+    clean = uv.layout_image(mesh, 128, mode="overlaps")
+    red = (clean[..., 0] > 200) & (clean[..., 1] < 80)
+    assert not red.any()
+    uvs = mesh.uvs.copy()
+    uvs[mesh.triangles[5]] = uvs[mesh.triangles[50]] + 0.005
+    bad = Mesh(mesh.positions, mesh.triangles, normals=mesh.normals, uvs=uvs)
+    image = uv.layout_image(bad, 128, mode="overlaps")
+    assert ((image[..., 0] > 200) & (image[..., 1] < 80)).any()
+    tex = np.zeros((8, 8, 4))
+    tex[..., 1] = 1.0
+    tex[..., 3] = 1.0
+    shown = uv.layout_image(mesh, 64, mode="texture", texture=tex, edges=False)
+    assert (shown[..., 1] == 255).all()
+    for kwargs in ({"size": 8}, {"mode": "rainbow"}, {"mode": "texture"}, {"texture": tex}):
+        with pytest.raises(TexturingError):
+            uv.layout_image(mesh, **{"size": 64, **kwargs})

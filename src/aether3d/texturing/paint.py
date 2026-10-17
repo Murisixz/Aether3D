@@ -16,7 +16,8 @@ footprint and a falloff (``smooth``, ``linear``, ``constant``, ``gaussian``) sha
 
 **Footprints.**
 
-* ``"surface"``: texels whose surface point lies within ``radius`` (object units) of the
+* ``"surface"``: texels whose surface point lies within ``radius`` (world units, as the
+  points; ``coordinates="object"`` for the object's own) of the
   dab center -- continuous across UV seams, since neighbouring points on both sides of a
   seam are near in 3D. Texels whose normal faces away from the dab's surface normal by
   more than ``normal_limit`` degrees are left alone (the other side of a thin sheet).
@@ -39,6 +40,7 @@ it paints together), rolled back if anything fails, and cancellable.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -286,6 +288,21 @@ def _pair(value: Any, location: str) -> tuple[float, float]:
     return (a, b)
 
 
+def _array(value: Any, dtype: Any, location: str, what: str) -> np.ndarray:
+    """``value`` as an array of ``dtype``; malformed input (ragged, non-numeric, ...) is an
+    ``INVALID_ARGUMENT`` error rather than a crash."""
+    if isinstance(value, (str, bytes, dict)) or value is None:
+        raise _bad(f"{what} must be numbers", location)
+    try:
+        with np.errstate(all="ignore"):
+            out = np.asarray(value, dtype=dtype)
+    except (TypeError, ValueError, OverflowError):
+        raise _bad(f"{what} must be numbers", location) from None
+    if out.dtype == object:
+        raise _bad(f"{what} must be numbers", location)
+    return out
+
+
 def _number(value: Any, name: str, lo: float, hi: float, location: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise _bad(f"{name} must be a number", f"{location}.{name}")
@@ -446,6 +463,17 @@ class StrokeReport:
         }
 
 
+def _to_object(obj: Any, points: np.ndarray) -> tuple[np.ndarray, float]:
+    """World points in ``obj``'s own space, and the factor dividing world lengths there
+    (the cube root of the transform's volume scale)."""
+    m = np.asarray(obj.world_matrix, dtype=np.float64)
+    det = abs(float(np.linalg.det(m[:3, :3])))
+    if not det > 1e-300:
+        raise TexturingError("DEGENERATE_TRANSFORM", f"{obj.name!r} has a degenerate transform")
+    inv = np.linalg.inv(m)
+    return points @ inv[:3, :3].T + inv[:3, 3], det ** (1.0 / 3.0)
+
+
 def _dab_positions(
     points: np.ndarray, pressure: np.ndarray, step: float
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -510,6 +538,7 @@ def stroke(
     points: Any,
     *,
     space: str = "surface",
+    coordinates: str = "world",
     pressure: Any = None,
     view: PaintView | None = None,
     padding: int = 2,
@@ -519,9 +548,11 @@ def stroke(
     """Paint one stroke on ``obj``'s painted textures (see the module docstring).
 
     ``targets``: a painted texture, a :class:`Target`, or a list of them (a texture alone
-    paints its top paint layer with the brush color). ``points``: object-space points
-    (``"surface"``), pixel coordinates in ``view`` (``"view"``) or UV coordinates (``"uv"``).
-    ``pressure``: one value in [0, 1] per point (default 1).
+    paints its top paint layer with the brush color). ``points``: 3D points (``"surface"``;
+    world space, or the object's own space with ``coordinates="object"``, and the brush
+    radius in the same units, as sculpt strokes), pixel coordinates in ``view``
+    (``"view"``) or UV coordinates (``"uv"``). ``pressure``: one value in [0, 1] per point
+    (default 1). Symmetry mirrors across the object's own planes.
     """
     import time
 
@@ -533,7 +564,7 @@ def stroke(
     if mesh is None or mesh.uvs is None:
         raise TexturingError("NO_UVS", f"{obj.name!r} has no UVs to paint through", "object")
     tlist = _targets(targets, b)
-    pts = np.asarray(points, dtype=np.float64)
+    pts = _array(points, np.float64, "points", "points")
     dims = 2 if space in ("view", "uv") else 3
     if pts.ndim == 1:
         pts = pts.reshape(1, -1)
@@ -544,7 +575,7 @@ def stroke(
     pr = (
         np.ones(pts.shape[0])
         if pressure is None
-        else np.asarray(pressure, dtype=np.float64).reshape(-1)
+        else _array(pressure, np.float64, "pressure", "pressure").reshape(-1)
     )
     if pr.shape[0] != pts.shape[0] or not np.all(np.isfinite(pr)) or pr.min() < 0 or pr.max() > 1:
         raise _bad("pressure needs one value in [0, 1] per point", "pressure")
@@ -552,6 +583,11 @@ def stroke(
         raise _bad("padding must be an integer in [0, 16]", "padding")
     if space == "view" and view is None:
         raise _bad("a view stroke needs a view (PaintView.render(scene, camera))", "view")
+    if coordinates not in ("world", "object"):
+        raise _bad("coordinates must be 'world' or 'object'", "coordinates")
+    if space == "surface" and coordinates == "world":
+        pts, scale = _to_object(obj, pts)
+        b = dataclasses.replace(b, radius=b.radius / scale)
     report = StrokeReport()
     accs = []
     for target in tlist:
@@ -1020,8 +1056,7 @@ def fill(
     t = _targets(target, Brush())[0]
     doc = t.texture
     color = _color(value, "value")
-    if not 0.0 <= opacity <= 1.0:
-        raise _bad("opacity must be in [0, 1]", "opacity")
+    opacity = _number(opacity, "opacity", 0.0, 1.0, "fill")
     mesh = obj.mesh
     tm = texel_map(mesh, doc.width, doc.height)
     tri_sel = None
@@ -1029,6 +1064,10 @@ def fill(
         if not isinstance(where, dict) or len(where) != 1:
             raise _bad("where is {islands|groups|triangles: [...]}", "where")
         ((key, ids),) = where.items()
+        if not isinstance(ids, list):
+            raise _bad(f"where.{key} is a list of integers", f"where.{key}")
+        if any(isinstance(i, bool) or not isinstance(i, int) or abs(i) >= 2**62 for i in ids):
+            raise _bad(f"where.{key} is a list of integers", f"where.{key}")
         ids = np.asarray(ids, dtype=np.int64).reshape(-1)
         if key == "islands":
             labels, _ = island_labels(Topology.from_mesh(mesh))
@@ -1074,23 +1113,32 @@ def gradient(
     end: Any,
     colors: Any,
     *,
+    coordinates: str = "world",
     opacity: float = 1.0,
     padding: int = 2,
     label: str | None = None,
 ) -> dict[str, Any]:
-    """A linear gradient over the object's surface from object-space point ``start`` to
-    ``end``: texels get ``mix(colors[0], colors[1], t)`` with ``t`` the clamped projection of
-    their surface point on the segment. One history step."""
+    """A linear gradient over the object's surface from point ``start`` to ``end`` (world
+    space, or the object's own with ``coordinates="object"``): texels get
+    ``mix(colors[0], colors[1], t)`` with ``t`` the clamped projection of their surface
+    point on the segment. One history step."""
     t = _targets(target, Brush())[0]
     doc = t.texture
-    a = np.asarray(start, dtype=np.float64).reshape(3)
-    e = np.asarray(end, dtype=np.float64).reshape(3)
+    a = _array(start, np.float64, "start", "start").reshape(-1)
+    e = _array(end, np.float64, "end", "end").reshape(-1)
+    if a.shape != (3,) or e.shape != (3,):
+        raise _bad("start and end are 3D points", "start")
+    opacity = _number(opacity, "opacity", 0.0, 1.0, "gradient")
     if not (np.all(np.isfinite(a)) and np.all(np.isfinite(e))) or np.allclose(a, e):
         raise _bad("start and end must be distinct finite points", "start")
     if not isinstance(colors, (list, tuple)) or len(colors) != 2:
         raise _bad("colors must be two colors", "colors")
     c0 = np.asarray(_color(colors[0], "colors[0]"), np.float32)
     c1 = np.asarray(_color(colors[1], "colors[1]"), np.float32)
+    if coordinates not in ("world", "object"):
+        raise _bad("coordinates must be 'world' or 'object'", "coordinates")
+    if coordinates == "world":
+        (a, e), _ = _to_object(obj, np.stack([a, e]))
     tm = texel_map(obj.mesh, doc.width, doc.height)
     d = e - a
     edits: dict = {}

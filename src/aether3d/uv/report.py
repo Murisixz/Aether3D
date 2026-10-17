@@ -11,7 +11,9 @@ Every measure is a fact about the map, computed exactly or with a stated resolut
   with the predicates of :mod:`aether3d.spatial.predicates`: within an island (a fold) or
   between two islands; an overlapping pair of islands
   with the same number of triangles and equal UV areas is reported as *stacked*
-  (copies or mirrors placed on each other, a deliberate texel-sharing technique);
+  (copies or mirrors placed on each other, a deliberate texel-sharing technique):
+  ``overlapping_triangles`` counts the triangles of unintended overlaps only, and
+  ``stacked_triangles`` those overlapping only through stacked pairs;
 * **stretch** -- Sander et al.'s L2 and Linf stretch per island (see
   :mod:`aether3d.uv.metrics`);
 * **texel density** -- texels per world unit at ``resolution`` (per island: sqrt of UV
@@ -115,7 +117,6 @@ def uv_report(mesh: Mesh, *, resolution: Any = 1024, islands_limit: int = 64) ->
     ta, tb = overlapping_triangles(corner, signed)
     inner = labels[ta] == labels[tb]
     folded = np.unique(labels[ta[inner]])
-    involved = np.unique(np.r_[ta, tb])
     diff = ~inner
     la, lb = labels[ta[diff]], labels[tb[diff]]
     keys = np.unique(np.minimum(la, lb) * count + np.maximum(la, lb))
@@ -128,6 +129,12 @@ def uv_report(mesh: Mesh, *, resolution: Any = 1024, islands_limit: int = 64) ->
             uv_area[a], uv_area[b], rel_tol=1e-6, abs_tol=1e-12
         )
         (stacked if same else overlapping).append([int(a), int(b)])
+    # Triangles of stacked island pairs overlap on purpose; every other overlap does not.
+    stacked_keys = np.array([a * count + b for a, b in stacked], dtype=np.int64)
+    pair_key = np.minimum(labels[ta], labels[tb]) * count + np.maximum(labels[ta], labels[tb])
+    on_purpose = ~inner & np.isin(pair_key, stacked_keys)
+    involved = np.unique(np.r_[ta[~on_purpose], tb[~on_purpose]])
+    stacked_tris = np.setdiff1d(np.unique(np.r_[ta[on_purpose], tb[on_purpose]]), involved)
     gap = min_gap(corner, labels, count, (width, height)) if count > 1 else None
     finite_l2 = l2[np.isfinite(l2)]
     report = {
@@ -138,6 +145,7 @@ def uv_report(mesh: Mesh, *, resolution: Any = 1024, islands_limit: int = 64) ->
         "nonfinite_triangles": int((~finite).sum()),
         "mirrored_islands": int(mirrored.sum()),
         "overlapping_triangles": int(involved.shape[0]),
+        "stacked_triangles": int(stacked_tris.shape[0]),
         "self_overlapping_islands": int(folded.shape[0]),
         "overlapping_pairs": overlapping[:islands_limit],
         "overlapping_pair_count": len(overlapping),

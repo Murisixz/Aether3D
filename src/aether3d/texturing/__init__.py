@@ -9,7 +9,8 @@ UV maps live in :mod:`aether3d.uv`; painted (layered) textures in
   high-resolution sources;
 * :mod:`.paint` -- brushes and strokes on painted textures (surface, view and UV space),
   fills and gradients;
-* :mod:`.transfer` -- carry painted textures onto a remeshed copy (unwrap + bake).
+* :mod:`.transfer` -- carry painted textures onto a remeshed copy (unwrap + bake);
+* :mod:`.script` -- ``aether3d.texture-script``: all of the above as safe JSON.
 """
 
 from .bake import MAPS, SLOT_OF_MAP, BakeResult, apply_bake, bake
@@ -25,6 +26,7 @@ from .paint import (
     texel_map,
 )
 from .raster import Coverage, rasterize_uv
+from .script import run_texture_script
 from .transfer import transfer_textures
 
 __all__ = [
@@ -42,6 +44,7 @@ __all__ = [
     "fill",
     "gradient",
     "rasterize_uv",
+    "run_texture_script",
     "stroke",
     "texel_map",
     "transfer_textures",

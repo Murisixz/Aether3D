@@ -250,3 +250,23 @@ def test_invalid_strokes_are_refused_and_change_nothing():
         stroke(scene, ball, doc, {"radius": 0.1}, [[1, 0, 0]], should_stop=lambda: True)
     assert exc.value.code == "CANCELLED"
     assert len(scene.history.entries) == n
+
+
+def test_surface_strokes_take_world_points_and_radii_by_default():
+    scene, ball, doc = painted_ball(128)
+    ball.position = (5.0, 0.0, 0.0)
+    ball.scale = (2.0, 2.0, 2.0)
+    # The ball's +x pole is at world (7, 0, 0); a 0.4 world radius is 0.2 on the object.
+    stroke(
+        scene,
+        ball,
+        doc,
+        {"radius": 0.4, "color": "#ff0000", "falloff": "constant"},
+        [[7.0, 0.0, 0.0]],
+    )
+    assert np.allclose(sample_at(doc, ball, [[1, 0, 0]])[0][:3], [1, 0, 0])
+    assert np.allclose(sample_at(doc, ball, [[0.96, 0.27, 0]])[0], 1.0)  # 0.27 > 0.2 away
+    stroke(
+        scene, ball, doc, {"radius": 0.1, "color": "#0000ff"}, [[-1, 0, 0]], coordinates="object"
+    )
+    assert np.allclose(sample_at(doc, ball, [[-1, 0, 0]])[0][:3], [0, 0, 1], atol=0.02)

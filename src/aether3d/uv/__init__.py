@@ -14,9 +14,10 @@ Quick start::
 Modules: :mod:`.topology` (welded surface, seams), :mod:`.charts` (segmentation and
 splitting), :mod:`.param` (LSCM, Tutte, SLIM), :mod:`.sparse` (LDL^T solver, native when
 installed), :mod:`.pack` (atlas packing), :mod:`.projection`, :mod:`.ops` (island tools)
-and :mod:`.report` (diagnostics).
+:mod:`.report` (diagnostics) and :mod:`.layout` (layout images).
 """
 
+from .layout import layout_image
 from .ops import (
     align_islands,
     normalize_islands,
@@ -34,6 +35,7 @@ __all__ = [
     "PROJECTIONS",
     "UnwrapResult",
     "align_islands",
+    "layout_image",
     "normalize_islands",
     "pack_islands",
     "project",
