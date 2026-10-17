@@ -33,7 +33,8 @@ argument): ``timeline``, ``set_time``, ``markers``, ``add_marker``, ``sections``
 ``remove_strip``, ``add_rig``, ``set_rig``, ``attach``, ``detach``, ``skin``, ``unbind``,
 ``add_constraint``, ``set_constraints``, ``remove_constraint``, ``morph_targets``,
 ``add_path``, ``remove_path``, ``follow_path``, ``shots``, ``add_shot``, ``camera_move``,
-``camera_orbit``, ``follow_camera``, ``generate``, ``simplify``, ``resample``, ``bake``,
+``camera_orbit``, ``follow_camera``, ``generate``, ``set_modifiers``, ``simplify``,
+``resample``, ``bake``,
 ``mirror_clip``, ``extract_root_motion``, ``plant_feet``, ``retarget``, ``apply_pose``;
 read-only: ``report``, ``trajectory``, ``diagnose``, ``contacts``, ``sample``.
 
@@ -208,6 +209,7 @@ OPERATIONS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...], bool]] = {
         ),
         False,
     ),  # fmt: skip
+    "set_modifiers": ("set_modifiers", ("path", "modifiers"), ("target", "clip"), False),
     "simplify": (
         "simplify",
         ("path", "tolerance"),
@@ -428,7 +430,15 @@ def _call(system: Any, op: str, args: dict[str, Any], loc: str) -> Any:
         else:
             handle.set_events(kwargs["events"])
         return {"clip": handle.name}
-    if op in ("keyframe", "set_channel", "edit_keys", "report", "simplify", "resample"):
+    if op in (
+        "keyframe",
+        "set_channel",
+        "edit_keys",
+        "report",
+        "simplify",
+        "resample",
+        "set_modifiers",
+    ):
         if "target" not in kwargs and "clip" not in kwargs:
             raise AnimationScriptError(f"{op} needs a target or a clip", loc)
         if op == "keyframe" and "clip" in kwargs:

@@ -76,6 +76,13 @@ _ARGUMENTS: dict[str, Any] = {
         ]
     },
     "motion": {"enum": list(KINDS)},
+    "modifiers": {
+        "type": "array",
+        "description": "F-curve modifiers: {type: offset|scale|limits|noise|wave|envelope|"
+        "smooth|stepped|time_offset|time_scale, ...parameters, influence, range, mute}",
+        "items": {"type": "object"},
+        "maxItems": 16,
+    },
     "fps": {"description": "frames per second: a number or a fraction like '30000/1001'"},
     "tolerance": {"type": "number", "exclusiveMinimum": 0},
     "clip": {"type": ["string", "null"], "description": "a clip name"},

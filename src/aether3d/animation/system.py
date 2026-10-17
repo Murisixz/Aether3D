@@ -1607,6 +1607,18 @@ class AnimationSystem:
             self._set(item, definition=item._definition.with_channel(canonical, new))
         return report
 
+    def set_modifiers(
+        self, target: Any, path: str, modifiers: list[Any], *, clip: Any = None
+    ) -> None:
+        """Replace a curve's modifier stack (``[]`` removes them; see :mod:`.modifiers`):
+        the keys stay as they are. One undo step."""
+        item, canonical, ch = self._curve_ref(target, path, clip)
+        if not isinstance(ch, FCurve):
+            raise _err("INVALID_CHANNEL", f"{canonical} is a rotation track", "path")
+        new = ch.replace(modifiers=modifiers, location="modifiers")
+        with self._op(f"Set modifiers of {canonical}"):
+            self._set(item, definition=item._definition.with_channel(canonical, new))
+
     def resample(
         self, target: Any, path: str, *, fps: Any = None, clip: Any = None, **options: Any
     ) -> int:

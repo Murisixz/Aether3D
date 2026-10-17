@@ -283,6 +283,19 @@ def _rot(q: np.ndarray, v: np.ndarray) -> np.ndarray:
     )
 
 
+def _between(a: np.ndarray, b: np.ndarray, fraction: float = 1.0) -> np.ndarray:
+    """The shortest rotation taking unit direction ``a`` to ``b`` (not opposite), scaled
+    to ``fraction`` of its angle."""
+    ax, ay, az = (float(c) for c in a)
+    bx, by, bz = (float(c) for c in b)
+    axis = np.array([ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx])
+    sin = math.sqrt(float(axis @ axis))
+    if sin < 1e-12:
+        return np.array([0.0, 0.0, 0.0, 1.0])
+    angle = math.atan2(sin, ax * bx + ay * by + az * bz)
+    return _axis_angle(axis, fraction * math.degrees(angle))
+
+
 class _Body:
     """Rest geometry of a rig in anatomical terms, and a pose solver."""
 
@@ -1105,12 +1118,19 @@ def _wave(body: _Body, p: dict[str, Any]):
         )
         deltas: dict[int, np.ndarray] = {}
         if arm["lower"] is not None:
-            deltas[arm["upper"]] = _qmul(
-                _axis_angle(f, out * 80.0 * up), _axis_angle(r, 20.0 * up), arm["base"]
-            )
-            deltas[arm["lower"]] = _qmul(
-                _axis_angle(f, out * 22.0 * osc), _axis_angle(r, 95.0 * up)
-            )
+            # In the hanging-arm frame (after ``base``): the shoulder abducts 80 degrees,
+            # a little forward; the forearm turns from the upper arm's direction to
+            # vertical (leaning 10 degrees forward), swinging +-22 degrees side to side.
+            # A child's posed rotation is ``D_upper * D_lower`` (deltas compose down the
+            # chain), so the forearm's delta is that absolute turn, seen from the shoulder.
+            shoulder = _qmul(_axis_angle(f, out * 80.0 * up), _axis_angle(r, 15.0 * up))
+            upper_dir = _rot(shoulder, -u)
+            lean = _rot(_axis_angle(r, -10.0), u)  # (about r, +angles turn up to -f)
+            fore_dir = _rot(_axis_angle(f, out * 22.0 * osc), lean)
+            elbow = _between(upper_dir, fore_dir, up)
+            base = arm["base"]
+            deltas[arm["upper"]] = _qmul(shoulder, base)
+            deltas[arm["lower"]] = _qmul(_conj(base), _conj(shoulder), elbow, shoulder, base)
         else:
             deltas[arm["upper"]] = _qmul(
                 _axis_angle(f, out * (150.0 * up + 22.0 * osc)), arm["base"]

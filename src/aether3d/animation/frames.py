@@ -5,8 +5,11 @@ frame rate by default) with any of Aether3D's own renderers, one frame at a time
 stays bounded), and writes each PNG atomically. ``motion_blur={"shutter": s,
 "samples": n}`` averages ``n`` renders spread over the fraction ``s`` of the frame
 interval centred on the frame time, in linear light, before the same display encoding
-the renderer uses: real temporal sampling, not a filter. ``should_stop`` cancels between
-frames (the frames written so far are listed); ``progress`` is called after each frame.
+the renderer uses: real temporal sampling, not a filter. The shutter stays inside the
+rendered range (``start``..``end``, or the timeline for a list of ``frames``): the first
+and last frames never sample beyond it (where shots or keys may not exist).
+``should_stop`` cancels between frames (the frames written so far are listed);
+``progress`` is called after each frame.
 
 :func:`contact_sheet` lays frames out in a grid with labels drawn by Aether3D's stroke
 font. :func:`video_command` gives the FFmpeg command line that turns a numbered PNG
@@ -140,6 +143,9 @@ def render_frames(
         blur = (float(shutter), int(samples))
     if "time" in render_options:
         raise _err("INVALID_ARGUMENT", "frame times come from the frames", "time")
+    anim = scene.animation
+    lo = anim.start if frames is not None or start is None else float(start)
+    hi = anim.end if frames is not None or end is None else float(end)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     tonemap = render_options.get("tonemap", "none")
@@ -161,7 +167,7 @@ def render_frames(
             acc = None
             result = None
             for j in range(samples):
-                sub = t + ((j + 0.5) / samples - 0.5) * dt
+                sub = min(max(t + ((j + 0.5) / samples - 0.5) * dt, lo), hi)
                 options = dict(render_options)
                 outputs = options.pop("outputs", None)
                 wanted = {"image", "linear"} if outputs is None else {*outputs, "linear"}

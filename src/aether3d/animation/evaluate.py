@@ -207,6 +207,8 @@ def compile_program(system: AnimationSystem) -> Program:
             continue
         b = len(prog.targets)
         prog.targets.append((kind, tid))
+        rig_item = system._owned.get(("rig", tid)) if kind == P.OBJECT else None
+        rig = rig_item._definition if rig_item is not None else None
         entries: list[tuple[Any, Strip | None, Any, int, int, int]] = []
         if binding.action is not None:
             entries.append((binding.action, None, None, REPLACE, 0, 0))
@@ -250,7 +252,7 @@ def compile_program(system: AnimationSystem) -> Program:
             for path, channel in clip.channels:
                 spec = P.parse(path, clip.target)
                 assert not isinstance(spec, list)
-                mask = _mask_weight(layer, spec)
+                mask = _mask_weight(layer, spec, rig)
                 if mask <= 0.0:
                     continue
                 if spec.kind == P.ROTATION:
@@ -335,18 +337,37 @@ def _trim(strip: Strip, crange: tuple[float, float]) -> tuple[float, float]:
     return a, z
 
 
-def _mask_weight(layer: Any, spec: P.PathSpec) -> float:
-    """The weight a layer's mask gives a channel (1 without a mask; 0 when not listed)."""
+def _mask_weight(layer: Any, spec: P.PathSpec, rig: Any = None) -> float:
+    """The weight a layer's mask gives a channel (1 without a mask; 0 when not listed). A
+    joint entry with ``descendants`` covers the joint's whole subtree in ``rig``."""
     if layer is None or not layer.mask:
         return 1.0
     best = 0.0
-    for key, w, _desc in layer.mask:
+    for key, w, desc in layer.mask:
         if key.startswith("joint:"):
-            if spec.group == "joint" and spec.name == key[6:]:
+            if spec.group != "joint":
+                continue
+            if spec.name == key[6:] or (desc and _descends(rig, spec.name, key[6:])):
                 best = max(best, w)
         elif spec.path == key or spec.path.startswith(key + ".") or spec.path.startswith(key + "["):
             best = max(best, w)
     return best
+
+
+def _descends(rig: Any, joint: str, ancestor: str) -> bool:
+    """Whether ``joint`` lies below ``ancestor`` in ``rig``."""
+    if rig is None:
+        return False
+    k, a = rig.index(joint), rig.index(ancestor)
+    if k is None or a is None:
+        return False
+    parents = rig.parents
+    p = int(parents[k])
+    while p >= 0:
+        if p == a:
+            return True
+        p = int(parents[p])
+    return False
 
 
 # --------------------------------------------------------------------------------------- #

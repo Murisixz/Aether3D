@@ -188,18 +188,22 @@ class FCurve:
         extrapolation: Any = "constant",
         modifiers: Iterable[Any] = (),
         location: str = "curve",
+        ease: str = "in_out",
     ) -> FCurve:
         """A curve through ``keys``: ``(time, value)`` pairs or dicts with ``time``,
         ``value`` and optionally ``interpolation``, ``ease``, ``left`` / ``right``
         (``{"type", "dt", "dv"}`` or a type name), ``weighted``, ``back``,
-        ``amplitude``, ``period``. ``interpolation`` and ``handles`` are the defaults."""
+        ``amplitude``, ``period``. ``interpolation``, ``handles`` and ``ease`` are the
+        defaults."""
         default_interp = _index(
             INTERPOLATIONS, interpolation, f"{location}.interpolation", "INVALID_INTERPOLATION"
         )
         default_handle = _index(HANDLE_TYPES, handles, f"{location}.handles", "INVALID_HANDLE")
         rows = []
         for i, raw in enumerate(keys):
-            rows.append(_key_row(raw, f"{location}.keys[{i}]", default_interp, default_handle))
+            rows.append(
+                _key_row(raw, f"{location}.keys[{i}]", default_interp, default_handle, ease)
+            )
             if len(rows) > MAX_KEYS:
                 raise _err("LIMIT_EXCEEDED", f"more than {MAX_KEYS} keys", f"{location}.keys")
         if not rows:
@@ -687,7 +691,9 @@ def _handle_spec(raw: Any, default: int, location: str) -> tuple[int, float | No
     return kind, dt, dv
 
 
-def _key_row(raw: Any, location: str, default_interp: int, default_handle: int) -> dict[str, Any]:
+def _key_row(
+    raw: Any, location: str, default_interp: int, default_handle: int, default_ease: str = "in_out"
+) -> dict[str, Any]:
     if isinstance(raw, (list, tuple)) and len(raw) == 2:
         raw = {"time": raw[0], "value": raw[1]}
     if not isinstance(raw, dict):
@@ -726,7 +732,9 @@ def _key_row(raw: Any, location: str, default_interp: int, default_handle: int) 
         if "interpolation" in raw
         else default_interp
     )
-    ease = _index(_easing.MODES, raw.get("ease", "in_out"), f"{location}.ease", "INVALID_EASING")
+    ease = _index(
+        _easing.MODES, raw.get("ease", default_ease), f"{location}.ease", "INVALID_EASING"
+    )
     both = raw.get("handles")
     lt, ldt, ldv = _handle_spec(raw.get("left", both), default_handle, f"{location}.left")
     rt, rdt, rdv = _handle_spec(raw.get("right", both), default_handle, f"{location}.right")

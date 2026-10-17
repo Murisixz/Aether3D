@@ -26,7 +26,7 @@ authored transforms (one undo step).
 | `transform.rotation_euler.x`/`.y`/`.z` | degrees (XYZ) — graph-editable curves |
 | `transform.scale.x` ... | factors |
 | `visible` | true/false (stepped) |
-| `camera.fov`, `camera.focus_distance`, `light.intensity`, `light.color`, `appearance.color` | object fields |
+| `camera.fov`, `camera.near`, `light.intensity`, `light.color.r`, `appearance.color.g` | object fields |
 | `material.roughness` ... (target `{"material": NAME}`) | material parameters |
 | `joints["NAME"].rotation` / `.position.x` / `.rotation_euler.z` | rig joints (on the armature) |
 | `morph["NAME"]` | morph target weight |
@@ -87,8 +87,10 @@ cameras; renders without a named camera use the shot's camera).
 ## Rendering motion
 
 `render_frames` (Python/CLI) writes exact frame times as PNGs atomically, with progress,
-cancellation and motion blur (averaging sub-frame renders in linear light); contact
-sheets and optional FFmpeg video. Over MCP, render a preview at a `time`.
+cancellation and motion blur (averaging sub-frame renders in linear light: real temporal
+sampling, at the cost of one render per sample); contact sheets and optional FFmpeg
+video. Over MCP, render a preview at a `time`. **No depth of field**: no renderer here
+simulates focus or aperture; lenses animate their field of view only.
 
 ## Scripts
 

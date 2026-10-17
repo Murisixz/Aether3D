@@ -432,6 +432,28 @@ def test_generated_jump_flies_a_ballistic_arc():
     assert slide < 0.003 and pen < 0.001
 
 
+@pytest.mark.parametrize("tpose", [True, False])
+def test_a_wave_raises_the_forearm_and_swings_it_side_to_side(tpose):
+    s = Scene("Wave")
+    arm = humanoid(s, tpose=tpose)
+    a = s.animation
+    rep = a.generate(arm, "wave", side="L", waves=2, rate=2.0)
+    forward = np.array([0.0, 1.0, 0.0])  # (the generators' default forward, +y)
+
+    def forearm(t):
+        pose = a.pose_joints(arm, t, "armature")
+        d = pose["Hand.L"][:3, 3] - pose["ForeArm.L"][:3, 3]
+        return d / np.linalg.norm(d)
+
+    up = forearm(0.45)  # (raised; the swing starts here)
+    assert up[2] > math.cos(math.radians(11)) and up @ forward > 0.1  # vertical, leaning forward
+    # (quarter and three-quarter swings: +-22 degrees about the forward axis, opposite sides)
+    swing = [math.degrees(math.atan2(forearm(0.45 + q / 2.0)[0], forearm(0.45 + q / 2.0)[2]))
+             for q in (0.25, 0.75)]  # fmt: skip
+    assert swing[0] == pytest.approx(-swing[1], abs=1.0) and 20 < abs(swing[0]) < 24
+    assert forearm(rep["duration"])[2] < -0.99  # (lowered again, hanging)
+
+
 @pytest.mark.parametrize("kind", ["idle", "run", "land", "wave", "head_turn"])
 def test_every_motion_generates_on_a_blocky_rig_without_sinking(kind):
     s = Scene("Blocky")

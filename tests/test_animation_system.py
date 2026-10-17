@@ -446,3 +446,27 @@ def test_pose_transforms_are_the_channels_values_and_authored_elsewhere():
                 assert pose.scale[k, c] == pytest.approx(want, abs=0)
             if not ({"transform.rotation", "transform.rotation_euler.z"} & paths):
                 assert np.allclose(pose.rotation[k], obj.rotation, atol=1e-15)
+
+
+def test_layer_masks_with_descendants_cover_the_joints_subtree():
+    s = Scene("Mask")
+    arm = s.add_object("Arm")
+    a = s.animation
+    a.add_rig(arm, [
+        {"name": "Root"}, {"name": "Chest", "parent": "Root", "position": [0, 0, 1]},
+        {"name": "Upper", "parent": "Chest", "position": [0.2, 0, 0]},
+        {"name": "Lower", "parent": "Upper", "position": [0.3, 0, 0]},
+        {"name": "Leg", "parent": "Root", "position": [0.1, 0, 0]},
+    ])  # fmt: skip
+    clip = a.add_clip("Raise")
+    for joint in ("Chest", "Upper", "Lower", "Leg"):
+        clip.set_channel(f'joints["{joint}"].rotation_euler.z', [(0, 30.0)])
+    a.add_layer(arm, "upper", mask=[{"joint": "Chest", "descendants": True}])
+    a.add_strip(arm, "upper", "Raise")
+    pose = a.evaluate(0.0).joints[arm.id]
+    for joint in ("Chest", "Upper", "Lower"):
+        assert pose[joint][1] is not None  # (the subtree moves)
+    assert "Leg" not in pose or pose["Leg"][1] is None  # (outside the mask)
+    a.update_layer(arm, "upper", mask=[{"joint": "Chest"}])  # the joint alone
+    pose = a.evaluate(0.0).joints[arm.id]
+    assert "Upper" not in pose or pose["Upper"][1] is None
