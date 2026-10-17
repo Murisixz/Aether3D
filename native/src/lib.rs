@@ -17,13 +17,14 @@ mod hierarchy;
 mod ldl;
 mod pack;
 mod png;
+mod skin;
 mod traversal;
 
 use buffers::Arrays;
 
 /// The calling convention between `aether3d._native` and this module: a module whose
 /// `ABI` differs from what Aether3D expects is not used.
-const ABI: u32 = 3;
+const ABI: u32 = 4;
 
 fn check(ok: bool, message: impl FnOnce() -> String) -> PyResult<()> {
     if ok {
@@ -655,6 +656,79 @@ fn triangulate(
     count.ok_or_else(|| PyValueError::new_err("the triangle buffers were too small"))
 }
 
+/// Linear blend skinning (`animation.rig.skin_linear`): `out_p` (n, 3) float32 from
+/// `pos` (n, 3) float32, `idx` (n, k) int32 joint indices, `w` (n, k) float64 weights and
+/// `pal` (m, 3, 4) float64 skinning matrices; with `nrm`, also `out_n` (n, 3).
+#[pyfunction]
+#[pyo3(signature = (pos, nrm, idx, w, pal, out_p, out_n, threads=1))]
+#[allow(clippy::too_many_arguments)]
+fn skin_linear(
+    py: Python<'_>,
+    pos: &Bound<'_, PyAny>,
+    nrm: Option<&Bound<'_, PyAny>>,
+    idx: &Bound<'_, PyAny>,
+    w: &Bound<'_, PyAny>,
+    pal: &Bound<'_, PyAny>,
+    out_p: &Bound<'_, PyAny>,
+    out_n: Option<&Bound<'_, PyAny>>,
+    threads: usize,
+) -> PyResult<()> {
+    let mut arrays = Arrays::new();
+    let p = arrays.input::<f32>(pos, "pos", None)?;
+    let n = unsafe { p.slice() }.len() / 3;
+    check(unsafe { p.slice() }.len() == 3 * n, || {
+        "pos: not (n, 3)".into()
+    })?;
+    let ix = arrays.input::<i32>(idx, "idx", None)?;
+    let len = unsafe { ix.slice() }.len();
+    let k = len.checked_div(n).unwrap_or(1);
+    check(n * k == len && (n > 0 || len == 0), || {
+        "idx: not (n, k)".into()
+    })?;
+    check((1..=8).contains(&k), || {
+        format!("idx: {k} influences per vertex (1..8)")
+    })?;
+    let wt = arrays.input::<f64>(w, "w", Some(n * k))?;
+    let pl = arrays.input::<f64>(pal, "pal", None)?;
+    let m = unsafe { pl.slice() }.len() / 12;
+    check(unsafe { pl.slice() }.len() == 12 * m, || {
+        "pal: not (m, 3, 4)".into()
+    })?;
+    for (e, &j) in unsafe { ix.slice() }.iter().enumerate() {
+        check(j >= 0 && (j as usize) < m, || {
+            format!("idx[{e}] = {j}: not a joint of the palette ({m})")
+        })?;
+    }
+    let op = arrays.output::<f32>(out_p, "out_p", Some(3 * n))?;
+    let nr = match nrm {
+        Some(obj) => Some(arrays.input::<f32>(obj, "nrm", Some(3 * n))?),
+        None => None,
+    };
+    let on = match out_n {
+        Some(obj) => Some(arrays.output::<f32>(obj, "out_n", Some(3 * n))?),
+        None => None,
+    };
+    check(nr.is_some() == on.is_some(), || {
+        "nrm and out_n go together".into()
+    })?;
+    arrays.check_overlaps()?;
+    py.detach(|| unsafe {
+        skin::skin_linear(
+            p.slice(),
+            nr.as_ref().map(|a| a.slice() as &[f32]),
+            ix.slice(),
+            wt.slice(),
+            pl.slice(),
+            k,
+            op.slice(),
+            on.as_ref().map(|a| a.slice()),
+            threads,
+        )
+    });
+    drop(arrays);
+    Ok(())
+}
+
 fn to_err_count(r: Result<usize, String>) -> PyResult<usize> {
     r.map_err(PyValueError::new_err)
 }
@@ -674,5 +748,6 @@ fn aether3d_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ldl_solve, m)?)?;
     m.add_function(wrap_pyfunction!(pack_horizon, m)?)?;
     m.add_function(wrap_pyfunction!(triangulate, m)?)?;
+    m.add_function(wrap_pyfunction!(skin_linear, m)?)?;
     Ok(())
 }

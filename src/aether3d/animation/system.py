@@ -27,12 +27,14 @@ import uuid
 from collections import OrderedDict
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from ..errors import AnimationError
 from . import paths as P
+from . import rotation as R
 from .clip import Clip, Event, edit_curve, insert_key, parse_event
 from .curves import FCurve
 from .evaluate import AnimationPose, Program, compile_program, evaluate
@@ -56,7 +58,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "enabled": True,
 }
 
-KINDS = ("clip", "binding")
+KINDS = ("clip", "binding", "rig", "skin", "constraints", "morph")
 
 
 def _err(code: str, message: str, location: str | None = None, **kw: Any) -> AnimationError:
@@ -105,6 +107,7 @@ class AnimationSystem:
         self._items: dict[str, AnimItem] = {}
         self._clip_names: dict[str, AnimItem] = {}
         self._bindings: dict[tuple[str, str], AnimItem] = {}
+        self._owned: dict[tuple[str, str], AnimItem] = {}  # (kind, object id) -> item
         self._settings: dict[str, Any] = copy.deepcopy(DEFAULT_SETTINGS)
         self._serial = 0
         self._time = 0.0
@@ -164,6 +167,7 @@ class AnimationSystem:
     def _reindex(self) -> None:
         names: dict[str, AnimItem] = {}
         bindings: dict[tuple[str, str], AnimItem] = {}
+        owned: dict[tuple[str, str], AnimItem] = {}
         for item in self._items.values():
             if not item._alive:
                 continue
@@ -176,8 +180,14 @@ class AnimationSystem:
                 if key in bindings:
                     raise _err("DUPLICATE_BINDING", f"two bindings would animate {key[0]} {key[1]}")
                 bindings[key] = item
+            else:  # rig, skin, constraints: one per object
+                key = (item.kind, _owner_of(item))
+                if key in owned:
+                    raise _err("DUPLICATE_BINDING", f"two {item.kind} items for object {key[1]}")
+                owned[key] = item
         self._clip_names = names
         self._bindings = bindings
+        self._owned = owned
 
     def _restored(self) -> None:
         """After undo, redo or a rollback (history fixup)."""
@@ -739,6 +749,353 @@ class AnimationSystem:
             self._set(item, definition=item._definition.with_channel(spec.path, new))
 
     # ------------------------------------------------------------------ #
+    # Rigs, attachments, constraints, skins
+    # ------------------------------------------------------------------ #
+
+    def _object(self, ref: Any, location: str) -> Any:
+        kind, oid = self._target(ref, location)
+        if kind != P.OBJECT:
+            raise _err("INVALID_TARGET", "a scene object is needed here", location)
+        return self.scene._objects[oid]
+
+    def rig(self, armature: Any) -> Any:
+        """The :class:`~.rig.Rig` on ``armature`` (an object), or ``None``."""
+        obj = self._object(armature, "armature")
+        item = self._owned.get(("rig", obj._id))
+        return None if item is None else item._definition
+
+    def add_rig(self, armature: Any, joints: list[Any], **options: Any) -> Any:
+        """Give ``armature`` (an object, usually an empty) a skeleton: ``joints`` are
+        ``{name, parent, position, rotation | euler, scale, tail, limits}`` (rest
+        transforms relative to the parent joint; roots relative to the armature).
+        Options: ``attachments`` (``[{object, joint}]``), ``constraints``, ``mirror``."""
+        obj = self._object(armature, "armature")
+        if ("rig", obj._id) in self._owned:
+            raise _err(
+                "DUPLICATE_BINDING",
+                f"{obj.name!r} already has a rig (set_rig replaces it)",
+                "armature",
+            )
+        self.set_rig(obj, {"joints": joints, **options})
+        return self.rig(obj)
+
+    def set_rig(self, armature: Any, data: Any) -> None:
+        """Replace ``armature``'s rig (a :class:`~.rig.Rig`, or its JSON form; ``None``
+        removes it, with the skins bound to it). One undo step."""
+        from .rig import Rig, parse_rig
+
+        obj = self._object(armature, "armature")
+        item = self._owned.get(("rig", obj._id))
+        if data is None:
+            if item is None:
+                return
+            with self._op(f"Remove rig of {obj.name!r}"):
+                for (kind, _oid), other in list(self._owned.items()):
+                    if kind == "skin" and other._definition.rig == item.id:
+                        self._set(other, alive=False)
+                self._set(item, alive=False)
+            return
+        raw = data.to_json() if isinstance(data, Rig) else dict(data)
+        raw["object"] = obj._id
+        raw["attachments"] = [
+            {
+                "object": self._object(a.get("object"), f"attachments[{i}].object")._id,
+                "joint": a.get("joint"),
+            }
+            if isinstance(a, dict)
+            else a
+            for i, a in enumerate(raw.get("attachments", []))
+        ]
+        raw["constraints"] = [
+            self._canonical_constraint(c, f"constraints[{i}]")
+            for i, c in enumerate(raw.get("constraints", []))
+        ]
+        rig = parse_rig(raw, "rig")
+        ancestors = {a._id for a in obj.iter_ancestors()}
+        for oid, _ in rig.attachments:
+            if oid in ancestors:
+                raise _err(
+                    "ATTACHMENT_CYCLE",
+                    "an object above the armature cannot follow its joints",
+                    "rig.attachments",
+                )
+        with self._op(f"Rig {obj.name!r}"):
+            if item is None:
+                self._new_item("rig", f"{obj.name} Rig", rig)
+            else:
+                self._set(item, definition=rig)
+            self._check_cycles()
+
+    def _canonical_constraint(self, raw: Any, location: str) -> Any:
+        """Object references of a constraint's targets as ids (renames keep them)."""
+        if not isinstance(raw, dict):
+            return raw
+        out = dict(raw)
+        for key in ("target", "pole"):
+            t = out.get(key)
+            if isinstance(t, dict) and isinstance(t.get("object"), str):
+                out[key] = {
+                    **t,
+                    "object": self._object(t["object"], f"{location}.{key}.object")._id,
+                }
+        if isinstance(out.get("path"), str):
+            out["path"] = self._path_id(out["path"], f"{location}.path")
+        return out
+
+    def _path_id(self, ref: str, location: str) -> str:
+        return ref  # (paths are cinematics items: resolved there)
+
+    def attach(self, obj: Any, armature: Any, joint: str) -> None:
+        """Make ``obj`` follow ``joint`` of ``armature``'s rig rigidly (from where it is
+        now, relative to the rest pose)."""
+        rig = self.rig(armature)
+        if rig is None:
+            raise _err("RIG_MISSING", "the armature has no rig (add_rig first)", "armature")
+        target = self._object(obj, "object")
+        raw = rig.to_json()
+        raw["attachments"] = [a for a in raw.get("attachments", []) if a["object"] != target._id]
+        raw["attachments"].append({"object": target._id, "joint": joint})
+        self.set_rig(armature, raw)
+
+    def detach(self, obj: Any) -> None:
+        target = self._object(obj, "object")
+        for (kind, arm), item in list(self._owned.items()):
+            if kind == "rig" and any(a[0] == target._id for a in item._definition.attachments):
+                raw = item._definition.to_json()
+                raw["attachments"] = [a for a in raw["attachments"] if a["object"] != target._id]
+                self.set_rig(arm, raw)
+
+    def constraints(self, owner: Any) -> list[dict[str, Any]]:
+        """``owner``'s constraints as JSON (an object's own; a rig's joint constraints are
+        in ``rig(owner).constraints``)."""
+        obj = self._object(owner, "owner")
+        item = self._owned.get(("constraints", obj._id))
+        return [] if item is None else [c.to_json() for c in item._definition.constraints]
+
+    def set_constraints(self, owner: Any, constraints: list[Any]) -> None:
+        """Replace an object's constraints (applied in order); one undo step."""
+        from .constraints import parse_constraints
+
+        obj = self._object(owner, "owner")
+        canon = [
+            self._canonical_constraint(c, f"constraints[{i}]") for i, c in enumerate(constraints)
+        ]
+        parsed = parse_constraints(canon, "constraints", joints=False)
+        item = self._owned.get(("constraints", obj._id))
+        with self._op(f"Constrain {obj.name!r}"):
+            if not parsed:
+                if item is not None:
+                    self._set(item, alive=False)
+                return
+            definition = ObjectConstraints(obj._id, parsed)
+            if item is None:
+                self._new_item("constraints", f"{obj.name} Constraints", definition)
+            else:
+                self._set(item, definition=definition)
+            self._check_cycles()
+
+    def add_constraint(self, owner: Any, constraint: dict[str, Any]) -> None:
+        """Add a constraint: to ``owner``'s rig when it names a joint (or is IK), else to
+        the object itself."""
+        obj = self._object(owner, "owner")
+        if constraint.get("type") == "ik" or "joint" in constraint:
+            rig = self.rig(obj)
+            if rig is None:
+                raise _err("RIG_MISSING", "joint constraints need a rig on the owner", "owner")
+            raw = rig.to_json()
+            raw["constraints"] = [*raw.get("constraints", []), constraint]
+            self.set_rig(obj, raw)
+        else:
+            self.set_constraints(obj, [*self.constraints(obj), constraint])
+
+    def remove_constraint(self, owner: Any, name: str) -> None:
+        obj = self._object(owner, "owner")
+        rig = self.rig(obj)
+        if rig is not None and any(c.name == name for c in rig.constraints):
+            raw = rig.to_json()
+            raw["constraints"] = [c for c in raw.get("constraints", []) if c["name"] != name]
+            self.set_rig(obj, raw)
+            return
+        current = self.constraints(obj)
+        if not any(c["name"] == name for c in current):
+            raise _err("CONSTRAINT_MISSING", f"no constraint {name!r}", "name")
+        self.set_constraints(obj, [c for c in current if c["name"] != name])
+
+    def _check_cycles(self) -> None:
+        from .rigging import _target_objects, _unit_order
+
+        moves: dict = {}
+        reads: dict = {}
+        for (kind, oid), item in self._owned.items():
+            if kind == "rig":
+                moves[("rig", oid)] = {a for a, _ in item._definition.attachments}
+                reads[("rig", oid)] = _target_objects(item._definition.constraints, self.scene) | {
+                    oid
+                }
+            elif kind == "constraints":
+                moves[("object", oid)] = {oid}
+                reads[("object", oid)] = _target_objects(item._definition.constraints, self.scene)
+        _, cyclic = _unit_order(self.scene, moves, reads)
+        if cyclic:
+            names = sorted(
+                self.scene._objects[u[1]].name for u in cyclic if u[1] in self.scene._objects
+            )
+            raise _err(
+                "CONSTRAINT_CYCLE",
+                f"constraints and attachments would make {names[:6]} depend on themselves",
+                "constraints",
+            )
+
+    def skin(
+        self,
+        mesh_object: Any,
+        armature: Any,
+        *,
+        weights: Any = "envelope",
+        joints: list[str] | None = None,
+        influences: int = 4,
+        method: str = "linear",
+    ) -> dict[str, Any]:
+        """Bind a mesh object to a rig smoothly, in the current (rest) pose. ``weights``:
+        ``{"indices": (n, k), "weights": (n, k), "joints": [names]}`` given explicitly,
+        ``"nearest"`` (each vertex follows its nearest bone fully: rigid parts) or
+        ``"envelope"`` (inverse-distance weights over the ``influences`` nearest bones: an
+        automatic starting point, not production weight painting). Returns a report."""
+        from .rig import MAX_INFLUENCES, make_skin
+
+        obj = self._object(mesh_object, "mesh_object")
+        arm = self._object(armature, "armature")
+        rig = self.rig(arm)
+        if rig is None:
+            raise _err("RIG_MISSING", "the armature has no rig", "armature")
+        mesh = obj.mesh
+        if mesh is None or mesh.vertex_count == 0:
+            raise _err("INVALID_SKIN", f"{obj.name!r} has no mesh to bind", "mesh_object")
+        if obj._id == arm._id:
+            raise _err("INVALID_SKIN", "the armature cannot skin itself", "mesh_object")
+        if (
+            isinstance(influences, bool)
+            or not isinstance(influences, int)
+            or not 1 <= influences <= MAX_INFLUENCES
+        ):
+            raise _err("INVALID_SKIN", f"influences is 1..{MAX_INFLUENCES}", "influences")
+        from ..rendering.scene_data import world_matrices
+
+        worlds = world_matrices(self.scene)
+        a_rest = worlds[arm._id]
+        m_rest = worlds[obj._id]
+        rest_model = rig.rest_model()
+        names = list(rig.names) if joints is None else list(joints)
+        idx = []
+        for i, n in enumerate(names):
+            k = rig.index(n)
+            if k is None:
+                raise _err("INVALID_SKIN", f"no joint {n!r}", f"joints[{i}]")
+            idx.append(k)
+        bind_inv = np.linalg.inv(rest_model[idx]) @ np.linalg.inv(a_rest) @ m_rest
+        if isinstance(weights, dict):
+            if set(weights) - {"indices", "weights", "joints"}:
+                raise _err(
+                    "INVALID_SKIN", "explicit weights are {indices, weights, joints}", "weights"
+                )
+            if "joints" in weights:
+                names = list(weights["joints"])
+                idx = []
+                for i, n in enumerate(names):
+                    k = rig.index(n)
+                    if k is None:
+                        raise _err("INVALID_SKIN", f"no joint {n!r}", f"weights.joints[{i}]")
+                    idx.append(k)
+                bind_inv = np.linalg.inv(rest_model[idx]) @ np.linalg.inv(a_rest) @ m_rest
+            vi, vw = weights.get("indices"), weights.get("weights")
+            how = "explicit"
+        elif weights in ("nearest", "envelope"):
+            vi, vw = _automatic_weights(
+                rig,
+                idx,
+                mesh.positions,
+                np.linalg.inv(m_rest) @ a_rest,
+                1 if weights == "nearest" else influences,
+            )
+            how = weights
+        else:
+            raise _err(
+                "INVALID_SKIN", "weights is 'nearest', 'envelope' or {indices, weights}", "weights"
+            )
+        skin = make_skin(
+            obj._id, "", [rig.joints[k].id for k in idx], bind_inv, vi, vw, method, "skin"
+        )
+        if skin.vertex_count != mesh.vertex_count:
+            raise _err(
+                "INVALID_SKIN",
+                f"weights for {skin.vertex_count} vertices; the mesh has {mesh.vertex_count}",
+                "weights",
+            )
+        rig_item = self._owned[("rig", arm._id)]
+        skin = type(skin)(
+            obj._id,
+            rig_item.id,
+            skin.joints,
+            skin.inverse_bind,
+            skin.indices,
+            skin.weights,
+            skin.method,
+        )
+        item = self._owned.get(("skin", obj._id))
+        with self._op(f"Skin {obj.name!r} to {arm.name!r}"):
+            if item is None:
+                self._new_item("skin", f"{obj.name} Skin", skin)
+            else:
+                self._set(item, definition=skin)
+        used = np.unique(skin.indices[skin.weights > 0])
+        return {
+            "vertices": skin.vertex_count,
+            "joints": len(skin.joints),
+            "influences": int(skin.indices.shape[1]),
+            "joints_used": int(used.size),
+            "weights": how,
+            "method": method,
+        }
+
+    def unbind(self, mesh_object: Any) -> None:
+        obj = self._object(mesh_object, "mesh_object")
+        item = self._owned.get(("skin", obj._id))
+        if item is not None:
+            with self._op(f"Unbind {obj.name!r}"):
+                self._set(item, alive=False)
+
+    def pose_joints(
+        self, armature: Any, time: float | None = None, space: str = "world"
+    ) -> dict[str, np.ndarray]:
+        """Joint matrices of ``armature``'s rig at ``time`` (``"world"`` or ``"armature"``
+        space), after constraints -- for inspection."""
+        obj = self._object(armature, "armature")
+        if self.rig(obj) is None:
+            raise _err("RIG_MISSING", "the armature has no rig", "armature")
+        if space not in ("world", "armature"):
+            raise _err("INVALID_ARGUMENT", "space is 'world' or 'armature'", "space")
+        rigging = self.rigging(time)
+        rig, model = rigging.joints[obj._id]
+        if space == "armature":
+            return {j.name: model[k].copy() for k, j in enumerate(rig.joints)}
+        from ..rendering.scene_data import world_matrices
+
+        overlay = self.overlay(time)
+        a = world_matrices(self.scene, overlay)[obj._id]
+        return {j.name: a @ model[k] for k, j in enumerate(rig.joints)}
+
+    def rigging(self, time: float | None = None) -> Any:
+        """The rigging pass at ``time`` (:class:`~.rigging.RiggingResult`: local
+        matrices, deformed meshes, joint matrices, IK residuals, diagnostics)."""
+        from .rigging import evaluate_rigging
+
+        pose = self.evaluate(time)
+        found = pose.extra.get("rigging")
+        if found is None:
+            found = pose.extra["rigging"] = evaluate_rigging(self, pose)
+        return found
+
+    # ------------------------------------------------------------------ #
     # Scene hooks
     # ------------------------------------------------------------------ #
 
@@ -748,6 +1105,17 @@ class AnimationSystem:
         for key, item in list(self._bindings.items()):
             if key[0] == P.OBJECT and key[1] in gone:
                 self._set(item, alive=False)
+        for (kind, oid), item in list(self._owned.items()):
+            if oid in gone or (kind == "skin" and item._definition.rig in self._dead_rigs(gone)):
+                self._set(item, alive=False)
+            elif kind == "rig":
+                rig = item._definition
+                kept = tuple(a for a in rig.attachments if a[0] not in gone)
+                if len(kept) != len(rig.attachments):
+                    self._set(item, definition=_replace_rig(rig, attachments=kept))
+
+    def _dead_rigs(self, gone: set[str]) -> set[str]:
+        return {i.id for (k, oid), i in self._owned.items() if k == "rig" and oid in gone}
 
     def _material_removed(self, material_id: str) -> None:
         item = self._bindings.get((P.MATERIAL, material_id))
@@ -765,12 +1133,60 @@ class AnimationSystem:
         return prog
 
     def _rig_rest(self) -> Any:
-        return None
+        return _RigRest(self)
+
+    def _rigs(self) -> dict[str, tuple[AnimItem, Any]]:
+        return {oid: (i, i._definition) for (k, oid), i in self._owned.items() if k == "rig"}
+
+    def _skins(self) -> dict[str, Any]:
+        return {oid: i._definition for (k, oid), i in self._owned.items() if k == "skin"}
+
+    def _morphs(self) -> dict[str, Any]:
+        return {oid: i._definition for (k, oid), i in self._owned.items() if k == "morph"}
+
+    def set_morph_targets(self, mesh_object: Any, targets: list[Any] | None) -> None:
+        """Give a mesh object morph targets (blend shapes): ``[{name, positions,
+        normals?, default?}]`` with per-vertex offsets; weights animate as
+        ``morph["NAME"]``. ``None`` removes them. One undo step."""
+        from .rig import make_morph
+
+        obj = self._object(mesh_object, "mesh_object")
+        item = self._owned.get(("morph", obj._id))
+        with self._op(f"Morph targets of {obj.name!r}"):
+            if targets is None:
+                if item is not None:
+                    self._set(item, alive=False)
+                return
+            mesh = obj.mesh
+            if mesh is None:
+                raise _err("INVALID_MORPH", f"{obj.name!r} has no mesh", "mesh_object")
+            morph = make_morph(obj._id, targets, mesh.vertex_count, "morph")
+            if item is None:
+                self._new_item("morph", f"{obj.name} Morph", morph)
+            else:
+                self._set(item, definition=morph)
+
+    def morph_targets(self, mesh_object: Any) -> Any:
+        obj = self._object(mesh_object, "mesh_object")
+        item = self._owned.get(("morph", obj._id))
+        return None if item is None else item._definition
+
+    def _object_constraints(self) -> dict[str, tuple[AnimItem, tuple]]:
+        return {
+            oid: (i, i._definition.constraints)
+            for (k, oid), i in self._owned.items()
+            if k == "constraints"
+        }
+
+    def _follow_path(self, constraint: Any, world: np.ndarray, pose: Any) -> Any:
+        from .cinematics import follow_path
+
+        return follow_path(self, constraint, world, pose)
 
     @property
     def active(self) -> bool:
         """Whether evaluation can change anything (enabled, with bindings)."""
-        return self.enabled and bool(self._bindings)
+        return self.enabled and (bool(self._bindings) or bool(self._owned))
 
     def evaluate(self, time: float | None = None) -> AnimationPose:
         """The animation at ``time`` (default: the current time); see
@@ -912,6 +1328,33 @@ class AnimationSystem:
         for raw, loc, item in records:
             if item.kind == "clip":
                 item._definition = Clip.from_json(raw["definition"], f"{loc}.definition")
+        for kind in ("rig", "skin", "constraints", "morph"):
+            for raw, loc, item in records:
+                if item.kind == kind:
+                    item._definition = definition_from_json(
+                        kind, raw["definition"], self, f"{loc}.definition"
+                    )
+                    owner = item._definition.object
+                    if owner not in self.scene._objects:
+                        raise _err(
+                            "INVALID_DOCUMENT",
+                            f"{kind} {raw['name']!r} names a missing object {owner!r}",
+                            loc,
+                        )
+                    if kind == "skin":
+                        rig_item = self._items.get(item._definition.rig)
+                        if rig_item is None or rig_item.kind != "rig":
+                            raise _err(
+                                "INVALID_DOCUMENT", f"skin {raw['name']!r} names a missing rig", loc
+                            )
+                    if kind == "rig":
+                        for oid, _ in item._definition.attachments:
+                            if oid not in self.scene._objects:
+                                raise _err(
+                                    "INVALID_DOCUMENT",
+                                    f"rig {raw['name']!r} attaches a missing object {oid!r}",
+                                    loc,
+                                )
         for raw, loc, item in records:
             if item.kind != "binding":
                 continue
@@ -1006,6 +1449,120 @@ class ClipHandle:
 _UNSET = object()
 
 
+@dataclass(frozen=True)
+class ObjectConstraints:
+    """An object's constraint list (an item of kind ``constraints``)."""
+
+    object: str
+    constraints: tuple
+
+    def to_json(self) -> dict[str, Any]:
+        return {"object": self.object, "constraints": [c.to_json() for c in self.constraints]}
+
+
+def _owner_of(item: AnimItem) -> str:
+    return item._definition.object
+
+
+def _replace_rig(rig: Any, **changes: Any) -> Any:
+    from .rig import Rig
+
+    fields = {
+        f: getattr(rig, f) for f in ("object", "joints", "attachments", "constraints", "mirror")
+    }
+    fields.update(changes)
+    return Rig(**fields)
+
+
+class _RigRest:
+    """Rest values of joint, morph and constraint channels (for evaluation)."""
+
+    def __init__(self, system: AnimationSystem) -> None:
+        self.system = system
+
+    def _rig(self, arm: str) -> Any:
+        item = self.system._owned.get(("rig", arm))
+        return None if item is None else item._definition
+
+    def rest_trs(self, arm: str, name: str) -> tuple:
+        rig = self._rig(arm)
+        k = None if rig is None else rig.index(name)
+        if k is None:
+            return ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (1.0, 1.0, 1.0))
+        j = rig.joints[k]
+        return (j.position, j.rotation, j.scale)
+
+    def rest_component(self, arm: str, spec: Any) -> float | None:
+        rig = self._rig(arm)
+        k = None if rig is None else rig.index(spec.name)
+        if k is None:
+            return None
+        j = rig.joints[k]
+        if spec.field == "position":
+            return float(j.position[spec.component])
+        if spec.field == "scale":
+            return float(j.scale[spec.component])
+        if spec.field == "rotation_euler":
+            return float(R.to_euler(np.array(j.rotation))[0][spec.component])
+        return None
+
+    def rest_rotation(self, arm: str, name: str) -> Any:
+        rig = self._rig(arm)
+        k = None if rig is None else rig.index(name)
+        return None if k is None else rig.joints[k].rotation
+
+    def rest_extra(self, oid: str, spec: Any) -> float:
+        if spec.group == "morph":
+            item = self.system._owned.get(("morph", oid))
+            if item is not None and spec.name in item._definition.names:
+                return float(item._definition.defaults[item._definition.names.index(spec.name)])
+            return 0.0
+        for kind in ("rig", "constraints"):
+            item = self.system._owned.get((kind, oid))
+            if item is not None:
+                for c in item._definition.constraints:
+                    if c.name == spec.name:
+                        return float(c.influence)
+        return 1.0
+
+
+def _automatic_weights(
+    rig: Any, joints: list[int], positions: np.ndarray, mesh_from_armature: np.ndarray, k: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Weights from distances to bone segments (mesh space): each vertex takes its ``k``
+    nearest bones with weights proportional to ``1 / (d + 1e-6 L)^4`` (``L`` the median
+    bone length), normalized."""
+    model = rig.rest_model()
+    tails = rig.tails()
+    heads = []
+    ends = []
+    for j in joints:
+        m = mesh_from_armature @ model[j]
+        heads.append(m[:3, 3])
+        ends.append((m @ np.append(tails[j], 1.0))[:3])
+    a = np.array(heads)
+    b = np.array(ends)
+    p = positions.astype(np.float64)
+    seg = b - a
+    length2 = np.maximum(np.sum(seg * seg, axis=1), 1e-30)
+    median = float(np.median(np.sqrt(length2))) or 1.0
+    n = p.shape[0]
+    k = min(k, len(joints))
+    best_i = np.zeros((n, k), np.int32)
+    best_d = np.full((n, k), np.inf)
+    for start in range(0, n, 32768):
+        q = p[start : start + 32768]
+        rel = q[:, None, :] - a[None, :, :]
+        t = np.clip(np.sum(rel * seg[None], axis=2) / length2[None], 0.0, 1.0)
+        closest = a[None] + t[..., None] * seg[None]
+        d = np.linalg.norm(q[:, None, :] - closest, axis=2)
+        order = np.argsort(d, axis=1, kind="stable")[:, :k]
+        best_i[start : start + q.shape[0]] = order
+        best_d[start : start + q.shape[0]] = np.take_along_axis(d, order, axis=1)
+    w = 1.0 / (best_d + 1e-6 * median) ** 4
+    return best_i, w / w.sum(axis=1, keepdims=True)
+
+
 def canonical_quats(q: np.ndarray) -> np.ndarray:
     """Rotations as authored transforms store them (``math3d.quat``): unit, ``w >= 0``,
     no negative zeros -- so posed matrices equal those of the pose written into the scene."""
@@ -1025,13 +1582,13 @@ def _overlay_of(pose: AnimationPose, scene: Any) -> Any:
     """The render overlay of ``pose`` (``None`` when it changes nothing)."""
     from ..diagnostics import WARNING, Diagnostic
     from ..rendering.overlay import RenderOverlay
-    from ..rendering.scene_data import _compose_locals
 
-    local = (
-        _compose_locals(pose.position, canonical_quats(pose.rotation), pose.scale)
-        if pose.ids
-        else np.zeros((0, 4, 4))
-    )
+    system = scene._animation
+    rigging = system.rigging(pose.time)
+    ids = tuple(rigging.local)
+    local = np.array([rigging.local[i] for i in ids]).reshape(-1, 4, 4)
+    if rigging.diagnostics:
+        pose.extra.setdefault("overlay_diagnostics", []).extend(rigging.diagnostics)
     fields = {}
     dropped = []
     for (oid, group), values in pose.fields.items():
@@ -1072,12 +1629,12 @@ def _overlay_of(pose: AnimationPose, scene: Any) -> Any:
                 )
             )
     overlay = RenderOverlay(
-        ids=pose.ids,
+        ids=ids,
         local=local,
         visible=dict(pose.visible),
         fields=fields,
         materials=dict(pose.materials),
-        meshes=dict(pose.extra.get("meshes", {})),
+        meshes=dict(rigging.meshes),
         camera=pose.extra.get("camera"),
         time=pose.time,
     )
@@ -1196,6 +1753,9 @@ def _channel_from(
 
 
 def _definition_json(item: AnimItem) -> Any:
+    if item.kind == "skin":
+        rig_item = item._system._items.get(item._definition.rig)
+        return item._definition.to_json(None if rig_item is None else rig_item._definition)
     return item._definition.to_json()
 
 
@@ -1252,6 +1812,75 @@ def definition_from_json(
         return Clip.from_json(data, location)
     if kind == "binding":
         return parse_binding(data, location, clips or system._clip_id)
+    if kind == "rig":
+        from .rig import parse_rig
+
+        return parse_rig(data, location)
+    if kind == "skin":
+        from .rig import make_skin
+
+        if not isinstance(data, dict) or set(data) - {
+            "object",
+            "rig",
+            "joints",
+            "joint_names",
+            "inverse_bind",
+            "indices",
+            "weights",
+            "method",
+        }:
+            raise _err(
+                "INVALID_DOCUMENT",
+                "a skin is {object, rig, joints, inverse_bind, indices, weights, method}",
+                location,
+            )
+        try:
+            return make_skin(
+                data["object"],
+                data["rig"],
+                list(data["joints"]),
+                data["inverse_bind"],
+                np.asarray(data["indices"]),
+                data["weights"],
+                data.get("method", "linear"),
+                location,
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise _err(
+                "INVALID_DOCUMENT", f"a skin's arrays are malformed ({exc})", location
+            ) from None
+    if kind == "morph":
+        from .rig import make_morph
+
+        if (
+            not isinstance(data, dict)
+            or set(data) != {"object", "targets"}
+            or not isinstance(data["object"], str)
+        ):
+            raise _err("INVALID_DOCUMENT", "a morph item is {object, targets}", location)
+        targets = data["targets"]
+        count = (
+            len(targets[0]["positions"])
+            if isinstance(targets, list)
+            and targets
+            and isinstance(targets[0], dict)
+            and isinstance(targets[0].get("positions"), list)
+            else 0
+        )
+        return make_morph(data["object"], targets, count, location)
+    if kind == "constraints":
+        from .constraints import parse_constraints
+
+        if (
+            not isinstance(data, dict)
+            or set(data) != {"object", "constraints"}
+            or not isinstance(data["object"], str)
+        ):
+            raise _err("INVALID_DOCUMENT", "a constraints item is {object, constraints}", location)
+        return ObjectConstraints(
+            data["object"],
+            parse_constraints(data["constraints"], f"{location}.constraints", joints=False),
+        )
     raise _err("INVALID_DOCUMENT", f"unknown animation item kind {kind!r}", location)
 
 

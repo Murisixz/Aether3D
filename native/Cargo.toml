@@ -1,10 +1,10 @@
 [package]
 name = "aether3d-native"
-version = "0.15.0"
+version = "0.17.0"
 edition = "2021"
 rust-version = "1.85"
 license = "Apache-2.0"
-description = "Native kernels for Aether3D: ray traversal, transform hierarchies, PNG filters, triangulation"
+description = "Native kernels for Aether3D: ray traversal, transform hierarchies, PNG filters, triangulation, skinning"
 repository = "https://github.com/Murisixz/Aether3D"
 publish = false
 
