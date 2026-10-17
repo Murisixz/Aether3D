@@ -35,8 +35,11 @@ import binascii
 import hashlib
 import json
 import os
+import zlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import numpy as np
 
 from . import history as h
 from ._fileio import write_atomic
@@ -198,10 +201,51 @@ class _Writer:
             return self.procedural_state(s[1])
         raise AssertionError(key)  # pragma: no cover
 
+    def tile_blob(self, tile: Any) -> int:
+        """A tile (uint16 array) stored once as a zlib-compressed little-endian blob."""
+        key = ("tile", id(tile))
+        if key not in self.blob_index:
+            raw = zlib.compress(np.ascontiguousarray(tile, dtype="<u2").tobytes(), 6)
+            self.blob_index[key] = len(self.blobs)
+            self.blobs.append(base64.b64encode(raw).decode("ascii"))
+        return self.blob_index[key]
+
     def texture_state(self, s: tuple) -> dict[str, Any]:
         name, fields = s
         if "_graph" in fields:
             return {"name": name, "type": "procedural", "graph": fields["_graph"].to_dict()}
+        if "_layers" in fields:
+            layers = []
+            for layer in fields["_layers"]:
+                record: dict[str, Any] = {
+                    "id": layer.id,
+                    "name": layer.name,
+                    "kind": layer.kind,
+                    "blend": layer.blend,
+                    "opacity": layer.opacity,
+                    "visible": layer.visible,
+                    "value": list(layer.value),
+                    "tiles": None
+                    if layer.tiles is None
+                    else [[t, self.tile_blob(a)] for t, a in sorted(layer.tiles.items())],
+                    "mask": None
+                    if layer.mask is None
+                    else [[t, self.tile_blob(a)] for t, a in sorted(layer.mask.items())],
+                }
+                layers.append(record)
+            return {
+                "name": name,
+                "type": "painted",
+                "width": fields["_width"],
+                "height": fields["_height"],
+                "encoding": fields["_encoding"],
+                "background": list(fields["_background"]),
+                "layers": layers,
+                "wrap": list(fields["_wrap"]),
+                "filter": fields["_filter"],
+                "mipmaps": fields["_mipmaps"],
+                "color_space": fields["_color_space"],
+            }
         file = fields["_file"]
         path, relative = None, False
         if file is not None:
@@ -509,6 +553,23 @@ class _Reader:
             name, fields = self.texture_state(raw, loc)
             if "_graph" in fields:
                 texture = ProceduralTexture(library, tid, name, fields["_graph"])
+            elif "_layers" in fields:
+                from .materials.painted import PaintedTexture
+
+                texture = PaintedTexture(
+                    library,
+                    tid,
+                    name,
+                    width=fields["_width"],
+                    height=fields["_height"],
+                    encoding=fields["_encoding"],
+                    background=fields["_background"],
+                    layers=fields["_layers"],
+                    wrap=fields["_wrap"],
+                    filter=fields["_filter"],
+                    mipmaps=fields["_mipmaps"],
+                    color_space=fields["_color_space"],
+                )
             else:
                 texture = ImageTexture(library, tid, name)
                 for k, v in fields.items():
@@ -561,6 +622,8 @@ class _Reader:
             data = _record(data, loc, ("name", "type", "graph"), ("id",))
             graph = TextureGraph.from_dict(data["graph"], f"{loc}.graph")
             return (_string(data["name"], f"{loc}.name"), {"_graph": graph})
+        if kind == "painted":
+            return self.painted_state(data, loc)
         data = _record(data, loc, ("name", "type", *_IMAGE_KEYS), ("id",))
         if kind != "image":
             raise _bad(f"unknown texture type {kind!r}", f"{loc}.type")
@@ -577,6 +640,86 @@ class _Reader:
                 "_file": file,
                 "_root": self.project_dir if data["rooted"] else None,
                 "_data": _index(data["data"], self.blobs, f"{loc}.data"),
+                "_wrap": sampler["wrap"],
+                "_filter": sampler["filter"],
+                "_mipmaps": sampler["mipmaps"],
+                "_color_space": sampler["color_space"],
+            },
+        )
+
+    def painted_state(self, data: Any, loc: str) -> tuple:
+        from .materials.painted import TILE, Layer, check_document, check_layer
+        from .materials.textures import check_sampler
+
+        data = _record(data, loc, ("name", "type", *_PAINTED_KEYS), ("id",))
+        width, height, encoding, background = check_document(
+            data["width"], data["height"], data["encoding"], data["background"], loc
+        )
+        sampler = check_sampler(
+            {k: data[k] for k in ("wrap", "filter", "mipmaps", "color_space")}, loc
+        )
+        tiles_total = -(-width // TILE) * -(-height // TILE)
+
+        def tiles(raw: Any, channels: int, where: str) -> dict | None:
+            if raw is None:
+                return None
+            out = {}
+            for k, item in enumerate(_list(raw, where)):
+                if not isinstance(item, list) or len(item) != 2:
+                    raise _bad("a tile is [index, blob]", f"{where}[{k}]")
+                index, blob = item
+                if (
+                    isinstance(index, bool)
+                    or not isinstance(index, int)
+                    or not 0 <= index < tiles_total
+                ):
+                    raise _bad("tile index out of range", f"{where}[{k}]")
+                packed = _index(blob, self.blobs, f"{where}[{k}]")
+                size = TILE * TILE * channels * 2
+                try:
+                    raw_bytes = zlib.decompressobj().decompress(packed, size + 1)
+                except zlib.error:
+                    raise _bad("tile data is corrupt", f"{where}[{k}]") from None
+                if len(raw_bytes) != size:
+                    raise _bad("tile data has the wrong size", f"{where}[{k}]")
+                shape = (TILE, TILE, channels) if channels > 1 else (TILE, TILE)
+                tile = np.frombuffer(raw_bytes, dtype="<u2").astype(np.uint16).reshape(shape)
+                tile.flags.writeable = False
+                out[index] = tile
+            return out
+
+        layers = []
+        for i, raw in enumerate(_list(data["layers"], f"{loc}.layers")):
+            where = f"{loc}.layers[{i}]"
+            raw = _record(
+                raw,
+                where,
+                ("id", "name", "kind", "blend", "opacity", "visible", "value", "tiles", "mask"),
+                (),
+            )
+            layer = Layer(
+                _string(raw["id"], f"{where}.id"),
+                _string(raw["name"], f"{where}.name"),
+                raw["kind"],
+                raw["blend"],
+                raw["opacity"],
+                raw["visible"],
+                tuple(float(v) for v in _list(raw["value"], f"{where}.value")),
+                tiles(raw["tiles"], 4, f"{where}.tiles"),
+                tiles(raw["mask"], 1, f"{where}.mask"),
+            )
+            try:
+                layers.append(check_layer(layer, where))
+            except Exception as exc:  # MaterialError: report as a history error
+                raise _bad(str(exc), where) from None
+        return (
+            _string(data["name"], f"{loc}.name"),
+            {
+                "_width": width,
+                "_height": height,
+                "_encoding": encoding,
+                "_layers": tuple(layers),
+                "_background": background,
                 "_wrap": sampler["wrap"],
                 "_filter": sampler["filter"],
                 "_mipmaps": sampler["mipmaps"],
@@ -766,7 +909,18 @@ _IMAGE_KEYS = (
     "mipmaps",
     "color_space",
 )
-_TEXTURE_KEYS = ("name", "type", "graph", *_IMAGE_KEYS)
+_PAINTED_KEYS = (
+    "width",
+    "height",
+    "encoding",
+    "background",
+    "layers",
+    "wrap",
+    "filter",
+    "mipmaps",
+    "color_space",
+)
+_TEXTURE_KEYS = tuple(dict.fromkeys(("name", "type", "graph", *_IMAGE_KEYS, *_PAINTED_KEYS)))
 _TOP_KEYS = (
     "format",
     "format_version",

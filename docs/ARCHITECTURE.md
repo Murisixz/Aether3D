@@ -78,6 +78,28 @@ Aether3D/
 │   │   ├── script.py      Declarative JSON sculpt scripts
 │   │   ├── schema.py      Their JSON Schema (fuzzed against the executor)
 │   │   └── guide.md       The guide for agents (an MCP resource)
+│   ├── uv/                UV mapping (see docs/TEXTURING.md)
+│   │   ├── topology.py    Welded half-edge topology, seams, chart vertices, components
+│   │   ├── charts.py      Segmentation, flattening per chart, geodesic splitting
+│   │   ├── param.py       LSCM, Tutte, SLIM (batched over charts), Jacobians
+│   │   ├── sparse.py      Nested dissection, symbolic and numeric LDL^T (native or NumPy)
+│   │   ├── metrics.py     Sander stretch, boundary self-overlaps
+│   │   ├── pack.py        Texel footprints, orientations, skyline placement (native or NumPy)
+│   │   ├── unwrap.py      unwrap(): the pipeline, partial unwraps, packing
+│   │   ├── projection.py  Planar, box, cylindrical, spherical projections
+│   │   ├── islands.py, ops.py  Islands; transform, align, normalize, density, pack, stitch
+│   │   ├── report.py      uv_report(): exact flips, overlaps, stacking, stretch, density
+│   │   ├── layout.py      Layout images (islands, density, stretch, overlaps, texture)
+│   │   └── mikktspace.py  Bit-exact float32 MikkTSpace port, cached mesh tangents
+│   ├── texturing/         Painting and baking (see docs/TEXTURING.md)
+│   │   ├── raster.py      Exact UV rasterization of texel samples (fixed point, top-left)
+│   │   ├── paint.py       Texel maps, brushes, strokes (surface, view, UV), fills, gradients
+│   │   ├── bake.py        Cage rays, map evaluation, accumulation, apply_bake
+│   │   ├── gpu_bake.py    Bake rays on the GPU (wgsl/bake.wgsl)
+│   │   ├── dilate.py      Padding by frontier dilation
+│   │   ├── transfer.py    Texture transfer onto remeshed copies
+│   │   ├── script.py, schema.py  Texture scripts and their JSON Schema
+│   │   └── guide.md       The guide for agents (an MCP resource)
 │   ├── procedural/        Non-destructive procedural geometry (see docs/PROCEDURAL.md)
 │   │   ├── polymesh.py    PolyMesh: immutable CSR polygon mesh flowing through stacks
 │   │   ├── params.py      Parameters, safe expressions (Expr), rules, schemas
@@ -94,6 +116,7 @@ Aether3D/
 │   │   ├── noise.py       Integer hashes (PCG3D), value/gradient noise, fbm, voronoi
 │   │   ├── graph.py       Procedural node graphs: validation, CPU evaluation, GPU programs
 │   │   ├── library.py     MaterialLibrary: a scene's materials, textures and assignments
+│   │   ├── painted.py     PaintedTexture: tiled 16-bit layers, blend modes, masks, revisions
 │   │   └── presets.py     Stone, brick, wood, metal, grass and fabric presets
 │   ├── rendering/         Cameras, lights, the rasterizers and the path tracer
 │   │                      (docs/RENDERING.md, GPU.md, RENDER_QUALITY.md)
@@ -237,6 +260,8 @@ Aether3D/
 | `spatial.*` | `rendering.raytrace` (two-level BVH, watertight test), `rendering.scene_data` (world matrices, render-scene extraction), `rendering.pathtrace.scene` (rendered surfaces, lazily), `rendering.camera`, `inspection` (topology), `errors`; `scene` only for type hints and lazily for lookups |
 | `plans.*` | `scene` (bulk creation, history), `primitives`, `procedural` (expressions, primitives, modifiers), `materials`, `rendering` (cameras, lights, colors, settings), `mesh`, `spatial` (query requests, lazily), `errors` |
 | `feedback.*` | `rendering` (render, virtual cameras, framing, the CPU raster for footprints, PNG), `spatial` (index, rays, overlaps, frustum), `plans` (selectors, executing compiled corrections), `rendering.script` (compiled corrections), `history` (transactions, undo), `errors`; NumPy only |
+| `uv.*` | `mesh`, `errors`, `diagnostics`, `spatial.predicates` (exact overlap tests), `_native` (LDL^T, packing); `texturing.raster` lazily (layout images) |
+| `texturing.*` | `uv`, `materials` (painted textures), `rendering.pathtrace` (sources as path-tracer scenes: BVH, shading), `rendering.raytrace`, `rendering.gpu` (lazily, GPU bake rays), `spatial.surface` (nearest points), `history` (transactions), `errors`; `scene` only for type hints |
 | `mcp.*` | `plans`, `scene`, `serialization`, `gltf`, `rendering`, `spatial`, `history`, `editing` and `procedural` (scripts), `feedback`, `errors`; the `mcp` SDK (optional: never imported by `import aether3d`) |
 | `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `history`, `spatial`, `plans`, `feedback`, `errors`; `mcp` lazily (`aether3d mcp serve`) |
 
@@ -878,3 +903,39 @@ decisions:
   schema fuzzed against the executor; the CLI, the MCP server and the visual feedback
   checks reuse the same validation (tiers, structured errors).
 
+## UV texture painting and baking (v0.14.0)
+
+`aether3d.uv` gives meshes UVs and measures them; `aether3d.texturing` paints and bakes
+textures through them; `materials.painted` stores the painted textures. See
+[TEXTURING.md](TEXTURING.md) and the design record
+[research/2026-10-stage14/DESIGN.md](../research/2026-10-stage14/DESIGN.md). Key
+decisions:
+
+- **One language per subsystem, decided up front and measured.** Topology, charts,
+  parameterization assembly, rasterization, MikkTSpace, painting and map evaluation are
+  vectorized NumPy. The two kernels NumPy cannot vectorize -- the sparse LDL^T
+  factorization (58 times faster in Rust) and the skyline placement of packing -- are in
+  `aether3d-native` with bit-identical NumPy twins. Bake rays run on the GPU through the
+  path tracer's BVH and traversal (shared `wgsl/traverse.wgsl`), with the multi-threaded
+  CPU traversal as fallback. No second implementation of any feature was built to compare.
+- **One tangent space everywhere.** A bit-exact MikkTSpace port gives every corner's
+  tangent; the CPU and GPU rasterizers and path tracers read normal maps in it, the baker
+  writes its exact inverse, and glTF export writes it as `TANGENT`.
+- **Painted textures are image textures.** A `PaintedTexture` is an `ImageTexture` whose
+  pixels come from 16-bit tiled layers: every renderer, the texture cache, mipmaps and
+  glTF export see an image; strokes recomposite and re-upload only the tiles they
+  changed (incremental mips equal a full rebuild bit for bit).
+- **History by tiles.** A stroke is one operation that replaces tiles (before and after
+  kept), so undo is exact and costs the touched tiles, not the image; history files store
+  tiles compressed. The project format (version 7) stores layers losslessly.
+- **Painting in 3D from texel positions.** Each tile's covered texels get their surface
+  point from the exact UV rasterization (lazily, cached); a dab is a distance test in
+  space, which makes seams invisible, and view strokes test visibility against a depth
+  and object-index render.
+- **Exact diagnostics.** UV overlaps and flips use the exact orientation predicates;
+  stacked islands are distinguished from unintended overlaps; bakes count misses and UV
+  overlaps.
+- **Same contract for agents.** Texture scripts are data with per-operation argument
+  allowlists, never touch files, are atomic and limited, and their schema is fuzzed
+  against the executor; the CLI, MCP tools and the `uv_quality` feedback check reuse the
+  same code.

@@ -36,6 +36,7 @@ from ..backends import Antialiasing
 from ..scene_data import RenderScene
 from ..settings import RenderLimits
 from ..shadows import ShadowPlan, instance_corners
+from ..tangents import meshes_needing_tangents
 from . import resources
 from .device import GPUContext, log_mark, translate_errors, validation_messages_since
 from .materials import HEADER_IMAGES, IMAGE_WORDS, image_key, pack_material_data
@@ -467,9 +468,12 @@ def _render(
     kept = _kept_state(rs, context)
     first_user = kept.first_user if kept is not None else _first_users(rs)
     meshes = []
+    tangent_meshes = meshes_needing_tangents(rs)
     for index, mesh in enumerate(rs.meshes):
         location = f"objects[{first_user[index]}]" if index in first_user else "meshes"
         gpu_mesh, _ = context.meshes.get(mesh, location)
+        if index in tangent_meshes:
+            context.meshes.ensure_tangents(gpu_mesh, mesh)
         meshes.append(gpu_mesh)
     bounds = np.stack([m.bounds for m in meshes]) if meshes else np.zeros((0, 2, 3))
     if kept is None:

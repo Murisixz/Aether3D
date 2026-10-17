@@ -13,6 +13,8 @@ use pyo3::prelude::*;
 
 mod buffers;
 mod hierarchy;
+mod ldl;
+mod pack;
 mod png;
 mod traversal;
 
@@ -20,7 +22,7 @@ use buffers::Arrays;
 
 /// The calling convention between `aether3d._native` and this module: a module whose
 /// `ABI` differs from what Aether3D expects is not used.
-const ABI: u32 = 1;
+const ABI: u32 = 2;
 
 fn check(ok: bool, message: impl FnOnce() -> String) -> PyResult<()> {
     if ok {
@@ -316,6 +318,307 @@ fn png_unfilter(
     Ok(())
 }
 
+fn to_err(r: Result<(), String>) -> PyResult<()> {
+    r.map_err(PyValueError::new_err)
+}
+
+/// `sparse.analyze`, first half: the elimination tree `parent` (n,) and the column counts
+/// `lnz` (n,) of `L` for the upper triangle `ap`, `ai` (CSC, rows <= k in column k).
+#[pyfunction]
+fn ldl_etree(
+    py: Python<'_>,
+    ap: &Bound<'_, PyAny>,
+    ai: &Bound<'_, PyAny>,
+    parent: &Bound<'_, PyAny>,
+    lnz: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let mut arrays = Arrays::new();
+    let ap_a = arrays.input::<i64>(ap, "ap", None)?;
+    let n = unsafe { ap_a.slice() }.len().saturating_sub(1);
+    let ai_a = arrays.input::<i64>(ai, "ai", None)?;
+    let parent_a = arrays.output::<i64>(parent, "parent", Some(n))?;
+    let lnz_a = arrays.output::<i64>(lnz, "lnz", Some(n))?;
+    arrays.check_overlaps()?;
+    to_err(ldl::check_upper(n, unsafe { ap_a.slice() }, unsafe {
+        ai_a.slice()
+    }))?;
+    py.detach(|| unsafe {
+        ldl::etree(
+            n,
+            ap_a.slice(),
+            ai_a.slice(),
+            parent_a.slice(),
+            lnz_a.slice(),
+        )
+    });
+    drop(arrays);
+    Ok(())
+}
+
+/// `sparse.analyze`, second half: the ascending row indices `li` of every column of `L`.
+#[pyfunction]
+fn ldl_pattern(
+    py: Python<'_>,
+    ap: &Bound<'_, PyAny>,
+    ai: &Bound<'_, PyAny>,
+    parent: &Bound<'_, PyAny>,
+    lp: &Bound<'_, PyAny>,
+    li: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let mut arrays = Arrays::new();
+    let ap_a = arrays.input::<i64>(ap, "ap", None)?;
+    let n = unsafe { ap_a.slice() }.len().saturating_sub(1);
+    let ai_a = arrays.input::<i64>(ai, "ai", None)?;
+    let parent_a = arrays.input::<i64>(parent, "parent", Some(n))?;
+    let lp_a = arrays.input::<i64>(lp, "lp", Some(n + 1))?;
+    let li_a = arrays.output::<i64>(li, "li", None)?;
+    arrays.check_overlaps()?;
+    to_err(ldl::check_upper(n, unsafe { ap_a.slice() }, unsafe {
+        ai_a.slice()
+    }))?;
+    // The counts must be those of the tree: recompute and compare.
+    let mut par = vec![0i64; n];
+    let mut cnt = vec![0i64; n];
+    ldl::etree(
+        n,
+        unsafe { ap_a.slice() },
+        unsafe { ai_a.slice() },
+        &mut par,
+        &mut cnt,
+    );
+    check(par.as_slice() == unsafe { parent_a.slice() }, || {
+        "parent: not the elimination tree of the matrix".into()
+    })?;
+    let lp_s = unsafe { lp_a.slice() };
+    check(lp_s[0] == 0, || "lp: must start at 0".into())?;
+    for k in 0..n {
+        check(lp_s[k + 1] - lp_s[k] == cnt[k], || {
+            format!("lp: column {k} does not have its count")
+        })?;
+    }
+    check(lp_s[n] as usize == unsafe { li_a.slice() }.len(), || {
+        "li: length is not lp[n]".into()
+    })?;
+    py.detach(|| unsafe {
+        ldl::pattern(
+            n,
+            ap_a.slice(),
+            ai_a.slice(),
+            parent_a.slice(),
+            lp_s,
+            li_a.slice(),
+        )
+    });
+    drop(arrays);
+    Ok(())
+}
+
+/// Checks that `lp/li` (columns of L) and `rp/rj/rpos` (its rows) describe the same
+/// strictly lower triangular structure.
+fn check_factor_structure(
+    n: usize,
+    lp: &[i64],
+    li: &[i64],
+    rp: &[i64],
+    rj: &[i64],
+    rpos: &[i64],
+) -> PyResult<()> {
+    to_err(ldl::check_segments("li", n, lp, li, |k| {
+        (k as i64 + 1, n as i64)
+    }))?;
+    to_err(ldl::check_segments("rj", n, rp, rj, |k| (0, k as i64)))?;
+    check(rpos.len() == rj.len() && rj.len() == li.len(), || {
+        "rpos, rj and li must have the same length".into()
+    })?;
+    for k in 0..n {
+        for q in rp[k] as usize..rp[k + 1] as usize {
+            let col = rj[q] as usize;
+            let pos = rpos[q];
+            check(
+                pos >= lp[col] && pos < lp[col + 1] && li[pos as usize] == k as i64,
+                || format!("rpos: entry {q} does not point at row {k} of column {col}"),
+            )?;
+            if q > rp[k] as usize {
+                check(rj[q] > rj[q - 1], || {
+                    format!("rj: row {k} is not ascending")
+                })?;
+            }
+        }
+        for p in lp[k] as usize..lp[k + 1] as usize {
+            if p > lp[k] as usize {
+                check(li[p] > li[p - 1], || {
+                    format!("li: column {k} is not ascending")
+                })?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `sparse._factor_numpy`: `lx` and `d` of `P A P^T = L D L^T`. Returns the first row with
+/// a pivot that is not positive, or -1.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn ldl_factor(
+    py: Python<'_>,
+    ap: &Bound<'_, PyAny>,
+    ai: &Bound<'_, PyAny>,
+    ax: &Bound<'_, PyAny>,
+    lp: &Bound<'_, PyAny>,
+    li: &Bound<'_, PyAny>,
+    rp: &Bound<'_, PyAny>,
+    rj: &Bound<'_, PyAny>,
+    rpos: &Bound<'_, PyAny>,
+    lx: &Bound<'_, PyAny>,
+    d: &Bound<'_, PyAny>,
+) -> PyResult<i64> {
+    let mut arrays = Arrays::new();
+    let ap_a = arrays.input::<i64>(ap, "ap", None)?;
+    let n = unsafe { ap_a.slice() }.len().saturating_sub(1);
+    let ai_a = arrays.input::<i64>(ai, "ai", None)?;
+    let ax_a = arrays.input::<f64>(ax, "ax", Some(unsafe { ai_a.slice() }.len()))?;
+    let lp_a = arrays.input::<i64>(lp, "lp", Some(n + 1))?;
+    let li_a = arrays.input::<i64>(li, "li", None)?;
+    let rp_a = arrays.input::<i64>(rp, "rp", Some(n + 1))?;
+    let rj_a = arrays.input::<i64>(rj, "rj", None)?;
+    let rpos_a = arrays.input::<i64>(rpos, "rpos", None)?;
+    let lx_a = arrays.output::<f64>(lx, "lx", Some(unsafe { li_a.slice() }.len()))?;
+    let d_a = arrays.output::<f64>(d, "d", Some(n))?;
+    arrays.check_overlaps()?;
+    to_err(ldl::check_upper(n, unsafe { ap_a.slice() }, unsafe {
+        ai_a.slice()
+    }))?;
+    unsafe {
+        check_factor_structure(
+            n,
+            lp_a.slice(),
+            li_a.slice(),
+            rp_a.slice(),
+            rj_a.slice(),
+            rpos_a.slice(),
+        )?;
+    }
+    let bad = py.detach(|| unsafe {
+        ldl::factor(
+            n,
+            ap_a.slice(),
+            ai_a.slice(),
+            ax_a.slice(),
+            lp_a.slice(),
+            li_a.slice(),
+            rp_a.slice(),
+            rj_a.slice(),
+            lx_a.slice(),
+            d_a.slice(),
+        )
+    });
+    drop(arrays);
+    Ok(bad)
+}
+
+/// `sparse._solve_numpy`: solves `L D L^T x = b` in place (`x`: n rows of m columns).
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn ldl_solve(
+    py: Python<'_>,
+    lp: &Bound<'_, PyAny>,
+    li: &Bound<'_, PyAny>,
+    lx: &Bound<'_, PyAny>,
+    rp: &Bound<'_, PyAny>,
+    rj: &Bound<'_, PyAny>,
+    rpos: &Bound<'_, PyAny>,
+    d: &Bound<'_, PyAny>,
+    x: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let mut arrays = Arrays::new();
+    let lp_a = arrays.input::<i64>(lp, "lp", None)?;
+    let n = unsafe { lp_a.slice() }.len().saturating_sub(1);
+    let li_a = arrays.input::<i64>(li, "li", None)?;
+    let lx_a = arrays.input::<f64>(lx, "lx", Some(unsafe { li_a.slice() }.len()))?;
+    let rp_a = arrays.input::<i64>(rp, "rp", Some(n + 1))?;
+    let rj_a = arrays.input::<i64>(rj, "rj", None)?;
+    let rpos_a = arrays.input::<i64>(rpos, "rpos", None)?;
+    let d_a = arrays.input::<f64>(d, "d", Some(n))?;
+    let x_a = arrays.output::<f64>(x, "x", None)?;
+    arrays.check_overlaps()?;
+    let total = unsafe { x_a.slice() }.len();
+    check(n == 0 || total % n == 0, || "x: not n rows".into())?;
+    let m = total.checked_div(n).unwrap_or(0);
+    unsafe {
+        check_factor_structure(
+            n,
+            lp_a.slice(),
+            li_a.slice(),
+            rp_a.slice(),
+            rj_a.slice(),
+            rpos_a.slice(),
+        )?;
+    }
+    py.detach(|| unsafe {
+        ldl::solve(
+            n,
+            m,
+            lp_a.slice(),
+            li_a.slice(),
+            lx_a.slice(),
+            rp_a.slice(),
+            rj_a.slice(),
+            rpos_a.slice(),
+            d_a.slice(),
+            x_a.slice(),
+        )
+    });
+    drop(arrays);
+    Ok(())
+}
+
+/// `pack._place_numpy`: horizon placement. `orient` (count,) and `pos` (count, 2) receive
+/// each chart's orientation and texel offset; returns the peak.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn pack_horizon(
+    py: Python<'_>,
+    width: usize,
+    bot: &Bound<'_, PyAny>,
+    top: &Bound<'_, PyAny>,
+    offsets: &Bound<'_, PyAny>,
+    order: &Bound<'_, PyAny>,
+    orient: &Bound<'_, PyAny>,
+    pos: &Bound<'_, PyAny>,
+) -> PyResult<i64> {
+    let mut arrays = Arrays::new();
+    let bot_a = arrays.input::<i64>(bot, "bot", None)?;
+    let top_a = arrays.input::<i64>(top, "top", None)?;
+    let off_a = arrays.input::<i64>(offsets, "offsets", None)?;
+    let order_a = arrays.input::<i64>(order, "order", None)?;
+    let count = to_err_count(pack::check(
+        unsafe { bot_a.slice() },
+        unsafe { top_a.slice() },
+        unsafe { off_a.slice() },
+        unsafe { order_a.slice() },
+    ))?;
+    let orient_a = arrays.output::<i64>(orient, "orient", Some(count))?;
+    let pos_a = arrays.output::<i64>(pos, "pos", Some(2 * count))?;
+    arrays.check_overlaps()?;
+    let peak = py.detach(|| unsafe {
+        pack::place(
+            width,
+            bot_a.slice(),
+            top_a.slice(),
+            off_a.slice(),
+            order_a.slice(),
+            orient_a.slice(),
+            pos_a.slice(),
+        )
+    });
+    drop(arrays);
+    peak.ok_or_else(|| PyValueError::new_err("ATLAS_FULL: a chart is wider than the atlas"))
+}
+
+fn to_err_count(r: Result<usize, String>) -> PyResult<usize> {
+    r.map_err(PyValueError::new_err)
+}
+
 #[pymodule]
 fn aether3d_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("ABI", ABI)?;
@@ -325,5 +628,10 @@ fn aether3d_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(world_matrices, m)?)?;
     m.add_function(wrap_pyfunction!(png_filter, m)?)?;
     m.add_function(wrap_pyfunction!(png_unfilter, m)?)?;
+    m.add_function(wrap_pyfunction!(ldl_etree, m)?)?;
+    m.add_function(wrap_pyfunction!(ldl_pattern, m)?)?;
+    m.add_function(wrap_pyfunction!(ldl_factor, m)?)?;
+    m.add_function(wrap_pyfunction!(ldl_solve, m)?)?;
+    m.add_function(wrap_pyfunction!(pack_horizon, m)?)?;
     Ok(())
 }

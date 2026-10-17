@@ -373,3 +373,52 @@ def test_sculpt_script_example():
     assert entry["commit"]["changed"]
     assert entry["operations"][-1]["report"]["summary"]["tier"] == "solid"
     assert scene.history.entries[-1].label == "Shape the head"
+
+
+# --------------------------------------------------------------------------- #
+# UV texture painting and baking (0.14.0)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("doc", ["docs/TEXTURING.md", "README.md"])
+def test_texturing_quick_start(doc, capsys):
+    source = python_block(
+        ROOT / doc, "from aether3d import Scene, create_sphere\n\nscene = Scene()\nball"
+    )
+    namespace: dict = {}
+    exec(compile(source, doc, "exec"), namespace)
+    assert_printed(source, capsys.readouterr().out)
+
+
+def test_texture_script_example():
+    from aether3d.texturing import run_texture_script
+    from aether3d.texturing.schema import texture_script_schema
+
+    jsonschema = pytest.importorskip("jsonschema")
+    text = (ROOT / "docs/TEXTURING.md").read_text(encoding="utf-8")
+    block = re.search(r'```json\n(\{\n  "format": "aether3d.texture-script".*?)\n```', text, re.S)
+    script = json.loads(block.group(1))
+    jsonschema.validate(script, texture_script_schema())
+    scene = Scene()
+    scene.add_cube("Crate", size=2)
+    out = run_texture_script(scene, script)
+    assert out["operations"][4]["dabs"] > 1
+    assert out["operations"][-1]["overlapping_triangles"] == 0
+    assert scene.history.entries[-1].label == "Paint the crate"
+
+
+def test_texturing_guide_script_is_valid():
+    """The agent guide's example script matches the schema and runs."""
+    from aether3d.texturing import run_texture_script
+    from aether3d.texturing.schema import texture_script_schema
+
+    jsonschema = pytest.importorskip("jsonschema")
+    text = (ROOT / "src/aether3d/texturing/guide.md").read_text(encoding="utf-8")
+    script = json.loads(re.search(r"```json\n(\{.*?\})\n```", text, re.S).group(1))
+    jsonschema.validate(script, texture_script_schema())
+    scene = Scene()
+    scene.add_cube("Crate", size=1)
+    high = scene.add_cube("Crate high", size=1)
+    high.visible = False
+    out = run_texture_script(scene, script)
+    assert [r["op"] for r in out["operations"]][-1] == "bake"

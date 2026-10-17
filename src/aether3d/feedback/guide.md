@@ -47,7 +47,9 @@ corrections. Everything here is data: nothing is executed as code.
 Checks: `exists`, `visible`, `framing`, `rests_on`, `no_overlap`, `inside_region`,
 `distance`, `relation`, `upright`, `material`, `exposure`, `camera_clipping`,
 `mesh_validity` (a mesh's validity tier: `{"check": "mesh_validity", "objects": "Head",
-"tier": "closed"}`; useful after sculpting or remeshing) (schema:
+"tier": "closed"}`; useful after sculpting or remeshing), `uv_quality` (no flipped or
+overlapping UV triangles, optional stretch, texel-density and gap limits:
+`{"check": "uv_quality", "objects": "Crate", "max_density_spread": 0.2}`) (schema:
 `aether3d://schema/expectations`; `capabilities {"topic": "feedback"}` summarizes them).
 `objects` takes ids, names or selectors (`{"tags": [...]}`, `{"name_glob": "Chair*"}`).
 `severity: "warning"` makes a check advisory. `fix` states which side may move

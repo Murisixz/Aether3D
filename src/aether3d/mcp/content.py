@@ -11,6 +11,8 @@ Resources (read-only):
 * ``aether3d://feedback/guide`` -- the visual feedback guide for agents (Markdown).
 * ``aether3d://sculpt/guide`` -- the sculpting guide for agents (Markdown).
 * ``aether3d://schema/sculpt-script`` -- the JSON Schema of sculpt scripts.
+* ``aether3d://texturing/guide`` -- the texturing guide for agents (Markdown).
+* ``aether3d://schema/texture-script`` -- the JSON Schema of texture scripts.
 * ``aether3d://schema/expectations``, ``.../vision-evaluation``, ``.../corrections`` -- the
   JSON Schemas of the feedback documents.
 * ``aether3d://observations/{id}`` -- an observation's measured facts (JSON), and
@@ -46,6 +48,14 @@ def guide() -> str:
 def sculpt_guide() -> str:
     return (
         importlib_resources.files("aether3d.sculpt")
+        .joinpath("guide.md")
+        .read_text(encoding="utf-8")
+    )
+
+
+def texturing_guide() -> str:
+    return (
+        importlib_resources.files("aether3d.texturing")
         .joinpath("guide.md")
         .read_text(encoding="utf-8")
     )
@@ -140,6 +150,25 @@ def resources(session: Session) -> list[types.Resource]:
             name="sculpt-script-schema",
             title="Sculpt script JSON Schema",
             description="The JSON Schema (2020-12) of aether3d.sculpt-script version 1",
+            mime_type="application/schema+json",
+        )
+    )
+    out.append(
+        types.Resource(
+            uri="aether3d://texturing/guide",
+            name="texturing-guide",
+            title="Texturing guide",
+            description="UV unwrapping and checks, painted textures and layers, strokes in "
+            "surface, view and UV space, fills, baking, texture transfer and texture scripts",
+            mime_type="text/markdown",
+        )
+    )
+    out.append(
+        types.Resource(
+            uri="aether3d://schema/texture-script",
+            name="texture-script-schema",
+            title="Texture script JSON Schema",
+            description="The JSON Schema (2020-12) of aether3d.texture-script version 1",
             mime_type="application/schema+json",
         )
     )
@@ -243,6 +272,12 @@ def read_resource(session: Session, uri: str) -> list[Any]:
         from ..sculpt.schema import sculpt_script_schema
 
         return data(sculpt_script_schema(), "application/schema+json")
+    if uri == "aether3d://texturing/guide":
+        return text(texturing_guide(), "text/markdown")
+    if uri == "aether3d://schema/texture-script":
+        from ..texturing.schema import texture_script_schema
+
+        return data(texture_script_schema(), "application/schema+json")
     if uri in FEEDBACK_SCHEMAS:
         return data(feedback_schema(uri), "application/schema+json")
     if uri.startswith("aether3d://observations/"):

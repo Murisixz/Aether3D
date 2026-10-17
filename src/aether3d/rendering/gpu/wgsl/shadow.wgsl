@@ -44,7 +44,8 @@ fn fs_shadow_masked(in: VertexOut) {
     n = normalize(in.normal);
   }
   let s = SurfaceInput(
-    in.instance, in.barycentric, dbdx, dbdy, in.p0, in.p1, in.p2, in.uv01.xy, in.uv01.zw, in.uv2, n
+    in.instance, in.barycentric, dbdx, dbdy, in.p0, in.p1, in.p2, in.uv01.xy, in.uv01.zw, in.uv2, n,
+    n, vec4<f32>(0.0)
   );
   let sv = evaluate_surface(m, s, (inst.flags & INSTANCE_HAS_UVS) != 0u, true);
   if (sv.alpha < wordf(material_base(m) + 5u)) {

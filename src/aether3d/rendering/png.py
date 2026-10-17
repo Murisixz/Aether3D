@@ -86,9 +86,15 @@ def _filter_rows(rows: np.ndarray, bpp: int) -> np.ndarray:
 
 
 def encode_png(
-    image: np.ndarray, *, text: dict[str, str] | None = None, compression: int = 6
+    image: np.ndarray,
+    *,
+    text: dict[str, str] | None = None,
+    compression: int = 6,
+    srgb: bool = True,
 ) -> bytes:
-    """Encode an ``(H, W)``, ``(H, W, 3)`` or ``(H, W, 4)`` ``uint8`` array as PNG bytes."""
+    """Encode an ``(H, W)``, ``(H, W, 3)`` or ``(H, W, 4)`` ``uint8`` or ``uint16`` array as
+    PNG bytes (8 or 16 bits per sample). Color images carry an ``sRGB`` chunk unless
+    ``srgb=False`` (data such as normal or roughness maps)."""
     if isinstance(compression, bool) or compression not in range(-1, 10):
         raise RenderError(
             "INVALID_SETTINGS",
@@ -96,8 +102,9 @@ def encode_png(
             "compression",
         )
     arr = np.asarray(image)
-    if arr.dtype != np.uint8:
-        raise RenderError("INVALID_IMAGE", f"PNG pixels must be uint8, got {arr.dtype}")
+    if arr.dtype not in (np.uint8, np.uint16):
+        raise RenderError("INVALID_IMAGE", f"PNG pixels must be uint8 or uint16, got {arr.dtype}")
+    depth = 16 if arr.dtype == np.uint16 else 8
     if arr.ndim == 2:
         arr = arr[:, :, None]
     if arr.ndim != 3 or arr.shape[2] not in _COLOR_TYPES or arr.shape[0] < 1 or arr.shape[1] < 1:
@@ -107,11 +114,17 @@ def encode_png(
     height, width, channels = arr.shape
     if width > 2**31 - 1 or height > 2**31 - 1:
         raise RenderError("INVALID_IMAGE", "PNG dimensions must be below 2^31")
-    rows = np.ascontiguousarray(arr).reshape(height, width * channels)
-    filtered = _filter_rows(rows, channels)
-    header = struct.pack(">IIBBBBB", width, height, 8, _COLOR_TYPES[channels], 0, 0, 0)
+    if depth == 16:
+        big = np.ascontiguousarray(arr, dtype=">u2").view(np.uint8)
+        rows = big.reshape(height, width * channels * 2)
+        bpp = 2 * channels
+    else:
+        rows = np.ascontiguousarray(arr).reshape(height, width * channels)
+        bpp = channels
+    filtered = _filter_rows(rows, bpp)
+    header = struct.pack(">IIBBBBB", width, height, depth, _COLOR_TYPES[channels], 0, 0, 0)
     chunks = [_chunk(b"IHDR", header)]
-    if channels >= 3:
+    if channels >= 3 and srgb:
         chunks.append(_chunk(b"sRGB", b"\x00"))  # perceptual rendering intent
     for key, value in (text or {}).items():
         keyword = key.encode("latin-1")

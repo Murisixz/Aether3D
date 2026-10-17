@@ -275,6 +275,106 @@ class MaterialLibrary:
             self._changed()
         return texture
 
+    def add_painted_texture(
+        self,
+        name: str | None = None,
+        width: int = 1024,
+        height: int | None = None,
+        *,
+        encoding: str = "color",
+        background: Any = None,
+        image: Any = None,
+        texture_id: str | None = None,
+        **sampler: Any,
+    ) -> Any:
+        """Add a painted texture (``docs/TEXTURING.md``): ``width x height`` texels of tiled
+        layers over a ``background`` RGBA (default: opaque white, or a flat normal
+        ``(0.5, 0.5, 1, 1)`` for ``encoding="normal"``). ``image`` (an image texture, a
+        PNG/JPEG path or an ``(h, w, 3|4)`` array of 0..1) becomes a first paint layer;
+        the size then defaults to the image's. ``encoding``: ``"color"`` (display sRGB
+        colors), ``"data"`` (linear values) or ``"normal"`` (tangent-space normals).
+        ``sampler``: as :meth:`add_image_texture`."""
+        from .images import decode_image
+        from .painted import Layer, PaintedTexture, check_document, tiles_from_pixels
+
+        settings = check_sampler(sampler, "texture")
+        unknown = set(sampler) - {"wrap", "wrap_u", "wrap_v", "filter", "mipmaps", "color_space"}
+        if unknown:
+            raise _err(
+                "INVALID_TEXTURE", f"unknown texture setting(s): {', '.join(sorted(unknown))}"
+            )
+        pixels16 = None
+        if image is not None:
+            if isinstance(image, ImageTexture):
+                rgba8 = image.load().image.pixels
+                pixels16 = rgba8.astype(np.uint16) * 257
+            elif isinstance(image, (str, Path)):
+                raw = Path(image)
+                file = raw if raw.is_absolute() else (self.base_dir or Path.cwd()) / raw
+                data = Path(file).read_bytes()
+                from .images import decode_png16, sniff_format
+
+                if sniff_format(data[:16]) == "png":
+                    pixels16 = decode_png16(data, location="image")
+                else:
+                    pixels16 = decode_image(data, location="image").pixels.astype(np.uint16) * 257
+            else:
+                arr = np.asarray(image, dtype=np.float64)
+                if arr.ndim != 3 or arr.shape[2] not in (3, 4) or not np.all(np.isfinite(arr)):
+                    raise _err(
+                        "INVALID_TEXTURE", "image must be a finite (h, w, 3|4) array", "image"
+                    )
+                if arr.shape[2] == 3:
+                    arr = np.concatenate([arr, np.ones(arr.shape[:2] + (1,))], axis=2)
+                pixels16 = np.round(np.clip(arr, 0.0, 1.0) * 65535).astype(np.uint16)
+            if height is None and width == 1024:
+                height, width = pixels16.shape[:2]
+        height = width if height is None else height
+        if background is None:
+            background = (0.5, 0.5, 1.0, 1.0) if encoding == "normal" else (1.0, 1.0, 1.0, 1.0)
+        width, height, encoding, background = check_document(
+            width, height, encoding, background, "texture"
+        )
+        if pixels16 is not None and pixels16.shape[:2] != (height, width):
+            raise _err(
+                "INVALID_TEXTURE",
+                f"the image is {pixels16.shape[1]}x{pixels16.shape[0]}, not {width}x{height}",
+                "image",
+            )
+        if name is None:
+            name = self._unique_texture_name("Painted")
+        _check_name(name, "texture")
+        if name in self._texture_names:
+            raise _err(
+                "NAME_CONFLICT", f"a texture named {name!r} already exists", f"textures[{name}]"
+            )
+        texture_id = self._check_new_id(texture_id, self._textures, "texture")
+        if len(self._textures) >= MAX_TEXTURES:
+            raise _err("RESOURCE_LIMIT", f"a scene has at most {MAX_TEXTURES} textures")
+        layers = ()
+        if pixels16 is not None:
+            import uuid
+
+            tiles = tiles_from_pixels((width, height), pixels16, 0)
+            layers = (Layer(uuid.uuid4().hex, "Image", "paint", tiles=tiles),)
+        texture = PaintedTexture(
+            self,
+            texture_id,
+            name,
+            width=width,
+            height=height,
+            encoding=encoding,
+            background=background,
+            layers=layers,
+            **settings,
+        )
+        h = _history_aspects()
+        with self._op(f"Add texture {name!r}", h.LIBRARY_TEXTURES, self):
+            self._textures[texture_id] = texture
+            self._texture_names[name] = texture
+            self._changed()
+        return texture
+
     def add_procedural_texture(
         self, name: str | None, graph: Any, *, texture_id: str | None = None
     ) -> ProceduralTexture:
@@ -783,10 +883,22 @@ class MaterialLibrary:
             allowed = common | {"path", "embedded", "wrap", "filter", "mipmaps", "color_space"}
         elif kind == "procedural":
             allowed = common | {"graph"}
+        elif kind == "painted":
+            allowed = common | {
+                "width",
+                "height",
+                "encoding",
+                "background",
+                "layers",
+                "wrap",
+                "filter",
+                "mipmaps",
+                "color_space",
+            }
         else:
             raise _err(
                 "INVALID_TEXTURE",
-                f"type must be 'image' or 'procedural', got {kind!r}",
+                f"type must be 'image', 'painted' or 'procedural', got {kind!r}",
                 f"{loc}.type",
             )
         missing = sorted({"id", "name"} - set(raw))
@@ -802,7 +914,9 @@ class MaterialLibrary:
             raise _err(
                 "INVALID_TEXTURE", f"duplicate texture id or name ({texture_id!r}, {name!r})", loc
             )
-        if kind == "procedural":
+        if kind == "painted":
+            texture = _painted_from_record(self, raw, texture_id, name, loc)
+        elif kind == "procedural":
             if "graph" not in raw:
                 raise _err("INVALID_TEXTURE", "keys: missing graph", loc)
             graph = TextureGraph.from_dict(raw["graph"], f"{loc}.graph")
@@ -1134,11 +1248,14 @@ def _unique(base: str, taken: dict[str, Any]) -> str:
     return f"{base}.{k:03d}"
 
 
-def _embedded(raw: Any, loc: str) -> bytes:
+def _embedded(raw: Any, loc: str, limit: int | None = None) -> bytes:
     import base64
     import binascii
 
     from .textures import MAX_EMBEDDED_BYTES
+
+    if limit is not None:
+        MAX_EMBEDDED_BYTES = limit  # noqa: N806 - the limit for this record
 
     if not isinstance(raw, dict) or set(raw) != {"mime_type", "data"}:
         raise _err("INVALID_TEXTURE", 'embedded must be {"mime_type": ..., "data": base64}', loc)
@@ -1159,7 +1276,68 @@ def _embedded(raw: Any, loc: str) -> bytes:
         raise _err("INVALID_TEXTURE", "embedded data is not valid base64", loc) from None
 
 
+def _painted_from_record(library: Any, raw: dict, texture_id: str, name: str, loc: str):
+    from .painted import PaintedTexture, check_document, layer_from_record
+
+    for key in ("width", "height", "layers"):
+        if key not in raw:
+            raise _err("INVALID_TEXTURE", f"keys: missing {key}", loc)
+    width, height, encoding, background = check_document(
+        raw["width"],
+        raw["height"],
+        raw.get("encoding", "color"),
+        raw.get("background", (1.0, 1.0, 1.0, 1.0)),
+        loc,
+    )
+    settings = check_sampler(
+        {k: raw[k] for k in ("wrap", "filter", "mipmaps", "color_space") if k in raw}, loc
+    )
+    if not isinstance(raw["layers"], list):
+        raise _err("INVALID_TEXTURE", "layers must be a list", f"{loc}.layers")
+    from .painted import MAX_LAYERS
+
+    if len(raw["layers"]) > MAX_LAYERS:
+        raise _err("RESOURCE_LIMIT", f"a painted texture has at most {MAX_LAYERS} layers", loc)
+
+    def decode(value: Any) -> bytes:
+        return _embedded(value, f"{loc}.layers", 256 * 2**20)
+
+    layers = tuple(
+        layer_from_record((width, height), item, decode, f"{loc}.layers[{i}]")
+        for i, item in enumerate(raw["layers"])
+    )
+    ids = [layer.id for layer in layers]
+    names = [layer.name for layer in layers]
+    if len(set(ids)) != len(ids) or len(set(names)) != len(names):
+        raise _err("INVALID_TEXTURE", "layer ids and names must be unique", f"{loc}.layers")
+    return PaintedTexture(
+        library,
+        texture_id,
+        name,
+        width=width,
+        height=height,
+        encoding=encoding,
+        background=background,
+        layers=layers,
+        **settings,
+    )
+
+
 def _texture_state(t: Texture) -> dict[str, Any]:
+    from .painted import PaintedTexture
+
+    if isinstance(t, PaintedTexture):
+        return {
+            "_width": t._width,
+            "_height": t._height,
+            "_encoding": t._encoding,
+            "_layers": t._layers,
+            "_background": t._background,
+            "_wrap": t._wrap,
+            "_filter": t._filter,
+            "_mipmaps": t._mipmaps,
+            "_color_space": t._color_space,
+        }
     if isinstance(t, ImageTexture):
         return {
             "_file": t._file,
@@ -1175,5 +1353,10 @@ def _texture_state(t: Texture) -> dict[str, Any]:
 
 
 def _set_texture_state(t: Texture, state: dict[str, Any]) -> None:
+    from .painted import PaintedTexture
+
+    if isinstance(t, PaintedTexture):
+        t._restore(state)
+        return
     for key, value in state.items():
         object.__setattr__(t, key, value)

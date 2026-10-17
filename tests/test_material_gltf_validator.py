@@ -43,3 +43,38 @@ def test_material_exports_are_valid(tmp_path):
             path.name,
             report,
         )
+
+
+def test_painted_and_baked_exports_are_valid(tmp_path):
+    """MikkTSpace TANGENT (vertices split at UV seams), painted textures and baked maps
+    bound through channels glTF repacks (0.14.0) pass the validator with no warning."""
+    from aether3d import create_sphere
+
+    scene = Scene("Painted")
+    ball = scene.add_object("Ball", mesh=create_sphere(1.0, 32, 16))
+    ball.unwrap(resolution=128, padding=4)
+    scene.add_object("Detail", mesh=create_sphere(1.0, 96, 48), position=(0, 0, 0))
+    scene.get_by_name("Detail").visible = False
+    color = scene.add_painted_texture("Color", 128, 128, background="#3d6fb5")
+    color.add_layer("Ink")
+    rough = scene.add_painted_texture("Rough", 128, 128, encoding="data",
+                                      background=[0.5, 0.5, 0.5, 1])  # fmt: skip
+    rough.add_layer("Ink")
+    m = scene.create_material("M", base_color="#ffffff", roughness=1.0)
+    m.set_texture("base_color", color)
+    m.set_texture("roughness", rough, channel="r")
+    ball.material = m
+    ball.paint([{"texture": color, "color": "#ff8800"}, {"texture": rough, "color": [0.9]}],
+               {"radius": 0.4}, [[1, 0, 0], [0, 1, 0]])  # fmt: skip
+    scene.bake(ball, ["Detail"], ["normal", "ao", "metallic"], resolution=128, apply=True,
+               backend="cpu")  # fmt: skip
+    paths = []
+    for fmt in ("glb", "gltf"):
+        result = scene.export(tmp_path / f"painted.{fmt}")
+        assert "TEXTURE_CHANNELS_PACKED" in {d.code for d in result.diagnostics}
+        paths.append(tmp_path / f"painted.{fmt}")
+    for path, report in zip(paths, validate(*paths), strict=True):
+        assert report["ok"] and report["errors"] == 0 and report["warnings"] == 0, (
+            path.name,
+            report,
+        )

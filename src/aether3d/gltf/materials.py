@@ -751,15 +751,9 @@ class MaterialExporter:
             binding, texture = found
             channel = binding.channel_for(slot, texture.kind)
             if slot == "occlusion" and texture.kind == "image" and channel != "r":
-                self.note(
-                    "TEXTURE_CHANNEL_NOT_EXPORTED",
-                    WARNING,
-                    "glTF reads occlusion from the red channel; this binding reads "
-                    f"{channel!r} and is left out",
-                    f"{loc}.textures.{slot}",
-                )
-                continue
-            info = self._texture_info(m, slot, binding, texture)
+                info = self._packed_occlusion(m, binding, texture, channel)
+            else:
+                info = self._texture_info(m, slot, binding, texture)
             if info is None:
                 continue
             if slot == "normal" and m._values["normal_strength"] != 1.0:
@@ -779,7 +773,6 @@ class MaterialExporter:
             )
 
     def _metallic_roughness(self, m: Material, pbr: dict, usable) -> None:
-        loc = m.location
         metal, rough = usable("metallic"), usable("roughness")
         if metal is None and rough is None:
             return
@@ -797,16 +790,11 @@ class MaterialExporter:
                 and rough[0].channel_for("roughness", "image") == "g"
                 and metal[0].matrix.tolist() == rough[0].matrix.tolist()
             )
-            if not same:
-                self.note(
-                    "TEXTURE_CHANNEL_NOT_EXPORTED",
-                    WARNING,
-                    "glTF needs metallic (blue) and roughness (green) in one texture; these "
-                    "bindings differ, so they are left out",
-                    f"{loc}.textures",
-                )
-                return
-            info = self._texture_info(m, "metallic", *metal)
+            info = (
+                self._texture_info(m, "metallic", *metal)
+                if same
+                else self._packed_metallic_roughness(m, metal, rough)
+            )
         else:
             # One image for one of the two: exporting it as the packed texture would also drive
             # the other value, which is harmless only for roughness alone with metallic 0.
@@ -817,20 +805,98 @@ class MaterialExporter:
                 and binding.channel_for(slot, "image") == "g"
                 and m._values["metallic"] == 0.0
             )
-            if not exportable:
-                self.note(
-                    "TEXTURE_CHANNEL_NOT_EXPORTED",
-                    WARNING,
-                    f"glTF's metallic-roughness texture would also change "
-                    f"{'roughness' if slot == 'metallic' else 'metallic'}; the {slot} texture is "
-                    "left out (bind one texture to both, packed blue/green, or bake procedural "
-                    "ones)",
-                    f"{loc}.textures.{slot}",
-                )
-                return
-            info = self._texture_info(m, slot, binding, texture)
+            info = (
+                self._texture_info(m, slot, binding, texture)
+                if exportable
+                else self._packed_metallic_roughness(m, metal, rough)
+            )
         if info is not None:
             pbr["metallicRoughnessTexture"] = info
+
+    def _packed_occlusion(self, m: Material, binding: Any, texture: Any, channel: str):
+        """glTF reads occlusion from red: an image whose occlusion is in another channel is
+        copied there (a new PNG)."""
+        from ..rendering.png import encode_png
+
+        try:
+            pixels = np.asarray(texture.load().image.pixels)
+        except MaterialError as exc:
+            message = f"texture {texture.name!r} cannot be read ({exc.message}); left out"
+            self.note(exc.code, WARNING, message, f"{m.location}.textures.occlusion")
+            return None
+        if channel == "luminance":
+            plane = pixels[..., :3].astype(np.float64) @ np.array([0.2126, 0.7152, 0.0722])
+        else:
+            plane = pixels[..., "rgba".index(channel)].astype(np.float64)
+        out = np.full(pixels.shape[:2] + (4,), 255, dtype=np.uint8)
+        out[..., 0] = np.round(plane).astype(np.uint8)
+        out[..., 1] = out[..., 2] = out[..., 0]
+        self.note(
+            "TEXTURE_CHANNELS_PACKED",
+            INFO,
+            f"occlusion (channel {channel!r} of {texture.name!r}) copied to the red channel of "
+            "a PNG, as glTF reads it",
+            f"{m.location}.textures.occlusion",
+        )
+        image = self._image(encode_png(out), "image/png", f"{texture.name} occlusion")
+        sampler = self._sampler(texture.wrap, texture.filter, texture.mipmaps)
+        return self._info(image, sampler, binding)
+
+    def _packed_metallic_roughness(self, m: Material, metal: Any, rough: Any) -> dict | None:
+        """glTF's metallic-roughness texture built from image or painted textures whose
+        channels glTF cannot read as they are: metallic to blue, roughness to green (a value
+        without a texture is 1 there, so its factor alone gives it), at the larger size
+        (nearest texel). The bindings must share one transform."""
+        from ..rendering.png import encode_png
+
+        loc = m.location
+        found = [(b, t, slot) for b, t, slot in (
+            (*metal, "metallic") if metal is not None else (None, None, None),
+            (*rough, "roughness") if rough is not None else (None, None, None),
+        ) if b is not None]  # fmt: skip
+        if len(found) == 2 and found[0][0].matrix.tolist() != found[1][0].matrix.tolist():
+            self.note(
+                "TEXTURE_CHANNEL_NOT_EXPORTED",
+                WARNING,
+                "glTF needs metallic and roughness in one texture; these bindings use "
+                "different transforms, so they are left out",
+                f"{loc}.textures",
+            )
+            return None
+        planes = {}
+        for binding, texture, slot in found:
+            try:
+                pixels = np.asarray(texture.load().image.pixels)
+            except MaterialError as exc:
+                self.note(exc.code, WARNING, f"texture {texture.name!r} cannot be read "
+                          f"({exc.message}); the {slot} slot keeps only its factor",
+                          f"{loc}.textures.{slot}")  # fmt: skip
+                return None
+            channel = binding.channel_for(slot, "image")
+            if channel == "luminance":
+                plane = pixels[..., :3].astype(np.float64) @ np.array([0.2126, 0.7152, 0.0722])
+            else:
+                plane = pixels[..., "rgba".index(channel)].astype(np.float64)
+            planes[slot] = plane
+        h = max(p.shape[0] for p in planes.values())
+        w = max(p.shape[1] for p in planes.values())
+        packed = np.full((h, w, 4), 255, dtype=np.uint8)
+        for slot, plane in planes.items():
+            rows = np.minimum((np.arange(h) + 0.5) * plane.shape[0] / h, plane.shape[0] - 1)
+            cols = np.minimum((np.arange(w) + 0.5) * plane.shape[1] / w, plane.shape[1] - 1)
+            resized = plane[rows.astype(int)][:, cols.astype(int)]
+            packed[..., 2 if slot == "metallic" else 1] = np.round(resized).astype(np.uint8)
+        binding, texture, _ = found[0]
+        self.note(
+            "TEXTURE_CHANNELS_PACKED",
+            INFO,
+            f"{' and '.join(slot for *_, slot in found)} packed into one {w}x{h} "
+            "metallic-roughness PNG (metallic in blue, roughness in green), as glTF reads them",
+            f"{loc}.textures",
+        )
+        image = self._image(encode_png(packed), "image/png", f"{m.name} metallic-roughness")
+        sampler = self._sampler(texture.wrap, texture.filter, texture.mipmaps)
+        return self._info(image, sampler, binding)
 
     # -- images, samplers and texture infos -----------------------------------------
 
@@ -1016,39 +1082,36 @@ def _json(values: dict[str, Any]) -> dict[str, Any]:
     return {k: list(v) if isinstance(v, tuple) else v for k, v in values.items()}
 
 
-def vertex_tangents(mesh: Any) -> np.ndarray | None:
-    """Per-vertex tangents ``(N, 4)`` for glTF's TANGENT attribute (``None`` without UVs/normals).
+def split_for_tangents(mesh: Any) -> tuple[Any, np.ndarray]:
+    """``mesh`` with a vertex per distinct (vertex, MikkTSpace tangent) and those per-vertex
+    tangents ``(V, 4)``: glTF's TANGENT is per vertex, while MikkTSpace gives every corner its
+    own (they differ where a vertex joins mirrored or separately mapped UV islands)."""
+    from ..mesh import Mesh
+    from ..uv.mikktspace import mesh_tangents
 
-    Each triangle's tangent and bitangent come from its UV gradients (as the
-    renderer computes them); vertices average the tangents of their triangles,
-    orthonormalized against the vertex normal, with the handedness in ``w`` so
-    that ``cross(normal, tangent) * w`` points toward increasing ``v`` in
-    Aether3D's uv space (up the image, glTF's +Y of normal maps).
-    """
-    if mesh.uvs is None or mesh.normals is None or mesh.triangle_count == 0:
-        return None
-    p = mesh.positions.astype(np.float64)
-    uv = mesh.uvs.astype(np.float64)
-    t = mesh.triangles.astype(np.int64)
-    e1, e2 = p[t[:, 1]] - p[t[:, 0]], p[t[:, 2]] - p[t[:, 0]]
-    d1, d2 = uv[t[:, 1]] - uv[t[:, 0]], uv[t[:, 2]] - uv[t[:, 0]]
-    det = d1[:, 0] * d2[:, 1] - d2[:, 0] * d1[:, 1]
-    ok = np.abs(det) > 1e-20
-    inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)[:, None]
-    tri_t = (e1 * d2[:, 1:2] - e2 * d1[:, 1:2]) * inv
-    tri_b = (e2 * d1[:, 0:1] - e1 * d2[:, 0:1]) * inv
-    tangent = np.zeros_like(p)
-    bitangent = np.zeros_like(p)
-    for k in range(3):
-        np.add.at(tangent, t[:, k], tri_t)
-        np.add.at(bitangent, t[:, k], tri_b)
-    n = mesh.normals.astype(np.float64)
-    tangent = tangent - n * (tangent * n).sum(axis=1, keepdims=True)
-    length = np.linalg.norm(tangent, axis=1, keepdims=True)
-    # Vertices without a usable UV gradient get any tangent perpendicular to the normal.
-    helper = np.where(np.abs(n[:, :1]) < 0.9, [[1.0, 0.0, 0.0]], [[0.0, 1.0, 0.0]])
-    fallback = np.cross(n, helper)
-    fallback /= np.maximum(np.linalg.norm(fallback, axis=1, keepdims=True), 1e-300)
-    tangent = np.where(length > 1e-12, tangent / np.maximum(length, 1e-300), fallback)
-    w = np.where((np.cross(n, tangent) * bitangent).sum(axis=1) < 0.0, -1.0, 1.0)
-    return np.concatenate([tangent, w[:, None]], axis=1)
+    corner = mesh_tangents(mesh)  # (T, 3, 4) float32
+    tri = mesh.triangles.astype(np.int64).reshape(-1)
+    bits = np.ascontiguousarray(corner.reshape(-1, 4)).view(np.uint32)
+    key = np.concatenate([tri[:, None].astype(np.uint64), bits.astype(np.uint64)], axis=1)
+    _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
+    inverse = inverse.reshape(-1)
+    if first.shape[0] == mesh.vertex_count and np.array_equal(
+        np.sort(tri[first]), np.arange(mesh.vertex_count)
+    ):
+        tangents = np.zeros((mesh.vertex_count, 4), dtype=np.float32)
+        tangents[tri[first]] = corner.reshape(-1, 4)[first]
+        return mesh, tangents
+    order = np.argsort(first, kind="stable")
+    rank = np.empty(order.shape[0], dtype=np.int64)
+    rank[order] = np.arange(order.shape[0])
+    new_index = rank[inverse]
+    src_corner = first[order]
+    src_vertex = tri[src_corner]
+    split = Mesh(
+        mesh.positions[src_vertex],
+        new_index.reshape(-1, 3),
+        normals=mesh.normals[src_vertex],
+        uvs=mesh.uvs[src_vertex],
+        groups=mesh.groups,
+    )
+    return split, corner.reshape(-1, 4)[src_corner].astype(np.float32)

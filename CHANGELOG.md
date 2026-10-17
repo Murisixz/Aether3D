@@ -4,6 +4,95 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.14.0: UV texture painting and baking
+
+Aether3D gives meshes UVs, paints textures on them in 3D and bakes detail from
+high-resolution sources, from Python, JSON scripts, the CLI and MCP -- every operation
+atomic, undoable and measured ([docs/TEXTURING.md](docs/TEXTURING.md)). The language of
+each subsystem was decided before implementation (the design record:
+[research/2026-10-stage14/DESIGN.md](research/2026-10-stage14/DESIGN.md)): vectorized
+NumPy for topology, charts, rasterization, MikkTSpace, painting and map evaluation; Rust
+(`aether3d-native`, ABI 2, with bit-identical NumPy twins) for the sparse LDL^T solver and
+the packing placement; WGSL compute for bake rays, on the path tracer's BVH.
+
+Measured on the development machine (i9-12900H laptop, RTX 4060 Laptop GPU, Python 3.14,
+NumPy 2.5; `benchmarks/bench_texturing.py`, saved as
+`benchmarks/results/stage14-texturing.json`; the tables are in
+[docs/TEXTURING.md](docs/TEXTURING.md#performance)):
+
+- unwrapping UV spheres of 10k, 100k and 1M triangles (two hemisphere charts each, the
+  solver's worst case): 1.0 s, 9.3 s and 271 s (9.2 GiB); the native LDL^T makes the 10k
+  and 100k unwraps 5.8 and 9.3 times faster than NumPy alone; MikkTSpace tangents: 0.024,
+  0.25 and 3.1 s; exact UV reports: 0.71, 3.4 and 46 s;
+- painting a 100k-triangle sphere: a dab of radius 0.05 costs 1.3 ms on a 1K texture and
+  8.4 ms on an 8K one; a stroke touches only its tiles, and undoing a fill of the whole 8K
+  texture takes 1.1 ms;
+- baking from a 1M-triangle source with 2 x 2 samples: a 1K normal map in 6.1 s (CPU) or
+  3.5 s (GPU rays), 4K in 45 s; AO with 64 rays per sample at 1K in 27.3 s on the CPU and
+  3.8 s on the GPU (5.3 against 38.5 M rays/s).
+
+### Added
+
+- **UV mapping** (`aether3d.uv`, `obj.unwrap`, `obj.project_uvs`, `obj.edit_uvs`, and
+  `EditableMesh.unwrap`/`project_uvs` in edit sessions and scripts): segmentation at hard
+  edges, face groups, seams and an angle limit; LSCM then SLIM per chart (flip-free),
+  Tutte fallback; splitting by geodesic distance until the stretch is at most
+  `max_stretch`, with straightened borders; a sparse LDL^T solver with nested dissection;
+  packing on conservative texel footprints with padding, quarter-turn orientations and
+  optional fixed texel density; partial unwraps that keep polygons whole; planar, box,
+  cylindrical and spherical projections; island transform, align, normalize, texel
+  density, pack and stitch.
+- **UV diagnostics**: `uv_report` (flips, degenerate and non-finite triangles, mirrored
+  islands, exact overlaps with stacked islands told apart, stretch, texel density and
+  spread, utilization, gaps) and `layout_image` (islands, density, stretch, overlaps,
+  texture).
+- **MikkTSpace**: a bit-exact float32 port of the reference implementation; every
+  renderer reads UV normal maps in it; glTF export writes it as `TANGENT`.
+- **Painted textures** (`scene.add_painted_texture`, `PaintedTexture`): 16-bit tiled
+  layers (paint and fill), nine blend modes, opacity, visibility, masks, background,
+  encodings (color, data, normal); history by tiles; incremental mips and partial GPU
+  uploads; project format 7 stores layers losslessly.
+- **Painting** (`aether3d.texturing.stroke`, `obj.paint`, `fill`, `gradient`): brushes
+  (paint, erase, blur, smudge, clone, mask) with falloffs, spacing, pressure, opacity
+  ceilings and symmetry; strokes in world space continuous across UV seams, in a
+  camera's view with occlusion, or in UV space; material strokes over several
+  textures; seam padding; one stroke, one undo step; cancellable.
+- **Baking** (`scene.bake`, `aether3d.texturing.bake`): normal (tangent space, the exact
+  inverse of the renderers' transform), object and world normals, height, AO, thickness,
+  curvature, position, base color, roughness, metallic, emissive, opacity, material /
+  object / group IDs; cage and depth or an explicit cage; supersampling; padding; miss
+  and UV-overlap diagnostics; CPU (all cores) or GPU; `apply=True` binds the maps.
+- **Texture transfer** (`scene.transfer_textures`): carry a look onto a remeshed copy.
+- **Texture scripts** (`aether3d.texture-script`, `run_texture_script`) with a JSON
+  Schema; CLI `aether3d texture run | report | bake | schema`; MCP: texture scripts in
+  `run_script`, `inspect_uvs` and `inspect_texture` tools, the `texturing` capabilities
+  topic, guide and schema resources; the `uv_quality` feedback check.
+- **Examples** (rendered by Aether3D): `texturing_hard_surface.py`,
+  `texturing_organic_paint.py`, `texturing_bake.py`, `texturing_pbr.py`,
+  `mcp_texture_agent.py`; `benchmarks/bench_texturing.py`.
+
+### Changed
+
+- **Project format 7** (painted textures); version 6 files load unchanged.
+- **glTF export** repacks metallic/roughness and occlusion read from channels glTF does
+  not read (as baked maps are bound) into the channels it reads
+  (`TEXTURE_CHANNELS_PACKED`); they used to be left out (`TEXTURE_CHANNEL_NOT_EXPORTED`,
+  which remains for bindings with different transforms).
+- **Normal maps** are read in MikkTSpace instead of per-triangle UV-gradient frames for
+  UV bindings that keep the UV basis; maps baked by MikkTSpace tools (Blender,
+  Substance, Aether3D) render as baked. Renders of normal-mapped meshes can change where
+  the two frames differ (mostly on curved low-polygon meshes).
+- **MCP**: 23 tools (`inspect_uvs`, `inspect_texture` added).
+- `aether3d-native` 0.14.0, ABI 2 (new kernels `ldl_*`, `pack_horizon`).
+
+### Changed tests
+
+Existing assertions changed (each for a reason stated in the PR): the project
+`format_version` 6 -> 7 (tests/test_annotations.py x2, test_material_persistence.py,
+test_pathtrace_api.py, test_plans_execution.py); the MCP tool list and count 21 -> 23
+(tests/test_mcp.py x2, tests/test_examples.py); glTF channel diagnostics now
+`TEXTURE_CHANNELS_PACKED` (tests/test_material_gltf.py).
+
 ## 0.13.0: advanced modeling and sculpting
 
 Aether3D gains the modeling tools of a production polygon editor and a sculpting system

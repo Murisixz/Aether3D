@@ -134,6 +134,23 @@ CHECKS: dict[str, dict[str, Any]] = {
         "tier: valid, manifold, closed (default: manifold and watertight) or solid (also "
         "no self-intersection and a positive volume, tested exactly)",
     },
+    "uv_quality": {
+        "fields": (
+            "objects",
+            "resolution",
+            "max_flipped",
+            "max_overlapping",
+            "max_stretch",
+            "max_density_spread",
+            "min_gap",
+        ),
+        "required": ("objects",),
+        "summary": "each object's mesh (a group: its parts' meshes) has UVs with at most "
+        "max_flipped flipped and max_overlapping overlapping triangles (default 0; stacked "
+        "islands are deliberate and not counted), optionally an L2 stretch of at most "
+        "max_stretch, a texel-density spread of at most max_density_spread and gaps of at "
+        "least min_gap texels at resolution (default 1024)",
+    },
 }
 MESH_TIERS = TIERS
 RELATION_PREDICATES = (
@@ -444,6 +461,14 @@ def _parse_field(doc: Doc, kind: str, key: str, value: Any, ptr: str, views: dic
         return doc.number(value, ptr, lo=0.0, hi=180.0)
     if key == "tier":
         return doc.enum(value, ptr, MESH_TIERS)
+    if key == "resolution":
+        return doc.integer(value, ptr, lo=16, hi=16384)
+    if key in ("max_flipped", "max_overlapping"):
+        return doc.integer(value, ptr, lo=0, hi=1 << 31)
+    if key == "max_stretch":
+        return doc.number(value, ptr, lo=1.0)
+    if key in ("max_density_spread", "min_gap"):
+        return doc.number(value, ptr, lo=0.0)
     if key == "axis":
         v = doc.vector(value, ptr, nonzero=True)
         return BAD if v is BAD else list(v)

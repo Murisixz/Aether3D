@@ -48,6 +48,8 @@ class RenderImage:
     wrap: tuple[str, str]
     filter: str
     mipmaps: bool
+    document: Any = None  # a painted texture: its levels change in place (see TexturePool)
+    revision: int = 0
 
     @property
     def key(self) -> tuple[str, str]:
@@ -74,6 +76,13 @@ class RenderTexture:
     @property
     def needs_uvs(self) -> bool:
         return self.coordinates == "uv"
+
+    @property
+    def mikktspace(self) -> bool:
+        """A UV normal map read in the MikkTSpace basis (see ``rendering/tangents.py``)."""
+        from .tangents import uv_aligned
+
+        return self.coordinates == "uv" and uv_aligned(self.transform)
 
     @property
     def key(self) -> tuple:
@@ -447,8 +456,16 @@ def _image(
         raise
     if images is not None:
         images.append((texture, mode, loaded.digest))
+    painted = getattr(texture, "painted", False)
     return RenderImage(
-        texture.name, loaded.digest, chain, texture.wrap, texture.filter, texture.mipmaps
+        texture.name,
+        loaded.digest,
+        chain,
+        texture.wrap,
+        texture.filter,
+        texture.mipmaps,
+        texture if painted else None,
+        texture.revision if painted else 0,
     )
 
 

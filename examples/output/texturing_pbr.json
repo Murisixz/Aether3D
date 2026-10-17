@@ -1,0 +1,473 @@
+{
+  "aether3d": "0.14.0",
+  "quick": false,
+  "unwrap": {
+    "triangles": 16128,
+    "unwrapped_triangles": 16128,
+    "charts": 2,
+    "kept_islands": 0,
+    "splits": 1,
+    "method": "isometric",
+    "stretch_l2": {
+      "max": 1.024565958445363,
+      "mean": 1.0239001959237788
+    },
+    "stretch_max": 1.1632503049294607,
+    "pack": {
+      "resolution": [
+        2048,
+        2048
+      ],
+      "padding": 8,
+      "texels_per_unit": 418.0957911792898,
+      "utilization": 0.5301660156249999,
+      "rows_used": 2037
+    },
+    "seconds": {
+      "charts": 0.6647290039982181,
+      "pack": 0.7803672650188673,
+      "total": 1.4650490770000033
+    }
+  },
+  "textures": {
+    "Orb color": {
+      "id": "8cf8d6c7-1bf2-40ff-b44e-8ad2a30d0f3e",
+      "name": "Orb color",
+      "type": "painted",
+      "width": 2048,
+      "height": 2048,
+      "encoding": "color",
+      "background": [
+        0.7215686274509804,
+        0.7372549019607844,
+        0.7607843137254902,
+        1.0
+      ],
+      "layers": [
+        {
+          "id": "7c9c812b60d94ade9caa67d9a389920e",
+          "name": "Paint",
+          "kind": "paint",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "tiles": 327,
+          "masked": false
+        }
+      ],
+      "wrap": [
+        "repeat",
+        "repeat"
+      ],
+      "filter": "linear",
+      "mipmaps": true,
+      "color_space": "auto",
+      "status": {
+        "ok": true,
+        "format": "painted",
+        "width": 2048,
+        "height": 2048,
+        "layers": 1,
+        "tiles": 327,
+        "revision": 16,
+        "digest": "painted:8cf8d6c7-1bf2-40ff-b44e-8ad2a30d0f3e:140710785633712:16",
+        "texture_bytes": 22369620
+      }
+    },
+    "Orb roughness": {
+      "id": "0355b5ed-f684-4efc-9824-e3035d3902db",
+      "name": "Orb roughness",
+      "type": "painted",
+      "width": 2048,
+      "height": 2048,
+      "encoding": "data",
+      "background": [
+        0.32,
+        0.32,
+        0.32,
+        1.0
+      ],
+      "layers": [
+        {
+          "id": "09179b36a71248f384969a9db4e4714f",
+          "name": "Paint",
+          "kind": "paint",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "tiles": 350,
+          "masked": false
+        }
+      ],
+      "wrap": [
+        "repeat",
+        "repeat"
+      ],
+      "filter": "linear",
+      "mipmaps": true,
+      "color_space": "auto",
+      "status": {
+        "ok": true,
+        "format": "painted",
+        "width": 2048,
+        "height": 2048,
+        "layers": 1,
+        "tiles": 350,
+        "revision": 22,
+        "digest": "painted:0355b5ed-f684-4efc-9824-e3035d3902db:140710784603840:22",
+        "texture_bytes": 22369620
+      }
+    },
+    "Orb metallic": {
+      "id": "fcfa48cf-06ea-4c20-a164-0b873b208ab5",
+      "name": "Orb metallic",
+      "type": "painted",
+      "width": 2048,
+      "height": 2048,
+      "encoding": "data",
+      "background": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "layers": [
+        {
+          "id": "9c44534988d04ef2a43aa44fa45911cd",
+          "name": "Paint",
+          "kind": "paint",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "tiles": 327,
+          "masked": false
+        }
+      ],
+      "wrap": [
+        "repeat",
+        "repeat"
+      ],
+      "filter": "linear",
+      "mipmaps": true,
+      "color_space": "auto",
+      "status": {
+        "ok": true,
+        "format": "painted",
+        "width": 2048,
+        "height": 2048,
+        "layers": 1,
+        "tiles": 327,
+        "revision": 16,
+        "digest": "painted:fcfa48cf-06ea-4c20-a164-0b873b208ab5:140710784604160:16",
+        "texture_bytes": 22369620
+      }
+    },
+    "Orb emission": {
+      "id": "46dd8256-d46a-41d3-9c55-f4bf3094134f",
+      "name": "Orb emission",
+      "type": "painted",
+      "width": 2048,
+      "height": 2048,
+      "encoding": "color",
+      "background": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layers": [
+        {
+          "id": "b7defe203e0242da996858311ddf676e",
+          "name": "Paint",
+          "kind": "paint",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "tiles": 38,
+          "masked": false
+        }
+      ],
+      "wrap": [
+        "repeat",
+        "repeat"
+      ],
+      "filter": "linear",
+      "mipmaps": true,
+      "color_space": "auto",
+      "status": {
+        "ok": true,
+        "format": "painted",
+        "width": 2048,
+        "height": 2048,
+        "layers": 1,
+        "tiles": 38,
+        "revision": 7,
+        "digest": "painted:46dd8256-d46a-41d3-9c55-f4bf3094134f:140710784604560:7",
+        "texture_bytes": 22369620
+      }
+    }
+  },
+  "renders": {
+    "cpu": {
+      "name": "cpu",
+      "requested": "cpu"
+    },
+    "gpu": {
+      "name": "gpu",
+      "requested": "gpu",
+      "api": "wgpu",
+      "versions": {
+        "wgpu": "0.32.0",
+        "wgpu_native": "29.0.1.1"
+      },
+      "adapter": {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "vendor": "NVIDIA",
+        "vendor_id": 4318,
+        "device_id": 10400,
+        "type": "discrete",
+        "backend": "vulkan",
+        "driver": "615.78.08",
+        "software": false
+      },
+      "antialiasing": {
+        "msaa": 4,
+        "supersample": 1,
+        "samples_per_pixel": 4
+      },
+      "shadows": null,
+      "device_created": true,
+      "device_init_seconds": 0.34874935299740173,
+      "resources": {
+        "mesh_uploads": 2,
+        "mesh_upload_bytes": 466136,
+        "mesh_cache": {
+          "meshes": 2,
+          "bytes": 466136,
+          "budget": 1073741824,
+          "uploads": 2,
+          "upload_bytes": 466136,
+          "hits": 0,
+          "evictions": 0
+        },
+        "materials": 2,
+        "textured_materials": 2,
+        "texture_bindings": 5,
+        "texture_program_instructions": 10,
+        "material_data_bytes": 2316,
+        "images": 4,
+        "texel_uploads": 1,
+        "texel_upload_bytes": 89478480,
+        "texel_upload_seconds": 0.19896331301424652,
+        "texel_pool": {
+          "images": 4,
+          "bytes": 89478480,
+          "uploads": 1,
+          "upload_bytes": 89478480,
+          "partial_uploads": 0
+        },
+        "target_bytes": 35021824,
+        "targets_allocated": true,
+        "frame_buffer_bytes": 2860,
+        "frame_buffers_kept": true,
+        "frame_buffer_writes": 6,
+        "frame_buffer_bytes_written": 2860,
+        "color_format": "rgba32float",
+        "pipelines": 5
+      }
+    },
+    "path": {
+      "name": "path",
+      "requested": "path",
+      "device": "cpu",
+      "implementation": "Aether3D path tracer (NumPy)",
+      "gpu": false,
+      "processes": 8,
+      "parallel": "8 processes (workers=0: one per CPU, at most 8)",
+      "samples": 256,
+      "bounces": 4,
+      "seed": 7,
+      "light_samples": 1,
+      "russian_roulette": 3,
+      "clamp": 0.0,
+      "integrator": "path",
+      "workers": 0,
+      "samples_rendered": 256,
+      "ao": null,
+      "environment": {
+        "type": "sky",
+        "zenith": [
+          0.025583435553978715,
+          0.11229463580485544,
+          0.43138816479074416
+        ],
+        "horizon": [
+          0.6051988412619188,
+          0.6844720542077632,
+          0.7694933473118105
+        ],
+        "ground": [
+          0.09201755977929119,
+          0.07593859038973394,
+          0.0583229400236152
+        ]
+      },
+      "lights": {
+        "lights": 1,
+        "sized_lights": 1,
+        "emissive_triangles": 16128
+      },
+      "bvh": {
+        "instances": 2,
+        "instances_traced": 2,
+        "meshes": 2,
+        "triangles": 16130,
+        "triangles_skipped": 0,
+        "blas_built": 2,
+        "blas_reused": 0,
+        "nodes": 9537,
+        "max_depth": 15,
+        "bytes": 1601784,
+        "seconds_blas": 0.03367775699007325,
+        "seconds": 0.0344226390006952,
+        "traversal": {
+          "rays": 230400,
+          "shadow_rays": 0,
+          "iterations": 310,
+          "node_visits": 3501891,
+          "triangle_tests": 946842,
+          "seconds": 0.06678085602470674
+        }
+      },
+      "work_estimate": {
+        "paths": 58982400,
+        "rays": 943718400,
+        "memory": 855418868,
+        "workers": 8
+      }
+    },
+    "gpu_path": {
+      "name": "gpu_path",
+      "requested": "gpu_path",
+      "device": "gpu",
+      "implementation": "Aether3D GPU path tracer (wgpu compute; software BVH traversal)",
+      "gpu": true,
+      "api": "wgpu",
+      "versions": {
+        "wgpu": "0.32.0",
+        "wgpu_native": "29.0.1.1"
+      },
+      "adapter": {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "vendor": "NVIDIA",
+        "vendor_id": 4318,
+        "device_id": 10400,
+        "type": "discrete",
+        "backend": "vulkan",
+        "driver": "615.78.08",
+        "software": false
+      },
+      "hardware_ray_tracing": false,
+      "device_created": false,
+      "device_init_seconds": 0.0,
+      "dispatch": {
+        "tiles": 1,
+        "tile_size": 512,
+        "samples_per_dispatch": 4
+      },
+      "gpu_bytes": {
+        "accumulation": 20275200,
+        "scene": 2159104,
+        "materials": 2316,
+        "instances": 256,
+        "positions": 102216,
+        "normals": 102216,
+        "indices": 193560,
+        "uvs": 68144,
+        "groups": 64520,
+        "tangents": 16
+      },
+      "samples": 256,
+      "bounces": 4,
+      "seed": 7,
+      "light_samples": 1,
+      "russian_roulette": 3,
+      "clamp": 0.0,
+      "integrator": "path",
+      "samples_rendered": 256,
+      "ao": null,
+      "environment": {
+        "type": "sky",
+        "zenith": [
+          0.025583435553978715,
+          0.11229463580485544,
+          0.43138816479074416
+        ],
+        "horizon": [
+          0.6051988412619188,
+          0.6844720542077632,
+          0.7694933473118105
+        ],
+        "ground": [
+          0.09201755977929119,
+          0.07593859038973394,
+          0.0583229400236152
+        ]
+      },
+      "lights": {
+        "lights": 1,
+        "sized_lights": 1,
+        "emissive_triangles": 16128
+      },
+      "bvh": {
+        "instances": 2,
+        "instances_traced": 2,
+        "meshes": 2,
+        "triangles": 16130,
+        "triangles_skipped": 0,
+        "blas_built": 0,
+        "blas_reused": 2,
+        "nodes": 9537,
+        "max_depth": 15,
+        "bytes": 1601784,
+        "seconds_blas": 1.2156000593677163e-05,
+        "seconds": 0.00116281199734658,
+        "traversal": {
+          "rays": 0,
+          "shadow_rays": 0,
+          "iterations": 0,
+          "node_visits": 0,
+          "triangle_tests": 0,
+          "seconds": 0.0
+        }
+      },
+      "work_estimate": {
+        "paths": 58982400,
+        "rays": 943718400,
+        "memory": 855418868,
+        "workers": 8
+      }
+    }
+  },
+  "seconds": {
+    "build_and_paint": 8.67431469602161,
+    "cpu": 2.9839737819856964,
+    "gpu": 1.0822969019936863,
+    "path": 128.61345406799228,
+    "gpu_path": 4.457704678003211
+  },
+  "rms": {
+    "cpu_vs_gpu_raster": 0.014010816217462111,
+    "cpu_vs_gpu_raster_3x3": 0.005902807263086956,
+    "cpu_vs_gpu_path": 0.00024464373291367876,
+    "raster_vs_path": 0.16640892386637643
+  },
+  "path": {
+    "samples": 256,
+    "bounces": 4,
+    "seed": 7
+  },
+  "failures": []
+}

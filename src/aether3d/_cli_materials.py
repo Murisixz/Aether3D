@@ -713,7 +713,10 @@ def add_material_parsers(sub, common, lossy, writing) -> None:
     p.add_argument("--backend", choices=["cpu", "gpu", "auto"], default="cpu")
     p.set_defaults(handler=cmd_material_preview)
 
-    p_tex = sub.add_parser("texture", help="add, inspect, preview and remove textures")
+    p_tex = sub.add_parser(
+        "texture",
+        help="add, inspect, preview and remove textures; texture scripts, UV reports, baking",
+    )
     tex = p_tex.add_subparsers(dest="subcommand", required=True, metavar="SUBCOMMAND")
 
     p = tex.add_parser("list", parents=[common, lossy], help="list textures")
@@ -760,6 +763,10 @@ def add_material_parsers(sub, common, lossy, writing) -> None:
     p.add_argument("texture", help="texture id or name")
     p.add_argument("--force", action="store_true", help="remove its material bindings too")
     p.set_defaults(handler=cmd_texture_remove)
+
+    from ._cli_texture import add_texture_parsers
+
+    add_texture_parsers(tex, common, writing)
 
 
 __all__ = ["add_material_parsers"]

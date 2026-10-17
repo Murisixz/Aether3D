@@ -1340,6 +1340,91 @@ class Diagnoser:
             )
         result.measured = measured
 
+    def _check_uv_quality(self, check: Check, result: CheckResult) -> None:
+        from ..uv import uv_report
+
+        params = check.params
+        resolution = params.get("resolution", 1024)
+        targets = []
+        for obj in self._geometry_objects(check, result):
+            meshes = [obj] if obj.mesh is not None else [e.obj for e in self.parts(obj)]
+            for part in meshes:
+                if part.mesh is not None and part not in targets:
+                    targets.append(part)
+        measured = {}
+        hint = (
+            "unwrap again or fix the islands with a texture script (unwrap, edit_uvs); "
+            "inspect_uvs shows where; corrections never edit UVs"
+        )
+        for obj in targets:
+            subject = [_ref(obj, "subject")]
+            if obj.mesh.uvs is None:
+                measured[obj.name] = None
+                self.add(
+                    result,
+                    self.finding(check, "NO_UVS", f"{obj.name!r} has no UVs", subject,
+                                 basis="scene", hint=hint),
+                )  # fmt: skip
+                continue
+            r = uv_report(obj.mesh, resolution=resolution, islands_limit=0)
+            l2 = r["stretch_l2"]["max"]
+            spread = r["texel_density"]["spread"]
+            gap = r["min_gap_texels"]
+            measured[obj.name] = {
+                "islands": r["islands"],
+                "flipped_triangles": r["flipped_triangles"],
+                "overlapping_triangles": r["overlapping_triangles"],
+                "stacked_pairs": r["stacked_pair_count"],
+                "stretch_l2_max": l2,
+                "density_spread": spread,
+                "min_gap_texels": gap,
+            }
+            rules = [
+                ("UV_FLIPPED", r["flipped_triangles"], params.get("max_flipped", 0),
+                 "flipped triangles", "triangles", True),
+                ("UV_OVERLAP", r["overlapping_triangles"], params.get("max_overlapping", 0),
+                 "overlapping triangles", "triangles", True),
+            ]  # fmt: skip
+            if "max_stretch" in params and l2 is not None:
+                rules.append(("UV_STRETCH", l2, params["max_stretch"], "L2 stretch", None, False))
+            if "max_density_spread" in params:
+                rules.append(
+                    ("UV_DENSITY_SPREAD", spread, params["max_density_spread"],
+                     "texel density spread", None, False)
+                )  # fmt: skip
+            for code, value, limit, what, unit, _ in rules:
+                if value is None or value <= limit:
+                    continue
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        code,
+                        f"{obj.name!r}: {what} {value:.4g} (at most {limit:.4g} expected)",
+                        subject,
+                        evidence={**measured[obj.name], "resolution": resolution},
+                        magnitude=float(value - limit),
+                        unit=unit,
+                        hint=hint,
+                    ),
+                )
+            if "min_gap" in params and gap is not None and gap < params["min_gap"]:
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "UV_GAP",
+                        f"{obj.name!r}: islands {gap:.4g} texels apart at {resolution} "
+                        f"(at least {params['min_gap']:.4g} expected)",
+                        subject,
+                        evidence={**measured[obj.name], "resolution": resolution},
+                        magnitude=float(params["min_gap"] - gap),
+                        unit="texels",
+                        hint="pack with more padding (edit_uvs pack)",
+                    ),
+                )
+        result.measured = measured
+
     def _check_camera_clipping(self, check: Check, result: CheckResult) -> None:
         obs = self.observation(check.view)
         if "objects" in check.params:

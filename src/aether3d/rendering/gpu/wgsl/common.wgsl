@@ -33,6 +33,9 @@ struct Instance {
 @group(1) @binding(2) var<storage, read> mesh_indices: array<u32>;    // 3 per triangle
 @group(1) @binding(3) var<storage, read> mesh_uvs: array<f32>;        // 2 floats per vertex
 @group(1) @binding(4) var<storage, read> mesh_groups: array<u32>;     // 1 per triangle
+// MikkTSpace tangent (xyz) and bitangent sign (w) of every triangle corner, uploaded for
+// meshes drawn with a UV normal map (aether3d/rendering/tangents.py); a dummy otherwise.
+@group(1) @binding(5) var<storage, read> mesh_tangents: array<f32>;   // 4 per corner
 
 fn mesh_position(vertex: u32) -> vec3<f32> {
   let b = 3u * vertex;
@@ -47,6 +50,21 @@ fn mesh_normal(vertex: u32) -> vec3<f32> {
 fn mesh_uv(vertex: u32) -> vec2<f32> {
   let b = 2u * vertex;
   return vec2<f32>(mesh_uvs[b], mesh_uvs[b + 1u]);
+}
+
+fn mesh_tangent(corner: u32) -> vec4<f32> {
+  let b = 4u * corner;
+  return vec4<f32>(mesh_tangents[b], mesh_tangents[b + 1u], mesh_tangents[b + 2u], mesh_tangents[b + 3u]);
+}
+
+// A tangent (object space) -> world space, unit, with its sign (negated when mirrored).
+fn world_tangent(inst: Instance, t: vec4<f32>) -> vec4<f32> {
+  let v = vec3<f32>(dot(inst.model[0].xyz, t.xyz), dot(inst.model[1].xyz, t.xyz), dot(inst.model[2].xyz, t.xyz));
+  var w = select(1.0, -1.0, t.w < 0.0);
+  if ((inst.flags & INSTANCE_MIRRORED) != 0u) {
+    w = -w;
+  }
+  return vec4<f32>(safe_normalize(v), w);
 }
 
 fn triangle_vertices(triangle: u32) -> vec3<u32> {

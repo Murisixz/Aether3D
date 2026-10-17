@@ -40,7 +40,8 @@ $ aether3d geometry world.glb --json
 | Materials (`pbrMetallicRoughness`, alpha modes, double-sided, normal, occlusion, emission) | yes | yes |
 | PNG and JPEG textures, samplers | yes (original image bytes) | yes (decoded and embedded in the scene) |
 | `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_specular` | yes | yes |
-| `TANGENT` | for meshes with UV-mapped normal maps | ignored (tangents are derived per triangle) |
+| `TANGENT` | MikkTSpace, for meshes with UV-mapped normal maps (vertices split where corners differ) | ignored (MikkTSpace is recomputed) |
+| Painted textures (0.14.0) | their composite, as an 8-bit PNG (layers stay in the project) | as image textures |
 | Object colors | as materials | restored exactly from `extras` |
 | Interleaved buffer views (`byteStride`), sparse accessors, accessors without buffer views | n/a | yes |
 | Embedded (`data:` URI), GLB-binary, and external `.bin` buffers | GLB binary; `.gltf` with an embedded buffer | yes |
@@ -191,8 +192,18 @@ an object without one exports its color.
 - **Simple materials** are written as metallic-roughness, with roughness
   `(2 / (shininess + 2))^¼` from the Blinn-Phong exponent
   (`SIMPLE_MATERIAL_APPROXIMATED`, information).
-- **Tangents.** Meshes drawn with a UV-mapped normal map get `TANGENT`
-  attributes.
+- **Tangents.** Meshes drawn with a UV-mapped normal map get MikkTSpace
+  `TANGENT` attributes -- the frame Aether3D's renderers and baker use
+  ([TEXTURING.md](TEXTURING.md#tangent-space)). glTF stores one tangent per
+  vertex: where the corners of one vertex have different tangents (UV seams,
+  mirrored islands), the vertex is split (`VERTICES_SPLIT_FOR_TANGENTS`,
+  information).
+- **Channel packing.** glTF reads metallic from blue and roughness from green
+  of one texture, occlusion from red. Image or painted textures bound through
+  other channels (as baked maps are: `channel="r"`), or two separate metallic
+  and roughness images, are repacked into one PNG with the channels where
+  glTF reads them (`TEXTURE_CHANNELS_PACKED`, information; 0.14.0 -- they
+  were left out before). The values survive exactly at 8 bits.
 
 What glTF cannot express is left out with a warning:
 
@@ -201,7 +212,7 @@ What glTF cannot express is left out with a warning:
 | procedural textures (unless baked, below) | `PROCEDURAL_TEXTURE_NOT_EXPORTED` |
 | textures mapped by object or world coordinates | `TEXTURE_MAPPING_NOT_EXPORTED` |
 | a separate opacity texture (glTF reads alpha from the base color texture) | `OPACITY_TEXTURE_NOT_EXPORTED` |
-| channel packings glTF cannot express (metallic not in blue, roughness not in green, occlusion not in red, different metallic and roughness textures) | `TEXTURE_CHANNEL_NOT_EXPORTED` |
+| metallic and roughness textures with different transforms (one packed texture cannot hold both), or an image and a procedural texture for them | `TEXTURE_CHANNEL_NOT_EXPORTED` |
 | a texture whose color space is forced (glTF decodes each slot in its own space) | `TEXTURE_COLOR_SPACE_NOT_EXPORTED` |
 
 `bake_textures=SIZE` (`scene.export`, `export_gltf`) or `--bake-textures SIZE`

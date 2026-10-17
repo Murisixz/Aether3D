@@ -324,6 +324,28 @@ validity tiers and JSON scripts ([MODELING.md](MODELING.md)). Since 0.13.0.
 | `check_mesh(positions, triangles, *, self_intersections=False, welded=False) -> MeshReport` | validity: `summary` (counts, flags, `tier`, volume, edge lengths, smallest angle), `diagnostics` (stable codes), `not_evaluated`, `status`, `ok`, `to_dict()`; `TIERS` = `("valid", "manifold", "closed", "solid")` |
 | `aether3d.run_sculpt_script(scene, script, *, label=None)` | apply an `aether3d.sculpt-script` atomically (one undo step); `aether3d.sculpt.check_script(script)`; `aether3d.sculpt.schema.sculpt_script_schema()` |
 
+## UV mapping, texture painting and baking
+
+UVs, painted textures, brushes and bakes ([TEXTURING.md](TEXTURING.md)). Since 0.14.0.
+
+| Name | Description |
+| --- | --- |
+| `obj.unwrap(**options) -> dict` | new UVs (one undo step): `seams`, `split_by` (`"hard"`, `"groups"`, `"seams"`), `angle_limit=66`, `method="isometric"\|"conformal"`, `max_stretch=1.15`, `iterations=12`, `faces`, `pack=True`, `resolution=1024`, `padding=4`, `rotate=True`, `texels_per_unit`; returns the report (`charts`, `splits`, stretch, timings, `diagnostics`) |
+| `obj.project_uvs(kind, **options)` | `"planar"`, `"box"`, `"cylindrical"`, `"spherical"` (`axis`, `center`, `pack`, `resolution`, `padding`, `rotate`, `texels_per_unit`) |
+| `obj.edit_uvs(operation, **options)` | `"transform"`, `"align"`, `"normalize"`, `"texel_density"`, `"pack"`, `"stitch"` (island operations; one undo step) |
+| `obj.uv_report(resolution=1024, islands_limit=64) -> dict` | UV diagnostics (read-only) |
+| `aether3d.uv`: `unwrap(mesh, ...) -> UnwrapResult`, `project`, `transform_islands`, `align_islands`, `normalize_islands`, `set_texel_density`, `pack_islands`, `stitch`, `uv_report(mesh, ...)`, `layout_image(mesh, size=1024, mode="islands", texture=None, edges=True)`, `PROJECTIONS` | the same on meshes, returning new meshes (`UnwrapResult`: `mesh`, `face_chart` (the island of every triangle), `report`, `diagnostics`) |
+| `aether3d.uv.mikktspace.mesh_tangents(mesh)` | MikkTSpace tangents `(T, 3, 4)` (xyz, sign) of every corner, cached on the mesh |
+| `scene.add_painted_texture(name, width=1024, height=None, *, encoding="color", background=None, image=None, **sampler) -> PaintedTexture` | a texture you paint (one undo step) |
+| `PaintedTexture` | `width`, `height`, `encoding`, `background`, `layers`, `revision`; `add_layer(name=None, *, kind="paint"\|"fill", blend, opacity, visible, value, index)`, `layer(ref)`, `remove_layer`, `move_layer`, `set_layer(ref, **changes)`, `clear_layer`, `set_mask(ref, mask)`, `write_pixels(ref, pixels, x=0, y=0)`, `replace_tiles`, `replace_masks`, `flatten()`, `set_background`; `read()`, `read_layer(ref)`, `read_mask(ref)`, `pixels16()`, `pixels8()`, `export_png(path, bits=8)`, `info()`; `BLEND_MODES`, `ENCODINGS`, `LAYER_KINDS` |
+| `obj.paint(targets, brush, points, **options) -> dict` | one stroke (`aether3d.texturing.stroke`): `space="surface"\|"view"\|"uv"`, `coordinates="world"\|"object"`, `pressure`, `view` (`PaintView.render(scene, camera, width, height)`), `padding=2`, `label`, `should_stop`; one undo step; returns `dabs`, `texels`, `tiles`, `skipped_dabs`, `seconds` |
+| `Brush` (`aether3d.texturing`) | `kind` (`BRUSH_KINDS`: paint, erase, blur, smudge, clone, mask), `radius`, `strength`, `opacity`, `hardness`, `falloff`, `spacing`, `color`, `blend`, `normal_limit`, `backfaces`, `symmetry`, `clone_offset`, `blur_radius`; `Brush.from_value(dict)` |
+| `obj.fill_texture(texture, value, *, where=None, opacity=1, blend_mode="normal", padding=2)`; `aether3d.texturing.fill`, `gradient(scene, obj, target, start, end, colors, *, coordinates="world", opacity=1)` | fills and gradients (one undo step each) |
+| `scene.bake(target, sources=None, maps=("normal",), *, apply=False, **options) -> BakeResult` | `resolution`, `samples=2`, `cage`, `depth`, `cage_mesh`, `padding=8`, `ao_rays=64`, `ao_distance`, `thickness_rays=32`, `thickness_distance`, `curvature_radius`, `height_range`, `seed=0`, `backend="auto"\|"cpu"\|"gpu"`, `adapter`, `should_stop`, `progress`; `MAPS` lists the maps |
+| `BakeResult` | `maps` (`{name: (H, W, 4)}`), `covered`, `hit`, `report`, `diagnostics`; `to_texture(scene, map, name=None)`, `save_png(map, path, bits=8)`; `aether3d.texturing.apply_bake(scene, target, result, material=None)` |
+| `scene.transfer_textures(source, target, maps=None, **options) -> dict` | unwrap the target if needed, bake the source's material and bind it (one undo step) |
+| `aether3d.texturing.run_texture_script(scene, script, *, label=None, should_stop=None)` | apply an `aether3d.texture-script` atomically; `aether3d.texturing.script.check_script(script)`; `aether3d.texturing.schema.texture_script_schema()` |
+
 ## Procedural geometry
 
 Full guide: [PROCEDURAL.md](PROCEDURAL.md).
@@ -575,6 +597,7 @@ All deliberate errors derive from `AetherError`.
 | `EditError` | `ValueError` | An editing operation cannot be applied; nothing changed. `.code` (stable), `.elements` (offending ids by kind), `.hint` |
 | `SculptError` | `EditError` | A sculpt operation or commit cannot be carried out (`VOXEL_NOT_WATERTIGHT`, `REMESH_TOO_DENSE`, `BELOW_VALIDITY_TIER`, `CANCELLED`, `STALE_SESSION`, ...; see [MODELING.md](MODELING.md)); nothing changed. `.code`, `.hint` |
 | `SculptScriptError` | `ValueError` | A sculpt script is malformed or a step failed (`INVALID_SCRIPT`, `INVALID_ARGUMENT`, `BUDGET_EXCEEDED`, or the step's own code); nothing changed. `.code`, `.location` (e.g. `sculpts[0].operations[2]`), `.details`, `to_dict()` |
+| `TexturingError` | `ValueError` | A UV, painting, baking or texture-script operation cannot be carried out (`NO_UVS`, `CHART_NOT_A_DISK`, `ATLAS_FULL`, `INVALID_ARGUMENT`, `BAKE_TOO_LARGE`, `GPU_UNAVAILABLE`, `TEXTURE_NOT_FOUND`, `BUDGET_EXCEEDED`, `CANCELLED`, ...; see [TEXTURING.md](TEXTURING.md)); nothing changed and no file was written. `.code`, `.location` (e.g. `operations[3].brush.radius`), `.hint`, `.details`, `to_dict()` |
 | `ScriptError` | `ValueError` | An edit or procedural script is malformed, or a step failed. `.code`, `.location` (e.g. `edits[0].operations[3]`), `.details` |
 | `RenderError` | `ValueError` | A camera, light, appearance, world or render setting is invalid, or rendering failed (including GPU problems: `GPU_UNAVAILABLE`, `GPU_ADAPTER_NOT_FOUND`, `GPU_DEVICE_LOST`, ...; see [GPU.md](GPU.md#errors-diagnostics-and-debugging)); nothing changed and no file was written. `.code` (stable), `.location`, `.hint`, `.details` |
 | `ProceduralError` | `ValueError` | A procedural definition, parameter or evaluation is invalid; nothing changed. `.code` (stable), `.location` (e.g. `geometry[Tower].modifiers[Row].params.count`), `.hint`, `.details` |

@@ -503,7 +503,16 @@ class MeshCore:
         return self.build_mesh()[0]
 
     def build_mesh(self, *, compute_normals: bool | None = None) -> tuple[Mesh, list[Diagnostic]]:
-        """Triangulate into a :class:`Mesh`; returns ``(mesh, diagnostics)``.
+        """Triangulate into a :class:`Mesh`; returns ``(mesh, diagnostics)`` (see
+        :meth:`_build_mesh`)."""
+        mesh, diagnostics, _ = self._build_mesh(compute_normals=compute_normals)
+        return mesh, diagnostics
+
+    def _build_mesh(
+        self, *, compute_normals: bool | None = None
+    ) -> tuple[Mesh, list[Diagnostic], list[tuple[int, int, int, int]]]:
+        """Triangulate into a :class:`Mesh`; returns ``(mesh, diagnostics, sources)`` with
+        ``sources[t] = (face id, corner a, corner b, corner c)`` for every triangle.
 
         Faces are triangulated by ear clipping (deterministic, winding
         preserved). Output vertices are the distinct ``(vertex, normal, uv)``
@@ -526,6 +535,7 @@ class MeshCore:
         out_normal: list[tuple] = []
         out_uv: list[tuple] = []
         triangles: list[tuple[int, int, int]] = []
+        sources: list[tuple[int, int, int, int]] = []
         triangle_groups: list[int] = []
         for fid in sorted(self._faces):
             loop = self._faces[fid]
@@ -551,6 +561,7 @@ class MeshCore:
                     out_uv.append(uk)
                 corner_out.append(index)
             triangles.extend((corner_out[a], corner_out[b], corner_out[c]) for a, b, c in local)
+            sources.extend((fid, a, b, c) for a, b, c in local)
             triangle_groups.extend([self._group.get(fid, 0)] * len(local))
         loose = [v for v in self.vertex_ids() if not self._vert_edges[v]]
         if loose:
@@ -571,7 +582,7 @@ class MeshCore:
             uvs=np.array(out_uv).reshape(-1, 2) if uvs is not None else None,
             groups=np.array(triangle_groups, dtype=np.int64) if self._has_groups else None,
         )
-        return mesh, diagnostics
+        return mesh, diagnostics, sources
 
     def copy(self):
         """An independent deep copy (without history)."""
@@ -1201,6 +1212,13 @@ class MeshCore:
         if dirty:
             self._mark_dirty([fid])
 
+    def _add_layer(self, name: str, dim: int, default: tuple[float, ...]) -> None:
+        """Create a corner layer with ``default`` at every corner (journaled)."""
+        self._log(("layer+", name))
+        self._layers[name] = CornerLayer(
+            name, dim, data={fid: [default] * len(loop) for fid, loop in self._faces.items()}
+        )
+
     def _set_corners(self, fid: int, name: str, values: list[tuple]) -> None:
         layer = self._layers[name]
         self._log(("c=", fid, name, layer.data[fid]))
@@ -1287,6 +1305,8 @@ class MeshCore:
                     self._layers[name].data[fid] = values
             elif kind == "c=":
                 self._layers[entry[2]].data[entry[1]] = entry[3]
+            elif kind == "layer+":
+                del self._layers[entry[1]]
             elif kind == "s=":
                 self._smooth[entry[1]] = entry[2]
             elif kind == "g=":

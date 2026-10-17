@@ -256,6 +256,7 @@ class SceneAccel:
     root_hi: np.ndarray
     stack_size: int  # traversal stack entries per ray (see build)
     top_nodes: int = 0  # nodes 0 .. top_nodes - 1 are the top level (world space)
+    threads: int = 0  # native traversal threads (0: AETHER3D_NATIVE_THREADS)
     traced: TraversalStats = field(default_factory=TraversalStats)
     info: dict = field(default_factory=dict)
     blas: tuple[MeshBLAS, ...] = ()
@@ -426,7 +427,7 @@ class SceneAccel:
                 out.b,
                 any_hit,
                 BATCH,
-                _native.threads(),
+                (self.threads or _native.threads()),
             )
             stats = self.traced
             stats.iterations += iterations

@@ -70,6 +70,7 @@ COORDINATES = {"uv": 0, "object": 1, "world": 2}
 PROJECTIONS = {"triplanar": 0, "xy": 1, "xz": 2, "yz": 3, "volume": 4}
 CHANNELS = {"rgb": 0, "r": 1, "g": 2, "b": 3, "a": 4, "luminance": 5}
 BINDING_IMAGE = 4096
+BINDING_MIKK = 8192
 WRAPS = {"repeat": 0, "clamp": 1, "mirror": 2}
 OP_IMAGE = 16
 
@@ -92,6 +93,7 @@ CONSTANTS = {
     "MATERIAL_DOUBLE_SIDED": MATERIAL_DOUBLE_SIDED,
     "MATERIAL_TEXTURED": MATERIAL_TEXTURED,
     "BINDING_IMAGE": BINDING_IMAGE,
+    "BINDING_MIKK": BINDING_MIKK,
     "OP_IMAGE": OP_IMAGE,
 }
 """Constants shared with ``wgsl/material.wgsl`` (a test checks the shader uses the same values)."""
@@ -284,6 +286,7 @@ def _binding_record(rt: RenderTexture, program: _Program) -> np.ndarray:
     flags = COORDINATES[rt.coordinates] | (PROJECTIONS[rt.projection] << 4)
     flags |= CHANNELS[rt.channel] << 8
     flags |= BINDING_IMAGE if rt.kind == "image" else 0
+    flags |= BINDING_MIKK if rt.slot == "normal" and rt.mikktspace else 0
     record[0] = flags
     record[1] = program.first
     record[2] = program.count
@@ -309,6 +312,9 @@ class TexturePool:
         self.uploads = 0
         self.upload_bytes = 0
         self.upload_seconds = 0.0
+        self.partial_uploads = 0
+        # Painted textures in the pool: (texture, mode, mipmaps) -> (key, revision, offset).
+        self.painted: dict[tuple, tuple[tuple, int, int]] = {}
 
     def clear(self) -> None:
         if self.buffer is not None:
@@ -317,6 +323,7 @@ class TexturePool:
         self.keys = frozenset()
         self.offsets = {}
         self.nbytes = 0
+        self.painted = {}
 
     def stats(self) -> dict[str, Any]:
         return {
@@ -324,7 +331,72 @@ class TexturePool:
             "bytes": self.nbytes,
             "uploads": self.uploads,
             "upload_bytes": self.upload_bytes,
+            "partial_uploads": self.partial_uploads,
         }
+
+    def _update_painted(self, images: list[RenderImage], keys: frozenset) -> int | None:
+        """Bring painted textures already in the pool up to date by writing only the rows
+        of their levels that changed; returns the bytes written, or ``None`` when the pool
+        must be rebuilt (another image is new, a layout changed, the change log is gone)."""
+        new = keys - self.keys
+        if not new or self.buffer is None:
+            return None
+        updates = []
+        replaced = {}
+        for image in images:
+            key = image_key(image)
+            if key not in new:
+                continue
+            doc = image.document
+            if doc is None:
+                return None
+            slot = (id(doc), image.chain.mode, image.mipmaps)
+            known = self.painted.get(slot)
+            if known is None or known[0] not in self.offsets:
+                return None
+            old_key, old_rev, offset = known
+            changed = doc._changed_since(old_rev)
+            if changed is None:
+                return None
+            updates.append((image, offset, changed))
+            replaced[old_key] = key
+        if set(replaced.values()) != set(new):
+            return None
+        written = 0
+        queue = self.context.queue
+        for image, offset, changed in updates:
+            rects = [image.document.tile_rect(t) for t in changed]
+            at = offset
+            for k, level in enumerate(image.chain.levels):
+                h, w = level.shape[:2]
+                if rects:
+                    r0 = min(y0 >> k for _, y0, _, _ in rects)
+                    r1 = min(h, max(-(-y1 // (1 << k)) for _, _, _, y1 in rects))
+                    if r1 > r0:
+                        texel = level[r0:r1].reshape(-1, 4).astype(np.uint32)
+                        packed = (
+                            texel[:, 0]
+                            | (texel[:, 1] << 8)
+                            | (texel[:, 2] << 16)
+                            | (texel[:, 3] << 24)
+                        ).astype(np.uint32)
+                        queue.write_buffer(self.buffer, 4 * (at + r0 * w), packed)
+                        written += packed.nbytes
+                at += h * w
+        offsets = dict(self.offsets)
+        for old_key, key in replaced.items():
+            offsets[key] = offsets.pop(old_key)
+        self.offsets = offsets
+        self.keys = frozenset(offsets)
+        for image, offset, _ in updates:
+            self.painted[(id(image.document), image.chain.mode, image.mipmaps)] = (
+                image_key(image),
+                image.revision,
+                offset,
+            )
+        self.partial_uploads += 1
+        self.upload_bytes += written
+        return written
 
     def prepare(self, images: list[RenderImage]) -> tuple[Any, dict[tuple, int], int]:
         """The texel buffer holding ``images``, their offsets, and bytes uploaded now."""
@@ -334,6 +406,12 @@ class TexturePool:
         keys = frozenset(chains)
         if self.buffer is not None and keys <= self.keys:
             return self.buffer, self.offsets, 0
+        if self.buffer is not None and (keys - self.keys) <= keys:
+            t0 = time.perf_counter()
+            written = self._update_painted(images, keys)
+            if written is not None and keys <= self.keys:
+                self.upload_seconds += time.perf_counter() - t0
+                return self.buffer, self.offsets, written
         total = sum(
             sum(level.shape[0] * level.shape[1] for level in c.levels) for c in chains.values()
         )
@@ -364,9 +442,20 @@ class TexturePool:
         self.clear()
         wgpu = self.context.wgpu
         self.buffer = self.context.device.create_buffer_with_data(
-            label="aether3d-texels", data=data, usage=wgpu.BufferUsage.STORAGE
+            label="aether3d-texels",
+            data=data,
+            usage=wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST,
         )
         self.keys, self.offsets, self.nbytes = keys, offsets, nbytes
+        self.painted = {}
+        for image in images:
+            if image.document is not None:
+                key = image_key(image)
+                self.painted[(id(image.document), image.chain.mode, image.mipmaps)] = (
+                    key,
+                    image.revision,
+                    offsets[key],
+                )
         self.uploads += 1
         self.upload_bytes += nbytes
         self.upload_seconds += time.perf_counter() - t0

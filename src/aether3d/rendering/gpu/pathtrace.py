@@ -43,6 +43,7 @@ from ..raytrace.accel import KIND_INNER, _round_out
 from ..scene_data import RenderScene
 from ..settings import AOSettings, PathSettings, RenderLimits
 from ..surface import LUMINANCE
+from ..tangents import corner_tangents, meshes_needing_tangents
 from .device import GPUContext, translate_errors
 from .materials import HEADER_IMAGES, IMAGE_WORDS, image_key, pack_material_data
 from .resources import pack_instances
@@ -126,12 +127,25 @@ def pack_meshes(rs: RenderScene) -> tuple[list[np.ndarray], np.ndarray]:
     def join(parts: list[np.ndarray], dtype) -> np.ndarray:
         return _nonempty(np.concatenate(parts).astype(dtype) if parts else np.zeros(0, dtype))
 
+    # MikkTSpace corner tangents, only when some mesh is drawn with a UV normal map.
+    needed = meshes_needing_tangents(rs)
+    tangents = []
+    if needed:
+        for j, mesh in enumerate(rs.meshes):
+            count = int(tri_base[j + 1] - tri_base[j])
+            t = corner_tangents(mesh) if j in needed else None
+            tangents.append(
+                np.zeros(count * 12, np.float32)
+                if t is None
+                else np.asarray(t, np.float32).reshape(-1)
+            )
     buffers = [
         join(positions, np.float32),
         join(normals, np.float32),
         join(indices, np.uint32),
         join(uvs, np.float32),
         join(groups, np.uint32),
+        join(tangents, np.float32),
     ]
     return buffers, tri_base
 
@@ -572,7 +586,7 @@ def render_scene(
     return frame
 
 
-MESH_BUFFERS = ("positions", "normals", "indices", "uvs", "groups")
+MESH_BUFFERS = ("positions", "normals", "indices", "uvs", "groups", "tangents")
 
 SLOW_COMPILE_SECONDS = 60.0
 
@@ -740,7 +754,7 @@ def random_numbers(
                 {"binding": 11, "resource": {"buffer": counters}},
             ],
         )
-        mesh = [device.create_buffer_with_data(data=empty, usage=storage) for _ in range(5)]
+        mesh = [device.create_buffer_with_data(data=empty, usage=storage) for _ in range(6)]
         group1 = device.create_bind_group(
             layout=context.shaders.layout("pathtrace-mesh"),
             entries=[{"binding": b, "resource": {"buffer": m}} for b, m in enumerate(mesh)],

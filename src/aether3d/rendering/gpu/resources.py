@@ -93,11 +93,14 @@ class GPUMesh:
     bounds: np.ndarray  # (2, 3) float64: min and max corner
     uvs: Any | None = None
     groups: Any | None = None
+    tangents: Any | None = None  # MikkTSpace corner tangents, uploaded when a render needs them
 
     def destroy(self) -> None:
         for buffer in (self.positions, self.normals, self.indices, self.uvs, self.groups):
             if buffer is not None:
                 buffer.destroy()
+        if self.tangents is not None:
+            self.tangents.destroy()
 
 
 def _mesh_arrays(mesh: RenderMesh) -> list[np.ndarray | None]:
@@ -212,6 +215,37 @@ class MeshCache:
             self.resident_bytes -= gpu_mesh.nbytes
             self.evictions += 1
 
+    def ensure_tangents(self, gpu_mesh: GPUMesh, mesh: RenderMesh) -> int:
+        """Upload ``mesh``'s MikkTSpace corner tangents to ``gpu_mesh`` (once); returns the
+        bytes uploaded now."""
+        from ..tangents import corner_tangents
+
+        if gpu_mesh.tangents is not None or mesh.uvs is None:
+            return 0
+        ctx = self.context
+        tangents = corner_tangents(mesh)
+        data = np.ascontiguousarray(tangents, dtype=np.float32).reshape(-1)
+        if data.size == 0:
+            return 0
+        buffer = ctx.device.create_buffer_with_data(
+            label="aether3d-tangents", data=data, usage=ctx.wgpu.BufferUsage.STORAGE
+        )
+        dummy = ctx.utility.dummy_storage
+        gpu_mesh.tangents = buffer
+        gpu_mesh.bind_group = _mesh_bind_group(
+            ctx,
+            gpu_mesh.positions,
+            gpu_mesh.normals or dummy,
+            gpu_mesh.indices,
+            gpu_mesh.uvs or dummy,
+            gpu_mesh.groups or dummy,
+            buffer,
+        )
+        gpu_mesh.nbytes += data.nbytes
+        self.resident_bytes += data.nbytes
+        self.upload_bytes += data.nbytes
+        return int(data.nbytes)
+
     def _upload(self, mesh: RenderMesh) -> GPUMesh:
         ctx = self.context
         wgpu = ctx.wgpu
@@ -241,15 +275,14 @@ class MeshCache:
                     usage=usage,
                 )
         dummy = ctx.utility.dummy_storage
-        bind_group = device.create_bind_group(
-            layout=ctx.shaders.layout("mesh"),
-            entries=[
-                {"binding": 0, "resource": {"buffer": positions}},
-                {"binding": 1, "resource": {"buffer": optional["normals"] or dummy}},
-                {"binding": 2, "resource": {"buffer": indices}},
-                {"binding": 3, "resource": {"buffer": optional["uvs"] or dummy}},
-                {"binding": 4, "resource": {"buffer": optional["groups"] or dummy}},
-            ],
+        bind_group = _mesh_bind_group(
+            ctx,
+            positions,
+            optional["normals"] or dummy,
+            indices,
+            optional["uvs"] or dummy,
+            optional["groups"] or dummy,
+            dummy,
         )
         nbytes = mesh.positions.nbytes + mesh.triangles.nbytes
         nbytes += 0 if mesh.normals is None else mesh.normals.nbytes
@@ -268,6 +301,16 @@ class MeshCache:
             optional["uvs"],
             optional["groups"],
         )
+
+
+def _mesh_bind_group(ctx, positions, normals, indices, uvs, groups, tangents) -> Any:
+    return ctx.device.create_bind_group(
+        layout=ctx.shaders.layout("mesh"),
+        entries=[
+            {"binding": b, "resource": {"buffer": buf}}
+            for b, buf in enumerate((positions, normals, indices, uvs, groups, tangents))
+        ],
+    )
 
 
 # --------------------------------------------------------------------------- #

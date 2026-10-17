@@ -359,7 +359,7 @@ def test_village_example_on_the_gpu(tmp_path, gpu):
 def test_mcp_client_example_runs(tmp_path):
     pytest.importorskip("mcp")
     result = _run_example("mcp_client.py", str(tmp_path), "--backend", "cpu")
-    assert "21 tools" in result.stdout and "on the CPU: preview.png" in result.stdout
+    assert "23 tools" in result.stdout and "on the CPU: preview.png" in result.stdout
     assert (tmp_path / "preview.png").read_bytes().startswith(b"\x89PNG")
     assert len(Scene.load(tmp_path / "courtyard.aether")) == 44
 
@@ -486,5 +486,65 @@ def test_committed_sculpting_outputs():
         with image.open(EXAMPLES / "output" / name) as png:
             assert png.size == size and png.info["Software"].startswith("Aether3D ")
     for name in ("hard_surface", "organic_sculpt", "remesh_validity", "mcp_sculpt_agent"):
+        report = json.loads((EXAMPLES / "output" / f"{name}.json").read_text())
+        assert report["failures"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", report["aether3d"])
+
+
+def test_texturing_hard_surface_example_runs(tmp_path):
+    _run_example("texturing_hard_surface.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "texturing_hard_surface.json").read_text())
+    assert report["failures"] == []
+    densities = {round(v["texel_density"]["mean"], 3) for v in report["uv"].values()}
+    assert len(densities) == 1  # one texel density on every part
+    assert all(v["overlapping_triangles"] == 0 for v in report["uv"].values())
+    assert _decode(tmp_path / "texturing_hard_surface.png").shape == (600, 900, 3)
+
+
+def test_texturing_organic_paint_example_runs(tmp_path):
+    _run_example("texturing_organic_paint.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "texturing_organic_paint.json").read_text())
+    assert report["failures"] == [] and report["spot_symmetry_alpha_difference"] < 0.1
+    assert report["uv"]["flipped_triangles"] == 0
+    assert _decode(tmp_path / "texturing_organic_paint.png").shape == (320, 1280, 3)
+
+
+def test_texturing_bake_example_runs(tmp_path):
+    _run_example("texturing_bake.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "texturing_bake.json").read_text())
+    assert report["failures"] == []
+    assert report["rms_to_high"]["low_with_maps"] < report["rms_to_high"]["low"]
+    assert _decode(tmp_path / "texturing_bake.png").shape == (640, 960, 3)
+
+
+def test_texturing_pbr_example_runs(tmp_path):
+    _run_example("texturing_pbr.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "texturing_pbr.json").read_text())
+    assert report["failures"] == [] and set(report["renders"]) >= {"cpu", "path"}
+    assert _decode(tmp_path / "texturing_pbr.png").shape == (480, 960, 3)
+
+
+def test_mcp_texture_agent_example_runs(tmp_path):
+    pytest.importorskip("mcp")
+    _run_example("mcp_texture_agent.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "mcp_texture_agent.json").read_text())
+    assert report["failures"] == [] and report["final"]["accepted"]
+    assert report["refused"]["code"] == "TEXTURE_NOT_FOUND"
+    assert ("UV_OVERLAP", "geometry") in {tuple(f[:2]) for f in report["diagnosis"]["findings"]}
+
+
+def test_committed_texturing_outputs():
+    """The Stage 14 examples' committed results: Aether3D renders and reports."""
+    image = pytest.importorskip("PIL.Image")
+    for name, size in (
+        ("texturing_hard_surface.png", (1800, 1200)),
+        ("texturing_organic_paint.png", (2560, 640)),
+        ("texturing_bake.png", (1920, 1280)),
+        ("texturing_pbr.png", (1920, 960)),
+        ("mcp_texture_agent.png", (2160, 720)),
+    ):
+        with image.open(EXAMPLES / "output" / name) as png:
+            assert png.size == size and png.info["Software"].startswith("Aether3D ")
+    for name in ("texturing_hard_surface", "texturing_organic_paint", "texturing_bake",
+                 "texturing_pbr", "mcp_texture_agent"):  # fmt: skip
         report = json.loads((EXAMPLES / "output" / f"{name}.json").read_text())
         assert report["failures"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", report["aether3d"])

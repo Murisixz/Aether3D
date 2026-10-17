@@ -246,9 +246,13 @@ fn fs_main(in: VertexOut, @builtin(front_facing) front: bool) -> FragmentOut {
     }
     shadow_origin = smooth_surface_point(in, toward);
   }
+  var vnormal = in.face;  // outward: the interpolated normal, or the face normal
+  if ((inst.flags & INSTANCE_HAS_NORMALS) != 0u && length(in.normal) > 1e-6) {
+    vnormal = in.normal;
+  }
   let s = SurfaceInput(
     in.instance, in.barycentric, dbdx, dbdy, in.p0, in.p1, in.p2,
-    in.uv01.xy, in.uv01.zw, in.uv2, n * toward
+    in.uv01.xy, in.uv01.zw, in.uv2, n * toward, vnormal, in.tangent
   );
   let has_uvs = (inst.flags & INSTANCE_HAS_UVS) != 0u;
   let mb = material_base(m);

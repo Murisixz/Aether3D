@@ -17,6 +17,7 @@ from .subdivide import SubdivideMixin
 from .sweep import SweepMixin
 from .topology import TopologyMixin
 from .transform import TransformMixin
+from .uvmap import UVMapMixin
 from .validation import TopologyReport, validate
 
 
@@ -36,6 +37,7 @@ class EditableMesh(
     SweepMixin,
     ConformMixin,
     SubdivideMixin,
+    UVMapMixin,
     MeshCore,
 ):
     """An editable polygon mesh with stable element ids and transactional operations.

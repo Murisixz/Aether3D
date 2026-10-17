@@ -106,3 +106,20 @@ def test_parallel_translated_triangles_do_not_intersect():
     )
     for x, y in ((a, b), (b, a)):
         assert not triangles_intersect(x[[0]], x[[1]], x[[2]], y[[0]], y[[1]], y[[2]])[0]
+
+
+def test_shared_and_grid_points_take_the_exact_shortcuts_correctly():
+    """Points drawn from a small grid (shared vertices, collinear and coplanar sets, exact
+    zeros): the sign shortcuts (opposite or zero products in 2D, a zero permanent in 3D)
+    agree with exact arithmetic everywhere, tiny tiles included."""
+    rng = np.random.default_rng(14)
+    grid = np.round(rng.random((30, 3)) * 8) / 8
+    pool = np.concatenate([grid, rng.random((30, 3)), grid * 1e-3 + 0.1])
+    idx = rng.integers(0, len(pool), (6000, 4))
+    a, b, c, d = (pool[idx[:, k]] for k in range(4))
+    got2 = orient2d(a[:, :2], b[:, :2], c[:, :2])
+    want2 = [exact2(a[i, :2], b[i, :2], c[i, :2]) for i in range(len(a))]
+    assert np.array_equal(got2, want2) and (np.asarray(want2) == 0).sum() > 100
+    got3 = orient3d(a, b, c, d)
+    want3 = [exact3(a[i], b[i], c[i], d[i]) for i in range(len(a))]
+    assert np.array_equal(got3, want3) and (np.asarray(want3) == 0).sum() > 100

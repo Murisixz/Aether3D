@@ -149,6 +149,7 @@ An expectations document states what the scene must satisfy, as checks:
 | `material` | each object uses the material (by name or id) |
 | `camera_clipping` | the view's near and far planes cut none of the objects (default: every visible object) |
 | `mesh_validity` | each object's mesh (a group: its parts' meshes) reaches the validity `tier` (`valid`, `manifold`, `closed` -- the default --, or `solid`, which runs the exact self-intersection test; [MODELING.md](MODELING.md#validity)); below it: `MESH_BELOW_TIER` (basis `geometry`, exact) with the counts. Never corrected: corrections do not edit meshes (0.13.0) |
+| `uv_quality` | each object's mesh (a group: its parts' meshes) has UVs (`NO_UVS`) with at most `max_flipped` flipped (`UV_FLIPPED`) and `max_overlapping` overlapping triangles (`UV_OVERLAP`; default 0 each; stacked islands -- deliberate copies -- are not counted), and optionally an L2 stretch of at most `max_stretch` (`UV_STRETCH`), a texel-density spread of at most `max_density_spread` (`UV_DENSITY_SPREAD`) and gaps of at least `min_gap` texels (`UV_GAP`) at `resolution` (default 1024); basis `geometry`, exact ([TEXTURING.md](TEXTURING.md#diagnostics)). Never corrected: corrections do not edit UVs (0.14.0) |
 
 Every check takes `id`, `severity` (`"error"`, default, or `"warning"`), `label`, and
 `fix`: `move` (`"objects"`, `"against"`, `"support"` or `"none"`: which side a correction

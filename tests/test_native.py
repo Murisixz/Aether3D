@@ -448,3 +448,130 @@ def test_traversal_with_threads_through_the_accel(monkeypatch):
     many, stats_many = hits_and_stats(rs, o, d, 1e-6, np.inf, (None, None), False)
     same_hits(one, many, False)
     assert stats_one == stats_many
+
+
+# ---------------------------------------------------------------------------------------
+# Sparse LDL^T and atlas placement (Stage 14)
+
+
+def _spd(n: int, seed: int):
+    from aether3d.uv import sparse
+
+    rng = np.random.default_rng(seed)
+    pts = rng.random((n, 3))
+    rows, cols, vals = [], [], []
+    for i in range(n):
+        d = ((pts - pts[i]) ** 2).sum(axis=1)
+        for j in np.argsort(d)[1:7]:
+            w = -float(rng.random()) * (10.0 ** rng.integers(-3, 3))
+            rows += [i, j]
+            cols += [j, i]
+            vals += [w, w]
+    off = sparse.assemble(n, rows, cols, vals)
+    col = np.repeat(np.arange(n), np.diff(off.indptr))
+    diag = -np.bincount(col, off.data, n) + 1e-3
+    m = sparse.assemble(n, np.r_[rows, np.arange(n)], np.r_[cols, np.arange(n)], np.r_[vals, diag])
+    return m, pts
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_ldl_is_numpys(seed, monkeypatch):
+    from aether3d.uv import sparse
+
+    m, pts = _spd(700, seed)
+    perm = sparse.nested_dissection(pts, m.indptr, m.indices)
+    b = np.random.default_rng(seed + 10).normal(size=(700, 3))
+
+    def run():
+        s = sparse.analyze(m, perm)
+        f = sparse.factor(s, m)
+        return s, f, f.solve(b), f.solve(b[:, 0])
+
+    s1, f1, x1, y1 = run()
+    s0, f0, x0, y0 = without_native(monkeypatch, run)
+    for name in ("parent", "lp", "li", "rp", "rj", "rpos"):
+        assert np.array_equal(getattr(s1, name), getattr(s0, name)), name
+    assert_bitwise(f1.lx, f0.lx)
+    assert_bitwise(f1.d, f0.d)
+    assert_bitwise(x1, x0)
+    assert_bitwise(y1, y0)
+
+
+def test_ldl_reports_the_same_failing_pivot(monkeypatch):
+    from aether3d.errors import TexturingError
+    from aether3d.uv import sparse
+
+    m, pts = _spd(200, 3)
+    bad = sparse.CSC(m.n, m.indptr, m.indices, m.data.copy())
+    diag = np.flatnonzero(m.indices == np.repeat(np.arange(m.n), np.diff(m.indptr)))
+    bad.data[diag[150]] = -50.0
+    perm = np.arange(200)
+    codes = []
+    for mode in ("native", "numpy"):
+        call = (lambda: sparse.factor(sparse.analyze(bad, perm), bad)) if mode == "native" else None
+        with pytest.raises(TexturingError) as exc:
+            if call is not None:
+                call()
+            else:
+                without_native(monkeypatch, lambda: sparse.factor(sparse.analyze(bad, perm), bad))
+        codes.append(exc.value.details["pivot"])
+    assert codes[0] == codes[1]
+
+
+def test_ldl_rejects_inconsistent_structures():
+    from aether3d.uv import sparse
+
+    m, pts = _spd(50, 4)
+    s = sparse.analyze(m, np.arange(50))
+    ax = m.data[s.amap]
+    lx = np.empty(s.li.size)
+    d = np.empty(50)
+    rpos = s.rpos.copy()
+    rpos[0] = rpos[1]
+    with pytest.raises(ValueError):
+        native.ldl_factor(s.ap, s.ai, ax, s.lp, s.li, s.rp, s.rj, rpos, lx, d)
+    li = s.li.copy()
+    li[0] = 999
+    with pytest.raises(ValueError):
+        native.ldl_solve(s.lp, li, lx, s.rp, s.rj, s.rpos, d, np.zeros((50, 1)))
+    ai = s.ai.copy()
+    ai[-1] = 60
+    with pytest.raises(ValueError):
+        native.ldl_etree(s.ap, ai, np.empty(50, np.int64), np.empty(50, np.int64))
+
+
+def test_atlas_placement_is_numpys(monkeypatch):
+    from aether3d.uv import pack
+
+    rng = np.random.default_rng(5)
+    masks = [rng.random((rng.integers(2, 40), rng.integers(2, 50))) < 0.6 for _ in range(120)]
+    masks = [m if m.any() else np.ones((2, 2), bool) for m in masks]
+    bottoms, tops = [], []
+    for m in masks:
+        for o in range(4):
+            b, t = pack.profiles(pack.oriented(m, o))
+            bottoms.append(b)
+            tops.append(t)
+    order = np.lexsort((np.arange(120), -np.array([m.sum() for m in masks])))
+    a = pack.place(300, bottoms, tops, order)
+    b = without_native(monkeypatch, pack.place, 300, bottoms, tops, order)
+    assert np.array_equal(a[0], b[0]) and np.array_equal(a[1], b[1]) and a[2] == b[2]
+    with pytest.raises(ValueError):
+        native.pack_horizon(
+            300,
+            np.array([0]),
+            np.array([0]),
+            np.array([0, 1, 1, 1, 1]),
+            np.array([0]),
+            np.zeros(1, np.int64),
+            np.zeros(2, np.int64),
+        )
+
+
+def test_unwraps_are_numpys(monkeypatch):
+    from aether3d import uv
+
+    mesh = create_sphere(1.0, 24, 12)
+    a = uv.unwrap(mesh, resolution=256)
+    b = without_native(monkeypatch, uv.unwrap, mesh, resolution=256)
+    assert a.mesh == b.mesh

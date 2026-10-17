@@ -873,12 +873,17 @@ def run_script(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
         from ..sculpt.script import run_sculpt_script
 
         data = run_sculpt_script(scene, script)
+    elif kind == "aether3d.texture-script":
+        from ..texturing.script import run_texture_script
+
+        data = run_texture_script(scene, script, should_stop=ctx.cancel.is_set)
     else:
         raise ToolError(
             "INVALID_ARGUMENT",
             f"unknown script format {kind!r}",
-            hint="aether3d.edit-script, aether3d.procedural-script, aether3d.scene-script or "
-            "aether3d.sculpt-script (objects, materials and placement: use execute_scene_plan)",
+            hint="aether3d.edit-script, aether3d.procedural-script, aether3d.scene-script, "
+            "aether3d.sculpt-script or aether3d.texture-script (objects, materials and "
+            "placement: use execute_scene_plan)",
         )
     data = {"format": kind, **data, "scene": scene_status(session)}
     return ToolOutput(data)
@@ -912,6 +917,86 @@ def inspect_mesh(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
         )
     report = object_report(obj, self_intersections=tested)
     return ToolOutput({**report, "scene": scene_status(session)})
+
+
+def _scene_object(scene, ref: str):
+    from ..errors import ObjectNotFoundError
+
+    try:
+        return scene.get(ref)
+    except ObjectNotFoundError:
+        try:
+            return scene.get_by_name(ref)
+        except ObjectNotFoundError:
+            raise ToolError("NOT_FOUND", f"no object with id or name {ref!r}") from None
+
+
+def inspect_uvs(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
+    from ..rendering.png import encode_png
+    from ..uv import layout_image
+
+    scene = session.require_scene()
+    obj = _scene_object(scene, args["object"])
+    if obj.mesh is None:
+        raise ToolError("INVALID_ARGUMENT", f"object {obj.name!r} has no mesh")
+    if obj.mesh.uvs is None:
+        raise ToolError(
+            "NO_UVS",
+            f"object {obj.name!r} has no UVs",
+            hint="unwrap it with a texture script (op unwrap or project_uvs)",
+        )
+    report = obj.uv_report(
+        resolution=args.get("resolution", 1024), islands_limit=args.get("islands_limit", 16)
+    )
+    mode = args.get("image", "islands")
+    png = None
+    if mode != "none":
+        texture = None
+        if mode == "texture":
+            if not args.get("texture"):
+                raise ToolError("INVALID_ARGUMENT", 'image "texture" needs "texture"')
+            tex = scene.materials.find_texture(args["texture"])
+            if tex is None:
+                raise ToolError("NOT_FOUND", f"no texture {args['texture']!r}")
+            texture = tex.preview(256) if tex.kind == "procedural" else tex.load().image.pixels
+        png = encode_png(layout_image(obj.mesh, args.get("size", 512), mode=mode, texture=texture))
+    data = {
+        "object": {"id": obj.id, "name": obj.name},
+        **report,
+        "image": None if png is None else f"UV layout ({mode}): v up, island boundaries dark",
+        "scene": scene_status(session),
+    }
+    return ToolOutput(data, image=png)
+
+
+def inspect_texture(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
+    import numpy as np
+
+    from ..rendering.png import encode_png
+
+    scene = session.require_scene()
+    tex = scene.materials.find_texture(args["texture"])
+    if tex is None:
+        raise ToolError("NOT_FOUND", f"no texture with id or name {args['texture']!r}")
+    info = tex.info()
+    users = [
+        {"material": m.name, "slot": slot}
+        for m in scene.materials.materials
+        for slot, binding in m.textures.items()
+        if binding is not None and binding.texture == tex.id
+    ]
+    size = args.get("preview_size", 256)
+    png = None
+    if size:
+        if tex.kind == "procedural":
+            pixels = tex.preview(size)
+        else:
+            pixels = tex.load().image.pixels
+            h, w = pixels.shape[:2]
+            step = max(1, -(-max(h, w) // size))
+            pixels = pixels[::step, ::step]
+        png = encode_png(np.ascontiguousarray(pixels))
+    return ToolOutput({"texture": info, "users": users, "scene": scene_status(session)}, image=png)
 
 
 def diagnostics(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
@@ -962,6 +1047,8 @@ def capabilities(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
                 "aether3d://examples/{name}",
                 "aether3d://sculpt/guide",
                 "aether3d://schema/sculpt-script",
+                "aether3d://texturing/guide",
+                "aether3d://schema/texture-script",
             ],
             "conventions": "+Z up, right-handed, meters; objects face -Y; rotation_euler in "
             "degrees (XYZ); colors are sRGB '#rrggbb'",
@@ -1053,6 +1140,37 @@ def capabilities(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
                 "surface (project: nearest) unless told otherwise",
                 "require a tier (e.g. 'closed') so a broken result is refused, not committed",
                 "inspect_mesh measures validity; observe_scene shows the result",
+            ],
+        }
+    elif topic == "texturing":
+        from ..materials.painted import BLEND_MODES, ENCODINGS
+        from ..texturing import BRUSH_KINDS, MAPS
+        from ..texturing.paint import FALLOFFS, SPACES
+        from ..texturing.script import FORMAT_ID, LIMIT_KEYS, OPERATIONS
+        from ..uv import PROJECTIONS
+
+        data = {
+            "script_format": {"format": FORMAT_ID, "version": 1},
+            "schema_resource": "aether3d://schema/texture-script",
+            "guide_resource": "aether3d://texturing/guide",
+            "operations": list(OPERATIONS),
+            "projections": list(PROJECTIONS),
+            "brushes": list(BRUSH_KINDS),
+            "falloffs": list(FALLOFFS),
+            "paint_spaces": list(SPACES),
+            "blend_modes": list(BLEND_MODES),
+            "encodings": list(ENCODINGS),
+            "bake_maps": list(MAPS),
+            "limits": list(LIMIT_KEYS),
+            "tips": [
+                "unwrap, then inspect_uvs (image overlaps) before painting: no flipped or "
+                "overlapping triangles, a small texel density spread",
+                "paint in surface space with object-space points (seams are invisible); "
+                "view space paints what a camera sees, occluded by other objects",
+                "bind with factor '#ffffff' so the painted color is the color you see",
+                "bake from high-resolution sources onto a low-resolution target with "
+                "apply: true; inspect misses in the report",
+                "render_preview or observe_scene shows the result",
             ],
         }
     elif topic == "feedback":
@@ -1363,14 +1481,18 @@ TOOLS: tuple[ToolSpec, ...] = (
     ),
     ToolSpec(
         "run_script",
-        "Run an edit, procedural, scene or sculpt script",
+        "Run an edit, procedural, scene, sculpt or texture script",
         "Run one of the engine's JSON scripts atomically (one undo step): "
         "aether3d.edit-script (polygon mesh editing: extrude, bevel, bridge, knife, ... on an "
         "object), aether3d.procedural-script (procedural definitions), aether3d.scene-script "
         "(cameras, lights, materials and textures in detail), aether3d.sculpt-script (brush "
         "strokes, masks, dynamic topology, remeshing, symmetrize; schema: resource "
-        "aether3d://schema/sculpt-script, guide: aether3d://sculpt/guide). For creating and "
-        "placing objects use execute_scene_plan.",
+        "aether3d://schema/sculpt-script, guide: aether3d://sculpt/guide), "
+        "aether3d.texture-script (UV unwrap/projection/island edits, painted textures and "
+        "layers, brush strokes in surface/view/UV space, fills, gradients, bakes, texture "
+        "transfer; schema: aether3d://schema/texture-script, guide: "
+        "aether3d://texturing/guide). For creating and placing objects use "
+        "execute_scene_plan.",
         _schema(
             {
                 "script": {
@@ -1382,6 +1504,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                                 "aether3d.procedural-script",
                                 "aether3d.scene-script",
                                 "aether3d.sculpt-script",
+                                "aether3d.texture-script",
                             ]
                         }
                     },
@@ -1412,6 +1535,49 @@ TOOLS: tuple[ToolSpec, ...] = (
         idempotent=True,
     ),
     ToolSpec(
+        "inspect_uvs",
+        "Inspect an object's UVs",
+        "UV diagnostics of one object's mesh: islands, flipped, degenerate and overlapping "
+        "triangles (unintended) apart from stacked islands (deliberate copies), mirrored "
+        "islands, stretch, texel density and its spread, utilization, islands outside the "
+        "unit square, smallest gap in texels; with a layout image (islands, density, "
+        "stretch, overlaps, or a texture under the wireframe). Read-only.",
+        _schema(
+            {
+                "object": {"type": "string", "minLength": 1, "description": "id or name"},
+                "resolution": {"type": "integer", "minimum": 16, "maximum": 16384, "default": 1024},
+                "islands_limit": {"type": "integer", "minimum": 0, "maximum": 256, "default": 16},
+                "image": {
+                    "enum": ["islands", "density", "stretch", "overlaps", "texture", "none"],
+                    "default": "islands",
+                },
+                "texture": {"type": "string", "minLength": 1, "description": "for image texture"},
+                "size": {"type": "integer", "minimum": 64, "maximum": 1024, "default": 512},
+            },
+            ("object",),
+        ),
+        inspect_uvs,
+        read_only=True,
+        idempotent=True,
+    ),
+    ToolSpec(
+        "inspect_texture",
+        "Inspect a texture",
+        "A texture's details (size, encoding, color space; painted textures: layers with "
+        "blend modes, opacity, masks, revision) and the material slots using it, with a "
+        "preview image. Read-only.",
+        _schema(
+            {
+                "texture": {"type": "string", "minLength": 1, "description": "id or name"},
+                "preview_size": {"type": "integer", "minimum": 0, "maximum": 1024, "default": 256},
+            },
+            ("texture",),
+        ),
+        inspect_texture,
+        read_only=True,
+        idempotent=True,
+    ),
+    ToolSpec(
         "diagnostics",
         "Diagnostics",
         "Check the scene: geometry (degenerate or open meshes, ...), procedural (every node "
@@ -1435,7 +1601,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         "What this engine and server offer: overview (tools, conventions, scene), plan, "
         "primitives, modifiers, materials (models, presets), queries, limits, gpu, feedback "
         "(checks, correction actions, views, safety classes), sculpt (brushes, operations, "
-        "validity tiers, script limits).",
+        "validity tiers, script limits), texturing (texture script operations, brushes, "
+        "bake maps, blend modes).",
         _schema(
             {
                 "topic": {
@@ -1450,6 +1617,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                         "gpu",
                         "feedback",
                         "sculpt",
+                        "texturing",
                     ],
                     "default": "overview",
                 }

@@ -1,6 +1,6 @@
 # The `.aether` project format
 
-**Current version: 6** (Aether3D 0.10.0; version 1–5 files are upgraded on load)
+**Current version: 7** (Aether3D 0.14.0; version 1–6 files are upgraded on load)
 
 An `.aether` file stores one scene:
 
@@ -12,7 +12,8 @@ An `.aether` file stores one scene:
   settings (see [RENDERING.md](RENDERING.md));
 - its materials and textures, and which objects and face groups use them
   (see [MATERIALS.md](MATERIALS.md)). Image textures are stored as paths
-  relative to the project, or embedded;
+  relative to the project, or embedded; painted textures are embedded with every
+  layer and mask (16 bits per channel);
 - its objects' tags and metadata (see [SPATIAL.md](SPATIAL.md#tags-and-metadata)).
 
 It is a UTF-8 encoded JSON document (RFC 8259), designed to be readable,
@@ -23,8 +24,8 @@ diffable, and safely editable by people, scripts, and AI agents.
 ```json
 {
   "format": "aether3d.project",
-  "format_version": 6,
-  "generator": "aether3d 0.10.0",
+  "format_version": 7,
+  "generator": "aether3d 0.14.0",
   "scene": {
     "name": "First Scene",
     "active_camera": "5b0f1c2e-…",
@@ -327,7 +328,7 @@ Writers omit options at their defaults (the slot's channel, `uv`,
 | Key | Type | Description |
 | --- | --- | --- |
 | `id`, `name` | strings | Required. |
-| `type` | `"image"` or `"procedural"` | Required. |
+| `type` | `"image"`, `"procedural"` or `"painted"` (since version 7) | Required. |
 | `path` | string | Image, exactly one of `path` and `embedded`: a relative POSIX path inside the project's directory (no absolute paths, `..`, drive letters or backslashes). |
 | `embedded` | object | `{"mime_type": "image/png" or "image/jpeg", "data": base64}`, at most 64 MiB decoded. |
 | `wrap` | `[u, v]` | Image: `repeat`, `clamp` or `mirror` per axis. |
@@ -335,6 +336,12 @@ Writers omit options at their defaults (the slot's channel, `uv`,
 | `mipmaps` | boolean | Image. |
 | `color_space` | `"auto"`, `"srgb"` or `"linear"` | Image. |
 | `graph` | object | Procedural: a node graph (see [MATERIALS.md](MATERIALS.md#procedural-textures)). Writers emit every node parameter. |
+| `width`, `height` | integers | Painted: the size in texels (1–16384 each, at most 8192 x 8192 in all). |
+| `encoding` | `"color"`, `"data"` or `"normal"` | Painted: what the texels hold (display sRGB colors, linear values, tangent-space normals). |
+| `background` | `[r, g, b, a]` | Painted: the RGBA under every layer, 0–1, in the encoding. |
+| `layers` | array | Painted, bottom to top, at most 64: `{"id", "name", "kind": "paint" or "fill", "blend", "opacity", "visible", "mask"}`; a paint layer adds `pixels`, a fill layer `value` (`[r, g, b, a]`). `pixels` is an embedded 16-bit RGBA PNG of the layer (`{"mime_type": "image/png", "data": base64}`, transparent where nothing is painted); `mask` is `null` or an embedded 16-bit grayscale PNG. `blend` is one of `normal`, `multiply`, `screen`, `overlay`, `darken`, `lighten`, `difference`, `add`, `subtract`. |
+
+Painted textures also take the image keys `wrap`, `filter`, `mipmaps` and `color_space`.
 
 Image files are not part of the project. Writers store paths relative to the
 project's directory and refuse to save a texture outside it
@@ -412,7 +419,7 @@ The history file is a JSON document, `"format": "aether3d.history"`,
 | `checkpoints` | Names and the index of the step behind their state |
 | `max_entries`, `max_bytes`, `dropped` | The limits and how many steps were dropped |
 | `objects`, `materials`, `textures` | Full records of entities the steps refer to that are not in the project (removed ones, which undo can bring back) |
-| `meshes`, `blobs` | Meshes (as in the project's `meshes`) and embedded image bytes (base64) the states refer to by index |
+| `meshes`, `blobs` | Meshes (as in the project's `meshes`) and embedded image bytes (base64) the states refer to by index; painted textures' states refer to their tiles (64 x 64 texels, 16-bit RGBA, zlib-compressed) as blobs, so a stroke's step stores only the tiles it changed |
 
 A change is `{"aspect", "target", "before", "after"}`:
 - `aspect` is the part of the scene it changed: `object.name`,
@@ -455,6 +462,7 @@ copy comes back to the same document.
 | 4 | 0.7.0 | Materials: `scene.materials`, `scene.textures`, `material` and `group_materials` on every object, and optional per-triangle `groups` on meshes. The migration from 3 adds empty lists, and `null` and `{}` on objects, so every object keeps rendering with its color. |
 | 5 | 0.8.0 | Path tracing: `scene.world.environment` and the light sizes `radius` and `angle`. The migration from 4 adds the `"ambient"` environment (the path tracer then lights with the ambient light, as the rasterizers do) and sizes of 0 (point lights and parallel directional lights), so every project renders unchanged on the rasterizers. |
 | 6 | 0.10.0 | Object tags and metadata: `tags` and `metadata` on every object. The migration from 5 changes nothing: their defaults are empty. |
+| 7 | 0.14.0 | Painted textures: textures of `"type": "painted"` with their layers and masks. The migration from 6 changes nothing: a version 6 document has none. |
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged, and Aether3D
 0.6.0 reads and writes version 3 unchanged (GPU rendering added render
