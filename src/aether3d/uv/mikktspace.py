@@ -361,10 +361,20 @@ def _tspaces(P, N, W, group, group_orient, rep_corner, tri_os, tri_ot, gwa, orie
     starts = np.flatnonzero(np.r_[True, g_s[1:] != g_s[:-1]])
     lengths = np.diff(np.r_[starts, g_s.shape[0]])
     split_groups = np.zeros(ngroups, dtype=bool)
-    if (lengths > 1).any():
-        # Pairs within each group.
-        gl = lengths[lengths > 1]
-        gs = starts[lengths > 1]
+    # Two exactly opposite directions cannot both lie strictly inside the open hemisphere
+    # around their group's sum: only groups with a member outside it (rare) can split, and
+    # only those are checked pair by pair.
+    inside = np.ones(g_s.shape[0], dtype=bool)
+    for d in (pos_os, pos_ot):
+        v = d[order].astype(np.float64)
+        total = np.add.reduceat(v, starts, axis=0)
+        size = np.repeat(np.linalg.norm(total, axis=1), lengths)
+        inside &= (v * np.repeat(total, lengths, axis=0)).sum(axis=1) > 1e-4 * size
+    candidate = (lengths > 1) & ~np.logical_and.reduceat(inside, starts)
+    if candidate.any():
+        # Pairs within each candidate group.
+        gl = lengths[candidate]
+        gs = starts[candidate]
         for L in np.unique(gl).tolist():
             st = gs[gl == L]
             ii, jj = np.meshgrid(np.arange(L), np.arange(L), indexing="ij")

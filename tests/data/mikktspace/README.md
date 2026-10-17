@@ -10,7 +10,9 @@ for bit (`tests/test_tangents.py`). The C code is not part of Aether3D.
 
 Cases: a 12x6 UV sphere, the unit cube, a noisy 8x8 grid with random normals, the same
 with half of its UVs mirrored, with degenerate UV triangles, with degenerate position
-triangles, and with duplicated (non-manifold) triangles.
+triangles, and with duplicated (non-manifold) triangles. `branch_*` is a fan of eight
+triangles around a vertex whose UVs are `z^2` of the positions: opposite triangles have
+exactly opposite UV derivatives, so the vertex's group splits into subgroups.
 
 `quirk_*` is the noisy grid with every ninth triangle duplicated. There the reference
 pairs a non-manifold edge differently from the port: its edge sort (`BuildNeighborsFast`)

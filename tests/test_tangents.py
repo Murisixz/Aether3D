@@ -23,6 +23,7 @@ CASES = (
     "degenerate_uvs",
     "degenerate_positions",
     "non_manifold",
+    "branch",
 )
 
 
