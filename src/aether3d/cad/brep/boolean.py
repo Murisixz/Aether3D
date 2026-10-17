@@ -233,6 +233,7 @@ def reconstruct(verts, tris, src, sources, owner, bodies, chord, size) -> Body:
             best[r] = tri_area[t]
             big[r] = t
     centroid = verts[tris].mean(axis=1)
+    reg_areas = np.bincount(region, weights=tri_area, minlength=nr)
     reg_flip = np.zeros(nr, dtype=bool)
     for r in range(nr):
         t = big[r]
@@ -250,13 +251,18 @@ def reconstruct(verts, tris, src, sources, owner, bodies, chord, size) -> Body:
             pairs.add((min(r1, r2), max(r1, r2)))
     for r1, r2 in sorted(pairs):
         s1, s2 = reg_src[r1], reg_src[r2]
-        if owner[s1] == owner[s2]:
-            continue
         f1, f2 = sources[s1], sources[s2]
+        # Faces of one operand on one periodic surface stay apart (an operand's
+        # cylinder halves would merge into a band without seams); coplanar faces merge.
+        if owner[s1] == owner[s2] and f1.surface.kind != "plane":
+            continue
         if same_surface(f1.surface, f2.surface, merge_tol):
             n1 = tri_n[big[r1]]
             n2 = tri_n[big[r2]]
-            if float(n1 @ n2) > 0:
+            # Same orientation, or a sliver (coplanar faces of both operands leave
+            # regions of rounding-size area whose normals mean nothing).
+            sliver = min(reg_areas[r1], reg_areas[r2]) <= (1e-7 * size) ** 2
+            if float(n1 @ n2) > 0 or sliver:
                 ruf.union(r1, r2)
     face_of_region = np.array([ruf.find(r) for r in range(nr)])
     fids, face_index = np.unique(face_of_region, return_inverse=True)
@@ -266,7 +272,6 @@ def reconstruct(verts, tris, src, sources, owner, bodies, chord, size) -> Body:
     rep_src = np.zeros(nf, dtype=np.int64)
     rep_area = np.full(nf, -1.0)
     rep_flip = np.zeros(nf, dtype=bool)
-    reg_areas = np.bincount(region, weights=tri_area, minlength=nr)
     for r in range(nr):
         f = face_index[r]
         if reg_areas[r] > rep_area[f]:

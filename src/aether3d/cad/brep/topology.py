@@ -330,6 +330,48 @@ def edge_range(curve: Curve3, p0, pm, p1, *, closed: bool = False) -> tuple[floa
     raise CadError("INVALID_GEOMETRY", f"unknown curve {curve!r}")
 
 
+def infer_window(body: Body, face: Face) -> float | None:
+    """The u window of a face on a u-periodic surface, from its loops: the window (among
+    candidates around the turn) in which the outer loop unwraps into a closed polygon
+    oriented as the face's sense requires (counter-clockwise in (u, v) when the face's
+    normal is the surface's). Needed for faces bounded through poles (sphere halves
+    between two meridians), which a boundary alone does not place."""
+    s = face.surface
+    if not s.periodic_u or not face.loops:
+        return None
+    pts = np.concatenate([coedge_points(body, c, None) for c in face.loops[0]])
+    uv = np.array(s.inverse(pts), dtype=np.float64).reshape(-1, 2)
+    su, _ = s.derivatives(uv[:, 0], uv[:, 1])
+    good = np.linalg.norm(su, axis=1) > 1e-9 * max(body.size, 1e-9)
+    if np.any(good):
+        cont = np.unwrap(uv[good, 0])
+        if float(cont.max() - cont.min()) >= TAU - 1e-6:
+            return None  # a full turn (seam edges): unwrapped continuously, no window
+    best = None
+    for w in np.linspace(-math.pi, math.pi, 24, endpoint=False):
+        u = w + np.mod(uv[:, 0] - w + math.pi, TAU) - math.pi
+        u = np.where(good, u, np.nan)
+        # Pole points take the u of their neighbours (they lie on a degenerate edge).
+        if np.any(~good):
+            idx = np.flatnonzero(good)
+            if not len(idx):
+                return None
+            u = np.interp(np.arange(len(u)), idx, u[idx])
+        v = uv[:, 1]
+        if s.periodic_v:
+            v = v[0] + np.unwrap(v - v[0])
+        # Without poles the loop must close in (u, v); through poles it closes along
+        # their degenerate edges.
+        if np.all(good) and abs(u[0] - u[-1]) > 1.0:
+            continue
+        area = 0.5 * float(np.sum(u * np.roll(v, -1) - np.roll(u, -1) * v))
+        if (area > 0) == face.sense and abs(area) > 0:
+            span = float(u.max() - u.min())
+            if span < TAU - 1e-9 and (best is None or abs(area) < best[1]):
+                best = (float(0.5 * (u.max() + u.min())), abs(area))
+    return None if best is None else best[0]
+
+
 def coedge_points(body: Body, coedge: Coedge, ts: np.ndarray | None = None) -> np.ndarray:
     e = body.edges[coedge[0]]
     if ts is None:

@@ -36,6 +36,8 @@ Feature types (lengths: numbers in the document's unit, quantity text or ``"=exp
 ``transform``   ``body``, ``translate``, ``rotate`` {``axis``, ``angle``, ``point``}
 ``boolean``     ``op`` (``union``/``cut``/``intersect``), ``target``, ``tool``
 ``box``, ``cylinder``, ``sphere``, ``cone``, ``torus``  primitives at ``frame``
+``solid``       ``brep`` (a B-rep as :meth:`Body.to_dict` writes it, in metres -- what
+                STEP and IFC imports store), ``operation``, ``body``
 ==============  ============================================================================
 
 Failures name the feature (``part[Bracket].features[3](fillet1)``) and leave the
@@ -83,6 +85,7 @@ FEATURE_TYPES = (
     "sphere",
     "cone",
     "torus",
+    "solid",
 )
 
 
@@ -999,6 +1002,51 @@ def f_transform(part: _Part, f, state, outputs, loc) -> FeatureOutput:
     return FeatureOutput(out, {"body": target})
 
 
+def f_solid(part: _Part, f, state, outputs, loc) -> FeatureOutput:
+    from .brep.topology import validate
+
+    data = f.get("brep")
+    try:
+        tool = Body.from_dict(data)
+    except CadError:
+        raise
+    except (KeyError, IndexError, TypeError, ValueError, AttributeError) as exc:
+        raise CadError(
+            "INVALID_VALUE", f"brep is not a valid B-rep ({exc})", f"{loc}.brep"
+        ) from None
+    report = validate(tool)
+    if not report["valid"]:
+        raise CadError(
+            "INVALID_GEOMETRY",
+            "the B-rep is not a valid solid",
+            f"{loc}.brep",
+            details={"problems": report["problems"][:10]},
+        )
+    tool = Body(
+        tool.vertices,
+        tool.edges,
+        tuple(
+            Face(
+                fc.surface,
+                fc.sense,
+                fc.loops,
+                f"{f['id']}:{fc.name or f'face{i}'}",
+                fc.group,
+                fc.window,
+            )
+            for i, fc in enumerate(tool.faces)
+        ),
+        tool.shells,
+        tool.kind,
+        tool.vertex_tol,
+    )
+    op = f.get("operation", "new" if not state else "add")
+    target = f.get("body", "main")
+    return FeatureOutput(
+        _apply(state, target, tool, op, loc), {"operation": op, "body": target}, tool, op, target
+    )
+
+
 def f_boolean(part: _Part, f, state, outputs, loc) -> FeatureOutput:
     op = f.get("op")
     if op not in ("union", "cut", "intersect"):
@@ -1159,6 +1207,7 @@ FEATURES = {
     "sphere": _primitive,
     "cone": _primitive,
     "torus": _primitive,
+    "solid": f_solid,
 }
 
 

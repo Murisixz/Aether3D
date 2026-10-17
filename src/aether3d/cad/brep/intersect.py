@@ -176,7 +176,47 @@ def _coaxial(s1, s2, pts: np.ndarray, tol: float):
     r = float(np.mean(np.hypot(loc[:, 0], loc[:, 1])))
     if r <= 0:
         return None
-    return [Circle3(Frame.from_axes(s1.frame.to_world(np.array([0, 0, h])), a1, s1.frame.x), r)]
+    # The parallel exactly: Newton on both meridians in (r, h) from the estimate.
+    m1 = _meridian(s1, o1, a1)
+    m2 = _meridian(s2, o1, a1)
+    if m1 is not None and m2 is not None:
+        for _ in range(50):
+            f1, g1 = m1(r, h)
+            f2, g2 = m2(r, h)
+            jac = np.array([g1, g2])
+            det = float(np.linalg.det(jac))
+            if abs(det) < 1e-300:
+                break
+            dr, dh = np.linalg.solve(jac, [f1, f2])
+            r, h = r - float(dr), h - float(dh)
+            if abs(dr) + abs(dh) <= 1e-16 * max(abs(r), abs(h), 1e-300):
+                break
+    if not (r > 0 and math.isfinite(h)):
+        return None
+    center = o1 + a1 * h
+    return [Circle3(Frame.from_axes(center, a1, s1.frame.x), r)]
+
+
+def _meridian(s, o: np.ndarray, a: np.ndarray):
+    """The surface's meridian as f(r, h) = 0 in axial coordinates about (o, a): returns
+    a function giving (f, (df/dr, df/dh)), or None for general surfaces of revolution."""
+    sign = 1.0 if float(a @ s.frame.z) > 0 else -1.0
+    h0 = float(a @ (s.frame.origin - o))  # the surface's own origin along the axis
+
+    if s.kind == "cylinder":
+        return lambda r, h: (r - s.radius, (1.0, 0.0))
+    if s.kind == "sphere":
+        return lambda r, h: (r * r + (h - h0) ** 2 - s.radius**2, (2 * r, 2 * (h - h0)))
+    if s.kind == "cone":
+        k = s.slope
+        return lambda r, h: (r - s.radius - k * sign * (h - h0), (1.0, -k * sign))
+    if s.kind == "torus":
+        big, small = s.major, s.minor
+        return lambda r, h: (
+            (r - big) ** 2 + (h - h0) ** 2 - small**2,
+            (2 * (r - big), 2 * (h - h0)),
+        )
+    return None
 
 
 def recover_curve(s1, s2, pts: np.ndarray, tol: float):

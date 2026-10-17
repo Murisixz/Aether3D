@@ -28,7 +28,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ...errors import CadError
-from ..geom3d import Circle3, Ellipse3, Line3, Plane
+from ..geom3d import Circle3, Cone, Ellipse3, Line3, Plane, Sphere
 from .topology import Body
 
 _GX, _GW = np.polynomial.legendre.leggauss(16)
@@ -80,12 +80,74 @@ def _edge_nodes(edge, pieces: int) -> tuple[np.ndarray, np.ndarray]:
     return ts, ws
 
 
+def _integrand(s, su_: np.ndarray, sv_: np.ndarray, center: np.ndarray) -> np.ndarray:
+    """The 11 integrands at surface parameters (flat arrays): P(S) . (Su x Sv) and |Su x Sv|."""
+    pts = s.point(su_, sv_) - center
+    dsu, dsv = s.derivatives(su_, sv_)
+    n = np.cross(dsu, dsv)
+    x, y, z = pts[:, 0], pts[:, 1], pts[:, 2]
+    return np.stack(
+        [
+            x * n[:, 0],
+            0.5 * x * x * n[:, 0],
+            0.5 * y * y * n[:, 1],
+            0.5 * z * z * n[:, 2],
+            x**3 / 3.0 * n[:, 0],
+            y**3 / 3.0 * n[:, 1],
+            z**3 / 3.0 * n[:, 2],
+            0.5 * x * x * y * n[:, 0],
+            0.5 * x * x * z * n[:, 0],
+            0.5 * y * y * z * n[:, 1],
+            np.linalg.norm(n, axis=1),
+        ],
+        axis=1,
+    )
+
+
+_TURN_SAMPLES = 96
+
+
+def _full_turn(s, v: np.ndarray, center: np.ndarray) -> np.ndarray:
+    """G_full(v) = integral over a whole turn of u of the integrands (periodic in u, so
+    the trapezoidal rule converges exponentially)."""
+    u = np.linspace(0.0, 2 * np.pi, _TURN_SAMPLES, endpoint=False)
+    uu, vv = np.meshgrid(u, v, indexing="ij")
+    g = _integrand(s, uu.ravel(), vv.ravel(), center).reshape(len(u), len(v), 11)
+    return g.sum(axis=0) * (2 * np.pi / _TURN_SAMPLES)
+
+
+def _turn_integral(s, v0: float, v1: float, center: np.ndarray) -> np.ndarray:
+    """H(v1) - H(v0): the integral over v in [v0, v1] of G_full."""
+    if v0 == v1:
+        return np.zeros(11)
+    k = 16
+    edges = np.linspace(v0, v1, k + 1)
+    a, b = edges[:-1, None], edges[1:, None]
+    vs = (0.5 * (b - a) * _GX[None] + 0.5 * (a + b)).ravel()
+    ws = (0.5 * (b - a) * _GW[None]).ravel()
+    return np.einsum("vk,v->k", _full_turn(s, vs, center), ws)
+
+
+def _pole_v(s, above: bool) -> float:
+    if isinstance(s, Sphere):
+        return np.pi / 2 if above else -np.pi / 2
+    if isinstance(s, Cone):
+        apex = s.apex_v
+        return apex
+    raise CadError(
+        "UNSUPPORTED_GEOMETRY",
+        f"a face wrapping once around a {s.kind} without a second boundary",
+    )
+
+
 def _face_integrals(body: Body, face, center: np.ndarray, pieces: int) -> np.ndarray:
     """[V, Mx, My, Mz, Ixx, Iyy, Izz, Ixy, Ixz, Iyz, Area] contributions of one face."""
     s = face.surface
     # Boundary nodes along every loop, in loop order.
     nodes_p, nodes_d, nodes_w = [], [], []
+    loop_slices = []
     for loop in face.loops:
+        start = sum(len(x) for x in nodes_p)
         for ei, fwd in loop:
             e = body.edges[ei]
             ts, ws = _edge_nodes(e, pieces)
@@ -96,6 +158,7 @@ def _face_integrals(body: Body, face, center: np.ndarray, pieces: int) -> np.nda
             nodes_p.append(p)
             nodes_d.append(d)
             nodes_w.append(ws)
+        loop_slices.append(slice(start, sum(len(x) for x in nodes_p)))
     p = np.concatenate(nodes_p)
     d = np.concatenate(nodes_d)
     w = np.concatenate(nodes_w)
@@ -115,29 +178,37 @@ def _face_integrals(body: Body, face, center: np.ndarray, pieces: int) -> np.nda
     half = 0.5 * (uv[:, 0] - u_ref)
     s_nodes = u_ref + half[:, None] * (_GX[None] + 1.0)  # (B, n)
     v_nodes = np.broadcast_to(uv[:, 1:2], s_nodes.shape)
-    flat_s, flat_v = s_nodes.ravel(), v_nodes.ravel()
-    pts = s.point(flat_s, flat_v) - center
-    dsu, dsv = s.derivatives(flat_s, flat_v)
-    n = np.cross(dsu, dsv)
-    x, y, z = pts[:, 0], pts[:, 1], pts[:, 2]
-    g = np.stack(
-        [
-            x * n[:, 0],
-            0.5 * x * x * n[:, 0],
-            0.5 * y * y * n[:, 1],
-            0.5 * z * z * n[:, 2],
-            x**3 / 3.0 * n[:, 0],
-            y**3 / 3.0 * n[:, 1],
-            z**3 / 3.0 * n[:, 2],
-            0.5 * x * x * y * n[:, 0],
-            0.5 * x * x * z * n[:, 0],
-            0.5 * y * y * z * n[:, 1],
-            np.linalg.norm(n, axis=1),
-        ],
-        axis=1,
-    ).reshape(len(uv), len(_GX), 11)
+    g = _integrand(s, s_nodes.ravel(), v_nodes.ravel(), center).reshape(len(uv), len(_GX), 11)
     big_g = np.einsum("bnk,n->bk", g, _GW) * half[:, None]
     out = np.einsum("bk,b->k", big_g, dv * w)
+    if s.periodic_u and face.window is None:
+        # Loops that wrap around the axis (a band without seam edges, a cap): the
+        # parameter domain, cut open along any u = const, gains two seam sides whose
+        # integrals differ by a whole turn, H(v_end) - H(v_start) whatever the path;
+        # summed over the wrapping loops (k turns each, at height v) that is
+        # -sum k H(v), with a pole as a loop for a single cap.
+        wraps = []
+        for loop, sl in zip(face.loops, loop_slices, strict=True):
+            uu = np.unwrap(uv[sl, 0])
+            k = round(float(uu[-1] - uu[0]) / (2 * np.pi))
+            if k:
+                # The loop opens at its first vertex (between its last and first nodes).
+                ei, fwd = loop[0]
+                e = body.edges[ei]
+                corner = body.vertices[e.v0 if fwd else e.v1]
+                v = float(np.asarray(s.inverse(corner)).reshape(-1)[1])
+                if s.periodic_v:
+                    v0 = float(uv[sl.start, 1])
+                    v = v0 + float(np.mod(v - v0 + np.pi, 2 * np.pi) - np.pi)
+                wraps.append((k, v))
+        if wraps:
+            total_k = sum(k for k, _ in wraps)
+            if total_k:
+                above = (total_k > 0) == face.sense
+                wraps.append((-total_k, _pole_v(s, above)))
+            v_ref = wraps[0][1]
+            for k, v in wraps[1:]:
+                out -= k * _turn_integral(s, v_ref, v, center)
     # The area term must not depend on the loops' orientation: the face's area is
     # positive; with sense False the loops run clockwise in (u, v).
     out[10] = out[10] if face.sense else -out[10]

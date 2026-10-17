@@ -241,7 +241,12 @@ def register(kind):
 def _load_kinds() -> None:
     from . import kinds  # noqa: F401  (registers parameter, frame, sketch, part)
 
-    for module in ("aether3d.cad.assembly", "aether3d.arch.kinds", "aether3d.cad.drawing.kind"):
+    for module in (
+        "aether3d.cad.assembly",
+        "aether3d.arch.kinds",
+        "aether3d.cad.interop",
+        "aether3d.cad.drawing.kind",
+    ):
         try:
             __import__(module)
         except ModuleNotFoundError as exc:  # pragma: no cover - optional parts of the stage

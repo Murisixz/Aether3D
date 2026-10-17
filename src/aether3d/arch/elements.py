@@ -101,6 +101,9 @@ class ElementResult:
     role: str
     info: dict = field(default_factory=dict)
     keys: list[str] = field(default_factory=list)
+    # How the solid was swept (for exporters): {"frame": Frame, "loops": [outer, *holes]
+    # (2D points in the frame), "depth": float}; None for solids built otherwise.
+    sweep: dict | None = None
 
 
 class _ElementKind(ItemKind):
@@ -172,15 +175,15 @@ class SlabKind(_ElementKind):
             "GrossVolume": region.outer.area * t,
             "NetVolume": area * t,
         }
-        key = content_key(
-            "slab",
-            ctx.doc._keys.get(ctx.item.id, ""),
-            [lp.polyline(1e9).tolist() for lp in region.loops],
-            top,
-            t,
-        )
+        loops2d = [np.array([p.curve.start for p in lp.pieces]) for lp in region.loops]
+        key = content_key("slab", [lp.tolist() for lp in loops2d], top, t)
+        sweep = {
+            "frame": Frame(frame.origin + frame.z * (top - t), frame.x, frame.y, frame.z),
+            "loops": loops2d,
+            "depth": t,
+        }
         return ElementResult(
-            "slab", [(ctx.item.name, body, np.eye(4))], q, "slab", {"top": top}, [key]
+            "slab", [(ctx.item.name, body, np.eye(4))], q, "slab", {"top": top}, [key], sweep
         )
 
 
@@ -232,10 +235,19 @@ class RoofKind(_ElementKind):
             d_vert = t / math.cos(slope)
             height = span * math.tan(slope) + 2 * d_vert + 1.0
             prism = _prism(poly, frame, base - d_vert, base + height, ctx.item.name, 0)
+            # The solid taken away reaches past the footprint and below it: coplanar
+            # boundaries in a difference are ill-defined (they would leave zero-thickness
+            # sheets); this way every face of the shell is cut cleanly.
+            margin = max(1.0, span)
+            grown = offset_loop(
+                _poly_region(poly).outer, -margin, Tolerance.for_scale(span).resolution
+            )
+            big_poly = np.array([p.curve.start for p in grown.pieces])
+            big = _prism(big_poly, frame, base - d_vert - margin, base + height + margin, "cut", 0)
             planes = _roof_planes(poly, rtype, slope, base, d, ctx)
-            size = 4 * (span + height)
+            size = 4 * (span + height + margin)
             upper = prism
-            lower = prism
+            lower = big
             for o, n in planes:
                 ow = frame.to_world(o)
                 nw = frame.direction_to_world(n)
@@ -416,6 +428,11 @@ class StairKind(_ElementKind):
             "NetVolume": mass_properties(body).volume,
         }
         key = content_key("stair", np.array(clean).tolist(), width, o.tolist(), u.tolist())
+        sweep = {
+            "frame": fr,
+            "loops": [np.array([p.curve.start for p in region.outer.pieces])],
+            "depth": width,
+        }
         return ElementResult(
             "stair",
             [(ctx.item.name, body, np.eye(4))],
@@ -423,6 +440,7 @@ class StairKind(_ElementKind):
             "stair",
             {"checks": checks, "criteria_met": not failed},
             [key],
+            sweep,
         )
 
 

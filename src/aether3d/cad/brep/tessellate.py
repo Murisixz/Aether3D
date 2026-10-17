@@ -241,6 +241,7 @@ def _curved(face, loops, pos, base, chord, angle, size):
     s = face.surface
     uv_loops = []
     pid_loops = []
+    through_pole: list[bool] = []
     ref_u = ref_v = None
     for lp in loops:
         p = pos[lp]
@@ -259,6 +260,14 @@ def _curved(face, loops, pos, base, chord, angle, size):
         if s.periodic_v:
             uv[:, 1] = _unwrap(uv[:, 1], ref_v)
             ref_v = float(uv[0, 1]) if ref_v is None else ref_v
+        if s.periodic_u and face.window is None and np.any(singular) and np.any(~singular):
+            # A loop through a pole that wraps around the axis opens at the pole (its u
+            # jumps by a turn there).
+            k = _turns(uv[~singular, 0])
+            if k:
+                first = int(np.flatnonzero(singular)[0])
+                after = np.arange(len(uv)) > first
+                uv[after & ~singular, 0] -= 2 * math.pi * k
         # Poles: one parameter point per neighbouring direction.
         out_uv, out_id = [], []
         n = len(lp)
@@ -273,6 +282,15 @@ def _curved(face, loops, pos, base, chord, angle, size):
                 out_id.append(int(lp[k]))
         uv_loops.append(np.array(out_uv))
         pid_loops.append(np.array(out_id, dtype=np.int64))
+        through_pole.append(bool(np.any(singular)))
+    seam_pts = np.zeros((0, 3))
+    if s.periodic_u and face.window is None:
+        uv_loops, pid_loops, seam_pts = _virtual_seams(
+            face, uv_loops, pid_loops, through_pole, base, chord, angle, size
+        )
+        if len(seam_pts):
+            pos = np.concatenate([pos, seam_pts], axis=0)
+            base += len(seam_pts)
     all_uv = np.concatenate(uv_loops)
     all_id = np.concatenate(pid_loops)
     nb = len(all_uv)
@@ -301,6 +319,7 @@ def _curved(face, loops, pos, base, chord, angle, size):
         tris = mesh.triangles()
     ids = np.concatenate([all_id, np.arange(base, base + len(pts) - nb)])
     new_pts = s.point(pts[nb:, 0], pts[nb:, 1]) if len(pts) > nb else np.zeros((0, 3))
+    new_pts = np.concatenate([seam_pts, new_pts], axis=0)
     g = ids[tris]
     keep = (g[:, 0] != g[:, 1]) & (g[:, 1] != g[:, 2]) & (g[:, 2] != g[:, 0])
     g, tl = g[keep], tris[keep]
@@ -312,6 +331,93 @@ def _curved(face, loops, pos, base, chord, angle, size):
         uvt = uvt[:, ::-1]
     uvm = uvt * np.array([sx, sy])
     return g, n, uvm, new_pts
+
+
+def _turns(u: np.ndarray) -> int:
+    """Net turns of a closed loop's unwrapped u (including its closing step)."""
+    w = np.unwrap(np.concatenate([u, u[:1]]))
+    return round(float(w[-1] - w[0]) / (2 * math.pi))
+
+
+def _seam_params(s, p, q, chord: float, angle: float, size: float) -> np.ndarray:
+    """Interior parameters t in (0, 1) along the straight (u, v) segment p -> q, fine
+    enough for the chord and angle tolerances."""
+    ts = [0.0, 1.0]
+    out = [0.0]
+    stack = [(0.0, 1.0)]
+    cos_a = math.cos(angle)
+    while stack:
+        a, b = stack.pop()
+        m = 0.5 * (a + b)
+        pa, pb, pm = (s.point(*(p + t * (q - p))).reshape(3) for t in (a, b, m))
+        na, nb = (s.normal(*(p + t * (q - p))).reshape(3) for t in (a, b))
+        dev = float(np.linalg.norm(pm - 0.5 * (pa + pb)))
+        if (dev > chord or float(na @ nb) < cos_a) and b - a > 1e-6 and len(ts) < 4096:
+            ts.append(m)
+            stack += [(m, b), (a, m)]
+        else:
+            out.append(b)
+    del size
+    return np.array(out[1:-1])
+
+
+def _virtual_seams(face, uv_loops, pid_loops, through_pole, base, chord, angle, size):
+    """Faces on u-periodic surfaces whose loops wrap around the axis (a band between two
+    loops, or a cap around a pole) have no seam edge to cut their parameter domain open.
+    Join the wrapping loops by a seam curve (an iso-parametric segment in (u, v),
+    sampled once and used by both sides) into one simple ring."""
+    s = face.surface
+    # Loops through a pole are already open there.
+    wraps = [i for i, lp in enumerate(uv_loops) if not through_pole[i] and _turns(lp[:, 0])]
+    if not wraps:
+        return uv_loops, pid_loops, np.zeros((0, 3))
+    if len(wraps) > 2:
+        raise CadError("UNSUPPORTED_GEOMETRY", "a face wrapping around its axis more than twice")
+    a = wraps[0]
+    ua, ida = uv_loops[a], pid_loops[a]
+    ka = _turns(ua[:, 0])
+    end_a = ua[0] + np.array([2 * math.pi * ka, 0.0])
+    if len(wraps) == 2:
+        b = wraps[1]
+        ub, idb = uv_loops[b].copy(), pid_loops[b]
+        kb = _turns(ub[:, 0])
+        if kb != -ka:
+            raise CadError("UNSUPPORTED_GEOMETRY", "a face whose boundaries wrap the same way")
+        ub[:, 0] += 2 * math.pi * round(float(end_a[0] - ub[0, 0]) / (2 * math.pi))
+        target = ub[0]
+    else:
+        from .properties import _pole_v
+
+        above = (ka > 0) == face.sense
+        target = np.array([end_a[0], _pole_v(s, above)])
+    ts = _seam_params(s, end_a, target, chord, angle, size)
+    seam_uv = end_a[None] + ts[:, None] * (target - end_a)[None]
+    seam_ids = np.arange(base, base + len(seam_uv))
+    seam3 = s.point(seam_uv[:, 0], seam_uv[:, 1]).reshape(-1, 3)
+    shift = np.array([2 * math.pi * ka, 0.0])
+    if len(wraps) == 2:
+        ring = [ua, end_a[None], seam_uv, ub, (ub[0] - shift)[None], seam_uv[::-1] - shift]
+        ids = [ida, ida[:1], seam_ids, idb, idb[:1], seam_ids[::-1]]
+    else:
+        pole_id = base + len(seam_uv)
+        seam3 = np.concatenate([seam3, s.point(target[0], target[1]).reshape(1, 3)])
+        ring = [
+            ua,
+            end_a[None],
+            seam_uv,
+            target[None],
+            (target - shift)[None],
+            seam_uv[::-1] - shift,
+        ]
+        ids = [ida, ida[:1], seam_ids, [pole_id], [pole_id], seam_ids[::-1]]
+    merged_uv = np.concatenate(ring)
+    merged_id = np.concatenate([np.asarray(x, dtype=np.int64) for x in ids])
+    rest = [i for i in range(len(uv_loops)) if i not in wraps]
+    return (
+        [merged_uv] + [uv_loops[i] for i in rest],
+        [merged_id] + [pid_loops[i] for i in rest],
+        seam3,
+    )
 
 
 def _ruled_band(uv: np.ndarray) -> np.ndarray | None:
