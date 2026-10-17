@@ -666,7 +666,8 @@ def evaluate(system: AnimationSystem, t: float, prog: Program | None = None) -> 
         elif g == "morph":
             morphs.setdefault(tid, {})[spec.name] = v
         elif g == "constraint":
-            influences.setdefault(tid, {})[spec.name] = v
+            key = spec.name if spec.field == "influence" else f"{spec.name}.{spec.field}"
+            influences.setdefault(tid, {})[key] = v
     for k in np.flatnonzero(rot_touched).tolist():
         b, joint = prog.rot_slots[k]
         kind, tid = prog.targets[b]

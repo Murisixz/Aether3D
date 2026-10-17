@@ -58,7 +58,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "enabled": True,
 }
 
-KINDS = ("clip", "binding", "rig", "skin", "constraints", "morph")
+KINDS = ("clip", "binding", "rig", "skin", "constraints", "morph", "path", "sequence")
 
 
 def _err(code: str, message: str, location: str | None = None, **kw: Any) -> AnimationError:
@@ -108,6 +108,7 @@ class AnimationSystem:
         self._clip_names: dict[str, AnimItem] = {}
         self._bindings: dict[tuple[str, str], AnimItem] = {}
         self._owned: dict[tuple[str, str], AnimItem] = {}  # (kind, object id) -> item
+        self._path_names: dict[str, AnimItem] = {}
         self._settings: dict[str, Any] = copy.deepcopy(DEFAULT_SETTINGS)
         self._serial = 0
         self._time = 0.0
@@ -166,6 +167,7 @@ class AnimationSystem:
 
     def _reindex(self) -> None:
         names: dict[str, AnimItem] = {}
+        path_names: dict[str, AnimItem] = {}
         bindings: dict[tuple[str, str], AnimItem] = {}
         owned: dict[tuple[str, str], AnimItem] = {}
         for item in self._items.values():
@@ -175,6 +177,10 @@ class AnimationSystem:
                 if item._name in names:
                     raise _err("DUPLICATE_NAME", f"two clips would be named {item._name!r}")
                 names[item._name] = item
+            elif item.kind == "path":
+                if item._name in path_names:
+                    raise _err("DUPLICATE_NAME", f"two paths would be named {item._name!r}")
+                path_names[item._name] = item
             elif item.kind == "binding":
                 key = item._definition.target
                 if key in bindings:
@@ -186,6 +192,7 @@ class AnimationSystem:
                     raise _err("DUPLICATE_BINDING", f"two {item.kind} items for object {key[1]}")
                 owned[key] = item
         self._clip_names = names
+        self._path_names = path_names
         self._bindings = bindings
         self._owned = owned
 
@@ -843,7 +850,13 @@ class AnimationSystem:
         return out
 
     def _path_id(self, ref: str, location: str) -> str:
-        return ref  # (paths are cinematics items: resolved there)
+        item = self._items.get(ref)
+        if item is not None and item.kind == "path" and item._alive:
+            return item.id
+        item = self._path_names.get(ref)
+        if item is None:
+            raise _err("PATH_MISSING", f"no path {ref!r} (by id or name)", location)
+        return item.id
 
     def attach(self, obj: Any, armature: Any, joint: str) -> None:
         """Make ``obj`` follow ``joint`` of ``armature``'s rig rigidly (from where it is
@@ -1096,6 +1109,277 @@ class AnimationSystem:
         return found
 
     # ------------------------------------------------------------------ #
+    # Cinematics: paths, path following, shots, camera moves
+    # ------------------------------------------------------------------ #
+
+    def add_path(self, name: str, points: Any = None, **options: Any) -> str:
+        """A path item (``kind``: ``catmull_rom`` (default), ``bezier`` with ``handles``,
+        ``linear``, or ``circle`` with ``center``, ``radius``, ``normal``, ``start``);
+        returns its id."""
+        from .cinematics import parse_path
+
+        P.check_name(name, "a path name", "name")
+        if name in self._path_names:
+            raise _err("DUPLICATE_NAME", f"a path is already named {name!r}", "name")
+        raw = dict(options)
+        if points is not None:
+            raw["points"] = points.tolist() if isinstance(points, np.ndarray) else points
+        path = parse_path(raw, "path")
+        with self._op(f"Add path {name!r}"):
+            item = self._new_item("path", name, path)
+        return item.id
+
+    def path(self, ref: str) -> Any:
+        return self._items[self._path_id(ref, "path")]._definition
+
+    def remove_path(self, ref: str) -> None:
+        item = self._items[self._path_id(ref, "path")]
+        with self._op(f"Remove path {item._name!r}"):
+            self._set(item, alive=False)
+
+    def follow_path(
+        self,
+        obj: Any,
+        path: str,
+        *,
+        start: float,
+        end: float,
+        offsets: tuple[float, float] = (0.0, 1.0),
+        easing: str | None = "sine",
+        ease: str = "in_out",
+        follow: bool = True,
+        axis: str = "+y",
+        up: str = "+z",
+        loop: bool = False,
+        name: str = "follow",
+    ) -> None:
+        """Move ``obj`` along ``path`` from ``offsets[0]`` to ``offsets[1]`` (length
+        fractions) between times ``start`` and ``end``, eased (``easing=None``: constant
+        speed): a follow_path constraint and keys on its offset. One undo step."""
+        target = self._object(obj, "object")
+        pid = self._path_id(path, "path")
+        s, e = check_time(start, "start"), check_time(end, "end")
+        if not s < e:
+            raise _err("INVALID_RANGE", "start must be before end", "start")
+        constraint = {
+            "name": name,
+            "type": "follow_path",
+            "path": pid,
+            "follow": follow,
+            "axis": axis,
+            "up": up,
+            "loop": loop,
+            "offset": float(offsets[0]),
+        }
+        with self._op(f"Follow path with {target.name!r}"):
+            others = [c for c in self.constraints(target) if c["name"] != name]
+            self.set_constraints(target, [*others, constraint])
+            opts = {"interpolation": easing or "linear", "ease": ease}
+            self.keyframe(target, f'constraints["{name}"].offset', s, float(offsets[0]), **opts)
+            self.keyframe(target, f'constraints["{name}"].offset', e, float(offsets[1]), **opts)
+
+    def shots(self) -> list[dict[str, Any]]:
+        item = self._owned.get(("sequence", "sequence"))
+        return [] if item is None else [s.to_json() for s in item._definition.shots]
+
+    def set_shots(self, shots: list[Any] | None) -> None:
+        """The shot sequence: ``[{camera, start, end, name, transition}]`` (cameras by
+        id or name; ``transition``: ``{"type": "blend", "duration": d}``); ``None`` or
+        ``[]`` removes it. One undo step."""
+        from .cinematics import parse_sequence
+
+        item = self._owned.get(("sequence", "sequence"))
+        with self._op("Set shots"):
+            if not shots:
+                if item is not None:
+                    self._set(item, alive=False)
+                return
+            canon = []
+            for i, s in enumerate(shots):
+                if not isinstance(s, dict):
+                    raise _err("INVALID_SEQUENCE", "a shot is an object", f"shots[{i}]")
+                cam = self._object(s.get("camera"), f"shots[{i}].camera")
+                if cam._camera is None:
+                    raise _err(
+                        "INVALID_SEQUENCE", f"{cam.name!r} is not a camera", f"shots[{i}].camera"
+                    )
+                canon.append({**s, "camera": cam._id})
+            seq = parse_sequence({"shots": canon}, "sequence")
+            if item is None:
+                self._new_item("sequence", "Sequence", seq)
+            else:
+                self._set(item, definition=seq)
+
+    def add_shot(
+        self, camera: Any, start: float, end: float, *, name: str | None = None, blend: float = 0.0
+    ) -> None:
+        shot: dict[str, Any] = {"camera": camera, "start": start, "end": end}
+        if name is not None:
+            shot["name"] = name
+        if blend:
+            shot["transition"] = {"type": "blend", "duration": blend}
+        self.set_shots([*self.shots(), shot])
+
+    def camera_move(
+        self,
+        camera: Any,
+        move: str,
+        amount: float,
+        start: float,
+        end: float,
+        *,
+        easing: str | None = "sine",
+        ease: str = "in_out",
+    ) -> None:
+        """A camera move as keys (start: the camera's pose at ``start``; editable like any
+        keys): ``dolly`` (forward, along the view), ``truck`` (right), ``pedestal`` /
+        ``crane`` (up, world Z), ``pan`` (degrees about world Z), ``tilt`` (degrees about
+        the camera's X), ``roll`` (degrees about its view axis), ``zoom`` (a factor: 2
+        halves the view's width). One undo step."""
+        cam = self._object(camera, "camera")
+        if cam._camera is None:
+            raise _err("INVALID_TARGET", f"{cam.name!r} is not a camera", "camera")
+        moves = ("dolly", "truck", "pedestal", "crane", "pan", "tilt", "roll", "zoom")
+        if move not in moves:
+            raise _err("INVALID_ARGUMENT", f"move is one of {', '.join(moves)}", "move")
+        if (
+            isinstance(amount, bool)
+            or not isinstance(amount, (int, float))
+            or not math.isfinite(float(amount))
+        ):
+            raise _err("INVALID_ARGUMENT", "amount is a finite number", "amount")
+        s, e = check_time(start, "start"), check_time(end, "end")
+        if not s < e:
+            raise _err("INVALID_RANGE", "start must be before end", "start")
+        from ..rendering.scene_data import world_matrices
+
+        overlay = self.overlay(s)
+        worlds = world_matrices(self.scene, overlay)
+        world = worlds[cam._id]
+        parent = cam._parent
+        p_world = np.eye(4) if parent is None else worlds[parent._id]
+        local = np.linalg.solve(p_world, world)
+        from .constraints import decompose
+
+        pos, rot, _ = decompose(local)
+        opts: dict[str, Any] = {"interpolation": easing or "linear", "ease": ease}
+        timing = None if easing is None else {"easing": easing, "ease": ease}
+        with self._op(f"{move.capitalize()} {cam.name!r}"):
+            if move == "zoom":
+                if amount <= 0:
+                    raise _err("INVALID_ARGUMENT", "a zoom factor is positive", "amount")
+                lens = cam._camera
+                values = None if overlay is None else overlay.field_values(cam._id, "camera")
+                fov0 = float(values["fov"]) if values and "fov" in values else float(lens.fov)
+                fov1 = math.degrees(2 * math.atan(math.tan(math.radians(fov0) / 2) / amount))
+                self.keyframe(cam, "camera.fov", s, fov0, **opts)
+                self.keyframe(cam, "camera.fov", e, fov1, **opts)
+                return
+            if move in ("pan", "tilt", "roll"):
+                world_rot = world[:3, :3] / np.linalg.norm(world[:3, :3], axis=0)
+                axis = {
+                    "pan": np.array([0.0, 0.0, 1.0]),
+                    "tilt": world_rot[:, 0],
+                    "roll": world_rot[:, 1],
+                }[move]
+                turn = R.axis_angle(axis, np.radians(amount))[0]
+                parent_rot = (
+                    np.eye(3)
+                    if parent is None
+                    else p_world[:3, :3] / np.linalg.norm(p_world[:3, :3], axis=0)
+                )
+                q_parent = R.from_matrices(parent_rot)[0]
+                local_turn = R.multiply(
+                    R.conjugate(q_parent)[None], R.multiply(turn[None], q_parent[None])
+                )[0]
+                q1 = R.multiply(local_turn[None], rot[None])[0]
+                key0: dict[str, Any] = {"timing": timing} if timing else {}
+                self.keyframe(cam, "transform.rotation", s, rot.tolist(), **key0)
+                self.keyframe(cam, "transform.rotation", e, R.align(rot, q1).tolist())
+                return
+            forward = -world[:3, 1] / np.linalg.norm(world[:3, 1])
+            right = world[:3, 0] / np.linalg.norm(world[:3, 0])
+            direction = {
+                "dolly": forward,
+                "truck": right,
+                "pedestal": np.array([0.0, 0.0, 1.0]),
+                "crane": np.array([0.0, 0.0, 1.0]),
+            }[move]
+            delta_world = direction * float(amount)
+            delta_local = np.linalg.solve(p_world[:3, :3], delta_world)
+            self.keyframe(cam, "transform.position", s, pos.tolist(), **opts)
+            self.keyframe(cam, "transform.position", e, (pos + delta_local).tolist(), **opts)
+
+    def camera_orbit(
+        self,
+        camera: Any,
+        target: Any,
+        start: float,
+        end: float,
+        *,
+        degrees: float = 360.0,
+        easing: str | None = "sine",
+        ease: str = "in_out",
+        name: str | None = None,
+    ) -> str:
+        """Orbit ``camera`` around ``target`` (an object or a point) by ``degrees`` from
+        where it is at ``start``, keeping its distance and height, looking at the target:
+        an exact circle path, a follow_path constraint with eased offset keys and a look_at
+        constraint -- all editable. Returns the path's id."""
+        cam = self._object(camera, "camera")
+        from ..rendering.scene_data import world_matrices
+
+        worlds = world_matrices(self.scene, self.overlay(start))
+        if isinstance(target, (list, tuple)) and len(target) == 3:
+            center = np.asarray(target, np.float64)
+            look = {"point": [float(v) for v in center]}
+        else:
+            tobj = self._object(target, "target")
+            center = worlds[tobj._id][:3, 3]
+            look = {"object": tobj._id}
+        here = worlds[cam._id][:3, 3]
+        offset = here - center
+        radius = float(np.hypot(offset[0], offset[1]))
+        if radius < 1e-9:
+            raise _err(
+                "INVALID_ARGUMENT", "the camera is above its target: no circle to orbit", "camera"
+            )
+        start_angle = math.degrees(math.atan2(offset[1], offset[0]))
+        pname = name or self._unique_path_name(f"{cam.name} Orbit")
+        with self._op(f"Orbit {cam.name!r}"):
+            pid = self.add_path(
+                pname,
+                kind="circle",
+                center=[float(center[0]), float(center[1]), float(here[2])],
+                radius=radius,
+                start=start_angle,
+            )
+            self.follow_path(
+                cam,
+                pid,
+                start=start,
+                end=end,
+                offsets=(0.0, float(degrees) / 360.0),
+                easing=easing,
+                ease=ease,
+                follow=False,
+                loop=True,
+                name="orbit",
+            )
+            others = [c for c in self.constraints(cam) if c["name"] != "orbit_aim"]
+            self.set_constraints(
+                cam, [*others, {"name": "orbit_aim", "type": "look_at", "target": look}]
+            )
+        return pid
+
+    def _unique_path_name(self, base: str) -> str:
+        name, k = base, 1
+        while name in self._path_names:
+            k += 1
+            name = f"{base}.{k:03d}"
+        return name
+
+    # ------------------------------------------------------------------ #
     # Scene hooks
     # ------------------------------------------------------------------ #
 
@@ -1178,10 +1462,10 @@ class AnimationSystem:
             if k == "constraints"
         }
 
-    def _follow_path(self, constraint: Any, world: np.ndarray, pose: Any) -> Any:
+    def _follow_path(self, constraint: Any, world: np.ndarray, offset: float) -> Any:
         from .cinematics import follow_path
 
-        return follow_path(self, constraint, world, pose)
+        return follow_path(self, constraint, world, offset)
 
     @property
     def active(self) -> bool:
@@ -1328,6 +1612,19 @@ class AnimationSystem:
         for raw, loc, item in records:
             if item.kind == "clip":
                 item._definition = Clip.from_json(raw["definition"], f"{loc}.definition")
+        for raw, loc, item in records:
+            if item.kind in ("path", "sequence"):
+                item._definition = definition_from_json(
+                    item.kind, raw["definition"], self, f"{loc}.definition"
+                )
+                if item.kind == "sequence":
+                    for shot in item._definition.shots:
+                        if shot.camera not in self.scene._objects:
+                            raise _err(
+                                "INVALID_DOCUMENT",
+                                f"a shot names a missing camera {shot.camera!r}",
+                                loc,
+                            )
         for kind in ("rig", "skin", "constraints", "morph"):
             for raw, loc, item in records:
                 if item.kind == kind:
@@ -1635,9 +1932,24 @@ def _overlay_of(pose: AnimationPose, scene: Any) -> Any:
         fields=fields,
         materials=dict(pose.materials),
         meshes=dict(rigging.meshes),
-        camera=pose.extra.get("camera"),
         time=pose.time,
     )
+    if ("sequence", "sequence") in system._owned:
+        from ..rendering.scene_data import world_matrices
+        from .cinematics import shot_camera
+
+        camera = shot_camera(system, pose.time, world_matrices(scene, overlay), fields)
+        if camera is not None:
+            overlay = RenderOverlay(
+                ids=ids,
+                local=local,
+                visible=overlay.visible,
+                fields=fields,
+                materials=overlay.materials,
+                meshes=overlay.meshes,
+                camera=camera,
+                time=pose.time,
+            )
     return None if overlay.empty else overlay
 
 
@@ -1849,6 +2161,14 @@ def definition_from_json(
             raise _err(
                 "INVALID_DOCUMENT", f"a skin's arrays are malformed ({exc})", location
             ) from None
+    if kind == "path":
+        from .cinematics import parse_path
+
+        return parse_path(data, location)
+    if kind == "sequence":
+        from .cinematics import parse_sequence
+
+        return parse_sequence(data, location)
     if kind == "morph":
         from .rig import make_morph
 

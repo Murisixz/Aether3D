@@ -447,7 +447,8 @@ def _run_object_constraints(
         if w <= 0.0:
             continue
         if c.type == "follow_path":
-            out = system._follow_path(c, world, pose)
+            offset = influences.get(f"{c.name}.offset", c.p["offset"])
+            out = system._follow_path(c, world, offset)
             if out is None:
                 result.diagnostics.append(
                     _diag(

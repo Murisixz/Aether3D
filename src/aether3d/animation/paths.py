@@ -27,6 +27,7 @@ path                                   kind    unit                   valid valu
 ``joints["NAME"].scale.x|y|z``         scalar  factor                 finite
 ``morph["NAME"]``                      scalar  weight                 finite
 ``constraints["NAME"].influence``      scalar  0..1                   0 .. 1
+``constraints["NAME"].offset``         scalar  path fraction          finite
 =====================================  ======  =====================  ==================
 
 Paths of a **material**: ``base_color.r|g|b``, ``opacity``, ``metallic``, ``roughness``,
@@ -215,8 +216,23 @@ def _resolve(
             return PathSpec(
                 _canonical(toks), OBJECT, SCALAR, "morph", "weight", None, sub, "1", -_INF, _INF
             )
-        if names[1:] != ["influence"] or any(subs[1:]):
-            raise _bad(path, 'constraints animate constraints["NAME"].influence', location)
+        if len(names) != 2 or names[1] not in ("influence", "offset") or any(subs[1:]):
+            raise _bad(
+                path, 'constraints animate constraints["NAME"].influence and .offset', location
+            )
+        if names[1] == "offset":
+            return PathSpec(
+                _canonical(toks),
+                OBJECT,
+                SCALAR,
+                "constraint",
+                "offset",
+                None,
+                sub,
+                "1",
+                -_INF,
+                _INF,
+            )
         return PathSpec(
             _canonical(toks), OBJECT, SCALAR, "constraint", "influence", None, sub, "1", 0.0, 1.0
         )
