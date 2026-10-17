@@ -648,10 +648,12 @@ def bake(
                 values[name] = _gray(_opacity(ps, it))
             else:  # ids
                 values[name] = _ids(ps, it, name)
+        # Sum per texel over this chunk's texels only (not the whole image).
+        texels, inv = np.unique(tex[rows], return_inverse=True)
         for name, v in values.items():
             for c in range(4):
-                channels[name][:, c] += np.bincount(tex[rows], v[:, c], height * width)
-        weight += np.bincount(tex[rows], minlength=height * width)
+                channels[name][texels, c] += np.bincount(inv, v[:, c], texels.size)
+        weight[texels] += np.bincount(inv, minlength=texels.size)
         t_shade += time.perf_counter() - ta
         if progress is not None:
             progress(min(start + CHUNK, total), total)

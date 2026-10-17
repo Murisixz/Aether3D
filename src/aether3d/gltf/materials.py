@@ -751,15 +751,9 @@ class MaterialExporter:
             binding, texture = found
             channel = binding.channel_for(slot, texture.kind)
             if slot == "occlusion" and texture.kind == "image" and channel != "r":
-                self.note(
-                    "TEXTURE_CHANNEL_NOT_EXPORTED",
-                    WARNING,
-                    "glTF reads occlusion from the red channel; this binding reads "
-                    f"{channel!r} and is left out",
-                    f"{loc}.textures.{slot}",
-                )
-                continue
-            info = self._texture_info(m, slot, binding, texture)
+                info = self._packed_occlusion(m, binding, texture, channel)
+            else:
+                info = self._texture_info(m, slot, binding, texture)
             if info is None:
                 continue
             if slot == "normal" and m._values["normal_strength"] != 1.0:
@@ -779,7 +773,6 @@ class MaterialExporter:
             )
 
     def _metallic_roughness(self, m: Material, pbr: dict, usable) -> None:
-        loc = m.location
         metal, rough = usable("metallic"), usable("roughness")
         if metal is None and rough is None:
             return
@@ -797,16 +790,11 @@ class MaterialExporter:
                 and rough[0].channel_for("roughness", "image") == "g"
                 and metal[0].matrix.tolist() == rough[0].matrix.tolist()
             )
-            if not same:
-                self.note(
-                    "TEXTURE_CHANNEL_NOT_EXPORTED",
-                    WARNING,
-                    "glTF needs metallic (blue) and roughness (green) in one texture; these "
-                    "bindings differ, so they are left out",
-                    f"{loc}.textures",
-                )
-                return
-            info = self._texture_info(m, "metallic", *metal)
+            info = (
+                self._texture_info(m, "metallic", *metal)
+                if same
+                else self._packed_metallic_roughness(m, metal, rough)
+            )
         else:
             # One image for one of the two: exporting it as the packed texture would also drive
             # the other value, which is harmless only for roughness alone with metallic 0.
@@ -817,20 +805,98 @@ class MaterialExporter:
                 and binding.channel_for(slot, "image") == "g"
                 and m._values["metallic"] == 0.0
             )
-            if not exportable:
-                self.note(
-                    "TEXTURE_CHANNEL_NOT_EXPORTED",
-                    WARNING,
-                    f"glTF's metallic-roughness texture would also change "
-                    f"{'roughness' if slot == 'metallic' else 'metallic'}; the {slot} texture is "
-                    "left out (bind one texture to both, packed blue/green, or bake procedural "
-                    "ones)",
-                    f"{loc}.textures.{slot}",
-                )
-                return
-            info = self._texture_info(m, slot, binding, texture)
+            info = (
+                self._texture_info(m, slot, binding, texture)
+                if exportable
+                else self._packed_metallic_roughness(m, metal, rough)
+            )
         if info is not None:
             pbr["metallicRoughnessTexture"] = info
+
+    def _packed_occlusion(self, m: Material, binding: Any, texture: Any, channel: str):
+        """glTF reads occlusion from red: an image whose occlusion is in another channel is
+        copied there (a new PNG)."""
+        from ..rendering.png import encode_png
+
+        try:
+            pixels = np.asarray(texture.load().image.pixels)
+        except MaterialError as exc:
+            message = f"texture {texture.name!r} cannot be read ({exc.message}); left out"
+            self.note(exc.code, WARNING, message, f"{m.location}.textures.occlusion")
+            return None
+        if channel == "luminance":
+            plane = pixels[..., :3].astype(np.float64) @ np.array([0.2126, 0.7152, 0.0722])
+        else:
+            plane = pixels[..., "rgba".index(channel)].astype(np.float64)
+        out = np.full(pixels.shape[:2] + (4,), 255, dtype=np.uint8)
+        out[..., 0] = np.round(plane).astype(np.uint8)
+        out[..., 1] = out[..., 2] = out[..., 0]
+        self.note(
+            "TEXTURE_CHANNELS_PACKED",
+            INFO,
+            f"occlusion (channel {channel!r} of {texture.name!r}) copied to the red channel of "
+            "a PNG, as glTF reads it",
+            f"{m.location}.textures.occlusion",
+        )
+        image = self._image(encode_png(out), "image/png", f"{texture.name} occlusion")
+        sampler = self._sampler(texture.wrap, texture.filter, texture.mipmaps)
+        return self._info(image, sampler, binding)
+
+    def _packed_metallic_roughness(self, m: Material, metal: Any, rough: Any) -> dict | None:
+        """glTF's metallic-roughness texture built from image or painted textures whose
+        channels glTF cannot read as they are: metallic to blue, roughness to green (a value
+        without a texture is 1 there, so its factor alone gives it), at the larger size
+        (nearest texel). The bindings must share one transform."""
+        from ..rendering.png import encode_png
+
+        loc = m.location
+        found = [(b, t, slot) for b, t, slot in (
+            (*metal, "metallic") if metal is not None else (None, None, None),
+            (*rough, "roughness") if rough is not None else (None, None, None),
+        ) if b is not None]  # fmt: skip
+        if len(found) == 2 and found[0][0].matrix.tolist() != found[1][0].matrix.tolist():
+            self.note(
+                "TEXTURE_CHANNEL_NOT_EXPORTED",
+                WARNING,
+                "glTF needs metallic and roughness in one texture; these bindings use "
+                "different transforms, so they are left out",
+                f"{loc}.textures",
+            )
+            return None
+        planes = {}
+        for binding, texture, slot in found:
+            try:
+                pixels = np.asarray(texture.load().image.pixels)
+            except MaterialError as exc:
+                self.note(exc.code, WARNING, f"texture {texture.name!r} cannot be read "
+                          f"({exc.message}); the {slot} slot keeps only its factor",
+                          f"{loc}.textures.{slot}")  # fmt: skip
+                return None
+            channel = binding.channel_for(slot, "image")
+            if channel == "luminance":
+                plane = pixels[..., :3].astype(np.float64) @ np.array([0.2126, 0.7152, 0.0722])
+            else:
+                plane = pixels[..., "rgba".index(channel)].astype(np.float64)
+            planes[slot] = plane
+        h = max(p.shape[0] for p in planes.values())
+        w = max(p.shape[1] for p in planes.values())
+        packed = np.full((h, w, 4), 255, dtype=np.uint8)
+        for slot, plane in planes.items():
+            rows = np.minimum((np.arange(h) + 0.5) * plane.shape[0] / h, plane.shape[0] - 1)
+            cols = np.minimum((np.arange(w) + 0.5) * plane.shape[1] / w, plane.shape[1] - 1)
+            resized = plane[rows.astype(int)][:, cols.astype(int)]
+            packed[..., 2 if slot == "metallic" else 1] = np.round(resized).astype(np.uint8)
+        binding, texture, _ = found[0]
+        self.note(
+            "TEXTURE_CHANNELS_PACKED",
+            INFO,
+            f"{' and '.join(slot for *_, slot in found)} packed into one {w}x{h} "
+            "metallic-roughness PNG (metallic in blue, roughness in green), as glTF reads them",
+            f"{loc}.textures",
+        )
+        image = self._image(encode_png(packed), "image/png", f"{m.name} metallic-roughness")
+        sampler = self._sampler(texture.wrap, texture.filter, texture.mipmaps)
+        return self._info(image, sampler, binding)
 
     # -- images, samplers and texture infos -----------------------------------------
 

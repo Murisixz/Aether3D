@@ -1,0 +1,437 @@
+{
+  "aether3d": "0.14.0",
+  "seconds": 8.779402530999505,
+  "orient": {
+    "operations": [
+      "unwrap",
+      "project_uvs",
+      "edit_uvs",
+      "uv_report",
+      "add_texture",
+      "add_layer",
+      "set_layer",
+      "remove_layer",
+      "clear_layer",
+      "flatten",
+      "texture_info",
+      "bind",
+      "stroke",
+      "fill",
+      "gradient",
+      "bake",
+      "transfer"
+    ],
+    "bake_maps": [
+      "normal",
+      "object_normal",
+      "world_normal",
+      "height",
+      "ao",
+      "thickness",
+      "curvature",
+      "position",
+      "base_color",
+      "roughness",
+      "metallic",
+      "emissive",
+      "opacity",
+      "material_id",
+      "object_id",
+      "group_id"
+    ],
+    "guide_chars": 6467,
+    "schema_bytes": 17310
+  },
+  "refused": {
+    "type": "TexturingError",
+    "code": "TEXTURE_NOT_FOUND",
+    "message": "texture 'crate_wood.png' not found",
+    "location": "operations[3].texture",
+    "hint": null,
+    "details": {}
+  },
+  "planar": {
+    "islands": 1,
+    "flipped_triangles": 48,
+    "overlapping_triangles": 96,
+    "stacked_pair_count": 0
+  },
+  "diagnosis": {
+    "accepted": false,
+    "findings": [
+      [
+        "UV_FLIPPED",
+        "geometry",
+        48.0
+      ],
+      [
+        "UV_OVERLAP",
+        "geometry",
+        96.0
+      ]
+    ]
+  },
+  "unwrapped": {
+    "islands": 4,
+    "flipped_triangles": 0,
+    "overlapping_triangles": 0,
+    "stacked_pair_count": 0
+  },
+  "final": {
+    "accepted": true,
+    "findings": []
+  },
+  "texture": {
+    "id": "ed43b99b-a5a5-459e-8191-ad79e1679158",
+    "name": "Barrel wood",
+    "type": "painted",
+    "width": 512,
+    "height": 512,
+    "encoding": "color",
+    "background": [
+      0.47843137254901963,
+      0.2901960784313726,
+      0.14901960784313725,
+      1.0
+    ],
+    "layers": [
+      {
+        "id": "e9c7d39ec8694389aa626309bf4e7405",
+        "name": "Hoops",
+        "kind": "paint",
+        "blend": "normal",
+        "opacity": 1.0,
+        "visible": true,
+        "tiles": 40,
+        "masked": false
+      }
+    ],
+    "wrap": [
+      "repeat",
+      "repeat"
+    ],
+    "filter": "linear",
+    "mipmaps": true,
+    "color_space": "auto",
+    "status": {
+      "ok": true,
+      "format": "painted",
+      "width": 512,
+      "height": 512,
+      "layers": 1,
+      "tiles": 40,
+      "revision": 6,
+      "digest": "painted:ed43b99b-a5a5-459e-8191-ad79e1679158:139912497085344:6",
+      "texture_bytes": 1398100
+    }
+  },
+  "history": [
+    "Crate and barrel",
+    "Map and texture",
+    "Unwrap the barrel and paint"
+  ],
+  "transcript": [
+    {
+      "tool": "capabilities",
+      "seconds": 0.0135,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "topic": "texturing",
+        "script_format": {
+          "format": "aether3d.texture-script",
+          "version": 1
+        },
+        "schema_resource": "aether3d://schema/texture-script"
+      }
+    },
+    {
+      "tool": "scene_new",
+      "seconds": 0.0024,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "scene": {
+          "open": true,
+          "name": "workshop",
+          "project": "workshop.aether",
+          "revision": 0,
+          "dirty": true,
+          "objects": 0
+        }
+      }
+    },
+    {
+      "tool": "execute_scene_plan",
+      "seconds": 0.042,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "ok": true,
+        "mode": "execute",
+        "status": "applied"
+      }
+    },
+    {
+      "tool": "scene_info",
+      "seconds": 0.0032,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "open": true,
+        "name": "workshop",
+        "project": "workshop.aether"
+      }
+    },
+    {
+      "tool": "run_script",
+      "seconds": 0.1717,
+      "error": true,
+      "images": 0,
+      "brief": {
+        "code": "TEXTURE_NOT_FOUND",
+        "location": "operations[3].texture",
+        "hint": null
+      }
+    },
+    {
+      "tool": "scene_info",
+      "seconds": 0.0022,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "open": true,
+        "name": "workshop",
+        "project": "workshop.aether"
+      }
+    },
+    {
+      "tool": "run_script",
+      "seconds": 0.1598,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "operations": [
+          "unwrap",
+          "project_uvs",
+          "add_texture",
+          "bind",
+          "add_texture",
+          "bind"
+        ]
+      }
+    },
+    {
+      "tool": "inspect_uvs",
+      "seconds": 0.2171,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "islands": 1,
+        "flipped_triangles": 48,
+        "overlapping_triangles": 96,
+        "stacked_pair_count": 0
+      }
+    },
+    {
+      "tool": "observe_scene",
+      "seconds": 0.9984,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "renderer": {
+          "backend": "gpu",
+          "requested": "auto",
+          "device": "gpu",
+          "adapter": {
+            "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+            "backend": "vulkan",
+            "software": false
+          },
+          "antialiasing_samples": 2
+        }
+      }
+    },
+    {
+      "tool": "diagnose_scene",
+      "seconds": 0.2129,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "accepted": false,
+        "findings": [
+          [
+            "UV_FLIPPED",
+            "geometry",
+            48.0
+          ],
+          [
+            "UV_OVERLAP",
+            "geometry",
+            96.0
+          ]
+        ]
+      }
+    },
+    {
+      "tool": "run_script",
+      "seconds": 4.41,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "operations": [
+          "unwrap",
+          "uv_report",
+          "stroke",
+          "stroke",
+          "stroke",
+          "stroke",
+          "stroke",
+          "stroke",
+          "stroke",
+          "stroke",
+          "fill"
+        ]
+      }
+    },
+    {
+      "tool": "inspect_uvs",
+      "seconds": 1.134,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "islands": 4,
+        "flipped_triangles": 0,
+        "overlapping_triangles": 0,
+        "stacked_pair_count": 0
+      }
+    },
+    {
+      "tool": "diagnose_scene",
+      "seconds": 0.4894,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "accepted": true,
+        "findings": []
+      }
+    },
+    {
+      "tool": "observe_scene",
+      "seconds": 0.058,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "renderer": {
+          "backend": "gpu",
+          "requested": "auto",
+          "device": "gpu",
+          "adapter": {
+            "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+            "backend": "vulkan",
+            "software": false
+          },
+          "antialiasing_samples": 2
+        }
+      }
+    },
+    {
+      "tool": "inspect_texture",
+      "seconds": 0.0021,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "texture": {
+          "id": "ed43b99b-a5a5-459e-8191-ad79e1679158",
+          "name": "Barrel wood",
+          "type": "painted",
+          "width": 512,
+          "height": 512,
+          "encoding": "color",
+          "background": [
+            0.47843137254901963,
+            0.2901960784313726,
+            0.14901960784313725,
+            1.0
+          ],
+          "layers": [
+            {
+              "id": "e9c7d39ec8694389aa626309bf4e7405",
+              "name": "Hoops",
+              "kind": "paint",
+              "blend": "normal",
+              "opacity": 1.0,
+              "visible": true,
+              "tiles": 40,
+              "masked": false
+            }
+          ],
+          "wrap": [
+            "repeat",
+            "repeat"
+          ],
+          "filter": "linear",
+          "mipmaps": true,
+          "color_space": "auto",
+          "status": {
+            "ok": true,
+            "format": "painted",
+            "width": 512,
+            "height": 512,
+            "layers": 1,
+            "tiles": 40,
+            "revision": 6,
+            "digest": "painted:ed43b99b-a5a5-459e-8191-ad79e1679158:139912497085344:6",
+            "texture_bytes": 1398100
+          }
+        },
+        "users": [
+          {
+            "material": "barrel",
+            "slot": "base_color"
+          }
+        ],
+        "scene": {
+          "open": true,
+          "name": "workshop",
+          "project": "workshop.aether",
+          "revision": 3,
+          "dirty": true,
+          "objects": 6
+        }
+      }
+    },
+    {
+      "tool": "history",
+      "seconds": 0.0013,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "steps": [
+          "Crate and barrel",
+          "Map and texture",
+          "Unwrap the barrel and paint"
+        ]
+      }
+    },
+    {
+      "tool": "scene_save",
+      "seconds": 0.0389,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "scene": {
+          "open": true,
+          "name": "workshop",
+          "project": "workshop.aether",
+          "revision": 3,
+          "dirty": false,
+          "objects": 6
+        },
+        "saved": "workshop.aether",
+        "history_file": null
+      }
+    }
+  ],
+  "failures": []
+}

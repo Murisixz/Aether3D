@@ -216,12 +216,50 @@ def test_what_gltf_cannot_express_is_reported(tmp_path):
     m.set_texture("occlusion", image, channel="g")
     plane.material = m
     codes = sorted(d.code for d in scene.export(tmp_path / "x.glb").diagnostics)
+    # Roughness read from red and occlusion from green are repacked into the channels glTF
+    # reads (0.14.0; they used to be left out).
     assert codes == [
         "OPACITY_TEXTURE_NOT_EXPORTED",
-        "TEXTURE_CHANNEL_NOT_EXPORTED",
-        "TEXTURE_CHANNEL_NOT_EXPORTED",
+        "TEXTURE_CHANNELS_PACKED",
+        "TEXTURE_CHANNELS_PACKED",
         "TEXTURE_MAPPING_NOT_EXPORTED",
     ]
+
+
+def test_channels_gltf_cannot_read_are_repacked(tmp_path):
+    """Painted roughness and metallic in red (as bakes bind them) and occlusion in green
+    reach glTF in blue/green and red, values intact, and render the same after import."""
+    from aether3d import create_sphere
+
+    scene = Scene()
+    ball = scene.add_object("Ball", mesh=create_sphere(1, 32, 16))
+    ball.unwrap(resolution=64)
+    rough = scene.add_painted_texture("R", 64, 64, encoding="data", background=[0.4, 0.4, 0.4, 1])
+    metal = scene.add_painted_texture("Mt", 32, 32, encoding="data", background=[0.0, 0, 0, 1])
+    occl = scene.add_painted_texture("O", 64, 64, encoding="data", background=[1, 0.6, 1, 1])
+    rough.add_layer("Ink")
+    metal.add_layer("Ink")
+    m = scene.create_material("M", roughness=1.0, metallic=1.0)
+    m.set_texture("roughness", rough, channel="r")
+    m.set_texture("metallic", metal, channel="r")
+    m.set_texture("occlusion", occl, channel="g")
+    ball.material = m
+    ball.paint([{"texture": rough, "color": [0.9]}, {"texture": metal, "color": [1.0]}],
+               {"radius": 0.4, "falloff": "constant"}, [[1, 0, 0]])  # fmt: skip
+    result = scene.export(tmp_path / "x.glb")
+    assert [d.code for d in result.diagnostics] == ["TEXTURE_CHANNELS_PACKED"] * 2
+    back = import_gltf(tmp_path / "x.glb").scene
+    mm = back.get_by_name("Ball").material
+    assert mm.textures["roughness"].texture == mm.textures["metallic"].texture
+    packed = back.materials.texture(mm.textures["roughness"].texture).load().image.pixels
+    assert packed.shape[:2] == (64, 64)
+    assert set(np.unique(packed[..., 1])) >= {102, 230}  # roughness 0.4 and 0.9, in green
+    assert set(np.unique(packed[..., 2])) >= {0, 255}  # metallic 0 and 1, in blue
+    occlusion = back.materials.texture(mm.textures["occlusion"].texture).load().image.pixels
+    assert (occlusion[..., 0] == 153).all()  # 0.6, now in red
+    before = scene.render(width=48, height=48, backend="cpu", frame=True).image
+    after = back.render(width=48, height=48, backend="cpu", frame=True).image
+    assert np.abs(before.astype(int) - after.astype(int)).mean() < 2.0
 
 
 def test_appearance_roughness_follows_blinn_phong():

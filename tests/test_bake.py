@@ -47,6 +47,14 @@ def test_uv_rasterization_covers_each_sample_once_with_valid_barycentrics():
     assert np.allclose(p[:, 1], 1 - (row + 0.5) / 80, rtol=0, atol=1 / 256 / 80)
 
 
+def test_rasterizing_a_region_no_triangle_reaches_is_empty():
+    uv = np.array([[[0.1, 0.1], [0.2, 0.1], [0.1, 0.2]]])
+    cov = rasterize_uv(uv, 64, 64, 1, region=(48, 0, 64, 16))  # far from the triangle
+    assert cov.sample.size == 0 and cov.overlaps == 0
+    tiny = np.array([[[0.5, 0.5], [0.5001, 0.5], [0.5, 0.5001]]])  # covers no sample center
+    assert rasterize_uv(tiny, 64, 64, 1).sample.size == 0
+
+
 def test_overlapping_uvs_take_the_lowest_triangle():
     uv = np.array([[[0, 0], [1, 0], [0, 1]], [[0, 0], [1, 0], [0, 1]]], float)
     cov = rasterize_uv(uv, 8, 8)
@@ -61,6 +69,40 @@ def test_dilation_grows_ring_by_ring():
     out, grown = dilate(v, cov, 2)
     assert grown[1:6, 1:6].all() and not grown[0].any()
     assert np.allclose(out[grown], 5.0)
+
+
+def _dilate_full_image(values, covered, steps):
+    """The reference: every ring computed over the whole image."""
+    from aether3d.texturing.dilate import SHIFTS
+
+    v = np.array(values, dtype=np.float64, copy=True)
+    cov = np.array(covered, dtype=bool, copy=True)
+    h, w = cov.shape
+    for _ in range(steps):
+        total = np.zeros_like(v)
+        count = np.zeros((h, w))
+        for dy, dx in SHIFTS:
+            ys = slice(max(dy, 0), h + min(dy, 0))
+            yd = slice(max(-dy, 0), h + min(-dy, 0))
+            xs = slice(max(dx, 0), w + min(dx, 0))
+            xd = slice(max(-dx, 0), w + min(-dx, 0))
+            total[yd, xd] += np.where(cov[ys, xs][..., None], v[ys, xs], 0.0)
+            count[yd, xd] += cov[ys, xs]
+        grow = ~cov & (count > 0)
+        v[grow] = total[grow] / count[grow][:, None]
+        cov |= grow
+    return v, cov
+
+
+def test_frontier_dilation_equals_the_full_image_reference():
+    rng = np.random.default_rng(5)
+    for _ in range(5):
+        cov = rng.random((40, 57)) < 0.08
+        v = np.where(cov[..., None], rng.random((40, 57, 3)), 0.0)
+        for steps in (1, 3, 12):
+            got = dilate(v, cov, steps)
+            want = _dilate_full_image(v, cov, steps)
+            assert np.array_equal(got[1], want[1]) and np.array_equal(got[0], want[0])
 
 
 # --------------------------------------------------------------------------- #

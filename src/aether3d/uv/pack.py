@@ -143,8 +143,8 @@ def footprint(tri_uv: np.ndarray, dilation: int) -> tuple[np.ndarray, np.ndarray
         for line in (band_lo, band_hi):
             with np.errstate(divide="ignore", invalid="ignore"):
                 s_ = (line - py) / dy
+                x = px + s_ * (qx - px)  # NaN where dy == 0: masked by ok
             ok = (dy != 0) & (s_ >= 0) & (s_ <= 1)
-            x = px + s_ * (qx - px)
             xs_lo = np.where(ok, np.minimum(xs_lo, x), xs_lo)
             xs_hi = np.where(ok, np.maximum(xs_hi, x), xs_hi)
     valid = xs_lo <= xs_hi

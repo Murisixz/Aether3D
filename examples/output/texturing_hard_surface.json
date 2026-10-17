@@ -1,0 +1,499 @@
+{
+  "aether3d": "0.14.0",
+  "failures": [],
+  "timings": {
+    "unwrap_body": 0.2593193929933477,
+    "unwrap_knob": 0.02333432700834237,
+    "unwrap_bezel": 0.020463873996050097,
+    "bake_ao_curvature": 5.433055548011907,
+    "paint": 1.1060650099971099,
+    "render": 21.81917195999995
+  },
+  "unwrap": {
+    "triangles": 236,
+    "unwrapped_triangles": 236,
+    "charts": 22,
+    "kept_islands": 0,
+    "splits": 5,
+    "method": "isometric",
+    "stretch_l2": {
+      "max": 1.0099653499777075,
+      "mean": 1.0017664016963885
+    },
+    "stretch_max": 1.4968747868670316,
+    "pack": {
+      "resolution": [
+        1024,
+        1024
+      ],
+      "padding": 8,
+      "texels_per_unit": 202.6096527813594,
+      "utilization": 0.49658447265624983,
+      "rows_used": 1009
+    },
+    "seconds": {
+      "charts": 0.021271024001180194,
+      "pack": 0.23733169998740777,
+      "total": 0.25925820400880184
+    }
+  },
+  "uv": {
+    "body": {
+      "islands": 22,
+      "flipped_triangles": 0,
+      "overlapping_triangles": 0,
+      "stretch_l2_max": 1.0099653503364199,
+      "texel_density": {
+        "resolution": [
+          1024,
+          1024
+        ],
+        "mean": 202.62045768279407,
+        "min": 202.6095871283153,
+        "max": 202.66869454692034,
+        "spread": 0.00011017327584416941
+      },
+      "utilization": 0.49658445401601864,
+      "min_gap_texels": 8
+    },
+    "knob": {
+      "islands": 10,
+      "flipped_triangles": 0,
+      "overlapping_triangles": 0,
+      "stretch_l2_max": 1.0000000000412885,
+      "texel_density": {
+        "resolution": [
+          1024,
+          1024
+        ],
+        "mean": 202.62045639567427,
+        "min": 202.620430723943,
+        "max": 202.6204672908361,
+        "spread": 4.203325461751449e-08
+      },
+      "utilization": 0.011688119779566377,
+      "min_gap_texels": 8
+    },
+    "bezel": {
+      "islands": 8,
+      "flipped_triangles": 0,
+      "overlapping_triangles": 0,
+      "stretch_l2_max": 1.0000000000092648,
+      "texel_density": {
+        "resolution": [
+          1024,
+          1024
+        ],
+        "mean": 202.62045956485795,
+        "min": 202.62043547853452,
+        "max": 202.6204819759372,
+        "spread": 5.847800496445214e-08
+      },
+      "utilization": 0.008251075646976816,
+      "min_gap_texels": 8
+    }
+  },
+  "bake": {
+    "maps": [
+      "ao",
+      "curvature"
+    ],
+    "resolution": [
+      1024,
+      1024
+    ],
+    "backend": "gpu",
+    "miss_fraction": 1.9222110040351126e-06,
+    "rays": 268440361,
+    "seconds": {
+      "setup": 0.7047119790076977,
+      "rasterize": 0.26906287600286305,
+      "trace": 0.18888666199927684,
+      "shade": 2.0856005149980774,
+      "finish": 1.8408009169943398,
+      "total": 5.429687244002707
+    }
+  },
+  "textures": {
+    "Cell color": {
+      "id": "13c1fa16-d22d-4447-b7c8-cf03d73ba268",
+      "name": "Cell color",
+      "type": "painted",
+      "width": 1024,
+      "height": 1024,
+      "encoding": "color",
+      "background": [
+        0.8509803921568627,
+        0.5098039215686274,
+        0.16862745098039217,
+        1.0
+      ],
+      "layers": [
+        {
+          "id": "f2165a119cd34b3f851a321ceb8ce0f8",
+          "name": "Parts",
+          "kind": "paint",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "tiles": 76,
+          "masked": false
+        },
+        {
+          "id": "354db6452f144d49960d92929c4fc06b",
+          "name": "Stripe",
+          "kind": "paint",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "tiles": 7,
+          "masked": false
+        },
+        {
+          "id": "66154b46c55d4dd283ac16e8b2e42d3c",
+          "name": "Shade",
+          "kind": "paint",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "tiles": 223,
+          "masked": false
+        },
+        {
+          "id": "f6a643b5eba749ada4818e6c7cf43b8b",
+          "name": "Rivets",
+          "kind": "paint",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "tiles": 11,
+          "masked": false
+        },
+        {
+          "id": "91eb17944f894f93aa8cece83e7c7f52",
+          "name": "Grime",
+          "kind": "fill",
+          "blend": "multiply",
+          "opacity": 1.0,
+          "visible": true,
+          "value": [
+            0.55,
+            0.5,
+            0.45,
+            1.0
+          ],
+          "tiles": 0,
+          "masked": true
+        },
+        {
+          "id": "35ec7c4bee64467aab7206e703c4eb33",
+          "name": "Wear",
+          "kind": "fill",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "value": [
+            0.78,
+            0.76,
+            0.72,
+            1.0
+          ],
+          "tiles": 0,
+          "masked": true
+        }
+      ],
+      "wrap": [
+        "repeat",
+        "repeat"
+      ],
+      "filter": "linear",
+      "mipmaps": true,
+      "color_space": "auto",
+      "status": {
+        "ok": true,
+        "format": "painted",
+        "width": 1024,
+        "height": 1024,
+        "layers": 6,
+        "tiles": 317,
+        "revision": 21,
+        "digest": "painted:13c1fa16-d22d-4447-b7c8-cf03d73ba268:140127560777088:21",
+        "texture_bytes": 5592404
+      }
+    },
+    "Cell roughness": {
+      "id": "c6f5be62-69ad-4f8d-8c66-72ac82f8402e",
+      "name": "Cell roughness",
+      "type": "painted",
+      "width": 1024,
+      "height": 1024,
+      "encoding": "data",
+      "background": [
+        0.38,
+        0.38,
+        0.38,
+        1.0
+      ],
+      "layers": [
+        {
+          "id": "5ed2f8e239d34e10bcb9efc1ae51e810",
+          "name": "Parts",
+          "kind": "paint",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "tiles": 63,
+          "masked": false
+        },
+        {
+          "id": "74958b43b05c41a89be17ef06710914b",
+          "name": "Grime",
+          "kind": "fill",
+          "blend": "normal",
+          "opacity": 0.6,
+          "visible": true,
+          "value": [
+            0.75,
+            0.75,
+            0.75,
+            1.0
+          ],
+          "tiles": 0,
+          "masked": true
+        },
+        {
+          "id": "7bb6c617f72343d297fc2278e0ef62b6",
+          "name": "Wear",
+          "kind": "fill",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "value": [
+            0.22,
+            0.22,
+            0.22,
+            1.0
+          ],
+          "tiles": 0,
+          "masked": true
+        }
+      ],
+      "wrap": [
+        "repeat",
+        "repeat"
+      ],
+      "filter": "linear",
+      "mipmaps": true,
+      "color_space": "auto",
+      "status": {
+        "ok": true,
+        "format": "painted",
+        "width": 1024,
+        "height": 1024,
+        "layers": 3,
+        "tiles": 63,
+        "revision": 7,
+        "digest": "painted:c6f5be62-69ad-4f8d-8c66-72ac82f8402e:140127559227472:7",
+        "texture_bytes": 5592404
+      }
+    },
+    "Cell metallic": {
+      "id": "64c27138-8442-4426-bff9-8257bfcd9f7b",
+      "name": "Cell metallic",
+      "type": "painted",
+      "width": 1024,
+      "height": 1024,
+      "encoding": "data",
+      "background": [
+        0.2,
+        0.2,
+        0.2,
+        1.0
+      ],
+      "layers": [
+        {
+          "id": "b85ba67a7b3446299b742b9e26546741",
+          "name": "Parts",
+          "kind": "paint",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "tiles": 27,
+          "masked": false
+        },
+        {
+          "id": "ff61f1a8fff445a490336230ffd37698",
+          "name": "Wear",
+          "kind": "fill",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "value": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "tiles": 0,
+          "masked": true
+        }
+      ],
+      "wrap": [
+        "repeat",
+        "repeat"
+      ],
+      "filter": "linear",
+      "mipmaps": true,
+      "color_space": "auto",
+      "status": {
+        "ok": true,
+        "format": "painted",
+        "width": 1024,
+        "height": 1024,
+        "layers": 2,
+        "tiles": 27,
+        "revision": 4,
+        "digest": "painted:64c27138-8442-4426-bff9-8257bfcd9f7b:140127559228272:4",
+        "texture_bytes": 5592404
+      }
+    },
+    "Cell glow": {
+      "id": "067cd0ca-1e9a-4d26-9d76-51d5cdcfd40f",
+      "name": "Cell glow",
+      "type": "painted",
+      "width": 1024,
+      "height": 1024,
+      "encoding": "color",
+      "background": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layers": [
+        {
+          "id": "5835a4387c064713af67e0b9adf6b27e",
+          "name": "Parts",
+          "kind": "paint",
+          "blend": "normal",
+          "opacity": 1.0,
+          "visible": true,
+          "tiles": 14,
+          "masked": false
+        }
+      ],
+      "wrap": [
+        "repeat",
+        "repeat"
+      ],
+      "filter": "linear",
+      "mipmaps": true,
+      "color_space": "auto",
+      "status": {
+        "ok": true,
+        "format": "painted",
+        "width": 1024,
+        "height": 1024,
+        "layers": 1,
+        "tiles": 14,
+        "revision": 2,
+        "digest": "painted:067cd0ca-1e9a-4d26-9d76-51d5cdcfd40f:140127559229472:2",
+        "texture_bytes": 5592404
+      }
+    }
+  },
+  "wear_texels": 66129,
+  "render": {
+    "name": "gpu_path",
+    "requested": "gpu_path",
+    "device": "gpu",
+    "implementation": "Aether3D GPU path tracer (wgpu compute; software BVH traversal)",
+    "gpu": true,
+    "api": "wgpu",
+    "versions": {
+      "wgpu": "0.32.0",
+      "wgpu_native": "29.0.1.1"
+    },
+    "adapter": {
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "vendor": "NVIDIA",
+      "vendor_id": 4318,
+      "device_id": 10400,
+      "type": "discrete",
+      "backend": "vulkan",
+      "driver": "615.78.08",
+      "software": false
+    },
+    "hardware_ray_tracing": false,
+    "device_created": true,
+    "device_init_seconds": 0.358529789999011,
+    "dispatch": {
+      "tiles": 4,
+      "tile_size": 512,
+      "samples_per_dispatch": 2
+    },
+    "gpu_bytes": {
+      "accumulation": 31680000,
+      "scene": 106632,
+      "materials": 2340,
+      "instances": 512,
+      "positions": 15036,
+      "normals": 15036,
+      "indices": 13224,
+      "uvs": 10024,
+      "groups": 4408,
+      "tangents": 16
+    },
+    "samples": 512,
+    "bounces": 4,
+    "seed": 0,
+    "light_samples": 1,
+    "russian_roulette": 3,
+    "clamp": 0.0,
+    "integrator": "path",
+    "samples_rendered": 512,
+    "ao": null,
+    "environment": {
+      "type": "ambient",
+      "radiance": [
+        0.1,
+        0.1,
+        0.1
+      ]
+    },
+    "lights": {
+      "lights": 3,
+      "sized_lights": 0,
+      "emissive_triangles": 236
+    },
+    "bvh": {
+      "instances": 4,
+      "instances_traced": 4,
+      "meshes": 4,
+      "triangles": 1102,
+      "triangles_skipped": 0,
+      "blas_built": 3,
+      "blas_reused": 1,
+      "nodes": 705,
+      "max_depth": 9,
+      "bytes": 113784,
+      "seconds_blas": 0.0033794629998737946,
+      "seconds": 0.0036897429963573813,
+      "traversal": {
+        "rays": 0,
+        "shadow_rays": 0,
+        "iterations": 0,
+        "node_visits": 0,
+        "triangle_tests": 0,
+        "seconds": 0.0
+      }
+    },
+    "work_estimate": {
+      "paths": 184320000,
+      "rays": 4792320000,
+      "memory": 877581868,
+      "workers": 8
+    }
+  }
+}

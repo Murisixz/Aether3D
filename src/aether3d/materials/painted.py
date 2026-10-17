@@ -631,6 +631,20 @@ class PaintedTexture(ImageTexture):
         out.flags.writeable = False
         return out
 
+    def read_layer(self, ref: Any) -> np.ndarray:
+        """A paint layer's own texels (not composited) as ``(height, width, 4)`` float64 in
+        0..1 (transparent where nothing was painted); a fill layer: its value everywhere.
+        Masks are not applied (see :meth:`read_mask`)."""
+        layer = self._layers[self._layer_index(ref)]
+        if layer.kind == "fill":
+            return np.broadcast_to(np.asarray(layer.value, dtype=np.float64),
+                                   (self._height, self._width, 4)).copy()  # fmt: skip
+        return layer_pixels(self, layer) / FULL
+
+    def read_mask(self, ref: Any) -> np.ndarray:
+        """A layer's mask as ``(height, width)`` float64 in 0..1 (1 without a mask)."""
+        return mask_pixels(self, self._layers[self._layer_index(ref)]) / FULL
+
     def read(
         self, x0: int = 0, y0: int = 0, x1: int | None = None, y1: int | None = None
     ) -> np.ndarray:
@@ -921,10 +935,24 @@ def _downsample_block(block: np.ndarray, mode: str) -> np.ndarray:
 
 
 def _rgba(value: Any, location: str) -> tuple[float, float, float, float]:
+    """1-4 numbers in [0, 1] (gray, gray + alpha, RGB, RGBA; in the stored encoding), or a
+    color string such as ``"#rrggbb"`` (display sRGB, opaque)."""
+    if isinstance(value, str):
+        from ..rendering.color import parse_color
+
+        try:
+            r, g, b = parse_color(value, location)
+        except Exception:
+            raise _err("INVALID_ARGUMENT", f"invalid color {value!r}", location) from None
+        return (float(r), float(g), float(b), 1.0)
     try:
+        if any(isinstance(x, bool) for x in value):
+            raise TypeError
         v = [float(x) for x in value]
     except (TypeError, ValueError):
-        raise _err("INVALID_ARGUMENT", "a value must be 1-4 numbers in [0, 1]", location) from None
+        raise _err(
+            "INVALID_ARGUMENT", "a value must be 1-4 numbers in [0, 1] or '#rrggbb'", location
+        ) from None
     if not 1 <= len(v) <= 4 or not all(math.isfinite(x) and 0.0 <= x <= 1.0 for x in v):
         raise _err("INVALID_ARGUMENT", "a value must be 1-4 numbers in [0, 1]", location)
     if len(v) == 1:

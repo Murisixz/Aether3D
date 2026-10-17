@@ -1,0 +1,92 @@
+{
+  "aether3d": "0.14.0",
+  "quick": false,
+  "high_triangles": 237398,
+  "low_triangles": 10146,
+  "unwrap": {
+    "triangles": 10146,
+    "unwrapped_triangles": 10146,
+    "charts": 2,
+    "kept_islands": 0,
+    "splits": 1,
+    "method": "isometric",
+    "stretch_l2": {
+      "max": 1.1020776042888867,
+      "mean": 1.0754939301320254
+    },
+    "stretch_max": 3.0764453221433326,
+    "pack": {
+      "resolution": [
+        2048,
+        2048
+      ],
+      "padding": 8,
+      "texels_per_unit": 371.2348455947177,
+      "utilization": 0.5404547119140626,
+      "rows_used": 2035
+    },
+    "seconds": {
+      "charts": 0.8651440980029292,
+      "pack": 0.6460692140099127,
+      "total": 1.5215341099974466
+    }
+  },
+  "bake": {
+    "target": "Low",
+    "sources": [
+      "High"
+    ],
+    "maps": [
+      "normal",
+      "ao",
+      "curvature"
+    ],
+    "resolution": [
+      2048,
+      2048
+    ],
+    "samples": 2,
+    "cage": 0.08550754744156466,
+    "depth": 0.08550754744156466,
+    "padding": 8,
+    "backend": "gpu",
+    "texels_covered": 2269308,
+    "texel_samples": 9067268,
+    "hits": 9067268,
+    "miss_fraction": 0.0,
+    "texels_missed": 0,
+    "uv_overlap_samples": 0,
+    "rays": 1169677572,
+    "seconds": {
+      "setup": 1.5533935169951292,
+      "rasterize": 1.4903747210046276,
+      "trace": 0.5705349419440608,
+      "shade": 25.073620871975436,
+      "finish": 12.277055482991273,
+      "total": 42.89406232800684
+    },
+    "ao": {
+      "rays": 128,
+      "distance": 0.4275377372078233,
+      "seed": 0
+    },
+    "curvature_radius": 0.08550754744156466
+  },
+  "applied": {
+    "normal": "Low normal",
+    "ao": "Low ao",
+    "curvature": "Low curvature"
+  },
+  "rms_to_high": {
+    "low": 0.055031341932608925,
+    "low_with_maps": 0.034110683626405215
+  },
+  "timings": {
+    "high": 66.40401399899565,
+    "low": 12.216242556009092,
+    "unwrap": 1.5277112729963847,
+    "renders_before": 1.4986648530029925,
+    "bake": 43.174206302996026
+  },
+  "failures": []
+}

@@ -108,7 +108,8 @@ def rasterize_uv(
     # Overlaps: keep the lowest triangle id per sample.
     order = np.lexsort((t, s))
     s, t, b = s[order], t[order], b[order]
-    first = np.r_[True, s[1:] != s[:-1]]
+    first = np.ones(s.shape[0], dtype=bool)
+    first[1:] = s[1:] != s[:-1]
     overlaps = int(np.unique(s[~first]).shape[0])
     return Coverage(width, height, samples, s[first], t[first], b[first], overlaps)
 

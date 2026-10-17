@@ -1,0 +1,277 @@
+{
+  "aether3d": "0.14.0",
+  "quick": false,
+  "mesh": {
+    "triangles": 22824,
+    "vertices": 12184
+  },
+  "unwrap": {
+    "triangles": 22824,
+    "unwrapped_triangles": 22824,
+    "charts": 22,
+    "kept_islands": 0,
+    "splits": 21,
+    "method": "isometric",
+    "stretch_l2": {
+      "max": 1.103552403110844,
+      "mean": 1.043808455099342
+    },
+    "stretch_max": 1.675633569558862,
+    "pack": {
+      "resolution": [
+        2048,
+        2048
+      ],
+      "padding": 8,
+      "texels_per_unit": 431.0383657718511,
+      "utilization": 0.71455322265625,
+      "rows_used": 2047
+    },
+    "seconds": {
+      "charts": 1.8546064800029853,
+      "pack": 1.3076229409925872,
+      "total": 3.1841723999968963
+    }
+  },
+  "uv": {
+    "islands": 22,
+    "flipped_triangles": 0,
+    "overlapping_triangles": 0,
+    "stretch_l2": {
+      "max": 1.1035524041563551,
+      "mean": 1.0438084554666438,
+      "invalid_islands": 0
+    },
+    "texel_density": {
+      "resolution": [
+        2048,
+        2048
+      ],
+      "mean": 435.5086125767153,
+      "min": 431.0381805710676,
+      "max": 441.57616145307486,
+      "spread": 0.011837561348953434
+    },
+    "utilization": 0.7145532243984623
+  },
+  "texture": {
+    "id": "b6f477d4-21fd-4c7e-9d1d-819d38e752ad",
+    "name": "Skin",
+    "type": "painted",
+    "width": 2048,
+    "height": 2048,
+    "encoding": "color",
+    "background": [
+      0.43529411764705883,
+      0.5411764705882353,
+      0.2980392156862745,
+      1.0
+    ],
+    "layers": [
+      {
+        "id": "8fdc31e9a79049d6a4bfe943123d3f6f",
+        "name": "Belly",
+        "kind": "paint",
+        "blend": "normal",
+        "opacity": 1.0,
+        "visible": true,
+        "tiles": 104,
+        "masked": false
+      },
+      {
+        "id": "35f68492272946ae87d7edc9004794d1",
+        "name": "Spots",
+        "kind": "paint",
+        "blend": "normal",
+        "opacity": 1.0,
+        "visible": true,
+        "tiles": 398,
+        "masked": false
+      },
+      {
+        "id": "e0c6a37537544ec381b6e7c95114b427",
+        "name": "Stripe",
+        "kind": "paint",
+        "blend": "normal",
+        "opacity": 1.0,
+        "visible": true,
+        "tiles": 109,
+        "masked": false
+      },
+      {
+        "id": "7db1d3dab53a4ac88cf636f0c37d1f22",
+        "name": "Horns",
+        "kind": "paint",
+        "blend": "normal",
+        "opacity": 1.0,
+        "visible": true,
+        "tiles": 35,
+        "masked": false
+      },
+      {
+        "id": "8c9736baaf20473b89c32bbd2d87314a",
+        "name": "War paint",
+        "kind": "paint",
+        "blend": "normal",
+        "opacity": 1.0,
+        "visible": true,
+        "tiles": 30,
+        "masked": false
+      }
+    ],
+    "wrap": [
+      "repeat",
+      "repeat"
+    ],
+    "filter": "linear",
+    "mipmaps": true,
+    "color_space": "auto",
+    "status": {
+      "ok": true,
+      "format": "painted",
+      "width": 2048,
+      "height": 2048,
+      "layers": 5,
+      "tiles": 676,
+      "revision": 112,
+      "digest": "painted:b6f477d4-21fd-4c7e-9d1d-819d38e752ad:139788675242144:112",
+      "texture_bytes": 22369620
+    }
+  },
+  "paint": {
+    "history_steps": 106,
+    "spot_dabs": 100,
+    "belly": {
+      "dabs": 36,
+      "texels": 293067,
+      "tiles": 104,
+      "skipped_dabs": 0,
+      "seconds": 1.3446651039994322
+    },
+    "first_spot": {
+      "dabs": 1,
+      "texels": 5756,
+      "tiles": 7,
+      "skipped_dabs": 0,
+      "seconds": 0.04219142199144699
+    },
+    "stripe": {
+      "dabs": 348,
+      "texels": 351894,
+      "tiles": 218,
+      "skipped_dabs": 0,
+      "seconds": 4.088580256007845
+    },
+    "war_paint": {
+      "dabs": 44,
+      "texels": 28705,
+      "tiles": 30,
+      "skipped_dabs": 0,
+      "seconds": 1.3942336100008106
+    }
+  },
+  "spot_symmetry_alpha_difference": 0.0,
+  "timings": {
+    "sculpt": 6.107692274992587,
+    "unwrap": 3.1842510249989573,
+    "paint": 13.70466997200856
+  },
+  "render": {
+    "name": "gpu",
+    "requested": "auto",
+    "api": "wgpu",
+    "versions": {
+      "wgpu": "0.32.0",
+      "wgpu_native": "29.0.1.1"
+    },
+    "adapter": {
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "vendor": "NVIDIA",
+      "vendor_id": 4318,
+      "device_id": 10400,
+      "type": "discrete",
+      "backend": "vulkan",
+      "driver": "615.78.08",
+      "software": false
+    },
+    "antialiasing": {
+      "msaa": 4,
+      "supersample": 1,
+      "samples_per_pixel": 4
+    },
+    "shadows": {
+      "lights": null,
+      "map_size": 2048,
+      "bias": 0.5,
+      "normal_offset": 0.5,
+      "pcf_radius": 1,
+      "maps": [
+        {
+          "light": "Key",
+          "id": "148a5215-d029-46ef-ac82-07fc1479359c",
+          "map_size": 2048,
+          "texel_size": 0.004625236376521113,
+          "extent": [
+            9.47248409911524,
+            9.47248409911524,
+            13.288852352589519
+          ],
+          "depth_range": 13.288852352589519
+        },
+        {
+          "light": "Rim",
+          "id": "9888bff1-0079-4a2f-96b8-7ffae06d698b",
+          "map_size": 2048,
+          "texel_size": 0.004192741937438342,
+          "extent": [
+            8.586735487873725,
+            8.586735487873725,
+            15.37281107582239
+          ],
+          "depth_range": 15.37281107582239
+        }
+      ]
+    },
+    "device_created": false,
+    "device_init_seconds": 0.0,
+    "resources": {
+      "mesh_uploads": 1,
+      "mesh_upload_bytes": 663776,
+      "mesh_cache": {
+        "meshes": 3,
+        "bytes": 1211752,
+        "budget": 1073741824,
+        "uploads": 3,
+        "upload_bytes": 1211752,
+        "hits": 1,
+        "evictions": 0
+      },
+      "materials": 2,
+      "textured_materials": 1,
+      "texture_bindings": 2,
+      "texture_program_instructions": 4,
+      "material_data_bytes": 1716,
+      "images": 2,
+      "texel_uploads": 1,
+      "texel_upload_bytes": 44739240,
+      "texel_upload_seconds": 0.1548955809994368,
+      "texel_pool": {
+        "images": 2,
+        "bytes": 44739240,
+        "uploads": 2,
+        "upload_bytes": 44739496,
+        "partial_uploads": 0
+      },
+      "target_bytes": 95814656,
+      "targets_allocated": false,
+      "frame_buffer_bytes": 2548,
+      "frame_buffers_kept": true,
+      "frame_buffer_writes": 2,
+      "frame_buffer_bytes_written": 1720,
+      "color_format": "rgba32float",
+      "pipelines": 5
+    }
+  },
+  "failures": []
+}

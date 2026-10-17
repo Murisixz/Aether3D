@@ -17,26 +17,50 @@ SHIFTS = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
 
 def dilate(values: np.ndarray, covered: np.ndarray, steps: int) -> tuple[np.ndarray, np.ndarray]:
     """``values`` ``(H, W, C)`` grown ``steps`` rings into the texels where ``covered``
-    ``(H, W)`` is false; returns the values and the grown coverage."""
+    ``(H, W)`` is false; returns the values and the grown coverage.
+
+    Only each ring's frontier is visited (the uncovered texels next to covered ones), its
+    neighbours gathered in :data:`SHIFTS` order, so the work follows the islands' borders,
+    not the image's area."""
     v = np.array(values, dtype=np.float64, copy=True)
     cov = np.array(covered, dtype=bool, copy=True)
     h, w = cov.shape
-    for _ in range(int(steps)):
-        if cov.all():
+    channels = v.shape[2] if v.ndim == 3 else 1
+    flat_v = v.reshape(h * w, channels)
+    flat_c = cov.reshape(-1)
+    steps = int(steps)
+    if steps <= 0 or flat_c.all() or not flat_c.any():
+        return v, cov
+    # The first frontier: uncovered texels with a covered neighbour.
+    near = np.zeros((h, w), dtype=bool)
+    for dy, dx in SHIFTS:
+        ys = slice(max(dy, 0), h + min(dy, 0))
+        yd = slice(max(-dy, 0), h + min(-dy, 0))
+        xs = slice(max(dx, 0), w + min(dx, 0))
+        xd = slice(max(-dx, 0), w + min(-dx, 0))
+        near[yd, xd] |= cov[ys, xs]
+    frontier = np.flatnonzero(near.reshape(-1) & ~flat_c)
+    for _ in range(steps):
+        if frontier.size == 0:
             break
-        total = np.zeros_like(v)
-        count = np.zeros((h, w), dtype=np.float64)
+        fy, fx = np.divmod(frontier, w)
+        total = np.zeros((frontier.size, channels))
+        count = np.zeros(frontier.size)
         for dy, dx in SHIFTS:
-            ys = slice(max(dy, 0), h + min(dy, 0))
-            yd = slice(max(-dy, 0), h + min(-dy, 0))
-            xs = slice(max(dx, 0), w + min(dx, 0))
-            xd = slice(max(-dx, 0), w + min(-dx, 0))
-            src_cov = cov[ys, xs]
-            total[yd, xd] += np.where(src_cov[..., None], v[ys, xs], 0.0)
-            count[yd, xd] += src_cov
-        grow = ~cov & (count > 0)
-        if not grow.any():
-            break
-        v[grow] = total[grow] / count[grow][:, None]
-        cov = cov | grow
+            ny, nx = fy + dy, fx + dx
+            inside = (ny >= 0) & (ny < h) & (nx >= 0) & (nx < w)
+            idx = np.where(inside, ny * w + nx, 0)
+            ok = inside & flat_c[idx]
+            total += np.where(ok[:, None], flat_v[idx], 0.0)
+            count += ok
+        flat_v[frontier] = total / count[:, None]
+        flat_c[frontier] = True
+        # The next frontier: uncovered neighbours of this one.
+        nxt = []
+        for dy, dx in SHIFTS:
+            ny, nx = fy + dy, fx + dx
+            inside = (ny >= 0) & (ny < h) & (nx >= 0) & (nx < w)
+            idx = (ny * w + nx)[inside]
+            nxt.append(idx[~flat_c[idx]])
+        frontier = np.unique(np.concatenate(nxt))
     return v, cov
