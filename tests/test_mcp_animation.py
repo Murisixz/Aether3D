@@ -51,8 +51,9 @@ def test_animate_inspect_render_and_export(tmp_path):
         r = await client.call_tool("inspect_animation", {
             "what": "graph", "target": "Ball", "path": "transform.position.z"})  # fmt: skip
         out["graph"] = [c for c in r.content if c.type == "image"]
-        a = await client.call_tool("render_preview", {"time": 0.0, "width": 96, "height": 64})
-        b = await client.call_tool("render_preview", {"time": 0.5, "width": 96, "height": 64})
+        view = {"width": 96, "height": 64, "backend": "cpu"}  # (portable: no GPU)
+        a = await client.call_tool("render_preview", {"time": 0.0, **view})
+        b = await client.call_tool("render_preview", {"time": 0.5, **view})
         out["frames"] = [
             [c for c in a.content if c.type == "image"][0].data,
             [c for c in b.content if c.type == "image"][0].data,

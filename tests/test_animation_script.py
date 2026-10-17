@@ -7,7 +7,6 @@ import copy
 import json
 import random
 
-import jsonschema
 import numpy as np
 import pytest
 from test_animation_motion import humanoid
@@ -169,6 +168,7 @@ def test_fuzzed_scripts_fail_cleanly():
 
 
 def test_the_schema_agrees_with_the_checker():
+    jsonschema = pytest.importorskip("jsonschema")
     schema = animation_script_schema()
     jsonschema.Draft202012Validator.check_schema(schema)
     validator = jsonschema.Draft202012Validator(schema)
@@ -208,8 +208,8 @@ def test_the_cli_runs_reports_graphs_and_renders(tmp_path, capsys):
                          "Ball", "--path", "transform.position.z", "--width", "300")  # fmt: skip
     assert code == 0 and (tmp_path / "g.png").read_bytes()[:4] == b"\x89PNG"
     code, out = run_json("animation", "render", str(path), str(tmp_path / "frames"), "--width",
-                         "64", "--height", "48", "--step", "4", "--contact-sheet",
-                         str(tmp_path / "sheet.png"))  # fmt: skip
+                         "64", "--height", "48", "--step", "4", "--backend", "cpu",
+                         "--contact-sheet", str(tmp_path / "sheet.png"))  # fmt: skip
     assert code == 0 and len(out["frames"]) == 4 and (tmp_path / "sheet.png").exists()
     code, out = run_json("export", str(path), str(tmp_path / "out.glb"), "--animation", "clips")
     assert code == 0 and out["animations"][0]["name"] == "Ball Action"

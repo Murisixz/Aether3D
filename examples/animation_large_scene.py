@@ -279,13 +279,11 @@ def main(argv: list[str]) -> int:
         s.render(time=t, width=hw, height=hh, backend=backend(), shadows=shadows()).save(
             out / f"hero_{name}.png"
         )
-    try:
+    if backend() == "gpu":  # (the adapter that drew the frames; never queried otherwise)
         from aether3d.rendering.gpu import gpu_status
 
         status = gpu_status()
         report["gpu"] = {k: status[k] for k in ("available", "selected", "reason") if k in status}
-    except Exception as exc:  # (no GPU stack)
-        report["gpu"] = {"available": False, "reason": str(exc)}
     if not args.no_video:
         try:
             report["video"] = assemble_video(out / "frames", "frame_{frame:05d}.png",

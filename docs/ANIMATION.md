@@ -31,8 +31,9 @@ anim = scene.animation
 anim.set_timeline(fps=24, start=0, end=2)
 
 # A bounce that loops: keys in seconds; automatic handles are smooth and never overshoot.
-anim.set_channel(ball, "transform.position.z", [(0, 1.0), (0.5, 0.25), (1, 1.0)],
-                 extrapolation="cycle")
+anim.set_channel(
+    ball, "transform.position.z", [(0, 1.0), (0.5, 0.25), (1, 1.0)], extrapolation="cycle"
+)
 print(round(anim.evaluate(1.5).position[0][2], 6))  # 0.25
 print(ball.position)  # (0.0, 0.0, 1.0): authored state stays the rest pose
 report = anim.curve_report(ball, "transform.position.z")
@@ -41,15 +42,18 @@ print(round(report["velocity"]["max"], 2))  # 2.25 (m/s, the velocity's peak)
 
 # A rig, and an editable generated walk whose feet are measured, not assumed.
 hero = scene.add_object("Hero", position=(2, 0, 0))
-anim.add_rig(hero, [
-    {"name": "Hips", "position": [0, 0, 0.75]},
-    {"name": "Body", "parent": "Hips", "tail": [0, 0, 0.75]},
-    {"name": "Head", "parent": "Body", "position": [0, 0, 0.75], "tail": [0, 0, 0.5]},
-    {"name": "Arm.L", "parent": "Body", "position": [0.375, 0, 0.625], "tail": [0, 0, -0.75]},
-    {"name": "Arm.R", "parent": "Body", "position": [-0.375, 0, 0.625], "tail": [0, 0, -0.75]},
-    {"name": "Leg.L", "parent": "Hips", "position": [0.125, 0, 0], "tail": [0, 0, -0.75]},
-    {"name": "Leg.R", "parent": "Hips", "position": [-0.125, 0, 0], "tail": [0, 0, -0.75]},
-])
+anim.add_rig(
+    hero,
+    [
+        {"name": "Hips", "position": [0, 0, 0.75]},
+        {"name": "Body", "parent": "Hips", "tail": [0, 0, 0.75]},
+        {"name": "Head", "parent": "Body", "position": [0, 0, 0.75], "tail": [0, 0, 0.5]},
+        {"name": "Arm.L", "parent": "Body", "position": [0.375, 0, 0.625], "tail": [0, 0, -0.75]},
+        {"name": "Arm.R", "parent": "Body", "position": [-0.375, 0, 0.625], "tail": [0, 0, -0.75]},
+        {"name": "Leg.L", "parent": "Hips", "position": [0.125, 0, 0], "tail": [0, 0, -0.75]},
+        {"name": "Leg.R", "parent": "Hips", "position": [-0.125, 0, 0], "tail": [0, 0, -0.75]},
+    ],
+)
 walk = anim.generate(hero, "walk")  # a clip of ordinary keys, played as the action
 feet = anim.foot_contacts(hero, ["Leg.L", "Leg.R"])
 print(walk["clip"], max(f["sliding_max"] for f in feet["feet"].values()) < 0.005)  # Walk True
