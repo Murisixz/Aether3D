@@ -98,7 +98,15 @@ MESH_PRIMITIVES = (
     "grid",
     "uv_sphere",
 )
-OPERATIONS = ("update", "delete", "set_parameters", "frame_camera", "set_active_camera", "cad")
+OPERATIONS = (
+    "update",
+    "delete",
+    "set_parameters",
+    "frame_camera",
+    "set_active_camera",
+    "cad",
+    "animation",
+)
 UPDATE_FIELDS = (
     "name",
     "position",
@@ -2199,6 +2207,7 @@ _OPERATION_KEYS = {
     "frame_camera": ((), ("camera", "targets", "direction", "margin")),
     "set_active_camera": (("camera",), ()),
     "cad": (("script",), ()),
+    "animation": (("script",), ()),
 }
 
 
@@ -2277,6 +2286,23 @@ def _parse_operations(r: Reader, raw: Any, ptr: str) -> list[OperationSpec]:
                     f"CAD script: {exc.message}",
                     join(p, "script") + ("/" + where if where else ""),
                     hint="a CAD script (format aether3d.cad-script); see aether3d://cad/guide",
+                    operation=k,
+                )
+        elif op == "animation":
+            from ..animation.script import AnimationScriptError
+            from ..animation.script import check_script as check_animation
+
+            try:
+                spec.values["script"] = check_animation(obj.get("script"))
+            except AnimationScriptError as exc:
+                where = (exc.location or "").removeprefix("script").strip(".")
+                where = where.replace("[", ".").replace("]", "").replace(".", "/")
+                r.issues.add(
+                    "INVALID_VALUE",
+                    f"animation script: {exc.message}",
+                    join(p, "script") + ("/" + where if where else ""),
+                    hint="an animation script (format aether3d.animation-script); see "
+                    "aether3d://animation/guide",
                     operation=k,
                 )
         for issue in r.issues.items[before:]:

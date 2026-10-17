@@ -1340,6 +1340,115 @@ class Diagnoser:
             )
         result.measured = measured
 
+    def _animated(self, check: Check, result: CheckResult) -> list[Any]:
+        objs, unknown = self.select(check.params["objects"], f"{check.pointer}/objects")
+        if unknown:
+            self.missing(check, result, [str(u) for u in unknown])
+        if not objs and not unknown:
+            result.status = "unknown"
+            result.note = "the selector matches no object"
+        return objs
+
+    def _check_animation_continuity(self, check: Check, result: CheckResult) -> None:
+        from ..animation.curves import FCurve
+        from ..animation.report import continuity
+
+        order = check.params.get("order", 1)
+        system = self.scene.animation
+        measured = {}
+        for obj in self._animated(check, result):
+            action = system.action(obj)
+            if action is None:
+                continue
+            breaks = 0
+            for path, ch in action.data.channels:
+                if not isinstance(ch, FCurve):
+                    continue
+                for d in continuity(ch):
+                    if d["intended"] or d["order"] > order:
+                        continue
+                    breaks += 1
+                    what = ("value", "velocity", "acceleration")[d["order"]]
+                    self.add(
+                        result,
+                        self.finding(
+                            check,
+                            "MOTION_DISCONTINUITY",
+                            f"{obj.name!r} {path}: the {what} jumps by {d['jump']:.6g} at "
+                            f"{d['time']:.6g} s (key {d['key']})",
+                            [_ref(obj, "subject")],
+                            evidence={
+                                "path": path,
+                                "key": d["key"],
+                                "time": d["time"],
+                                "order": d["order"],
+                                "left": d["left"],
+                                "right": d["right"],
+                            },  # fmt: skip
+                            magnitude=abs(d["jump"]),
+                            unit=("value", "per second", "per second squared")[d["order"]],
+                            hint="give the key automatic (auto_clamped) handles or bezier "
+                            "interpolation, unless the corner is meant",
+                        ),
+                    )
+            measured[obj.name] = breaks
+        result.measured = measured
+
+    def _check_foot_contacts(self, check: Check, result: CheckResult) -> None:
+        system = self.scene.animation
+        p = check.params
+        max_slide = p.get("max_sliding", 0.005)
+        max_pen = p.get("max_penetration", 0.002)
+        measured = {}
+        for obj in self._animated(check, result):
+            if system.rig(obj) is None:
+                continue
+            report = system.foot_contacts(
+                obj, p["feet"], rate=120.0, height=p.get("height", 0.03), speed=p.get("speed", 0.3)
+            )
+            measured[obj.name] = {f: round(d["sliding_max"], 6) for f, d in report["feet"].items()}
+            for foot, d in report["feet"].items():
+                if d["sliding_max"] > max_slide:
+                    worst = max(d["contacts"], key=lambda c: c["sliding"])
+                    self.add(
+                        result,
+                        self.finding(
+                            check,
+                            "FOOT_SLIDING",
+                            f"{obj.name!r} {foot} slides {d['sliding_max']:.4g} m while "
+                            f"planted ({worst['start']:.3g}..{worst['end']:.3g} s)",
+                            [_ref(obj, "subject")],
+                            evidence={
+                                "foot": foot,
+                                "sliding": d["sliding_max"],
+                                "contacts": d["contacts"][:20],
+                                "limit": max_slide,
+                            },  # fmt: skip
+                            magnitude=d["sliding_max"],
+                            unit="m",
+                            exact=False,
+                            hint="plant the feet (plant_feet: keyed IK pins each contact) or "
+                            "match the root motion to the stride",
+                        ),
+                    )
+                if d["penetration"] > max_pen:
+                    self.add(
+                        result,
+                        self.finding(
+                            check,
+                            "FOOT_PENETRATION",
+                            f"{obj.name!r} {foot} goes {d['penetration']:.4g} m below the ground",
+                            [_ref(obj, "subject")],
+                            evidence={"foot": foot, "penetration": d["penetration"]},
+                            magnitude=d["penetration"],
+                            unit="m",
+                            exact=False,
+                            hint="raise the foot's keys or the hips; plant_feet pins contacts "
+                            "where they touched down",
+                        ),
+                    )
+        result.measured = measured
+
     def _check_cad_valid(self, check: Check, result: CheckResult) -> None:
         from ..errors import CadError
 

@@ -726,6 +726,8 @@ def render_preview(session: Session, args: dict, ctx: ToolContext) -> ToolOutput
         options["adapter"] = session.config.gpu_adapter
     # A preview needs the image only (on the GPU, the other outputs are not read back)
     # and favors encoding speed: zlib level 1, a few percent larger than the default.
+    if args.get("time") is not None:
+        options["time"] = args["time"]
     result = scene.render(
         width=width, height=height, backend=backend, outputs=("image",), **options
     )
@@ -781,6 +783,8 @@ def render_image(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
             options["shadows"] = True
     if backend not in ("cpu", "path") and config.gpu_adapter is not None:
         options["adapter"] = config.gpu_adapter
+    if args.get("time") is not None:
+        options["time"] = args["time"]
     hdr = target.suffix.lower() in (".hdr", ".pfm")  # linear light; a PNG needs the image
     outputs = ("image", "linear") if hdr else ("image",)
     result = scene.render(width=width, height=height, backend=backend, outputs=outputs, **options)
@@ -845,7 +849,10 @@ def export_scene(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
         if key in args:
             raise ToolError("INVALID_ARGUMENT", f"{key} applies to CAD exports only")
     result = scene.export(
-        target, allow_lossy=args.get("allow_lossy", False), bake_textures=args.get("bake_textures")
+        target,
+        allow_lossy=args.get("allow_lossy", False),
+        bake_textures=args.get("bake_textures"),
+        animation=args.get("animation", "auto"),
     )
     return ToolOutput(
         {
@@ -854,6 +861,7 @@ def export_scene(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
             "bytes": result.byte_length,
             "nodes": result.node_count,
             "meshes": result.mesh_count,
+            "animations": result.animations,
             "diagnostics": [
                 {"code": d.code, "severity": d.severity, "message": d.message}
                 for d in result.diagnostics[:30]
@@ -891,14 +899,18 @@ def run_script(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
         from ..cad.script import run_cad_script
 
         data = run_cad_script(scene, script, should_stop=ctx.cancel.is_set)
+    elif kind == "aether3d.animation-script":
+        from ..animation.script import run_animation_script
+
+        data = run_animation_script(scene, script, should_stop=ctx.cancel.is_set)
     else:
         raise ToolError(
             "INVALID_ARGUMENT",
             f"unknown script format {kind!r}",
             hint="aether3d.edit-script, aether3d.procedural-script, aether3d.scene-script, "
-            "aether3d.sculpt-script, aether3d.texture-script or aether3d.cad-script (objects, "
-            "materials and "
-            "placement: use execute_scene_plan)",
+            "aether3d.sculpt-script, aether3d.texture-script, aether3d.cad-script or "
+            "aether3d.animation-script (objects, materials and placement: use "
+            "execute_scene_plan)",
         )
     data = {"format": kind, **data, "scene": scene_status(session)}
     return ToolOutput(data)
@@ -1400,10 +1412,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         "tags, name_glob; deletes by filter need expect). queries are answered afterwards "
         "(e.g. overlaps). Coordinates: +Z up, meters, rotation_euler in degrees, front is "
         "-Y. On error nothing changes and every problem is listed with a JSON pointer, a "
-        'code and a hint. mode=dry_run applies and rolls back. Example: {"format": '
-        '"aether3d.scene-plan", "version": 1, "meshes": {"block": {"primitive": '
-        '"cube"}}, "objects": {"wall": {"mesh": "@block", "grid": {"count": '
-        '[10, 1, 4]}, "position": [0, 0, 0.5]}}}. Guide: resource aether3d://guide.',
+        "code and a hint. mode=dry_run applies and rolls back. Guide: resource "
+        "aether3d://guide; examples: aether3d://examples/basics.",
         _schema(
             {
                 "plan": PLAN,
@@ -1437,13 +1447,12 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         "spatial_query",
         "Spatial query",
-        "Answer spatial questions exactly, from the triangles, without changing anything: "
-        "describe, bounds, find, raycast, raycast_all, closest_point, nearest, contains, "
-        "distance, overlaps, region, camera_ray, pick, project, in_view, line_of_sight, "
-        'visible_from, relation. request: {"query": name, ...arguments} (as aether3d '
-        "query), or requests: a list of them. Objects are ids or names; objects, against "
-        'and exclude also take a selector ({"tags": [...]}, {"under": id or name}, '
-        '{"name_glob": "Tower */*"}, ...); points [x, y, z].',
+        "Answer spatial questions exactly, from the triangles, read-only: describe, bounds, "
+        "find, raycast, raycast_all, closest_point, nearest, contains, distance, overlaps, "
+        "region, camera_ray, pick, project, in_view, line_of_sight, visible_from, relation. "
+        'request: {"query": name, ...arguments}, or requests: a list. Objects are ids or '
+        'names; objects, against and exclude take selectors ({"tags": [...]}, {"under": '
+        'ref}, {"name_glob": "Tower */*"}); points [x, y, z].',
         _schema(
             {
                 "request": {
@@ -1472,9 +1481,9 @@ TOOLS: tuple[ToolSpec, ...] = (
         "render_preview",
         "Render a preview",
         "Render a quick preview image of the scene and return it. backend auto (default) "
-        "uses the GPU rasterizer when one works and the CPU rasterizer otherwise (the report "
-        "says which: backend, device, adapter, software, fallback). Never path traces. "
-        "Without an active camera (or with frame) the view frames all visible geometry.",
+        "uses the GPU rasterizer when one works, else the CPU one (the report says which). "
+        "Never path traces. Without an active camera (or with frame) the view frames all "
+        "visible geometry. time: the animation at that time (seconds).",
         _schema(
             {
                 "width": {"type": "integer", "minimum": 16, "maximum": 1920, "default": 640},
@@ -1483,6 +1492,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                 "frame": {"type": "boolean", "default": False},
                 "backend": {"enum": ["auto", "gpu", "cpu"], "default": "auto"},
                 "shadows": {"type": "boolean", "default": False},
+                "time": {"type": "number"},
                 "save_to": PATH,
                 "overwrite": OVERWRITE,
             }
@@ -1493,9 +1503,9 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         "render_image",
         "Render an image file",
-        "Render to an image file in the workspace (.png, or linear .hdr/.pfm). backend: auto, "
-        "gpu, cpu (rasterizers), or path / gpu_path (the path tracer: slow; spp samples per "
-        "pixel, bounces; bounded by the server's sample budget). Returns the render report.",
+        "Render to an image file in the workspace (.png, or linear .hdr/.pfm), at an animation "
+        "time if given. backend: auto, gpu, cpu (rasterizers), or path / gpu_path (path "
+        "tracer: slow; spp, bounces; bounded by the server's budget). Returns the report.",
         _schema(
             {
                 "path": PATH,
@@ -1508,6 +1518,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                 "spp": {"type": "integer", "minimum": 1, "maximum": 4096},
                 "bounces": {"type": "integer", "minimum": 0, "maximum": 16},
                 "shadows": {"type": "boolean", "default": False},
+                "time": {"type": "number"},
                 "include_image": {"type": "boolean", "default": False},
                 "overwrite": OVERWRITE,
             },
@@ -1535,14 +1546,16 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         "export_scene",
         "Export glTF or CAD data",
-        "Export the scene to a .glb or .gltf file in the workspace (materials and textures "
-        "included; bake_textures=SIZE bakes procedural textures to images); CAD item(s) "
-        "to .step, .ifc, .dxf, .svg or .png.",
+        "Export the scene to a .glb or .gltf file in the workspace (materials, textures, "
+        "rigs, skins, morph targets; animation: auto, clips, actions, bake or none; "
+        "bake_textures=SIZE bakes procedural textures); CAD item(s) to .step, .ifc, .dxf, "
+        ".svg or .png.",
         _schema(
             {
                 "path": PATH,
                 "allow_lossy": {"type": "boolean", "default": False},
                 "bake_textures": {"type": "integer", "minimum": 16, "maximum": 8192},
+                "animation": {"enum": ["auto", "clips", "actions", "bake", "none"]},
                 "item": {"type": "string", "minLength": 1},
                 "items": {"type": "array", "items": {"type": "string"}},
                 "units": {"enum": ["mm", "cm", "m", "in", "ft"]},
@@ -1555,18 +1568,13 @@ TOOLS: tuple[ToolSpec, ...] = (
     ),
     ToolSpec(
         "run_script",
-        "Run an edit, procedural, scene, sculpt, texture or CAD script",
-        "Run one of the engine's JSON scripts atomically (one undo step): "
-        "aether3d.edit-script (polygon mesh editing: extrude, bevel, bridge, knife, ... on an "
-        "object), aether3d.procedural-script (procedural definitions), aether3d.scene-script "
-        "(cameras, lights, materials and textures in detail), aether3d.sculpt-script (brush "
-        "strokes, masks, dynamic topology, remeshing, symmetrize; schema: resource "
-        "aether3d://schema/sculpt-script, guide: aether3d://sculpt/guide), "
-        "aether3d.texture-script (UV unwrap/projection/island edits, painted textures and "
-        "layers, brush strokes in surface/view/UV space, fills, gradients, bakes, texture "
-        "transfer; schema: aether3d://schema/texture-script, guide: "
-        "aether3d://texturing/guide), aether3d.cad-script (precision models; "
-        "aether3d://cad/guide). For creating and placing objects use execute_scene_plan.",
+        "Run a JSON script",
+        "Run a JSON script atomically (one undo step; on error nothing changes): "
+        "aether3d.edit-script (mesh editing), .procedural-script, .scene-script (cameras, "
+        "lights, materials), .sculpt-script, .texture-script, .cad-script, .animation-script "
+        "(keys, curves, clips, rigs, IK, generators, cameras). Schemas: "
+        "aether3d://schema/<name>-script; guides: aether3d://<sculpt|texturing|cad|animation>"
+        "/guide. Objects: execute_scene_plan.",
         _schema(
             {
                 "script": {
@@ -1580,6 +1588,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                                 "aether3d.sculpt-script",
                                 "aether3d.texture-script",
                                 "aether3d.cad-script",
+                                "aether3d.animation-script",
                             ]
                         }
                     },
@@ -1707,10 +1716,11 @@ TOOLS: tuple[ToolSpec, ...] = (
 
 
 def _with_feedback(tools: tuple[ToolSpec, ...]) -> tuple[ToolSpec, ...]:
+    from .animation import specs as animation_specs
     from .cad import specs as cad_specs
     from .feedback import specs
 
-    return tools + specs() + cad_specs()
+    return tools + specs() + cad_specs() + animation_specs()
 
 
 TOOLS = _with_feedback(TOOLS)

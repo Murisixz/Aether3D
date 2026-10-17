@@ -504,6 +504,19 @@ def _defs() -> dict[str, Any]:
                 },
                 ("op", "script"),
             ),
+            _obj(
+                {
+                    "op": {"const": "animation"},
+                    "script": {
+                        "type": "object",
+                        "description": "an aether3d.animation-script (schema: "
+                        "aether3d://schema/animation-script): keys, clips, rigs, generators",
+                        "properties": {"format": {"const": "aether3d.animation-script"}},
+                        "required": ["format", "version", "operations"],
+                    },
+                },
+                ("op", "script"),
+            ),
         ]
     }
     return defs

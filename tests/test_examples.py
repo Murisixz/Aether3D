@@ -359,7 +359,7 @@ def test_village_example_on_the_gpu(tmp_path, gpu):
 def test_mcp_client_example_runs(tmp_path):
     pytest.importorskip("mcp")
     result = _run_example("mcp_client.py", str(tmp_path), "--backend", "cpu")
-    assert "25 tools" in result.stdout and "on the CPU: preview.png" in result.stdout
+    assert "26 tools" in result.stdout and "on the CPU: preview.png" in result.stdout
     assert (tmp_path / "preview.png").read_bytes().startswith(b"\x89PNG")
     assert len(Scene.load(tmp_path / "courtyard.aether")) == 44
 
