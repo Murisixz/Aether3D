@@ -506,9 +506,14 @@ class FloorKind(ItemKind):
             place = wall_frame.matrix @ _translate(c, 0.0, spec.sill)
             if o.get("flip"):
                 place = place @ np.diag([-1.0, -1.0, 1.0, 1.0])
-            key = content_key("filler", spec.__dict__, ro, lo)
-            body = build_filler(
-                spec, ro if not o.get("flip") else -lo, lo if not o.get("flip") else -ro
+            flip = bool(o.get("flip"))
+            key = content_key("filler", spec.__dict__, ro, lo, flip)
+            body = _cached(
+                doc,
+                key,
+                lambda spec=spec, flip=flip, ro=ro, lo=lo: build_filler(
+                    spec, ro if not flip else -lo, lo if not flip else -ro
+                ),
             )
             openings[o["id"]] = OpeningResult(
                 o["id"],
@@ -585,7 +590,17 @@ class FloorKind(ItemKind):
                 key,
             )
         # Outline and rooms from the plan arrangement of wall footprints.
-        outline, rooms, diags = _rooms(ctx, d, walls, level, above)
+        # Rooms depend on the walls' footprints and the rooms' own definitions only (not on
+        # openings): moving a door reuses them.
+        rkey = content_key(
+            "rooms",
+            [(wid, walls[wid].footprint.tolist()) for wid in sorted(walls)],
+            d.get("rooms", []),
+            level.elevation,
+            above.elevation if above else level.height,
+            doc._settings.get("length_unit"),
+        )
+        outline, rooms, diags = _cached(doc, rkey, lambda: _rooms(ctx, d, walls, level, above))
         return FloorResult(b, level, walls, openings, rooms, outline, diags)
 
     def display(self, doc, item, r: FloorResult):
@@ -632,6 +647,25 @@ def _translate(x, y, z) -> np.ndarray:
     m = np.eye(4)
     m[:3, 3] = [x, y, z]
     return m
+
+
+ARCH_CACHE_SIZE = 20_000
+
+
+def _cached(doc, key: str, build):
+    """A result by content key from the document's bounded cache of element pieces (door
+    and window bodies, room sets), built on a miss. Failures are not cached."""
+    from collections import OrderedDict
+
+    cache = doc.__dict__.setdefault("_arch_cache", OrderedDict())
+    if key in cache:
+        cache.move_to_end(key)
+        return cache[key]
+    value = build()
+    cache[key] = value
+    if len(cache) > ARCH_CACHE_SIZE:
+        cache.popitem(last=False)
+    return value
 
 
 def _rooms(ctx: Context, d: dict, walls: dict, level: Level, above: Level | None):
@@ -698,6 +732,9 @@ def _rooms(ctx: Context, d: dict, walls: dict, level: Level, above: Level | None
         q, reg = points[k], regions[k]
         # The point must not be inside a wall.
         for w in walls.values():
+            lo, hi = w.footprint.min(axis=0), w.footprint.max(axis=0)
+            if not (lo[0] <= q[0] <= hi[0] and lo[1] <= q[1] <= hi[1]):
+                continue
             if _inside(q, w.footprint):
                 raise CadError(
                     "ROOM_IN_WALL",
@@ -729,7 +766,7 @@ def _region_index(location: str | None) -> int | None:
 def _inside(q, poly) -> bool:
     x, y = q
     xs, ys = poly[:, 0], poly[:, 1]
-    xn, yn = np.roll(xs, -1), np.roll(ys, -1)
+    xn, yn = np.append(xs[1:], xs[0]), np.append(ys[1:], ys[0])
     cond = (ys > y) != (yn > y)
     with np.errstate(divide="ignore", invalid="ignore"):
         xc = xs + (y - ys) * (xn - xs) / (yn - ys)

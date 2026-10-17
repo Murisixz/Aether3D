@@ -23,7 +23,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..cad.brep.build import box
-from ..cad.brep.topology import Body
+from ..cad.brep.topology import Body, merge  # noqa: F401  (merge: used here, re-exported)
 from ..cad.geom3d import Frame
 from ..errors import CadError
 
@@ -42,32 +42,6 @@ class OpeningSpec:
     glass: float
     mullions: int
     transoms: int
-
-
-def merge(bodies: list[Body]) -> Body:
-    """Disjoint (or touching) solids as one multi-lump body."""
-    verts, edges, faces, shells = [], [], [], []
-    vbase = ebase = fbase = 0
-    from ..cad.brep.topology import Edge, Face
-
-    for b in bodies:
-        verts.append(b.vertices)
-        for e in b.edges:
-            edges.append(Edge(e.curve, e.t0, e.t1, e.v0 + vbase, e.v1 + vbase, e.name, e.tol))
-        for f in b.faces:
-            loops = tuple(tuple((ei + ebase, fwd) for ei, fwd in lp) for lp in f.loops)
-            faces.append(Face(f.surface, f.sense, loops, f.name, f.group, f.window))
-        for s in b.shells:
-            shells.append(tuple(i + fbase for i in s))
-        vbase += len(b.vertices)
-        ebase += len(b.edges)
-        fbase += len(b.faces)
-    return Body(
-        np.concatenate(verts) if verts else np.zeros((0, 3)),
-        tuple(edges),
-        tuple(faces),
-        tuple(shells),
-    )
 
 
 def _box(x0, x1, y0, y1, z0, z1, name, group) -> Body:

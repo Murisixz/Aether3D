@@ -19,6 +19,7 @@ from .features import OPERATIONS as FEATURE_OPERATIONS
 from .measure import SNAP_KINDS
 from .script import FORMAT_ID, LIMIT_KEYS, LISTS, OPERATIONS, VERSION
 from .sketch.model import CONSTRAINT_TYPES, ENTITY_TYPES
+from .units import ANGLE_UNITS, LENGTH_UNITS
 
 _STRING = {"type": "string", "minLength": 1}
 _ID = {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[^:|#/ ]+$"}
@@ -275,8 +276,8 @@ OP_PROPERTIES = {"schedule": {"kind": {"enum": list(SCHEDULE_KINDS)}}}
 
 def _properties() -> dict[str, Any]:
     return {
-        "length": {"enum": ["mm", "cm", "m", "km", "in", "ft", "yd", "mi"]},
-        "angle": {"enum": ["deg", "rad"]},
+        "length": {"enum": list(LENGTH_UNITS)},
+        "angle": {"enum": list(ANGLE_UNITS)},
         "name": _STRING,
         "value": _LENGTH,
         "dimension": {"enum": ["length", "angle", "ratio", "area", "volume"]},

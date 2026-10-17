@@ -399,12 +399,13 @@ def f_extrude(part: _Part, f, state, outputs, loc) -> FeatureOutput:
     lo, hi = _extent(part, f, loc, _state_size(state, sk.frame))
     draft = part.angle(f.get("draft", 0), f"{loc}.draft") if f.get("draft") else 0.0
     group = int(f.get("group", 0))
-    tool = None
+    tools = []
     for i, reg in enumerate(regions):
         b = build.extrude(reg, sk.frame, lo, hi, draft=draft, prefix=f["id"], group=group)
         if i:
             b = b.renamed({f["id"]: f["id"]})
-        tool = b if tool is None else boolean(tool, b, "union")
+        tools.append(b)
+    tool = combine(tools)
     op = f.get("operation", "new" if not state else "add")
     target = f.get("body", "main")
     out = _apply(state, target, tool, op, loc)
@@ -442,12 +443,14 @@ def f_revolve(part: _Part, f, state, outputs, loc) -> FeatureOutput:
     regions = _regions(part, sk, f.get("regions"), f"{loc}.regions")
     ap, ad = _axis_2d(part, sk, f.get("axis"), f"{loc}.axis")
     angle = part.angle(f.get("angle", "360 deg"), f"{loc}.angle")
-    tool = None
+    tools = []
     for reg in regions:
-        b = build.revolve(
-            reg, sk.frame, ap, ad, angle, prefix=f["id"], group=int(f.get("group", 0))
+        tools.append(
+            build.revolve(
+                reg, sk.frame, ap, ad, angle, prefix=f["id"], group=int(f.get("group", 0))
+            )
         )
-        tool = b if tool is None else boolean(tool, b, "union")
+    tool = combine(tools)
     op = f.get("operation", "new" if not state else "add")
     target = f.get("body", "main")
     return FeatureOutput(
@@ -587,7 +590,7 @@ def f_hole(part: _Part, f, state, outputs, loc) -> FeatureOutput:
         a, b = np.array(prof[i]), np.array(prof[(i + 1) % len(prof)])
         pieces.append(Piece(Segment(a, b), names[i], 0))
     region = Region(Loop(pieces))
-    tool = None
+    tools = []
     for k, p in enumerate(pts):
         prefix = f["id"] if len(pts) == 1 else f"{f['id']}.{k}"
         # Project onto the face plane; check the point is on the face.
@@ -606,7 +609,8 @@ def f_hole(part: _Part, f, state, outputs, loc) -> FeatureOutput:
         t = build.revolve(
             region, sk_frame, (0.0, 0.0), (0.0, 1.0), prefix=prefix, group=int(f.get("group", 0))
         )
-        tool = t if tool is None else boolean(tool, t, "union")
+        tools.append(t)
+    tool = combine(tools)
     return FeatureOutput(
         _apply(state, target, tool, "cut", loc),
         {"holes": len(pts), "diameter_m": d, "depth_m": None if through else depth, "kind": kind},
@@ -614,6 +618,45 @@ def f_hole(part: _Part, f, state, outputs, loc) -> FeatureOutput:
         "cut",
         target,
     )
+
+
+def combine(tools: list[Body]) -> Body:
+    """One tool body from several: tools whose boxes do not overlap are gathered as lumps
+    of one body (no boolean); overlapping ones are united first. Cutting with the result
+    is one boolean, however many tools -- not one per tool."""
+    from .brep.topology import merge
+
+    if len(tools) == 1:
+        return tools[0]
+    tol = 1e-9 * max(t.size for t in tools)
+    boxes = [t.bounds for t in tools]
+    parent = list(range(len(tools)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    order = sorted(range(len(tools)), key=lambda i: boxes[i][0][0])
+    for a_i, i in enumerate(order):
+        for j in order[a_i + 1 :]:
+            if boxes[j][0][0] > boxes[i][1][0] + tol:
+                break
+            if np.all(boxes[i][0] <= boxes[j][1] + tol) and np.all(
+                boxes[j][0] <= boxes[i][1] + tol
+            ):
+                parent[find(i)] = find(j)
+    groups: dict[int, list[int]] = {}
+    for i in range(len(tools)):
+        groups.setdefault(find(i), []).append(i)
+    lumps = []
+    for members in groups.values():
+        body = tools[members[0]]
+        for m in members[1:]:
+            body = boolean(body, tools[m], "union")
+        lumps.append(body)
+    return lumps[0] if len(lumps) == 1 else merge(lumps)
 
 
 def _hole_points(part: _Part, f, loc) -> list[np.ndarray]:
@@ -873,7 +916,7 @@ def f_shell(part: _Part, f, state, outputs, loc) -> FeatureOutput:
     if b <= a:
         raise CadError("SHELL_TOO_THICK", "the thickness leaves no cavity", f"{loc}.thickness")
     tol = Tolerance.for_scale(_state_size(state)).resolution
-    tool = None
+    pieces = []
     for reg in src.extra["regions"]:
         try:
             inner = Region(
@@ -884,7 +927,8 @@ def f_shell(part: _Part, f, state, outputs, loc) -> FeatureOutput:
         piece = build.extrude(
             inner, src.extra["frame"], a, b, prefix=f["id"], group=int(f.get("group", 0))
         )
-        tool = piece if tool is None else boolean(tool, piece, "union")
+        pieces.append(piece)
+    tool = combine(pieces)
     target = f.get("body", src.target or "main")
     return FeatureOutput(
         _apply(state, target, tool, "cut", loc),
@@ -1129,9 +1173,7 @@ def f_sweep(part: _Part, f, state, outputs, loc) -> FeatureOutput:
                 )
         prev_end = caps[1]
         frame = nxt
-    tool = chains[0]
-    for extra in chains[1:]:
-        tool = boolean(tool, extra, "union")
+    tool = combine(chains)
     op = f.get("operation", "new" if not state else "add")
     target = f.get("body", "main")
     return FeatureOutput(

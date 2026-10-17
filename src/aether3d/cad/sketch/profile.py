@@ -398,7 +398,9 @@ def _inside(p: np.ndarray, poly: np.ndarray) -> bool:
     """Even-odd point in polygon (the polygon approximates a curved loop finely)."""
     x, y = float(p[0]), float(p[1])
     xs, ys = poly[:, 0], poly[:, 1]
-    xn, yn = np.roll(xs, -1), np.roll(ys, -1)
+    if not (xs.min() <= x <= xs.max() and ys.min() <= y <= ys.max()):
+        return False
+    xn, yn = np.append(xs[1:], xs[0]), np.append(ys[1:], ys[0])
     cond = (ys > y) != (yn > y)
     with np.errstate(divide="ignore", invalid="ignore"):
         xcross = xs + (y - ys) * (xn - xs) / (yn - ys)
