@@ -7,12 +7,14 @@
 * :func:`extract_root_motion` moves a root joint's horizontal travel (and optionally its
   yaw) to the armature object's own channels, leaving the joint in place -- or drops it
   (``mode="in_place"``) for cycles that should not travel.
-* :func:`foot_contacts` finds when feet are planted (height above the ground plane below
-  ``height`` and horizontal speed below ``speed``, both explicit) by sampling the
-  evaluated motion, and measures each contact's **sliding** (how far the foot moves
+* :func:`foot_contacts` finds when feet are planted by sampling the evaluated motion --
+  near the ground (``height``) and moving no faster than ``speed`` relative to their
+  stance's steady velocity: zero for a planted foot, the skating velocity when a body
+  outruns its steps -- and measures each contact's **sliding** (how far the foot moves
   while planted) and any **penetration** below the ground.
 * :func:`plant_feet` corrects sliding (after Kovar, Schreiner and Gleicher, 2002): for
-  each foot it creates a target object pinned where each contact starts, keyed to follow
+  each foot it creates a target object pinned during each contact in the pose the foot
+  touched down with (lifted if a heel or toe of it was below the ground), keyed to follow
   the foot between contacts, and an IK constraint on the leg chain whose influence is
   keyed 1 during contacts and blends out around them. Everything it makes is ordinary,
   editable data; the report gives the sliding before and after.
@@ -200,7 +202,7 @@ def foot_contacts(
     heel-to-toe roll is not sliding); **penetration** how far any point goes below the
     ground. The defaults are the feedback check's (``foot_contacts`` expectations), so
     every interface measures alike."""
-    from .report import sample_world
+    from .report import sample_joints
 
     obj = system._object(armature, "armature")
     rig = system.rig(obj)
@@ -230,12 +232,14 @@ def foot_contacts(
         "basis": "sampled",
     }
     root = next(j.name for j in rig.joints if j.parent < 0)
-    body = sample_world(system, obj, ts, joint=root)[:, :2, 3]
-    stance_bound = np.maximum(speed, np.linalg.norm(np.gradient(body, dt, axis=0), axis=1))
     for foot in feet:
         if rig.index(foot) is None:
             raise _err("JOINT_MISSING", f"no joint {foot!r}", "feet")
-        w = sample_world(system, obj, ts, joint=foot)
+    sampled = sample_joints(system, obj, ts, list(dict.fromkeys([root, *feet])))
+    body = sampled[root][:, :2, 3]
+    stance_bound = np.maximum(speed, np.linalg.norm(np.gradient(body, dt, axis=0), axis=1))
+    for foot in feet:
+        w = sampled[foot]
         local = _contact_points(rig, foot)
         pts = {name: (w @ np.array([*p, 1.0]))[:, :3] for name, p in local.items()}
         ankle = w[:, :3, 3]

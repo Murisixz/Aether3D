@@ -212,22 +212,35 @@ def sample_world(
     """World matrices ``(n, 4, 4)`` of an object (or one of its rig's joints) at ``times``."""
     from ..rendering.scene_data import world_matrices
 
+    if joint is not None:
+        return sample_joints(system, target, times, [joint])[joint]
     obj = system._object(target, "target")
     out = np.empty((len(times), 4, 4))
     for i, t in enumerate(times.tolist()):
-        worlds = world_matrices(system.scene, system.overlay(t))
-        w = worlds[obj._id]
-        if joint is not None:
-            rigging = system.rigging(t)
-            found = rigging.joints.get(obj._id)
-            if found is None:
-                raise _missing_joint(obj.name, joint)
-            rig, model = found
+        out[i] = world_matrices(system.scene, system.overlay(t))[obj._id]
+    return out
+
+
+def sample_joints(
+    system: AnimationSystem, target: Any, times: np.ndarray, joints: list[str]
+) -> dict[str, np.ndarray]:
+    """World matrices ``(n, 4, 4)`` of several joints of an object's rig at ``times``,
+    from one evaluation of the scene per time."""
+    from ..rendering.scene_data import world_matrices
+
+    obj = system._object(target, "target")
+    out = {j: np.empty((len(times), 4, 4)) for j in joints}
+    for i, t in enumerate(times.tolist()):
+        w = world_matrices(system.scene, system.overlay(t))[obj._id]
+        found = system.rigging(t).joints.get(obj._id)
+        if found is None:
+            raise _missing_joint(obj.name, joints[0])
+        rig, model = found
+        for joint in joints:
             k = rig.index(joint)
             if k is None:
                 raise _missing_joint(obj.name, joint)
-            w = w @ model[k]
-        out[i] = w
+            out[joint][i] = w @ model[k]
     return out
 
 

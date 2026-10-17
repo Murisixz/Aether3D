@@ -44,7 +44,9 @@ A key is `[time, value]` or `{time, value, interpolation, ease, left, right, wei
   `weighted` keys keep their handle lengths (longer handles hold the motion longer).
 * `extrapolation`: `constant`, `linear`, `cycle`, `cycle_offset` (walk cycles that
   advance), `mirror`. Automatic handles are cycle-aware: loops are smooth at the wrap.
-* `modifiers`: `noise`, `cycles`, `generator`, `envelope`, `stepped`, `limits` ...
+* `modifiers` (in order, each with `influence` and an optional `range`): `offset`,
+  `scale`, `limits`, `noise`, `wave`, `envelope`, `smooth`, `stepped`, `time_offset`,
+  `time_scale` -- replace a curve's chain with `set_modifiers`.
 
 Key operations (`edit_keys`): `set`, `delete`, `move` (dt, dv), `scale_time` (factor,
 pivot), `scale_values`, `reverse`, `quantize` (fps), `distribute`, `retime` (time map),
@@ -55,8 +57,9 @@ pivot), `scale_values`, `reverse`, `quantize` (fps), `distribute`, `retime` (tim
 one-sided limits, extrema, overshoot, velocity/acceleration/jerk peaks), `trajectory`
 (world-space speed, jerk, smoothness), `diagnose` (scene-wide findings: velocity
 discontinuities, overshoot, corrected handles, IK out of reach), `contacts` (feet:
-planted intervals, sliding, penetration). `simplify` reduces keys to a bounded error,
-`resample` keys every frame, `bake` turns layers/rigs/constraints into plain keys.
+planted intervals, sliding -- a skating stance counts -- and penetration). `simplify`
+reduces keys to a bounded error, `resample` keys every frame, `bake` turns
+layers/rigs/constraints into plain keys.
 
 ## Rigs, skins, IK, constraints
 
