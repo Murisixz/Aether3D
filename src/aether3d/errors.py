@@ -421,3 +421,46 @@ class FeedbackError(AetherError, ValueError):
             "details": self.details,
             "issues": self.issues,
         }
+
+
+class CadError(AetherError, ValueError):
+    """A precision-modeling, CAD, architecture or BIM request cannot be carried out; the
+    scene, its CAD document and its history are unchanged and no file was written.
+
+    Raised for units and expressions, sketches and their solver, B-rep construction,
+    features, assemblies, building elements, drawings and CAD/BIM interchange (see
+    ``docs/CAD.md``). ``code`` is a stable identifier (e.g. ``"UNIT_MISMATCH"``,
+    ``"SKETCH_CONFLICT"``, ``"REFERENCE_LOST"``, ``"BOOLEAN_FAILED"``,
+    ``"OPENING_OUTSIDE_WALL"``), ``location`` names the offending item, feature, constraint
+    or argument (``part[Bracket].features[hole1].diameter``), ``hint`` suggests how to
+    proceed and ``details`` carries structured context -- for solver failures the
+    conflicting and redundant constraints, residuals and degrees of freedom.
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        location: str | None = None,
+        *,
+        hint: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.location = location
+        self.hint = hint
+        self.details = dict(details or {})
+        text = f"[{code}] " + (f"{location}: " if location else "") + message
+        if hint:
+            text += f". Hint: {hint}"
+        super().__init__(text)
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "location": self.location,
+            "hint": self.hint,
+            "details": self.details,
+        }
