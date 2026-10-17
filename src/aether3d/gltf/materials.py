@@ -1086,6 +1086,13 @@ def split_for_tangents(mesh: Any) -> tuple[Any, np.ndarray]:
     """``mesh`` with a vertex per distinct (vertex, MikkTSpace tangent) and those per-vertex
     tangents ``(V, 4)``: glTF's TANGENT is per vertex, while MikkTSpace gives every corner its
     own (they differ where a vertex joins mirrored or separately mapped UV islands)."""
+    split, tangents, _ = split_for_tangents_mapped(mesh)
+    return split, tangents
+
+
+def split_for_tangents_mapped(mesh: Any) -> tuple[Any, np.ndarray, np.ndarray | None]:
+    """:func:`split_for_tangents` and, when vertices were split, each new vertex's source
+    vertex (to carry per-vertex skin weights and morph offsets along)."""
     from ..mesh import Mesh
     from ..uv.mikktspace import mesh_tangents
 
@@ -1100,7 +1107,7 @@ def split_for_tangents(mesh: Any) -> tuple[Any, np.ndarray]:
     ):
         tangents = np.zeros((mesh.vertex_count, 4), dtype=np.float32)
         tangents[tri[first]] = corner.reshape(-1, 4)[first]
-        return mesh, tangents
+        return mesh, tangents, None
     order = np.argsort(first, kind="stable")
     rank = np.empty(order.shape[0], dtype=np.int64)
     rank[order] = np.arange(order.shape[0])
@@ -1114,4 +1121,4 @@ def split_for_tangents(mesh: Any) -> tuple[Any, np.ndarray]:
         uvs=mesh.uvs[src_vertex],
         groups=mesh.groups,
     )
-    return split, corner.reshape(-1, 4)[src_corner].astype(np.float32)
+    return split, corner.reshape(-1, 4)[src_corner].astype(np.float32), src_vertex

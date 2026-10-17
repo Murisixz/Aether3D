@@ -31,6 +31,7 @@ import base64
 import binascii
 import json
 import os
+import re
 import struct
 import urllib.parse
 from dataclasses import dataclass, field
@@ -76,6 +77,7 @@ MODE_NAMES = {
     6: "TRIANGLE_FAN",
 }
 SUPPORTED_ATTRIBUTES = ("POSITION", "NORMAL", "TEXCOORD_0")
+_SKIN_ATTRIBUTE = re.compile(r"^(JOINTS|WEIGHTS)_\d+$")
 
 
 @dataclass(frozen=True)
@@ -95,6 +97,8 @@ class ImportLimits:
     """Total vertices across all imported (unique) meshes."""
     max_triangles: int = 50_000_000
     """Total triangles across all imported (unique) meshes."""
+    max_animation_keys: int = 20_000_000
+    """Total animation keys across all channels."""
 
 
 @dataclass
@@ -113,6 +117,8 @@ class ImportResult:
     generator: str | None
     objects: list[dict[str, Any]]
     diagnostics: list[Diagnostic] = field(default_factory=list)
+    animation: dict[str, Any] = field(default_factory=dict)
+    """``{rigs: [{armature, joints}], skins, morph_targets, animations: [{name, clips}]}``."""
 
     @property
     def lossy(self) -> bool:
@@ -128,6 +134,7 @@ class ImportResult:
             "object_count": len(self.scene),
             "lossy": self.lossy,
             "objects": [dict(o) for o in self.objects],
+            "animation": dict(self.animation),
             "diagnostics": [d.to_dict() for d in self.diagnostics],
         }
 
@@ -175,6 +182,12 @@ class _Reader:
         self.triangle_total = 0
         self.meshes: dict[int, Mesh | None] = {}
         self.mesh_materials: dict[int, tuple[dict[int, Any], bool]] = {}
+        self.mesh_skin: dict[int, tuple[np.ndarray, np.ndarray] | None] = {}
+        self.mesh_targets: dict[int, list[dict[str, Any]] | None] = {}
+        self.morph_names: dict[str, list[str]] = {}  # object id -> its morph target names
+        self.skinned_ids: set[str] = set()
+        self.animation_summary: dict[str, Any] = {}
+        self.parent_of: dict[int, int] = {}
         self.importer: MaterialImporter | None = None
         self.doc: dict[str, Any] = {}
         self.format = "gltf"
@@ -421,7 +434,13 @@ class _Reader:
             raise AssetFormatError("normalized must be a boolean", f"{where}/normalized")
         self.check_accessor_kind(purpose, component, kind, normalized, where)
         width = TYPE_SIZES[kind]
-        limit = 3 * self.limits.max_triangles if purpose == "indices" else self.limits.max_vertices
+        limit = (
+            3 * self.limits.max_triangles
+            if purpose == "indices"
+            else self.limits.max_animation_keys * 4
+            if purpose.startswith("anim")
+            else self.limits.max_vertices
+        )
         if count > limit:
             raise ResourceLimitError(
                 f"{where}: accessor has {count} elements; the limit is {limit}"
@@ -526,6 +545,30 @@ class _Reader:
         if purpose == "indices":
             ok = kind == "SCALAR" and component in INDEX_TYPES and not normalized
             expected = "SCALAR unsigned byte/short/int"
+        elif purpose == "JOINTS":
+            ok = kind == "VEC4" and component in (5121, 5123) and not normalized
+            expected = "VEC4 unsigned byte/short"
+        elif purpose == "WEIGHTS":
+            ok = kind == "VEC4" and (
+                component == 5126 or (component in (5121, 5123) and normalized)
+            )
+            expected = "VEC4 float or normalized unsigned byte/short"
+        elif purpose == "IBM":
+            ok = kind == "MAT4" and component == 5126
+            expected = "MAT4 float"
+        elif purpose == "anim_input":
+            ok = kind == "SCALAR" and component == 5126
+            expected = "SCALAR float"
+        elif purpose == "anim_rotation":
+            ok = kind == "VEC4" and (
+                component == 5126 or (component in (5120, 5121, 5122, 5123) and normalized)
+            )
+            expected = "VEC4 float or normalized byte/short"
+        elif purpose == "anim_weights":
+            ok = kind == "SCALAR" and (
+                component == 5126 or (component in (5120, 5121, 5122, 5123) and normalized)
+            )
+            expected = "SCALAR float or normalized byte/short"
         elif purpose == "TEXCOORD_0":
             ok = kind == "VEC2" and (
                 component == 5126 or (component in (5121, 5123) and normalized)
@@ -578,12 +621,6 @@ class _Reader:
         attributes = prim.get("attributes")
         if not isinstance(attributes, dict):
             raise AssetFormatError("attributes must be an object", f"{loc}/attributes")
-        if "targets" in prim:
-            self.lossy(
-                "MORPH_TARGETS_IGNORED",
-                "morph targets are not supported; only the base geometry is imported",
-                f"{loc}/targets",
-            )
         if mode < 4:
             self.lossy(
                 "PRIMITIVE_MODE_UNSUPPORTED",
@@ -599,7 +636,9 @@ class _Reader:
                 f"{loc}/attributes",
             )
             return None
-        ignored = sorted(set(attributes) - set(SUPPORTED_ATTRIBUTES))
+        ignored = sorted(
+            a for a in set(attributes) - set(SUPPORTED_ATTRIBUTES) if not _SKIN_ATTRIBUTE.match(a)
+        )
         if ignored:
             self.note(
                 "ATTRIBUTES_IGNORED",
@@ -625,6 +664,8 @@ class _Reader:
                         "ATTRIBUTE_COUNT_MISMATCH",
                     )
                 extra[name] = values
+        skin = self.skin_weights(attributes, n, loc)
+        targets = self.targets(prim, n, loc)
         if "indices" in prim:
             indices = (
                 self.accessor(prim["indices"], f"{loc}/indices", "indices").ravel().astype(np.int64)
@@ -653,7 +694,72 @@ class _Reader:
             value = stored["group"]
             if _is_int(value) and 0 <= value <= 65535:
                 group = value
-        return positions, triangles, extra.get("NORMAL"), extra.get("TEXCOORD_0"), material, group
+        return (
+            positions,
+            triangles,
+            extra.get("NORMAL"),
+            extra.get("TEXCOORD_0"),
+            material,
+            group,
+            skin,
+            targets,
+        )
+
+    def skin_weights(self, attributes: dict[str, Any], n: int, loc: str):
+        """``(joints, weights)`` of a primitive's ``JOINTS_n``/``WEIGHTS_n`` sets, or ``None``."""
+        sets = 0
+        while f"JOINTS_{sets}" in attributes and f"WEIGHTS_{sets}" in attributes:
+            sets += 1
+        if sets == 0:
+            return None
+        idx, w = [], []
+        for k in range(sets):
+            j = self.accessor(attributes[f"JOINTS_{k}"], f"{loc}/attributes/JOINTS_{k}", "JOINTS")
+            v = self.accessor(
+                attributes[f"WEIGHTS_{k}"], f"{loc}/attributes/WEIGHTS_{k}", "WEIGHTS"
+            )
+            if len(j) != n or len(v) != n:
+                raise AssetFormatError(
+                    f"JOINTS_{k}/WEIGHTS_{k} counts differ from POSITION ({n})",
+                    f"{loc}/attributes",
+                    "ATTRIBUTE_COUNT_MISMATCH",
+                )
+            idx.append(j.astype(np.int64))
+            w.append(v.astype(np.float64))
+        weights = np.concatenate(w, axis=1)
+        if not np.all(np.isfinite(weights)) or np.any(weights < 0):
+            raise AssetFormatError("weights must be finite and non-negative", f"{loc}/attributes")
+        return np.concatenate(idx, axis=1), weights
+
+    def targets(self, prim: dict[str, Any], n: int, loc: str):
+        """Morph target offsets of a primitive (``POSITION``/``NORMAL``), or ``None``."""
+        raw = prim.get("targets")
+        if raw is None:
+            return None
+        if not isinstance(raw, list) or not raw or len(raw) > 256:
+            raise AssetFormatError("targets must be an array of 1..256 objects", f"{loc}/targets")
+        out = []
+        for k, target in enumerate(raw):
+            where = f"{loc}/targets/{k}"
+            if not isinstance(target, dict):
+                raise AssetFormatError("a morph target is an object", where)
+            entry: dict[str, Any] = {"POSITION": None, "NORMAL": None}
+            for name in ("POSITION", "NORMAL"):
+                if name in target:
+                    values = self.accessor(target[name], f"{where}/{name}", name)
+                    if len(values) != n:
+                        raise AssetFormatError(
+                            f"{name} offsets for {len(values)} vertices; the primitive has {n}",
+                            f"{where}/{name}",
+                            "ATTRIBUTE_COUNT_MISMATCH",
+                        )
+                    entry[name] = values.astype(np.float64)
+            if set(target) - {"POSITION", "NORMAL"}:
+                self.note("MORPH_ATTRIBUTES_IGNORED", INFO,
+                          "morph target attributes other than POSITION and NORMAL are ignored",
+                          where)  # fmt: skip
+            out.append(entry)
+        return out
 
     @staticmethod
     def triangulate(indices: np.ndarray, mode: int, loc: str) -> np.ndarray:
@@ -710,7 +816,8 @@ class _Reader:
                     f"{name} is present on only some primitives; dropped for the whole mesh",
                     loc,
                 )
-        for k, (pos, tri, nor, uv, _, _) in enumerate(parts):
+        self.merge_rigging(parts, loc, mesh_index)
+        for k, (pos, tri, nor, uv, *_) in enumerate(parts):
             positions.append(pos)
             triangles.append(tri + offset)
             groups.append(np.full(len(tri), group_of[k], dtype=np.int64))
@@ -731,6 +838,46 @@ class _Reader:
             )
         except ValidationError as exc:
             raise AssetFormatError(str(exc), loc, "INVALID_MESH_DATA") from None
+
+    def merge_rigging(self, parts, loc: str, mesh_index: int) -> None:
+        """Skin weights and morph offsets of the merged mesh (vertices concatenated)."""
+        skins = [p[6] for p in parts]
+        if any(s is not None for s in skins):
+            width = max(s[0].shape[1] for s in skins if s is not None)
+            idx, w = [], []
+            for p, sk in zip(parts, skins, strict=True):
+                n = len(p[0])
+                ji, wi = np.zeros((n, width), np.int64), np.zeros((n, width))
+                if sk is not None:
+                    ji[:, : sk[0].shape[1]], wi[:, : sk[1].shape[1]] = sk
+                idx.append(ji)
+                w.append(wi)
+            self.mesh_skin[mesh_index] = (np.concatenate(idx), np.concatenate(w))
+        targets = [p[7] for p in parts]
+        if any(t is not None for t in targets):
+            counts = {len(t) for t in targets if t is not None}
+            if len(counts) != 1 or any(t is None for t in targets):
+                raise AssetFormatError(
+                    "every primitive of a mesh needs the same number of morph targets",
+                    loc,
+                    "MORPH_TARGET_COUNT_MISMATCH",
+                )
+            out = []
+            for k in range(counts.pop()):
+                entry: dict[str, Any] = {}
+                for name in ("POSITION", "NORMAL"):
+                    if all(t[k][name] is None for t in targets):
+                        entry[name] = None
+                        continue
+                    rows = [
+                        t[k][name] if t[k][name] is not None else np.zeros((len(p[0]), 3))
+                        for p, t in zip(parts, targets, strict=True)
+                    ]
+                    entry[name] = axes.vectors_from_gltf(np.concatenate(rows))
+                if entry["POSITION"] is None:
+                    entry["POSITION"] = np.zeros((sum(len(p[0]) for p in parts), 3))
+                out.append(entry)
+            self.mesh_targets[mesh_index] = out
 
     # -- nodes and scene ---------------------------------------------------
 
@@ -786,14 +933,6 @@ class _Reader:
                     f"/{key}",
                     len(self.array(key)),
                 )
-        if self.array("animations"):
-            self.note(
-                "ANIMATIONS_IGNORED",
-                WARNING,
-                "animations are not imported; nodes keep their static (rest) transforms",
-                "/animations",
-                len(self.array("animations")),
-            )
         used = self.doc.get("extensionsUsed", [])
         from .materials import SUPPORTED_MATERIAL_EXTENSIONS
 
@@ -908,19 +1047,69 @@ class _Reader:
             if roots:
                 self.note("NO_SCENE", INFO, "asset defines no scene; all root nodes are imported")
 
+        from . import anim_import
+
+        self.parent_of = parent
+        plan = anim_import.plan_skeletons(self, parent)
+        carrier_of: dict[int, str] = {}  # Aether3D's skinned-mesh carriers -> their object
+        for index in range(len(nodes)):
+            node, _ = self.item("nodes", index, "/nodes")
+            extras = node.get("extras")
+            stored = extras.get(EXTRAS_KEY) if isinstance(extras, dict) else None
+            target = stored.get("skinned_mesh_of") if isinstance(stored, dict) else None
+            if isinstance(target, str) and "mesh" in node and index not in parent:
+                carrier_of[index] = target
+
         scene = Scene(name or self.path.stem.strip() or "Imported Scene")
         # Importing builds a new scene: its history starts empty.
         with scene.history._suspended():
             self.importer = MaterialImporter(self, scene)
             objects: list[dict[str, Any]] = []
             used_ids: set[str] = set()
-            stack: list[tuple[int, SceneObject | None]] = [(r, None) for r in reversed(roots)]
+            node_object: dict[int, str] = {}
+            pending: list[tuple[int, dict[str, Any], str]] = []
+            visited_joints = 0
+            stack: list[tuple[int, SceneObject | None, int | None]] = [
+                (r, None, None) for r in reversed(roots)
+            ]
             while stack:
-                index, parent_obj = stack.pop()
+                index, parent_obj, joint = stack.pop()
                 node, where = self.item("nodes", index, "/nodes")
+                if index in plan.joints:
+                    visited_joints += 1
+                    arm = self.visit_joint(scene, plan, index, node, where, parent_obj)
+                    if "mesh" in node:  # a rigid part on the joint itself
+                        part = self.create_object(
+                            scene, {k: v for k, v in node.items() if k != "extras"},
+                            index, where, arm, used_ids, objects,
+                        )  # fmt: skip
+                        self.place_under_joint(plan, part, index, np.eye(4))
+                        self.note_rigging(plan, part, node)
+                        node_object[index] = part.id
+                    for child in reversed(node.get("children", [])):
+                        stack.append((child, arm, index))
+                    continue
+                if index in carrier_of:
+                    pending.append((index, node, where))
+                    continue
                 obj = self.create_object(scene, node, index, where, parent_obj, used_ids, objects)
+                if joint is not None:  # below a joint: placed in armature space, attached
+                    local = anim_import.compose(obj.position, obj.rotation, obj.scale)
+                    self.place_under_joint(plan, obj, joint, local)
+                self.note_rigging(plan, obj, node)
+                node_object[index] = obj.id
                 for child in reversed(node.get("children", [])):
-                    stack.append((child, obj))
+                    stack.append((child, obj, None))
+            for index, node, where in pending:
+                target = scene._objects.get(carrier_of[index])
+                if target is None or target.mesh is not None:
+                    target = self.create_object(scene, node, index, where, None, used_ids, objects)
+                else:
+                    self.carry_mesh(scene, target, node, where)
+                    plan.carriers[index] = target.id
+                self.note_rigging(plan, target, node)
+                node_object[index] = target.id
+            self.finish_rigging(scene, plan, node_object)
             unused = self.importer.unused()
             if unused:
                 self.note(
@@ -930,8 +1119,8 @@ class _Reader:
                     "/materials",
                     unused,
                 )
-            skipped = len(nodes) - len(objects)
-            if skipped:
+            skipped = len(nodes) - len(objects) - visited_joints - len(plan.carriers)
+            if skipped > 0:
                 self.note(
                     "NODES_NOT_IN_SCENE",
                     WARNING,
@@ -946,7 +1135,126 @@ class _Reader:
             asset.get("generator") if isinstance(asset.get("generator"), str) else None,
             objects,
             self.diagnostics,
+            self.animation_summary,
         )
+
+    # -- skeletons, skins, morph targets, animations ------------------------
+
+    def visit_joint(self, scene, plan, index, node, where, parent_obj):
+        """Record a joint node in its rig; returns the rig's armature object."""
+        from . import anim_import
+
+        top = plan.top[index]
+        if top not in plan.armature_obj:
+            arm = parent_obj
+            if arm is None:  # joints at the root: a new armature object holds them
+                arm = plan.armature_obj.get(None)
+                if arm is None:
+                    arm = scene.add_object(scene.unique_name("Armature"))
+                    plan.armature_obj[None] = arm
+            plan.armature_obj[top] = arm
+        arm = plan.armature_obj[top]
+        used = plan.names_used.setdefault(arm.id, set())
+        raw = node.get("name")
+        name = anim_import.safe_name(raw, f"Joint {index}", used)
+        if isinstance(raw, str) and raw.strip() and name != raw:
+            self.note("JOINT_RENAMED", INFO, f"joint {raw!r} imported as {name!r}", f"{where}/name")
+        pos, rot, scl = anim_import.joint_rest(self, node, where)
+        joint: dict[str, Any] = {"name": name, "position": list(pos), "rotation": list(rot),
+                                 "scale": list(scl)}  # fmt: skip
+        parent_joint = self.parent_of.get(index)
+        if parent_joint in plan.joints:
+            joint["parent"] = plan.joint_name[parent_joint]
+        else:
+            parent_joint = None
+        extras = node.get("extras")
+        stored = extras.get(EXTRAS_KEY) if isinstance(extras, dict) else None
+        if isinstance(stored, dict) and isinstance(stored.get("tail"), list):
+            tail = stored["tail"]
+            if len(tail) == 3 and all(_is_number(v) for v in tail):
+                joint["tail"] = [float(v) for v in tail]
+        plan.rigs.setdefault(arm.id, []).append(joint)
+        plan.joint_name[index] = name
+        plan.joint_armature[index] = arm.id
+        local = anim_import.compose(pos, rot, scl)
+        plan.model[index] = local if parent_joint is None else plan.model[parent_joint] @ local
+        return arm
+
+    def place_under_joint(self, plan, obj, joint: int, local: np.ndarray) -> None:
+        """Put ``obj`` (a child of the armature) where the joint holds it; attach it later."""
+        from ..animation.constraints import decompose
+
+        pos, rot, scl = decompose(plan.model[joint] @ local)
+        obj.transform = Transform(tuple(pos), tuple(rot), tuple(scl))
+        plan.attachments.append((obj, plan.joint_armature[joint], plan.joint_name[joint]))
+
+    def note_rigging(self, plan, obj, node: dict[str, Any]) -> None:
+        if "mesh" not in node or obj.mesh is None:
+            return
+        m_index = node["mesh"]
+        if "skin" in node:
+            self.item("skins", node["skin"], "/skins")
+            plan.skinned.append((obj, node["skin"], m_index))
+            self.skinned_ids.add(obj.id)
+        if self.mesh_targets.get(m_index):
+            plan.morphed.append((obj, m_index, node))
+
+    def carry_mesh(self, scene, target, node: dict[str, Any], where: str) -> None:
+        """Give ``target`` the mesh (and materials) of the node that carried it."""
+        mesh = self.mesh(node["mesh"], f"{where}/mesh")
+        target.mesh = mesh
+        if mesh is not None and node["mesh"] in self.mesh_materials:
+            materials, grouped = self.mesh_materials[node["mesh"]]
+            assign(
+                target,
+                {g: self.importer.material(m, f"{where}/mesh") for g, m in materials.items()},
+                grouped,
+            )
+
+    def finish_rigging(self, scene, plan, node_object: dict[int, str]) -> None:
+        from . import anim_import
+
+        summary: dict[str, Any] = {"rigs": [], "skins": 0, "morph_targets": 0, "animations": []}
+        system = scene.animation
+        for arm_id, joints in plan.rigs.items():
+            try:
+                system.add_rig(scene._objects[arm_id], joints)
+            except AetherError as exc:
+                raise AssetFormatError(
+                    f"invalid skeleton: {exc}", "/skins", "INVALID_SKIN"
+                ) from None
+            summary["rigs"].append({"armature": scene._objects[arm_id].name, "joints": len(joints)})
+        nodes = self.array("nodes")
+        for obj, arm_id, joint in plan.attachments:
+            index = next((i for i, oid in node_object.items() if oid == obj.id), None)
+            node = nodes[index] if index is not None else {}
+            extras = node.get("extras") if isinstance(node, dict) else None
+            stored = extras.get(EXTRAS_KEY) if isinstance(extras, dict) else None
+            back = stored.get("attached") if isinstance(stored, dict) else None
+            if isinstance(back, dict):  # Aether3D's own: its parent and transform again
+                try:
+                    parent_id = back.get("parent")
+                    parent_obj = (
+                        scene._objects.get(parent_id) if isinstance(parent_id, str) else None
+                    )
+                    obj.set_parent(parent_obj)
+                    obj.transform = Transform(
+                        tuple(back["translation"]), quat(back["rotation"], "rotation"),
+                        tuple(back["scale"]),
+                    )  # fmt: skip
+                except (KeyError, TypeError, ValueError, AetherError):
+                    self.note("STORED_ATTACHMENT_REJECTED", WARNING,
+                              "extras.aether3d.attached is invalid; the glTF placement is kept",
+                              f"/nodes/{index}/extras")  # fmt: skip
+            system.attach(obj, scene._objects[arm_id], joint)
+        summary["skins"] = anim_import.bind_skins(self, scene, plan)
+        summary["morph_targets"] = anim_import.add_morphs(self, scene, plan)
+        summary["animations"] = anim_import.import_animations(self, scene, plan, node_object)
+        if not (
+            summary["rigs"] or summary["skins"] or summary["morph_targets"] or summary["animations"]
+        ):
+            summary = {}
+        self.animation_summary = summary
 
     def create_object(
         self,
@@ -960,12 +1268,6 @@ class _Reader:
     ) -> SceneObject:
         transform = self.transform(node, where)
         mesh = self.mesh(node["mesh"], f"{where}/mesh") if "mesh" in node else None
-        if "skin" in node:
-            self.lossy(
-                "SKIN_IGNORED",
-                "skinning is not supported; the mesh is imported unskinned in its bind pose",
-                f"{where}/skin",
-            )
         if "camera" in node:
             self.note("NODE_CAMERA_IGNORED", INFO, "camera on node not imported", f"{where}/camera")
 

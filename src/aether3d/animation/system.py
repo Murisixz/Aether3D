@@ -970,7 +970,9 @@ class AnimationSystem:
         method: str = "linear",
     ) -> dict[str, Any]:
         """Bind a mesh object to a rig smoothly, in the current (rest) pose. ``weights``:
-        ``{"indices": (n, k), "weights": (n, k), "joints": [names]}`` given explicitly,
+        ``{"indices": (n, k), "weights": (n, k), "joints": [names], "inverse_bind": (m, 4,
+        4)}`` given explicitly (``inverse_bind``, optional: the bind pose's inverse bind
+        matrices, mesh space to joint space, as glTF files carry them),
         ``"nearest"`` (each vertex follows its nearest bone fully: rigid parts) or
         ``"envelope"`` (inverse-distance weights over the ``influences`` nearest bones: an
         automatic starting point, not production weight painting). Returns a report."""
@@ -1007,9 +1009,11 @@ class AnimationSystem:
             idx.append(k)
         bind_inv = np.linalg.inv(rest_model[idx]) @ np.linalg.inv(a_rest) @ m_rest
         if isinstance(weights, dict):
-            if set(weights) - {"indices", "weights", "joints"}:
+            if set(weights) - {"indices", "weights", "joints", "inverse_bind"}:
                 raise _err(
-                    "INVALID_SKIN", "explicit weights are {indices, weights, joints}", "weights"
+                    "INVALID_SKIN",
+                    "explicit weights are {indices, weights, joints, inverse_bind}",
+                    "weights",
                 )
             if "joints" in weights:
                 names = list(weights["joints"])
@@ -1020,6 +1024,8 @@ class AnimationSystem:
                         raise _err("INVALID_SKIN", f"no joint {n!r}", f"weights.joints[{i}]")
                     idx.append(k)
                 bind_inv = np.linalg.inv(rest_model[idx]) @ np.linalg.inv(a_rest) @ m_rest
+            if weights.get("inverse_bind") is not None:
+                bind_inv = np.asarray(weights["inverse_bind"], np.float64)
             vi, vw = weights.get("indices"), weights.get("weights")
             how = "explicit"
         elif weights in ("nearest", "envelope"):

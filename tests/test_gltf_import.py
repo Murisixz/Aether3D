@@ -134,19 +134,20 @@ def test_primitive_modes():
 
 
 @pytest.mark.parametrize(
-    "sample, code",
+    "sample, kind",
     [
-        ("SimpleSkin/glTF-Embedded/SimpleSkin.gltf", "SKIN_IGNORED"),
-        ("AnimatedMorphCube/glTF-Binary/AnimatedMorphCube.glb", "MORPH_TARGETS_IGNORED"),
+        ("SimpleSkin/glTF-Embedded/SimpleSkin.gltf", "skins"),
+        ("AnimatedMorphCube/glTF-Binary/AnimatedMorphCube.glb", "morph_targets"),
     ],
 )
-def test_skins_and_morph_targets_are_reported_not_hidden(sample, code):
-    with pytest.raises(UnsupportedFeatureError) as info:
-        import_gltf(KHRONOS / sample)
-    assert code in {d.code for d in info.value.diagnostics}
-    assert all(d.lossy for d in info.value.diagnostics)
-    result = import_gltf(KHRONOS / sample, allow_lossy=True)
-    assert result.lossy and code in codes(result) and "ANIMATIONS_IGNORED" in codes(result)
+def test_skins_morph_targets_and_animations_are_imported(sample, kind):
+    # (Stage 17: these imported lossily before -- SKIN_IGNORED, MORPH_TARGETS_IGNORED,
+    # ANIMATIONS_IGNORED. They are faithful now; tests/test_animation_gltf.py checks the
+    # deformation against an independent evaluation of the file.)
+    result = import_gltf(KHRONOS / sample)
+    assert not result.lossy
+    assert result.animation[kind] == 1
+    assert len(result.animation["animations"]) == 1
 
 
 def test_multiple_scenes_imports_default_scene_only():
