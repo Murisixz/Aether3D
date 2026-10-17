@@ -44,6 +44,7 @@ from animation_common import (  # noqa: E402
     humanoid_rig,
     mannequin,
     mannequin_mesh,
+    shadows,
     validate_glb,
     write_json,
 )
@@ -72,7 +73,7 @@ def stage(name: str) -> Scene:
 def sheet(scene, camera, times, out, name, size=(320, 320)):
     images = [
         scene.render(camera=camera, time=t, width=size[0], height=size[1], backend=backend(),
-                     shadows=True).image
+                     shadows=shadows()).image
         for t in times
     ]  # fmt: skip
     write_png(out / f"{name}_sheet.png",
@@ -94,7 +95,7 @@ def walk(out: Path, quick: bool) -> dict:
     times = np.linspace(0, period, 7 if quick else 12, endpoint=False)
     sheet(s, cam, times, out, "walk")
     s.render(camera=cam, time=0.3 * period, width=1280, height=720, backend=backend(),
-             shadows=True).save(out / "hero_walk.png")  # fmt: skip
+             shadows=shadows()).save(out / "hero_walk.png")  # fmt: skip
     contacts = a.foot_contacts(hero, FEET, start=0, end=2 * period, rate=120, height=0.03)
     s.save(out / "mannequin.aether")
     exp = s.export(out / "mannequin.glb", animation="clips")
@@ -141,7 +142,7 @@ def step(out: Path, quick: bool) -> dict:
     times = np.linspace(0, 2.0, 6 if quick else 12)
     sheet(s, cam, times, out, "step")
     s.render(camera=cam, time=1.8, width=1280, height=720, backend=backend(),
-             shadows=True).save(out / "hero_step.png")  # fmt: skip
+             shadows=shadows()).save(out / "hero_step.png")  # fmt: skip
     measured = []
     for t in (0.0, 0.9, 1.6, 2.0):
         foot = a.pose_joints(hero, t, "world")["Foot.R"][:3, 3]
@@ -174,7 +175,7 @@ def layers(out: Path, quick: bool) -> dict:
     times = np.linspace(0, end, 8 if quick else 12)
     sheet(s, cam, times, out, "layers")
     s.render(camera=cam, time=1.2, width=1280, height=720, backend=backend(),
-             shadows=True).save(out / "hero_layers.png")  # fmt: skip
+             shadows=shadows()).save(out / "hero_layers.png")  # fmt: skip
     hands = []
     for t in (1.2, end - 1.0):
         pose = a.pose_joints(hero, t, "world")
@@ -225,10 +226,8 @@ def twist(out: Path) -> dict:
             "vertices": int(zone.sum()),
         }
     cam = s.add_camera("Cam", position=(0.15, -1.25, 0.98), look_at=(-0.08, 0, 0.92), fov=40)
-    images = [
-        s.render(camera=cam, time=t, width=640, height=420, backend=backend(), shadows=True).image
-        for t in (0.0, 1.0)
-    ]  # fmt: skip
+    options = {"width": 640, "height": 420, "backend": backend(), "shadows": shadows()}
+    images = [s.render(camera=cam, time=t, **options).image for t in (0.0, 1.0)]
     labels = ["rest: LBS (left), DQS (right)", "hand twisted 160 degrees"]
     write_png(out / "twist_lbs_vs_dqs.png", contact_sheet(images, columns=2, labels=labels))
     return results

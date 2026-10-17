@@ -44,6 +44,7 @@ from animation_common import (  # noqa: E402
     lights,
     pixel_skin,
     pixel_world,
+    shadows,
     validate_glb,
     write_json,
 )
@@ -107,7 +108,7 @@ def camera(scene: Scene, name: str, position, look_at, fov: float = 38.0):
 
 def render_sequence(scene, name, out, *, start, end, width, height, camera_obj=None, blur=None):
     t0 = time.perf_counter()
-    options = {"width": width, "height": height, "backend": backend(), "shadows": True}
+    options = {"width": width, "height": height, "backend": backend(), "shadows": shadows()}
     if camera_obj is not None:
         options["camera"] = camera_obj
     report = render_frames(scene, out / "frames" / name, start=start, end=end, fps=FPS,
@@ -146,7 +147,7 @@ def main(argv: list[str]) -> int:
     for pos in ((0, -4.6, 1.4), (3.0, -3.6, 1.9), (0, 4.6, 1.4)):
         cam = camera(scene, f"View {len(views)}", pos, (0, 0, 1.0))
         views.append(scene.render(camera=cam, width=360, height=360, backend=backend(),
-                                  shadows=True).image)  # fmt: skip
+                                  shadows=shadows()).image)  # fmt: skip
         scene.remove(cam)
     labels = ["front", "three-quarter", "back"]
     write_png(out / "nova_views.png", contact_sheet(views, columns=3, labels=labels))
@@ -179,7 +180,7 @@ def main(argv: list[str]) -> int:
         contacts[clip] = feet_summary(c)
         mid = end * (0.3 if clip != "Jump" else 0.55)
         hero = scene.render(camera=cam, time=mid, width=1280, height=720, backend=backend(),
-                            shadows=True)  # fmt: skip
+                            shadows=shadows())  # fmt: skip
         hero.save(out / f"hero_{clip.lower()}.png")
         print(clip, sequences[clip]["frames"], "frames", contacts[clip])
 
@@ -205,7 +206,7 @@ def main(argv: list[str]) -> int:
     contacts["Land"] = feet_summary(c)
     for label, t in (("impact", t_hit + 0.45), ("rise", t_hit + 1.9)):
         frame = scene.render(time=min(t, end), width=1280, height=720, backend=backend(),
-                             shadows=True)  # fmt: skip
+                             shadows=shadows())  # fmt: skip
         frame.save(out / f"hero_land_{label}.png")
     report["shots"] = a.shots()
     report["impact_s"] = round(t_hit, 4)

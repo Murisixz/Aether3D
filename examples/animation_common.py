@@ -6,6 +6,7 @@ Khronos validator. Everything is generated here: no third-party assets.
 
 from __future__ import annotations
 
+import functools
 import json
 import shutil
 import subprocess
@@ -69,8 +70,9 @@ def _faces(u0: int, v0: int, w: int, h: int, d: int) -> dict[str, tuple[int, int
     }
 
 
-def pixel_skin(seed: int = 7) -> np.ndarray:
-    """The 64x64 RGBA skin, with a little per-pixel shading noise (seeded)."""
+def pixel_skin(seed: int = 7, **colors) -> np.ndarray:
+    """The 64x64 RGBA skin, with a little per-pixel shading noise (seeded); ``colors``
+    override :data:`PALETTE` entries (a crowd's variants: ``jacket=(r, g, b)``, ...)."""
     rng = np.random.default_rng(seed)
     img = np.zeros((64, 64, 4), np.uint8)
 
@@ -85,7 +87,10 @@ def pixel_skin(seed: int = 7) -> np.ndarray:
         img[y, x, :3] = color
         img[y, x, 3] = 255
 
-    p = PALETTE
+    unknown = set(colors) - set(PALETTE)
+    if unknown:
+        raise ValueError(f"unknown palette entries {sorted(unknown)}")
+    p = {**PALETTE, **colors}
     head = _faces(*LAYOUT["head"])
     for name in ("right", "front", "left", "back", "bottom"):
         fill(head[name], p["skin"])
@@ -210,9 +215,25 @@ def _fix_winding(mesh: Mesh) -> Mesh:
     return Mesh(mesh.positions, t, normals=mesh.normals, uvs=mesh.uvs)
 
 
-def blocky_character(scene: Scene, name: str, skin_png: bytes, position=(0.0, 0.0, 0.0)):
+_PART_MESHES: dict[str, Mesh] = {}
+
+
+def skin_material(scene: Scene, name: str, skin_png: bytes):
+    """A material showing a 64x64 skin with crisp pixels (characters can share one)."""
+    tex = scene.materials.add_image_texture(f"{name} skin", data=skin_png, embed=True,
+                                            filter="nearest", mipmaps=False)  # fmt: skip
+    mat = scene.create_material(f"{name} skin", roughness=0.85)
+    mat.set_texture("base_color", tex)
+    mat.base_color = (1.0, 1.0, 1.0)
+    return mat
+
+
+def blocky_character(scene: Scene, name: str, skin_png: bytes | None = None,
+                     position=(0.0, 0.0, 0.0), material=None):  # fmt: skip
     """An armature with Minecraft-proportioned parts (head, body, arms, legs), each a
-    textured box attached to its joint, facing -Y. Returns the armature object."""
+    textured box attached to its joint, facing -Y. Returns the armature object. The part
+    meshes are shared by every character; pass ``material`` (:func:`skin_material`) to
+    share a skin too."""
     arm = scene.add_object(name, position=position)
     a = scene.animation
     joints = [
@@ -227,11 +248,7 @@ def blocky_character(scene: Scene, name: str, skin_png: bytes, position=(0.0, 0.
         {"name": "Leg.L", "parent": "Hips", "position": [2 * PX, 0, 0], "tail": [0, 0, -12 * PX]},
     ]  # fmt: skip
     a.add_rig(arm, joints)
-    tex = scene.materials.add_image_texture(f"{name} skin", data=skin_png, embed=True,
-                                            filter="nearest", mipmaps=False)  # fmt: skip
-    mat = scene.create_material(f"{name} skin", roughness=0.85)
-    mat.set_texture("base_color", tex)
-    mat.base_color = (1.0, 1.0, 1.0)
+    mat = material if material is not None else skin_material(scene, name, skin_png)
     px0 = np.asarray(position, np.float64)
     parts = {
         # part: (joint, box center in the armature's space)
@@ -243,7 +260,9 @@ def blocky_character(scene: Scene, name: str, skin_png: bytes, position=(0.0, 0.
         "leg_l": ("Leg.L", (2 * PX, 0, 6 * PX)),
     }
     for part, (joint, center) in parts.items():
-        mesh = _fix_winding(part_box(part, (0.0, 0.0, 0.0)))
+        mesh = _PART_MESHES.get(part)
+        if mesh is None:
+            mesh = _PART_MESHES[part] = _fix_winding(part_box(part, (0.0, 0.0, 0.0)))
         obj = scene.add_object(f"{name} {part}", mesh=mesh, position=tuple(px0 + center))
         obj.material = mat
         a.attach(obj, arm, joint)
@@ -331,6 +350,7 @@ def write_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=False) + "\n", encoding="utf-8")
 
 
+@functools.cache
 def backend() -> str:
     """``gpu`` when a GPU renders here, else ``cpu`` (the report says which)."""
     try:
@@ -339,6 +359,11 @@ def backend() -> str:
         return "gpu" if gpu_status().get("available") else "cpu"
     except Exception:
         return "cpu"
+
+
+def shadows() -> bool:
+    """Shadows where they render: the CPU renderer draws none (and refuses to pretend)."""
+    return backend() == "gpu"
 
 
 # --------------------------------------------------------------------------- #

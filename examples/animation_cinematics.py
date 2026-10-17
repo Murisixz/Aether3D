@@ -50,6 +50,7 @@ from animation_common import (  # noqa: E402
     lights,
     pixel_skin,
     pixel_world,
+    shadows,
     write_json,
 )
 
@@ -167,7 +168,7 @@ def main(argv: list[str]) -> int:
     t0 = time.perf_counter()
     rep = render_frames(s, out / "frames", start=0.0, end=12.0, fps=FPS,
                         step=2 if args.quick else 1, width=w, height=h, backend=backend(),
-                        shadows=True)  # fmt: skip
+                        shadows=shadows())  # fmt: skip
     report["render"] = {"frames": len(rep["frames"]), "seconds": round(time.perf_counter() - t0, 2)}
     frames = rep["frames"]
     pick = frames[:: max(1, len(frames) // 16)][:16]
@@ -180,14 +181,14 @@ def main(argv: list[str]) -> int:
     write_png(out / "sequence_sheet.png", contact_sheet(images, columns=4, labels=labels))
     for cam, t0_, t1, _ in SHOTS:
         mid = 0.5 * (t0_ + t1)
-        s.render(time=mid, width=1280, height=720, backend=backend(), shadows=True).save(
+        s.render(time=mid, width=1280, height=720, backend=backend(), shadows=shadows()).save(
             out / f"shot_{cam.lower()}.png"
         )
     # Motion blur: the crane's fastest frame, without and with temporal sampling.
     fast = 1.4
-    still = s.render(time=fast, width=w, height=h, backend=backend(), shadows=True).image
+    still = s.render(time=fast, width=w, height=h, backend=backend(), shadows=shadows()).image
     blur_rep = render_frames(s, out / "frames" / "blur", frames=[fps.frame_at(fast)], width=w,
-                             height=h, backend=backend(), shadows=True,
+                             height=h, backend=backend(), shadows=shadows(),
                              motion_blur={"shutter": 0.5, "samples": 6})  # fmt: skip
     blurred = decode_png(Path(blur_rep["frames"][0]["path"]).read_bytes()).pixels[..., :3]
     write_png(out / "motion_blur.png",
