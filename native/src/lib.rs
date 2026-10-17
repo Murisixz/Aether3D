@@ -12,6 +12,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 mod buffers;
+mod earcut;
 mod hierarchy;
 mod ldl;
 mod pack;
@@ -22,7 +23,7 @@ use buffers::Arrays;
 
 /// The calling convention between `aether3d._native` and this module: a module whose
 /// `ABI` differs from what Aether3D expects is not used.
-const ABI: u32 = 2;
+const ABI: u32 = 3;
 
 fn check(ok: bool, message: impl FnOnce() -> String) -> PyResult<()> {
     if ok {
@@ -615,6 +616,45 @@ fn pack_horizon(
     peak.ok_or_else(|| PyValueError::new_err("ATLAS_FULL: a chart is wider than the atlas"))
 }
 
+/// `cad.triangulate.triangulate_numpy`: ear clipping of many polygons with holes.
+/// `points` (n, 2) float64, `ring_starts` and `polygon_starts` int64 tables; `tris`
+/// (at least n + 2 rings, 3) and `owner` (as many rows) receive the triangles and their
+/// polygons. Returns the triangle count.
+#[pyfunction]
+fn triangulate(
+    py: Python<'_>,
+    points: &Bound<'_, PyAny>,
+    ring_starts: &Bound<'_, PyAny>,
+    polygon_starts: &Bound<'_, PyAny>,
+    tris: &Bound<'_, PyAny>,
+    owner: &Bound<'_, PyAny>,
+) -> PyResult<usize> {
+    let mut arrays = Arrays::new();
+    let p = arrays.input::<f64>(points, "points", None)?;
+    let n = unsafe { p.slice() }.len() / 2;
+    check(unsafe { p.slice() }.len() == 2 * n, || {
+        "points: not (n, 2)".into()
+    })?;
+    check(unsafe { p.slice() }.iter().all(|v| v.is_finite()), || {
+        "points must be finite".into()
+    })?;
+    let r = arrays.input::<i64>(ring_starts, "ring_starts", None)?;
+    let q = arrays.input::<i64>(polygon_starts, "polygon_starts", None)?;
+    let cap = to_err_count(earcut::check(n, unsafe { r.slice() }, unsafe { q.slice() }))?;
+    let t = arrays.output::<i64>(tris, "tris", None)?;
+    let o = arrays.output::<i64>(owner, "owner", None)?;
+    check(
+        unsafe { t.slice() }.len() >= 3 * cap && unsafe { o.slice() }.len() >= cap,
+        || format!("tris and owner need room for {cap} triangles"),
+    )?;
+    arrays.check_overlaps()?;
+    let count = py.detach(|| unsafe {
+        earcut::triangulate(p.slice(), r.slice(), q.slice(), t.slice(), o.slice())
+    });
+    drop(arrays);
+    count.ok_or_else(|| PyValueError::new_err("the triangle buffers were too small"))
+}
+
 fn to_err_count(r: Result<usize, String>) -> PyResult<usize> {
     r.map_err(PyValueError::new_err)
 }
@@ -633,5 +673,6 @@ fn aether3d_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ldl_factor, m)?)?;
     m.add_function(wrap_pyfunction!(ldl_solve, m)?)?;
     m.add_function(wrap_pyfunction!(pack_horizon, m)?)?;
+    m.add_function(wrap_pyfunction!(triangulate, m)?)?;
     Ok(())
 }

@@ -575,3 +575,92 @@ def test_unwraps_are_numpys(monkeypatch):
     a = uv.unwrap(mesh, resolution=256)
     b = without_native(monkeypatch, uv.unwrap, mesh, resolution=256)
     assert a.mesh == b.mesh
+
+
+def _polygons(rng, count):
+    """Random polygons with holes, and degenerate ones: collinear runs, duplicate points,
+    self-intersections, spikes, rings of more than 80 points (z-order hashing)."""
+    pts, rings, polys = [], [0], [0]
+
+    def ring(p):
+        pts.extend(p.tolist())
+        rings.append(rings[-1] + len(p))
+
+    for k in range(count):
+        n = int(rng.integers(3, 200))
+        t = np.sort(rng.random(n)) * 2 * np.pi
+        r = 1.0 + 0.6 * rng.random(n)
+        c = rng.normal(size=2) * 10
+        outer = c + np.c_[r * np.cos(t), r * np.sin(t)]
+        kind = k % 6
+        if kind == 1:  # snapped to a grid: collinear runs and duplicates
+            outer = np.round(outer * 4) / 4
+        elif kind == 2:  # a spike and a repeated point
+            outer = np.insert(outer, n // 2, [outer[n // 2], outer[n // 2] + 5], axis=0)
+        elif kind == 3:  # self-intersecting: two points swapped
+            outer[[1, n // 2]] = outer[[n // 2, 1]]
+        ring(outer)
+        holes = int(rng.integers(0, 4)) if kind in (0, 4, 5) else 0
+        for h in range(holes):
+            m = int(rng.integers(3, 30))
+            th = np.sort(rng.random(m)) * 2 * np.pi
+            hc = c + np.array([np.cos(h * 2.1), np.sin(h * 2.1)]) * 0.5
+            hole = hc + 0.15 * np.c_[np.cos(th), np.sin(th)]
+            ring(hole if kind != 5 else hole[::-1])
+        polys.append(len(rings) - 1)
+    return (
+        np.array(pts, dtype=np.float64),
+        np.array(rings, dtype=np.int64),
+        np.array(polys, dtype=np.int64),
+    )
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2, 3])
+def test_triangulation_is_numpys(seed):
+    from aether3d.cad.triangulate import triangulate, triangulate_numpy
+
+    pts, rings, polys = _polygons(np.random.default_rng(seed), 150)
+    a = triangulate(pts, rings, polys)
+    b = triangulate_numpy(pts, rings, polys)
+    assert len(a[0]) > 1000
+    assert_bitwise(a[0], b[0], "triangles")
+    assert_bitwise(a[1], b[1], "owners")
+
+
+def test_triangulation_of_real_faces_is_numpys(monkeypatch):
+    # The faces of a part with holes, fillets and countersinks: the tessellations agree.
+    pytest.importorskip("manifold3d")
+    from aether3d.cad.brep.tessellate import tessellate
+
+    scene = Scene("native")
+    doc = scene.cad
+    sk = doc.sketch("P")
+    sk.rectangle((0, 0), (80, 40))
+    p = doc.part("Bracket")
+    p.extrude(sk, 10, id="base")
+    p.hole("base:end", [[20, 20, 10], [60, 20, 10]], 8, kind="countersink", csink_diameter=16)
+    p.fillet([{"edge": ["base:end", "base:side/r2"]}], 3)
+    body = p.body()
+    a = tessellate(body)
+    b = without_native(monkeypatch, tessellate, body)
+    assert_bitwise(a.triangles, b.triangles, "triangles")
+    assert_bitwise(a.positions, b.positions, "positions")
+
+
+def test_triangulation_rejects_bad_tables():
+    pts = np.zeros((4, 2))
+    out, owner = np.zeros((12, 3), np.int64), np.zeros(12, np.int64)
+    good = (np.array([0, 4]), np.array([0, 1]))
+    native.triangulate(pts, *good, out, owner)
+    for rings, polys in (
+        (np.array([0, 5]), np.array([0, 1])),  # past the points
+        (np.array([0, 3, 2, 4]), np.array([0, 3])),  # decreasing
+        (np.array([0, 4]), np.array([0, 2])),  # more rings than there are
+        (np.array([0, 2, 4]), np.array([0, 0, 2])),  # a polygon without rings
+    ):
+        with pytest.raises(ValueError):
+            native.triangulate(pts, rings, polys, out, owner)
+    with pytest.raises(ValueError):
+        native.triangulate(pts, *good, out[:1], owner)  # no room
+    with pytest.raises(ValueError):
+        native.triangulate(np.array([[0.0, np.nan]] * 4), *good, out, owner)

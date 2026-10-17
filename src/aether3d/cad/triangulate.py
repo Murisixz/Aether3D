@@ -46,9 +46,12 @@ def triangulate(
     polys = np.ascontiguousarray(polygon_starts, dtype=np.int64)
     _check(pts, rings, polys)
     native = _native.module()
-    if native is not None and hasattr(native, "triangulate"):
-        tris, owner = native.triangulate(pts, rings, polys)
-        return np.asarray(tris, dtype=np.int64).reshape(-1, 3), np.asarray(owner, dtype=np.int64)
+    if native is not None:
+        cap = len(pts) + 2 * (len(rings) - 1)  # every triangle removes a vertex or bridge
+        tris = np.empty((cap, 3), dtype=np.int64)
+        owner = np.empty(cap, dtype=np.int64)
+        count = native.triangulate(pts, rings, polys, tris, owner)
+        return tris[:count].copy(), owner[:count].copy()
     return triangulate_numpy(pts, rings, polys)
 
 
