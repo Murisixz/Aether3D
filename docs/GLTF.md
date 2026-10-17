@@ -42,6 +42,7 @@ $ aether3d geometry world.glb --json
 | `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_specular` | yes | yes |
 | `TANGENT` | MikkTSpace, for meshes with UV-mapped normal maps (vertices split where corners differ) | ignored (MikkTSpace is recomputed) |
 | Painted textures (0.14.0) | their composite, as an 8-bit PNG (layers stay in the project) | as image textures |
+| CAD items shown in the scene (0.15.0) | their display tessellations, as meshes with their materials (exact geometry: export STEP or IFC, [CAD.md](CAD.md)) | as plain meshes |
 | Object colors | as materials | restored exactly from `extras` |
 | Interleaved buffer views (`byteStride`), sparse accessors, accessors without buffer views | n/a | yes |
 | Embedded (`data:` URI), GLB-binary, and external `.bin` buffers | GLB binary; `.gltf` with an embedded buffer | yes |

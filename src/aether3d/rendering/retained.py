@@ -96,7 +96,19 @@ _CONTENT = frozenset(
     (_h.VISIBLE, _h.APPEARANCE, _h.MATERIALS, _h.DATA, _h.NAME, _h.CAMERA, _h.LIGHT)
 )
 _LIBRARY = frozenset((_h.LIBRARY_MATERIALS, _h.LIBRARY_TEXTURES, _h.MATERIAL, _h.TEXTURE))
-_UNUSED = frozenset((_h.ANNOTATIONS, _h.SCENE_NAME, _h.ACTIVE_CAMERA, _h.WORLD, _h.RENDER))
+# CAD definitions reach renders only through the meshes and materials of their linked
+# objects (journaled as DATA and MATERIALS), never directly.
+_UNUSED = frozenset(
+    (
+        _h.ANNOTATIONS,
+        _h.SCENE_NAME,
+        _h.ACTIVE_CAMERA,
+        _h.WORLD,
+        _h.RENDER,
+        _h.CAD_ITEM,
+        _h.CAD_SETTINGS,
+    )
+)
 
 # Row kinds.
 _NONE, _LIGHT, _MESH = 0, 1, 2

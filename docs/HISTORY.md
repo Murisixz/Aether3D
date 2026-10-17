@@ -58,7 +58,8 @@ Contents:
 | Textures | add (images, procedural graphs, painted textures), name, sampler settings, graph and node parameters, embed and extract, remove; painted textures: every layer change, mask, background and **each stroke, fill and gradient: one step**, holding only the tiles it changed (0.14.0) |
 | Bakes | `scene.bake(..., apply=True)` and `transfer_textures`: the new textures, bindings and factors, one step (0.14.0) |
 | Procedural geometry | parameters and rules (scene and geometry), geometry nodes, sources (and `edit_source()` commits), modifiers (add, set, move, remove), assigning nodes to objects, `bake()`, `procedural.undo()` |
-| Scripts | a scene, edit, procedural, sculpt or texture script is one step |
+| CAD | every change of the CAD document -- adding, changing (definitions, a sketch dimension, a feature), renaming or removing an item, units and display tolerance, showing an item, `convert_to_mesh` -- with the regeneration it causes, one step; `doc.batch(label)` makes one step of several; an import (STEP, IFC, DXF) is one step ([CAD.md](CAD.md); 0.15.0) |
+| Scripts | a scene, edit, procedural, sculpt, texture or CAD script is one step |
 | Command line | every command that changes a project, when the project keeps a history (see [Command line](#command-line)) |
 
 These are the properties a future animation system would animate (transforms,
@@ -70,6 +71,9 @@ parameters). The history records them under stable, id-based paths:
 **Not recorded:**
 - Effects outside the scene: saved projects, exported files, an image written by
   `texture.extract(path)` (undo restores the texture, not the file system), renders.
+- Results that are regenerated: solved sketches, bodies, tessellations and drawings of
+  the CAD document (undo restores definitions; results come back from the document's
+  content-keyed caches or are regenerated).
 - Caches and counters: evaluation caches, the spatial-query index, `materials.version`,
   `procedural.revision`, `scene.revision` (they increase with undo and redo as
   with any change).

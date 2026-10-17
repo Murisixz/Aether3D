@@ -119,6 +119,11 @@ persistence (`.aether`), inspection and glTF. `EditableMesh.from_mesh()` and
 ## Sessions, transactions and history
 
 - `obj.edit_mesh(weld="exact", quads=True)` returns an `EditSession`.
+  - An object that shows a CAD item (`doc.show`, [CAD.md](CAD.md)) refuses edit and
+    sculpt sessions and mesh assignments (`CAD_DRIVEN`, 0.15.0): its mesh is regenerated
+    from the item. Edit the item instead, or detach the object with
+    `scene.cad.convert_to_mesh(obj)` (it keeps its current mesh and loses the exact
+    geometry and the parametric updates).
   - The session converts the object's mesh into an `EditableMesh`. Objects
     without a mesh start empty.
   - `weld="exact"` merges vertices with bit-identical positions, so that seams

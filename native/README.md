@@ -2,7 +2,9 @@
 
 Native kernels for [Aether3D](https://github.com/Murisixz/Aether3D), in Rust through
 PyO3: ray traversal (closest hit and any hit), transform hierarchies (local and world
-matrices) and PNG row filters (encoding and decoding).
+matrices), PNG row filters (encoding and decoding), sparse LDL^T, atlas packing and
+polygon triangulation (ear clipping of many polygons with holes per call, for CAD
+faces, sections and fills).
 
 Aether3D does not need it: every kernel has a NumPy implementation, which Aether3D uses
 when this package is missing, cannot be loaded, or is switched off with

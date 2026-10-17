@@ -292,6 +292,12 @@ Operations change objects after the plan's objects are made, in order:
 - **`set_parameters`** sets procedural parameters (of the scene, or of one `geometry`).
 - **`frame_camera`** frames `targets` with a camera (optionally turned along `direction`).
 - **`set_active_camera`** makes a camera the scene's camera.
+- **`cad`** (0.15.0) runs a CAD script (`"script": {"format": "aether3d.cad-script",
+  ...}`, [CAD.md](CAD.md#cad-scripts)) inside the plan's step: parametric sketches,
+  parts, buildings and drawings. Its structure is checked with the rest of the plan
+  (problems point into it: `/operations/0/script/operations/2/op`); a failure rolls the
+  whole plan back. A CAD item the script shows (`{"op": "show", "item": ...}`) is an
+  object later operations can select by name.
 
 ### Selectors
 

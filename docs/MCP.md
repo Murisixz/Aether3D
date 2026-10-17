@@ -5,7 +5,9 @@
 prompts. An agent builds a scene with [scene plans](SCENE_PLANS.md) (thousands of objects
 in one call), checks placement with exact spatial queries, fixes mistakes, undoes and
 redoes, looks at a quick GPU preview, saves the project and exports glTF, without writing
-Python. Since 0.12.0 it also closes the loop on what the renders show: it observes views
+Python. Since 0.15.0 it also models precisely: parametric sketches, parts, assemblies and
+buildings through CAD scripts, with drawings and STEP, IFC and DXF exchange
+([CAD.md](CAD.md)). Since 0.12.0 it also closes the loop on what the renders show: it observes views
 (images and measured facts), diagnoses them against stated expectations and the agent's
 own visual evaluations, and proposes, applies and verifies corrections
 ([FEEDBACK.md](FEEDBACK.md)).
@@ -110,13 +112,15 @@ problem; a plan with problems gives every problem, as in [SCENE_PLANS.md](SCENE_
 | `render_preview` | a quick image, returned as image content: the GPU rasterizer when it works, the CPU rasterizer otherwise (`backend`: `auto`, `gpu`, `cpu`; `width`, `height`, `camera`, `frame`, `shadows`, `save_to`). Only the image is read back from the GPU, and it is encoded for speed (zlib level 1) |
 | `render_image` | an image file in the workspace (`.png`, linear `.hdr`/`.pfm`); `backend: "path"` or `"gpu_path"` path traces, within the server's sample budget |
 | `history` | `list`, `undo`, `redo` (`steps`), `checkpoint`, `goto`, `remove_checkpoint` (`name`) |
-| `export_scene` | a `.glb` or `.gltf` file (`allow_lossy`, `bake_textures`, `overwrite`) |
-| `run_script` | one of the engine's JSON scripts, atomically: edit scripts (polygon editing), procedural scripts, scene scripts, sculpt scripts (strokes, masks, dynamic topology, remeshing, symmetrize; [MODELING.md](MODELING.md#sculpt-scripts)), texture scripts (UV unwrapping and island edits, painted textures and layers, strokes in surface, view and UV space, fills, bakes, texture transfer; [TEXTURING.md](TEXTURING.md#texture-scripts-cli-and-mcp); 0.14.0) |
+| `export_scene` | a `.glb` or `.gltf` file (`allow_lossy`, `bake_textures`, `overwrite`); since 0.15.0 also CAD data by suffix: `.step`/`.stp` (parts' exact solids: `items`, default all; `units`), `.ifc` (a building `item`), `.dxf` (a sketch or drawing `item`), `.svg` or `.png` (a drawing `item`; `dpi`) ([CAD.md](CAD.md)) |
+| `run_script` | one of the engine's JSON scripts, atomically: edit scripts (polygon editing), procedural scripts, scene scripts, sculpt scripts (strokes, masks, dynamic topology, remeshing, symmetrize; [MODELING.md](MODELING.md#sculpt-scripts)), texture scripts (UV unwrapping and island edits, painted textures and layers, strokes in surface, view and UV space, fills, bakes, texture transfer; [TEXTURING.md](TEXTURING.md#texture-scripts-cli-and-mcp); 0.14.0), CAD scripts (parameters, sketches, parts, assemblies, buildings, drawings; measurements and `expect` checks; [CAD.md](CAD.md#cad-scripts); 0.15.0) |
 | `inspect_mesh` | **inspect** (read-only, 0.13.0): one object's validity tier (`valid` < `manifold` < `closed` < `solid`) and quality in world units -- counts, boundary and non-manifold edges and vertices, winding, degenerate triangles, components, Euler characteristic, volume, edge lengths, smallest angle; `self_intersections: true` adds the exact test (needed for `solid`; meshes up to 2,000,000 triangles) |
 | `inspect_uvs` | **inspect** (read-only, 0.14.0): one object's UV diagnostics -- islands, flipped, degenerate and overlapping triangles (unintended) apart from stacked islands (deliberate), mirrored islands, stretch, texel density and spread, utilization, gaps -- with a layout image (`image`: `islands`, `density`, `stretch`, `overlaps`, `texture` with `texture`, or `none`; `size`) |
 | `inspect_texture` | **inspect** (read-only, 0.14.0): a texture's details (painted textures: size, encoding, layers with blend modes, opacity, masks, revision), the material slots using it, and a preview image (`preview_size`) |
+| `inspect_cad` | **inspect** (read-only, 0.15.0): the CAD document's items (sketches with their status and DOF), or one item's report -- a sketch's status, DOF, residuals, redundant and conflicting constraints; a part's bodies (validity, volume, area, centroid) and named faces; a building element's quantities; an assembly's DOF; a drawing's summary. `image: "drawing"` adds a drawing of the item (`view`: `iso`, `top`, `front`, `right`; a drawing item: itself) as image content |
+| `import_cad` | **change** (0.15.0): a `.step`/`.stp` (each exact solid becomes a part), `.ifc` (IFC4 products become parts with their property and quantity sets) or `.dxf` (2D geometry becomes a sketch: `name`, `plane`, `units` when the file has none, `layers`) from the workspace, as one undo step; what is not supported is refused or skipped and reported |
 | `diagnostics` | checks with stable codes: `geometry`, `procedural`, `materials`, `history` |
-| `capabilities` | what the engine offers, by `topic`: `overview`, `plan`, `primitives`, `modifiers`, `materials`, `queries`, `limits`, `gpu`, `feedback`, `sculpt`, `texturing` |
+| `capabilities` | what the engine offers, by `topic`: `overview`, `plan`, `primitives`, `modifiers`, `materials`, `queries`, `limits`, `gpu`, `feedback`, `sculpt`, `texturing`, `cad` |
 | `observe_scene` | **inspect**: render views (`view`, `views`: the active camera, a scene camera, a virtual camera, a close-up framed on objects, presets `top`/`front`/`iso`/...) and return the images as image content (`images`: `image`, `annotated` with numbered markers, `ids`, `depth`; `crops`), with measured facts per object (pixels, bounds, depth, border contact; for `focus` objects frustum, projected bounds, clipping and, with `occlusion`, what covers them) and for the image (coverage, luminance, black and clipped fractions). Nothing is added to the scene |
 | `diagnose_scene` | **inspect**: check the scene against `expectations` (kept for later calls) and default render checks, with your own visual `evaluations` grounded in the render's object index; findings with codes, magnitudes, regions and their basis |
 | `propose_corrections` | **propose**: typed corrections for the findings, each with its compiled scene plan or script, rationale, expected effect and safety (`safe`, `verify`, `approval`); `preview` applies them in a transaction, re-renders and rolls back |
@@ -172,6 +176,8 @@ way (`TIMEOUT`).
 | `aether3d://schema/sculpt-script` | the sculpt script format's JSON Schema |
 | `aether3d://texturing/guide` | the texturing guide for agents (Markdown): UVs and their checks, painted textures, strokes, baking, texture scripts |
 | `aether3d://schema/texture-script` | the texture script format's JSON Schema |
+| `aether3d://cad/guide` | the precision modeling guide for agents (Markdown): units, sketches, features and names, buildings, drawings, measurements, exchange, CAD scripts |
+| `aether3d://schema/cad-script` | the CAD script format's JSON Schema |
 | `aether3d://schema/expectations`, `.../vision-evaluation`, `.../corrections` | the JSON Schemas of expectations, vision evaluations and correction actions |
 | `aether3d://observations/{id}`, `aether3d://observations/{id}/{kind}` | an observation's measured facts (JSON), its images (`image`, `annotated`, `ids`, `depth`; PNG) |
 
@@ -239,6 +245,14 @@ The server treats every argument, plan, path and imported file as untrusted.
   `UV_FLIPPED`), a second script unwraps the barrel and paints hoops and braces, and the
   final diagnosis is accepted: 17 tool calls in 5.7 s (most of it the painting script,
   2.7 s, and a first GPU render).
+- [`examples/mcp_cad_agent.py`](../examples/mcp_cad_agent.py): an agent models a mounting
+  plate over MCP -- one CAD script with parameters, a fully constrained sketch, holes, a
+  chamfer and `expect` checks; a diagonal dimension that contradicts the others is refused
+  (`SKETCH_CONFLICT`, naming the conflicting constraints and the residual; nothing
+  changed); made a reference dimension instead, it measures sqrt(100^2 + 40^2) mm;
+  `inspect_cad` returns the part's report and a drawing, `diagnose_scene` with
+  `cad_valid` and `cad_dimension` accepts it, and a STEP export imported back has the same
+  volume: 19 tool calls in 2.6 s (about 1 s of it the first render).
 
 On the machine of [the benchmark](SCENE_PLANS.md#performance) (i9-12900H, Python 3.14), a
 trivial tool call takes about 1.2 ms over stdio, and a plan of 10,000 objects about 9 ms

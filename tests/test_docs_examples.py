@@ -422,3 +422,57 @@ def test_texturing_guide_script_is_valid():
     high.visible = False
     out = run_texture_script(scene, script)
     assert [r["op"] for r in out["operations"]][-1] == "bake"
+
+
+# --------------------------------------------------------------------------- #
+# Precision modeling, CAD and architecture (0.15.0)
+# --------------------------------------------------------------------------- #
+
+CAD_START = (
+    'from aether3d import Scene\n\nscene = Scene()\ndoc = scene.cad\ndoc.set_units(length="mm")'
+)
+
+
+@pytest.mark.parametrize("doc", ["docs/CAD.md", "README.md"])
+def test_cad_quick_start(doc, capsys):
+    pytest.importorskip("manifold3d")
+    source = python_block(ROOT / doc, CAD_START)
+    namespace: dict = {}
+    exec(compile(source, doc, "exec"), namespace)
+    assert_printed(source, capsys.readouterr().out)
+
+
+def test_cad_doc_script_and_assembly_examples(capsys):
+    pytest.importorskip("manifold3d")
+    from aether3d.cad.schema import cad_script_schema
+    from aether3d.cad.script import run_cad_script
+
+    jsonschema = pytest.importorskip("jsonschema")
+    text = (ROOT / "docs/CAD.md").read_text(encoding="utf-8")
+    namespace: dict = {}
+    exec(compile(python_block(ROOT / "docs/CAD.md", CAD_START), "CAD.md", "exec"), namespace)
+    capsys.readouterr()
+    scene, doc = namespace["scene"], namespace["doc"]
+    script = json.loads(re.search(r'```json\n(\{"format": "aether3d.cad-script".*?)\n```', text,
+                                  re.S).group(1))  # fmt: skip
+    jsonschema.validate(script, cad_script_schema())
+    out = run_cad_script(scene, script)
+    assert out["operations"][-1]["result"]["checks"][0]["pass"]
+    assert scene.history.entries[-1].label == "Wider plate"
+    # The assembly snippet, with the pin it refers to.
+    pin = doc.part("Pin")
+    pin.add_feature({"type": "cylinder", "id": "shaft", "radius": 4, "height": 30,
+                     "frame": {"origin": [0, 0, 15]}})  # fmt: skip
+    pin.add_feature({"type": "cylinder", "id": "head", "radius": 7, "height": 4,
+                     "frame": {"origin": [0, 0, 32]}, "operation": "add"})  # fmt: skip
+    block = re.search(r"```python\n(doc.add\(\s*\"assembly\".*?)```", text, re.S).group(1)
+    exec(compile(block, "CAD.md", "exec"), {"doc": doc})
+    info = doc.info("Hinge")
+    assert info["status"] in ("under_constrained", "fully_constrained") and not info["conflicts"]
+
+
+def test_buildings_quick_start(capsys):
+    pytest.importorskip("manifold3d")
+    source = python_block(ROOT / "docs/BUILDINGS.md", CAD_START.replace('"mm"', '"m"'))
+    exec(compile(source, "BUILDINGS.md", "exec"), {})
+    assert_printed(source, capsys.readouterr().out)

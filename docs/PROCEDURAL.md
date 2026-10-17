@@ -89,6 +89,11 @@ with per-corner UVs and normals, smooth flags and sharp edges, which flows
 through the stack. The final `PolyMesh` is triangulated into an ordinary
 `Mesh`, so inspection, glTF export and the CLI work unchanged.
 
+Procedural geometry produces meshes; exact, dimension-driven solids (sketches under
+constraints, features, B-reps, buildings) are the CAD document's ([CAD.md](CAD.md),
+0.15.0). The two have separate parameters: `scene.procedural` parameters drive
+procedural nodes, `scene.cad.parameter(...)` parameters (with units) drive CAD items.
+
 Base definitions are never modified. A primitive's parameters, a stored base
 mesh and every modifier's parameters stay exactly as written, whatever the
 stack produces.

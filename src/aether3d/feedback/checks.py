@@ -1340,6 +1340,138 @@ class Diagnoser:
             )
         result.measured = measured
 
+    def _check_cad_valid(self, check: Check, result: CheckResult) -> None:
+        from ..errors import CadError
+
+        doc = self.scene.cad
+        names = check.params.get("items")
+        items = []
+        for name in names or [i.name for i in doc.items()]:
+            try:
+                items.append(doc.item(name))
+            except CadError as exc:
+                self.add(
+                    result, self.finding(check, "CAD_ITEM_MISSING", exc.message, [], basis="scene")
+                )
+        measured = {}
+        for item in items:
+            subject = [{"id": item.id, "name": item.name, "role": "subject"}]
+            info = doc.info(item)
+            if "error" in info:
+                err = info["error"]
+                measured[item.name] = {"error": err.get("code")}
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "CAD_ERROR",
+                        f"{item.kind} {item.name!r} does not regenerate: "
+                        f"[{err.get('code')}] {err.get('message')}",
+                        subject,
+                        basis="scene",
+                        evidence=err,
+                        hint="fix the definition (inspect_cad shows the item)",
+                    ),
+                )
+                continue
+            if item.kind == "part":
+                bad = [b for b, v in info.get("bodies", {}).items() if not v.get("valid")]
+                measured[item.name] = {"valid": not bad}
+                if bad:
+                    self.add(
+                        result,
+                        self.finding(
+                            check,
+                            "CAD_INVALID_SOLID",
+                            f"part {item.name!r}: body {', '.join(bad)} is not a valid solid",
+                            subject,
+                            evidence={"bodies": bad},
+                        ),
+                    )
+            elif item.kind == "sketch":
+                measured[item.name] = {"status": info.get("status"), "dof": info.get("dof")}
+                if check.params.get("fully_constrained") and info.get("dof", 0) > 0:
+                    self.add(
+                        result,
+                        self.finding(
+                            check,
+                            "CAD_UNDERCONSTRAINED",
+                            f"sketch {item.name!r} has {info['dof']} degrees of freedom left",
+                            subject,
+                            evidence={"dof": info["dof"], "free": info.get("free")},
+                            magnitude=float(info["dof"]),
+                            hint="add constraints or dimensions to the free points",
+                        ),
+                    )
+        result.measured = measured
+
+    def _check_cad_dimension(self, check: Check, result: CheckResult) -> None:
+        from ..cad.measure import measure
+        from ..errors import CadError
+
+        p = check.params
+        try:
+            data = measure(self.scene.cad, p["reference"], p.get("other"))
+        except CadError as exc:
+            self.add(
+                result,
+                self.finding(
+                    check, "CAD_REFERENCE", exc.message, [], basis="scene", evidence=exc.to_dict()
+                ),
+            )
+            return
+        q = p["quantity"]
+        value = data.get(q)
+        result.measured = {q: value}
+        subject = [
+            {
+                "id": data.get("reference", data.get("a", "?")),
+                "name": data.get("reference", data.get("a", "?")),
+                "role": "subject",
+            }
+        ]
+        if value is None:
+            self.add(
+                result,
+                self.finding(
+                    check,
+                    "CAD_NOT_MEASURABLE",
+                    f"{q} does not apply to these references",
+                    subject,
+                    basis="scene",
+                    evidence={"measured": sorted(data)},
+                ),
+            )
+            return
+        lo, hi = p.get("min"), p.get("max")
+        if "value" in p:
+            tol = p.get("tolerance", 0.0)
+            lo, hi = p["value"] - tol, p["value"] + tol
+        off = None
+        if lo is not None and value < lo:
+            off = lo - value
+        elif hi is not None and value > hi:
+            off = value - hi
+        if off is None:
+            return
+        self.add(
+            result,
+            self.finding(
+                check,
+                "CAD_DIMENSION",
+                f"{q} is {value:.10g}; expected "
+                + (
+                    f"{p['value']:g} ± {p.get('tolerance', 0.0):g}"
+                    if "value" in p
+                    else f"within [{lo}, {hi}]"
+                ),
+                subject,
+                evidence={**{k: v for k, v in data.items() if k != "closest"}},
+                magnitude=float(off),
+                hint="change the driving dimension or parameter",
+            ),
+        )
+
     def _check_uv_quality(self, check: Check, result: CheckResult) -> None:
         from ..uv import uv_report
 

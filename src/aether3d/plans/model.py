@@ -98,7 +98,7 @@ MESH_PRIMITIVES = (
     "grid",
     "uv_sphere",
 )
-OPERATIONS = ("update", "delete", "set_parameters", "frame_camera", "set_active_camera")
+OPERATIONS = ("update", "delete", "set_parameters", "frame_camera", "set_active_camera", "cad")
 UPDATE_FIELDS = (
     "name",
     "position",
@@ -2198,6 +2198,7 @@ _OPERATION_KEYS = {
     "set_parameters": (("values",), ("geometry",)),
     "frame_camera": ((), ("camera", "targets", "direction", "margin")),
     "set_active_camera": (("camera",), ()),
+    "cad": (("script",), ()),
 }
 
 
@@ -2262,6 +2263,22 @@ def _parse_operations(r: Reader, raw: Any, ptr: str) -> list[OperationSpec]:
         elif op == "set_active_camera":
             ref = r.ref(obj.get("camera"), join(p, "camera"))
             spec.values["camera"] = None if ref is _BAD else ref
+        elif op == "cad":
+            from ..cad.script import check_script
+            from ..errors import CadError
+
+            try:
+                spec.values["script"] = check_script(obj.get("script"))
+            except CadError as exc:
+                where = (exc.location or "").removeprefix("script").strip(".")
+                where = where.replace("[", ".").replace("]", "").replace(".", "/")
+                r.issues.add(
+                    "INVALID_VALUE",
+                    f"CAD script: {exc.message}",
+                    join(p, "script") + ("/" + where if where else ""),
+                    hint="a CAD script (format aether3d.cad-script); see aether3d://cad/guide",
+                    operation=k,
+                )
         for issue in r.issues.items[before:]:
             if issue["operation"] is None:
                 issue["operation"] = k

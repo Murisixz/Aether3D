@@ -209,10 +209,29 @@ Aether3D/
 │   │   ├── materials.py   glTF materials, textures and samplers, in and out
 │   │   ├── writer.py      Export: scene -> glTF document + buffer -> .glb/.gltf
 │   │   └── reader.py      Import: validated, resource-limited, path-confined
+│   ├── cad/               Precision modeling (see docs/CAD.md)
+│   │   ├── units.py, tolerance.py, expr.py   Quantities, tolerances, safe expressions
+│   │   ├── nurbs.py, geom2d.py, geom3d.py    Exact curves and surfaces
+│   │   ├── sketch/        Sketch model, equations, structure (Dulmage-Mendelsohn), solver, profiles
+│   │   ├── brep/          B-rep topology, builders, tessellation, mass properties,
+│   │   │                  intersections, booleans (Manifold + exact reconstruction), lofts, sewing
+│   │   ├── document.py    The CAD document: items, kinds, incremental regeneration, links
+│   │   ├── kinds.py       Parameters, frames, sketches, parts (handles)
+│   │   ├── features.py    Part features; naming.py persistent names
+│   │   ├── assembly.py    Assemblies: mates, solving, clashes
+│   │   ├── measure.py     Measurements and snapping
+│   │   ├── drawing/       Views, hidden lines, sections, SVG/DXF/PNG output, stroke font
+│   │   ├── interop/       STEP (step.py), DXF (dxf.py); document entry points
+│   │   ├── script.py, schema.py, guide.md   CAD scripts, their schema, the agent guide
+│   │   └── triangulate.py Ear clipping (with the native twin)
+│   ├── arch/              Buildings (see docs/BUILDINGS.md): walls and joins, families,
+│   │                      floors and rooms, slabs, roofs, stairs, columns, beams,
+│   │                      quantities and schedules, IFC4 (ifc.py), handles (api.py)
 │   ├── cli.py             `aether3d` command-line interface
 │   ├── _cli_materials.py  `aether3d material` and `aether3d texture`
 │   ├── _cli_feedback.py   `aether3d feedback`
 │   ├── _cli_sculpt.py     `aether3d sculpt`
+│   ├── _cli_cad.py        `aether3d cad`
 │   └── __main__.py        `python -m aether3d`
 ├── tests/                 pytest suite, one file per module
 │   └── data/              Khronos samples (pinned), v0.1.0/v0.4.0/v0.7.0 projects, reference renders
@@ -222,7 +241,8 @@ Aether3D/
 │                          tracing and scene plan benchmarks (bench_*.py); the engine-wide
 │                          suite (bench_engine.py) and its saved runs (results/)
 ├── native/                aether3d-native: optional Rust kernels (PyO3, maturin), exact
-│                          counterparts of NumPy code (ray traversal, hierarchies, PNG filters)
+│                          counterparts of NumPy code (ray traversal, hierarchies, PNG filters,
+│                          LDL^T, packing, triangulation)
 ├── research/              The October 2026 architecture audit and the performance
 │                          modernization's investigations (not part of the package)
 ├── docs/                  API, file formats, glTF, inspection, architecture, install
@@ -262,6 +282,8 @@ Aether3D/
 | `feedback.*` | `rendering` (render, virtual cameras, framing, the CPU raster for footprints, PNG), `spatial` (index, rays, overlaps, frustum), `plans` (selectors, executing compiled corrections), `rendering.script` (compiled corrections), `history` (transactions, undo), `errors`; NumPy only |
 | `uv.*` | `mesh`, `errors`, `diagnostics`, `spatial.predicates` (exact overlap tests), `_native` (LDL^T, packing); `texturing.raster` lazily (layout images) |
 | `texturing.*` | `uv`, `materials` (painted textures), `rendering.pathtrace` (sources as path-tracer scenes: BVH, shading), `rendering.raytrace`, `rendering.gpu` (lazily, GPU bake rays), `spatial.surface` (nearest points), `history` (transactions), `errors`; `scene` only for type hints |
+| `cad.*` | `errors`, `_native` (triangulation), `history` (aspects), `rendering.raytrace` (hidden lines), `rendering.png`; `manifold3d` (optional, lazily, booleans); `scene` only for type hints and through `scene.cad` |
+| `arch.*` | `cad` (document, kinds, B-rep, sketches, interop helpers), `errors` |
 | `mcp.*` | `plans`, `scene`, `serialization`, `gltf`, `rendering`, `spatial`, `history`, `editing` and `procedural` (scripts), `feedback`, `errors`; the `mcp` SDK (optional: never imported by `import aether3d`) |
 | `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `history`, `spatial`, `plans`, `feedback`, `errors`; `mcp` lazily (`aether3d mcp serve`) |
 
@@ -939,3 +961,42 @@ decisions:
   allowlists, never touch files, are atomic and limited, and their schema is fuzzed
   against the executor; the CLI, MCP tools and the `uv_quality` feedback check reuse the
   same code.
+
+## Precision modeling, CAD and architecture (v0.15.0)
+
+`aether3d.cad` adds an exact, parametric document beside the mesh scene graph;
+`aether3d.arch` builds buildings on it. See [CAD.md](CAD.md), [BUILDINGS.md](BUILDINGS.md)
+and the design record
+[research/2026-10-stage15/DESIGN.md](../research/2026-10-stage15/DESIGN.md). Key
+decisions:
+
+- **Exact model, derived meshes.** Parts are B-reps on exact surfaces and curves; the
+  meshes the renderers see are tessellations within a stated chord, regenerated with the
+  model and shown through linked objects that refuse direct mesh edits. Mass properties
+  and measurements use the exact geometry. A tessellation is never called exact.
+- **Robust booleans without false claims.** Manifold computes boolean topology on float64
+  tessellations whose triangles remember their source faces; Aether3D reconstructs a
+  B-rep on the operands' exact surfaces, recovering edges analytically where it can and
+  tracing them (with a measured deviation) where it cannot.
+- **Definitions as data, results by content.** Items are JSON definitions checked by
+  their kinds; results are keyed by the definition and the keys of what they read, so
+  only what a change affects regenerates and undo and redo reuse results. Two history
+  aspects (`cad.item`, `cad.settings`) record the document; project format 8 stores
+  definitions only.
+- **An analysable solver.** Constraints compile to equations with analytic Jacobians;
+  structural decomposition (matching and strongly connected components) splits the
+  system into small blocks solved in order; numerical rank gives DOF, redundant and
+  conflicting constraints exactly; branches are recorded so solutions never flip; edits
+  re-solve only what follows them.
+- **Persistent names.** Faces and edges are named by the feature and sketch entity that
+  made them and survive regeneration; references never use indices.
+- **One ray core.** Hidden lines in drawings are ray casts through the renderers'
+  watertight ray tracer (`SceneAccel`), not a second visibility algorithm.
+- **Languages decided up front.** Python and NumPy/LAPACK throughout; one Rust kernel
+  (batched triangulation) with a bitwise NumPy twin; external CAD kernels (Open CASCADE,
+  IfcOpenShell, ezdxf) are validators in the tests, never dependencies.
+- **Untrusted exchange.** STEP, DXF and IFC readers are strict, limited and never
+  evaluate anything; unsupported content is refused or reported.
+- **Same contract for agents.** CAD scripts are data, atomic, limited, schema-described;
+  the CLI, MCP tools, scene-plan operation and feedback checks reuse them.
+

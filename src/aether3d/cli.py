@@ -9,8 +9,9 @@ Commands: ``new``, ``validate``, ``inspect``, ``geometry``, ``import``,
 ``gpu`` (``info``), ``material`` (``list``, ``presets``, ``schema``,
 ``create``, ``set``, ``assign``, ``texture``, ``inspect``, ``validate``,
 ``remove``, ``convert-colors``, ``preview``), ``texture`` (``list``,
-``add``, ``procedural``, ``set``, ``inspect``, ``preview``, ``remove``) and
-``feedback`` (``observe``, ``check``, ``correct``, ``loop``, ``schema``).
+``add``, ``procedural``, ``set``, ``inspect``, ``preview``, ``remove``),
+``feedback`` (``observe``, ``check``, ``correct``, ``loop``, ``schema``) and ``cad``
+(``run``, ``info``, ``export``, ``import``, ``schema``).
 
 Every command accepts ``--json`` to emit a single machine-readable JSON
 object on stdout, both on success (``"ok": true``) and on failure
@@ -22,7 +23,7 @@ object on stdout, both on success (``"ok": true``) and on failure
 * ``3`` -- ``geometry``/``topology``/``procedural validate``/``material validate``
   completed but found error-severity problems, ``gpu info --check`` found
   that GPU rendering does not work, or ``feedback check``/``feedback loop`` ended
-  with the expectations not met
+  with the expectations not met, or ``cad run`` stopped at a failed ``expect`` check
 
 Commands that read a scene accept native ``.aether`` projects as well as
 ``.glb``/``.gltf`` files (which are imported in memory).
@@ -2055,6 +2056,9 @@ def build_parser() -> argparse.ArgumentParser:
     from ._cli_sculpt import add_sculpt_parsers
 
     add_sculpt_parsers(sub, common, writing)
+    from ._cli_cad import add_cad_parsers
+
+    add_cad_parsers(sub, common, writing)
     _add_mcp_parsers(sub)
     return parser
 

@@ -37,6 +37,11 @@ apply to agents too.
 - Visual feedback and automatic corrections: [docs/FEEDBACK.md](docs/FEEDBACK.md)
   (observations, views, expectations, findings and their basis, vision evaluations,
   corrections, verification, the loop, safety, design, performance).
+- Precision modeling and CAD: [docs/CAD.md](docs/CAD.md) (the CAD document, units and
+  tolerances, sketches and the solver, features and persistent names, the B-rep kernel,
+  booleans, assemblies, measurements, drawings, STEP/DXF/IFC, CAD scripts); buildings and
+  BIM: [docs/BUILDINGS.md](docs/BUILDINGS.md); the design record:
+  [research/2026-10-stage15/DESIGN.md](research/2026-10-stage15/DESIGN.md).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 - Performance: [docs/PERFORMANCE.md](docs/PERFORMANCE.md) (how to measure with
   `benchmarks/bench_engine.py`, the correctness guards, implementation switches, the record
@@ -246,6 +251,42 @@ apply to agents too.
     the machine; a render reports the backend that drew it, never a GPU for a CPU image.
   - Test tools through a real server process (`tests/test_mcp.py` uses the SDK client and
     raw JSON-RPC).
+
+- Precision modeling (`cad/`) and buildings (`arch/`):
+  - **Exact or labeled.** Bodies are B-reps on exact surfaces; meshes are derived from
+    them within a stated chord and are never the model. Never call a tessellation exact,
+    never claim exact surface-surface booleans (Manifold gives the topology, the B-rep is
+    reconstructed; traced edges report their deviation in `notes`), and compute mass
+    properties and measurements on the exact geometry.
+  - **Definitions are data, regeneration is atomic.** An item kind checks its definition
+    (`check`) before anything changes, reads only what it declares (`references`, via
+    `ctx.inputs`), and raises `CadError` with a stable code and a location
+    (`part[Bracket].features[2](h)`). A content key must cover every input of a result
+    (definitions, referenced results, parameters, units, tolerances): cached results are
+    reused across undo and redo.
+  - **No scattered epsilons.** Take tolerances from `cad/tolerance.py`
+    (`Tolerance.for_scale`, `rank_threshold`, tessellation tolerances) and say in the
+    result which one decided. Lengths in definitions are in the document's unit and
+    internally metres; sketch point positions are stored in metres (the solver's state),
+    and CAD scripts convert them.
+  - **Names, never indices.** Features and mates reference faces and edges by persistent
+    names (`cad/naming.py`); a new feature names every face it makes
+    (`"<feature>:<role>"`).
+  - **Solver changes keep the analysis exact.** DOF, redundancy and conflicts come from
+    the numerical rank (`sketch/solver.py`); the block path must agree with the dense one
+    (`test_large_sketches_block_analysis_and_incremental_solving_match_the_dense_path`).
+    Conflicts name their constraints, and a failed solve changes nothing.
+  - **Untrusted files.** STEP, DXF and IFC readers are strict tokenizers with size and
+    entity limits that never evaluate anything; unsupported content is refused or
+    skipped and reported, never guessed. Open CASCADE, IfcOpenShell and ezdxf are
+    validators in the tests only (`AETHER3D_VALIDATOR_PYTHON`): never import them in the
+    package.
+  - **Buildings check the user's criteria, not codes.** Stair and other checks compare
+    against values the building definition gives; never claim building-code compliance.
+  - **Verify against closed forms.** Feature, quantity and drawing tests compare with
+    analytic values (volumes, areas, distances), not with snapshots of our own output.
+  - The ear-clipping triangulation has a Rust twin (`native/src/earcut.rs`): change
+    `cad/triangulate.py` and it together, bitwise (`tests/test_native.py`).
 
 - Visual feedback (`feedback/`):
   - **Facts and judgments stay apart.** Every `Finding` names its `basis` (`geometry`,

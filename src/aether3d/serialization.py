@@ -36,7 +36,7 @@ from .transform import Transform
 FORMAT_ID = "aether3d.project"
 """Value of the top-level ``format`` field identifying an Aether3D project."""
 
-FORMAT_VERSION = 7
+FORMAT_VERSION = 8
 """Version written by this release. Files with a higher version are rejected.
 
 * Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
@@ -50,6 +50,10 @@ FORMAT_VERSION = 7
 * Version 5 (Aether3D 0.8.0) adds path-tracing data: ``scene.world.environment``
   and the light sizes ``radius`` and ``angle``.
 * Version 6 (Aether3D 0.10.0) adds ``tags`` and ``metadata`` on every object.
+* Version 7 (Aether3D 0.14.0) adds painted textures (``"type": "painted"``).
+* Version 8 (Aether3D 0.15.0) adds the CAD document: ``scene.cad`` with its settings
+  and items (parameters, frames, sketches, parts, assemblies, building elements,
+  drawings) and their links to the objects that show them.
 
 Older files are upgraded on load by the functions in :data:`MIGRATIONS`.
 """
@@ -156,6 +160,19 @@ def _migrate_v6_to_v7(document: dict[str, Any]) -> dict[str, Any]:
     return dict(document)
 
 
+def _migrate_v7_to_v8(document: dict[str, Any]) -> dict[str, Any]:
+    """v7 -> v8: an empty CAD document (default units and display tolerance)."""
+    from .cad.document import DEFAULT_SETTINGS
+
+    out = dict(document)
+    scene = out.get("scene")
+    if isinstance(scene, dict):
+        scene = dict(scene)
+        scene.setdefault("cad", {"settings": dict(DEFAULT_SETTINGS), "items": []})
+        out["scene"] = scene
+    return out
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -163,6 +180,7 @@ MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     4: _migrate_v4_to_v5,
     5: _migrate_v5_to_v6,
     6: _migrate_v6_to_v7,
+    7: _migrate_v7_to_v8,
 }
 """``MIGRATIONS[n]`` upgrades a version-``n`` document to version ``n + 1``."""
 
@@ -278,9 +296,18 @@ def scene_to_dict(
             "materials": library["materials"],
             "textures": library["textures"],
             "objects": objects,
+            "cad": _cad_to_dict(scene),
         },
         "meshes": meshes,
     }
+
+
+def _cad_to_dict(scene: Scene) -> dict[str, Any]:
+    if scene._cad is None:
+        from .cad.document import DEFAULT_SETTINGS
+
+        return {"settings": json.loads(json.dumps(DEFAULT_SETTINGS)), "items": []}
+    return scene._cad.to_json()
 
 
 def _is_scalar(value: Any) -> bool:
@@ -466,6 +493,7 @@ def scene_from_dict(
             "materials",
             "textures",
             "objects",
+            "cad",
         ),
     )
     scene = Scene(_string(scene_data["name"], "scene.name"))
@@ -674,6 +702,26 @@ def _read_scene(
                 )
     if project_dir is not None:
         library.base_dir = base.absolute()
+    _read_cad(scene, scene_data["cad"])
+
+
+def _read_cad(scene: Scene, data: Any) -> None:
+    if not isinstance(data, dict):
+        raise ProjectFormatError(f"expected an object, got {_type_name(data)}", "scene.cad")
+    if not data.get("items") and data.get("settings") in (None, {}):
+        return
+    from .cad.document import DEFAULT_SETTINGS
+
+    if not data.get("items") and data.get("settings") == DEFAULT_SETTINGS:
+        return
+    doc = scene.cad
+    doc._load(data, "scene.cad")
+    for item in doc.items():
+        for oid in item._links:
+            if oid not in scene._objects:
+                raise ProjectFormatError(
+                    f"CAD item {item.name!r} links to a missing object {oid!r}", "scene.cad"
+                )
 
 
 def _annotation(check: Callable[[Any], Any], value: Any, loc: str) -> Any:

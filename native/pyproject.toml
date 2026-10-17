@@ -4,8 +4,8 @@ build-backend = "maturin"
 
 [project]
 name = "aether3d-native"
-version = "0.14.0"
-description = "Native (Rust) kernels for Aether3D: ray traversal, transform hierarchies, PNG filters"
+version = "0.15.0"
+description = "Native (Rust) kernels for Aether3D: ray traversal, transform hierarchies, PNG filters, triangulation"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"

@@ -1994,6 +1994,13 @@ class _Run:
                         )
                     self.scene.procedural.set_parameters(values, geometry=node)
                 result["parameters"] = sorted(values)
+            elif op.op == "cad":
+                from ..cad.script import run_cad_script
+
+                with self._wrap(op.pointer, op.index):
+                    data = run_cad_script(self.scene, op.values["script"])
+                result["cad_operations"] = len(data["operations"])
+                result["cad_items"] = len(data["items"])
             elif op.op == "frame_camera":
                 camera = (
                     self.scene_object(op.values["camera"], f"{op.pointer}/camera")
