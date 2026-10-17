@@ -70,8 +70,8 @@ def _plane_cylinder(p: Plane, cyl: Cylinder, pts: np.ndarray):
     if abs(na) < 1e-12:
         # Lines along the axis where the plane cuts the circle.
         dist = float(n @ (o - p.frame.origin))
-        if abs(dist) > r:
-            return None
+        if abs(dist) > r * (1.0 + 1e-9):
+            return None  # (a plane tangent to the cylinder gives one line: k = 0 below)
         foot = o - dist * n
         side = np.cross(a, n)
         k = math.sqrt(max(r * r - dist * dist, 0.0))

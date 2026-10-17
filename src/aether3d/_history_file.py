@@ -79,6 +79,8 @@ ASPECTS: dict[str, h.Aspect] = {
     "material": h.MATERIAL,
     "texture": h.TEXTURE,
     "procedural": h.PROCEDURAL,
+    "cad.item": h.CAD_ITEM,
+    "cad.settings": h.CAD_SETTINGS,
 }
 KEYS = {aspect: key for key, aspect in ASPECTS.items()}
 
@@ -117,6 +119,7 @@ class _Writer:
         self.detached_objects: dict[str, Any] = {}
         self.detached_materials: dict[str, Any] = {}
         self.detached_textures: dict[str, Any] = {}
+        self.cad_items: dict[str, Any] = {}
 
     # -- references -------------------------------------------------------------------
 
@@ -158,6 +161,9 @@ class _Writer:
         return t._id
 
     def target(self, key: str, target: Any) -> Any:
+        if key == "cad.item":
+            self.cad_items.setdefault(target.id, target)
+            return target.id
         if key.startswith("object."):
             return self.obj(target)
         if key == "material":
@@ -199,6 +205,11 @@ class _Writer:
             return self.texture_state(s)
         if key == "procedural":
             return self.procedural_state(s[1])
+        if key == "cad.item":
+            alive, name, definition, links = s
+            return {"alive": alive, "name": name, "definition": definition, "links": list(links)}
+        if key == "cad.settings":
+            return s
         raise AssertionError(key)  # pragma: no cover
 
     def tile_blob(self, tile: Any) -> int:
@@ -383,6 +394,10 @@ def history_document(scene: Scene, project_dir: Path) -> dict[str, Any]:
         "textures": textures,
         "meshes": writer.meshes,
         "blobs": writer.blobs,
+        "cad_items": [
+            {"id": i.id, "kind": i.kind}
+            for i in sorted(writer.cad_items.values(), key=lambda i: i._serial)
+        ],
     }
 
 
@@ -534,6 +549,38 @@ class _Reader:
         self.materials: dict[str, Any] = dict(library._materials)
         self.textures: dict[str, Any] = dict(library._textures)
         self._detached(doc)
+        self.cad_items: dict[str, Any] = {}
+        self._cad_items(doc.get("cad_items", []))
+
+    def _cad_items(self, records: Any) -> None:
+        """CAD items the history refers to: those of the project, or recreated (removed
+        items come back through undo)."""
+        import uuid
+
+        from .cad.document import KINDS, Item
+
+        records = _list(records, "cad_items")
+        if not records:
+            return
+        doc = self.scene.cad
+        for i, raw in enumerate(records):
+            loc = f"cad_items[{i}]"
+            raw = _record(raw, loc, ("id", "kind"))
+            try:
+                iid = str(uuid.UUID(_string(raw["id"], f"{loc}.id")))
+            except ValueError:
+                raise _bad("not a UUID", f"{loc}.id") from None
+            kind = _string(raw["kind"], f"{loc}.kind")
+            if kind not in KINDS:
+                raise _bad(f"unknown CAD item kind {kind!r}", f"{loc}.kind")
+            item = doc._items.get(iid)
+            if item is None:
+                item = Item(doc, iid, kind, f"(removed {iid[:8]})", {})
+                item._alive = False
+                doc._items[iid] = item
+            elif item.kind != kind:
+                raise _bad("the item's kind differs from the project's", loc)
+            self.cad_items[iid] = item
 
     # -- detached entities ----------------------------------------------------------
 
@@ -738,6 +785,14 @@ class _Reader:
             raise _bad(f"unknown object {ref!r}", loc) from None
 
     def target(self, key: str, ref: Any, loc: str) -> Any:
+        if key == "cad.item":
+            if ref not in self.cad_items:
+                raise _bad(f"unknown CAD item {ref!r}", loc)
+            return self.cad_items[ref]
+        if key == "cad.settings":
+            if ref is not None:
+                raise _bad("a change of cad.settings has no target", loc)
+            return self.scene.cad
         if key.startswith("object."):
             return self.obj(ref, loc)
         if key == "material":
@@ -844,6 +899,28 @@ class _Reader:
                 raise _bad(str(exc), loc) from None
         if key == "procedural":
             return (-1, self.procedural_state(data, loc))
+        if key == "cad.item":
+            from .cad.document import check_json
+
+            data = _record(data, loc, ("alive", "name", "definition", "links"))
+            if not isinstance(data["alive"], bool):
+                raise _bad("expected true or false", f"{loc}.alive")
+            try:
+                definition = check_json(data["definition"], f"{loc}.definition")
+            except AetherError as exc:
+                raise _bad(str(exc), f"{loc}.definition") from None
+            links = tuple(
+                _string(x, f"{loc}.links[{i}]")
+                for i, x in enumerate(_list(data["links"], f"{loc}.links"))
+            )
+            return (data["alive"], _string(data["name"], f"{loc}.name"), definition, links)
+        if key == "cad.settings":
+            from .cad.document import check_json
+
+            try:
+                return check_json(data, loc)
+            except AetherError as exc:
+                raise _bad(str(exc), loc) from None
         raise _bad(f"unknown aspect {key!r}", loc)  # pragma: no cover - checked before
 
     def procedural_state(self, data: Any, loc: str) -> dict:
@@ -943,7 +1020,7 @@ _TOP_KEYS = (
 
 
 def _check_header(doc: Any) -> dict[str, Any]:
-    doc = _record(doc, "", _TOP_KEYS)
+    doc = _record(doc, "", _TOP_KEYS, ("cad_items",))
     if doc["format"] != FORMAT_ID:
         raise _bad(f"format must be {FORMAT_ID!r}", "format")
     if doc["format_version"] != FORMAT_VERSION:

@@ -80,6 +80,7 @@ creates more objects than this is followed by a full recomputation anyway)."""
 _NAMES = "names"  # rebuild the scene's name index
 _LIBRARY = "library"  # rebuild the material library's name indexes, bump its version
 _PROCEDURAL = "procedural"  # bump the procedural revision
+_CAD = "cad"  # rebuild the CAD document's indexes, forget derived results
 
 _UNSET = object()
 _UNRECORDED = contextlib.nullcontext()
@@ -478,6 +479,52 @@ class _Procedural(Aspect):
         return "procedural"
 
 
+class _CadItem(Aspect):
+    """A CAD document item: alive, name, definition (immutable JSON values) and links."""
+
+    __slots__ = ()
+
+    def capture(self, item: Any) -> tuple:
+        return (item._alive, item._name, item._definition, item._links)
+
+    def apply(self, item: Any, state: tuple) -> None:
+        item._alive, item._name, item._definition, item._links = state
+
+    def same(self, a: tuple, b: tuple) -> bool:
+        return a[0] == b[0] and a[1] == b[1] and (a[2] is b[2] or a[2] == b[2]) and a[3] == b[3]
+
+    def size(self, state: tuple) -> int:
+        return 256 + _json_size(state[2])
+
+    def path(self, item: Any) -> str:
+        return f"cad.items[{item.id}]"
+
+
+class _CadSettings(Aspect):
+    """The CAD document's settings (units, display tolerances): an immutable dict."""
+
+    __slots__ = ()
+
+    def capture(self, doc: Any) -> Any:
+        return doc._settings
+
+    def apply(self, doc: Any, state: Any) -> None:
+        doc._settings = state
+
+    def path(self, target: Any) -> str:
+        return "cad.settings"
+
+
+def _json_size(value: Any, depth: int = 0) -> int:
+    if isinstance(value, dict):
+        return 64 + sum(48 + _json_size(v, depth + 1) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return 56 + sum(16 + _json_size(v, depth + 1) for v in value)
+    if isinstance(value, str):
+        return 49 + len(value)
+    return 24
+
+
 def _appearance() -> Any:
     from .rendering.settings import Appearance
 
@@ -543,6 +590,8 @@ LIBRARY_TEXTURES = _Library("textures", "_textures")
 MATERIAL = _Material("material", (_LIBRARY,))
 TEXTURE = _Texture("texture", (_LIBRARY,))
 PROCEDURAL = _Procedural("procedural", (_PROCEDURAL,))
+CAD_ITEM = _CadItem("cad.item", (_CAD,))
+CAD_SETTINGS = _CadSettings("cad.settings", (_CAD,))
 
 
 # --------------------------------------------------------------------------- #
@@ -879,6 +928,8 @@ class History:
             library._changed()
         if _PROCEDURAL in flags and scene._procedural is not None:
             scene._procedural._revision += 1
+        if _CAD in flags and scene._cad is not None:
+            scene._cad._restored()
 
     # ------------------------------------------------------------------ #
     # Memory and limits
@@ -1379,3 +1430,11 @@ def check_scene(scene: Scene) -> None:
             assert system is not None and obj._geometry in system._geometries, (
                 f"{obj!r} uses a missing geometry node"
             )
+    doc = scene._cad
+    if doc is not None:
+        alive = [i for i in doc._items.values() if i._alive]
+        assert doc._by_name == {i._name: i for i in alive}, "the CAD name index is stale"
+        for item in alive:
+            for oid in item._links:
+                assert oid in seen, f"CAD item {item._name!r} links to a missing object"
+                assert doc._drivers.get(oid) == item.id, "the CAD link index is stale"

@@ -290,7 +290,7 @@ def test_light_sizes_and_environments_are_validated_and_saved(tmp_path):
     path = tmp_path / "scene.aether"
     scene.save(path)
     doc = json.loads(path.read_text())
-    assert doc["format_version"] == FORMAT_VERSION == 7
+    assert doc["format_version"] == FORMAT_VERSION == 8
     assert doc["scene"]["world"]["environment"]["type"] == "sky"
     loaded = Scene.load(path)
     assert loaded.world == scene.world
