@@ -1,0 +1,46 @@
+{
+  "label": "instances before vectorized strip timing (e74d32b: strips timed one by one)",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.15.0",
+    "switches": {
+      "AETHER3D_EDITING_BULK": true,
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.17.0",
+      "reason": "loaded"
+    },
+    "git": "e74d32b",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "instances:1000": {
+      "objects": 1000,
+      "strips": 1000,
+      "build_s": 0.088,
+      "evaluate_ms": 16.527,
+      "overlay_ms": 17.112,
+      "posed_worlds_ms": 17.887,
+      "peak_rss_mib": 65.3
+    },
+    "instances:10000": {
+      "objects": 10000,
+      "strips": 10000,
+      "build_s": 0.453,
+      "evaluate_ms": 162.967,
+      "overlay_ms": 167.728,
+      "posed_worlds_ms": 175.93,
+      "peak_rss_mib": 173.3
+    }
+  }
+}

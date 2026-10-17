@@ -20,6 +20,8 @@ Groups:
 * ``objects:N`` -- N objects, each animated by its own clip (position Bezier curves and a
   slerp rotation track): one evaluation (a new time each run, so no cache), the render
   overlay and the world matrices of the posed scene.
+* ``instances:N`` -- N objects playing one shared clip through NLA strips, each with its
+  own time offset (crowds, fields, instanced props): evaluation, overlay, posed worlds.
 * ``rig:J`` -- a branching rig of J joints, every joint with a rotation track: the pose,
   forward kinematics and the rigging pass per frame.
 * ``skin:V`` -- linear blend skinning of V vertices (4 influences, 64 joints): NumPy,
@@ -56,6 +58,7 @@ from bench_engine import compare, machine, median_time, ms, peak_rss_mib  # noqa
 SIZED = {
     "curves": ("100", "10000"),
     "objects": ("100", "1000", "10000"),
+    "instances": ("1000", "10000"),
     "rig": ("50", "200"),
     "skin": ("10000", "100000", "1000000"),
 }
@@ -156,6 +159,57 @@ def group_objects(size: str, quick: bool) -> dict[str, Any]:
 
     a.evaluate(0.1)
     out: dict[str, Any] = {"objects": n, "build_s": round(build, 3)}
+    out["evaluate_ms"] = ms(median_time(lambda: a.evaluate(fresh()), _repeat(quick, 7)))
+    out["overlay_ms"] = ms(median_time(lambda: a.overlay(fresh()), _repeat(quick, 7)))
+    out["posed_worlds_ms"] = ms(
+        median_time(lambda: world_matrices(s, a.overlay(fresh())), _repeat(quick, 5))
+    )
+    out["peak_rss_mib"] = peak_rss_mib()
+    return out
+
+
+def _instanced_scene(n: int):
+    import math
+
+    from aether3d import Scene
+    from aether3d.animation import FCurve
+    from aether3d.animation.clip import Clip
+
+    s = Scene("Instances")
+    a = s.animation
+    keys = [(0.0, 0.0), (0.5, 0.6), (1.0, 0.0), (2.0, 0.0)]
+    clip = Clip().with_channel(
+        "transform.position.z", FCurve.from_keys(keys, extrapolation="cycle")
+    )
+    ripple = a.add_clip("Ripple", clip)
+    side = math.isqrt(n)
+    with s.history._suspended():
+        mesh = s.add_cube(name="Proto", size=0.9).mesh
+        for i in range(n):
+            x, y = i % side - side / 2, i // side - side / 2
+            obj = s.add_object(f"B{i}", mesh=mesh, position=(x, y, 0))
+            strip = {"clip": ripple.name, "start": -(math.hypot(x, y) * 0.15 % 2.0),
+                     "repeat": 12.0}  # fmt: skip
+            a.set_binding(obj, {"layers": [{"name": "base", "strips": [strip]}]})
+    return s
+
+
+def group_instances(size: str, quick: bool) -> dict[str, Any]:
+    from aether3d.rendering.scene_data import world_matrices
+
+    n = int(size)
+    t0 = time.perf_counter()
+    s = _instanced_scene(n)
+    build = time.perf_counter() - t0
+    a = s.animation
+    counter = [0]
+
+    def fresh() -> float:
+        counter[0] += 1
+        return 0.5 + 1e-4 * counter[0]  # a new time each run: nothing cached
+
+    a.evaluate(0.1)
+    out: dict[str, Any] = {"objects": n, "strips": n, "build_s": round(build, 3)}
     out["evaluate_ms"] = ms(median_time(lambda: a.evaluate(fresh()), _repeat(quick, 7)))
     out["overlay_ms"] = ms(median_time(lambda: a.overlay(fresh()), _repeat(quick, 7)))
     out["posed_worlds_ms"] = ms(

@@ -437,6 +437,69 @@ def strip_times(
     return c, w, cycle, dc
 
 
+class StripTable:
+    """Plain strips (no time or weight curve) as arrays, timed in one pass: the clip
+    time, weight and cycle of every strip at a scene time. The same operations as
+    :func:`strip_times`, element by element, so the results are bit for bit its own."""
+
+    def __init__(self, strips: list[tuple[Strip, tuple[float, float]]]) -> None:
+        n = len(strips)
+        f = {k: np.zeros(n) for k in ("start", "speed", "cs", "ce", "span", "length", "total",
+                                      "last", "blend_in", "blend_out", "weight")}  # fmt: skip
+        b = {k: np.zeros(n, bool) for k in ("reverse", "hold_before", "hold_after", "mute")}
+        for i, (strip, clip_range) in enumerate(strips):
+            assert strip.time_curve is None and strip.weight_curve is None
+            cs, ce = _trim(strip, clip_range)
+            span = ce - cs
+            f["start"][i], f["speed"][i] = strip.start, strip.speed
+            f["cs"][i], f["ce"][i], f["span"][i] = cs, ce, span
+            if span > 0:
+                total = span * strip.repeat
+                f["length"][i] = span * strip.repeat / strip.speed
+                f["total"][i] = total
+                f["last"][i] = np.minimum(np.floor(total / span - 1e-12), np.ceil(strip.repeat) - 1)
+            f["blend_in"][i], f["blend_out"][i] = strip.blend_in, strip.blend_out
+            f["weight"][i] = strip.weight
+            b["reverse"][i], b["mute"][i] = strip.reverse, strip.mute
+            b["hold_before"][i] = strip.before == "hold"
+            b["hold_after"][i] = strip.after == "hold"
+        self.__dict__.update(f)
+        self.__dict__.update(b)
+        self.cycling = self.span > 0
+        self.safe_span = np.where(self.cycling, self.span, 1.0)
+        self.ramp_in = self.blend_in > 0
+        self.ramp_out = self.blend_out > 0
+        self.safe_in = np.where(self.ramp_in, self.blend_in, 1.0)
+        self.safe_out = np.where(self.ramp_out, self.blend_out, 1.0)
+        self.end = self.start + self.length
+
+    def at(self, t: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """``(clip time, weight, cycle)`` of every strip at scene time ``t``."""
+        start, span, last, total = self.start, self.span, self.last, self.total
+        local = (t - start) * self.speed
+        cycle = np.floor(local / self.safe_span)
+        at_end = local >= total
+        cycle = np.where(at_end, last, np.clip(cycle, 0, last))
+        within = np.where(at_end, total - last * span, np.clip(local - cycle * span, 0.0, span))
+        within = np.where(local < 0, 0.0, within)
+        cycle = np.where(self.cycling, cycle, 0.0)
+        within = np.where(self.cycling, within, 0.0)
+        c = np.where(self.reverse, self.ce - within, self.cs + within)
+        inside = (t >= start) & (t <= self.end)
+        w = np.where(inside, 1.0, 0.0)
+        w = np.where(self.hold_before & (t < start), 1.0, w)
+        w = np.where(self.hold_after & (t > self.end), 1.0, w)
+        ramp = (t - start) / self.safe_in
+        w = np.where(self.ramp_in & inside & (ramp < 1.0), np.clip(ramp, 0.0, 1.0), w)
+        ramp = (self.end - t) / self.safe_out
+        w = np.where(
+            self.ramp_out & inside & (ramp < 1.0), np.minimum(w, np.clip(ramp, 0.0, 1.0)), w
+        )
+        w = w * self.weight
+        mute = self.mute
+        return np.where(mute, 0.0, c), np.where(mute, 0.0, w), np.where(mute, 0.0, cycle)
+
+
 def layer_weight(layer: Layer, t: float) -> float:
     if layer.mute:
         return 0.0

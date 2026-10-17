@@ -201,6 +201,43 @@ def test_strip_time_mapping_trim_speed_repeat_reverse_and_hold(scene):
     assert x(1.0) == pytest.approx(2.5) and x(1.9) == pytest.approx(7.0)
 
 
+def test_strips_timed_together_match_the_strip_by_strip_mapping_bit_for_bit():
+    from aether3d.animation.nla import Strip, StripTable, strip_length, strip_times
+
+    rng = np.random.default_rng(11)
+    strips = []
+    for i in range(300):
+        a0 = float(rng.uniform(-2, 2))
+        clip_range = (a0, a0 + float(rng.choice([0.0, rng.uniform(0.01, 3)])))
+        options = {
+            "start": float(rng.choice([0.0, rng.uniform(-5, 5)])),
+            "speed": float(rng.choice([1.0, rng.uniform(0.1, 4)])),
+            "repeat": float(rng.choice([1.0, 2.0, rng.uniform(0.2, 6)])),
+            "reverse": bool(rng.integers(0, 2)),
+            "blend_in": float(rng.choice([0.0, rng.uniform(0, 2)])),
+            "blend_out": float(rng.choice([0.0, rng.uniform(0, 2)])),
+            "before": str(rng.choice(["nothing", "hold"])),
+            "after": str(rng.choice(["nothing", "hold"])),
+            "weight": float(rng.choice([1.0, rng.uniform(0, 1)])),
+            "mute": bool(rng.random() < 0.1),
+        }
+        if rng.random() < 0.3:
+            options["clip_start"] = a0 + float(rng.uniform(0, 0.5))
+        strips.append((Strip(f"c{i}", **options), clip_range))
+    times = list(rng.uniform(-10, 20, 60))
+    for strip, clip_range in strips[:60]:  # (each strip's edges, ramps, and their neighbours)
+        end = strip.start + strip_length(strip, clip_range)
+        times += [strip.start, end, end - strip.blend_out, strip.start + strip.blend_in,
+                  np.nextafter(strip.start, -np.inf), np.nextafter(end, np.inf)]  # fmt: skip
+    table = StripTable(strips)
+    for t in times:
+        c, w, cycle = table.at(float(t))
+        one = [strip_times(s, r, np.array([float(t)]))[:3] for s, r in strips]
+        assert np.array_equal(c, [x[0][0] for x in one])
+        assert np.array_equal(w, [x[1][0] for x in one])
+        assert np.array_equal(cycle, [x[2][0] for x in one])
+
+
 def test_crossfades_layer_weights_masks_and_additive_layers(scene):
     a = scene.animation
     ramp_clip(a, "Up", "transform.position.z", 0.0, 4.0)

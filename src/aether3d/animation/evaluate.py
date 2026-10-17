@@ -40,7 +40,7 @@ from . import paths as P
 from . import rotation as R
 from .batch import CurveBatch, RotationBatch
 from .curves import FCurve
-from .nla import Strip, layer_weight, strip_times
+from .nla import Strip, StripTable, layer_weight, strip_times
 from .tracks import RotationTrack
 
 if TYPE_CHECKING:
@@ -95,6 +95,7 @@ class Program:
     rot_slots: list[tuple[int, str | None]] = field(default_factory=list)  # (target, joint)
     diagnostics: list[Diagnostic] = field(default_factory=list)
     rest_cache: dict[str, Any] = field(default_factory=dict)
+    timing: Any = None  # (built on first use: see _timing)
 
 
 @dataclass(frozen=True, eq=False)
@@ -498,24 +499,55 @@ def _euler_quats(
 # --------------------------------------------------------------------------------------- #
 
 
+def _timing(prog: Program) -> tuple[Any, ...]:
+    """The program's strips sorted for timing: plain strips in one :class:`StripTable`
+    (with their layers' constant weights), the others (time or weight curves) and the
+    layers whose weight is a curve, timed one by one."""
+    if prog.timing is None:
+        plain: list[int] = []
+        special: list[int] = []
+        curved: dict[int, list[int]] = {}  # (layer identity -> contributions)
+        layers: dict[int, Any] = {}
+        lw = np.ones(len(prog.contributions))
+        for k, con in enumerate(prog.contributions):
+            if con.strip is None:
+                continue
+            if con.strip.time_curve is None and con.strip.weight_curve is None:
+                plain.append(k)
+            else:
+                special.append(k)
+            if con.layer.weight_curve is not None and not con.layer.mute:
+                curved.setdefault(id(con.layer), []).append(k)
+                layers[id(con.layer)] = con.layer
+            else:
+                lw[k] = layer_weight(con.layer, 0.0)  # (constant)
+        table = StripTable([(prog.contributions[k].strip, prog.contributions[k].clip_range)
+                            for k in plain])  # fmt: skip
+        groups = [(layers[i], np.array(ks, np.int64)) for i, ks in curved.items()]
+        prog.timing = (np.array(plain, np.int64), table, special, lw, groups)
+    return prog.timing
+
+
 def _contribution_times(
     prog: Program, t: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Clip time, weight, cycle and layer weight of every contribution at scene time t."""
+    """Clip time, weight, cycle and layer weight of every contribution at scene time t
+    (an action plays at scene time, with weight 1)."""
+    plain, table, special, lw_const, groups = _timing(prog)
     n = len(prog.contributions)
-    ctime = np.empty(n)
-    weight = np.empty(n)
+    ctime = np.full(n, t, dtype=np.float64)
+    weight = np.ones(n)
     cycle = np.zeros(n)
-    lw = np.ones(n)
+    lw = lw_const.copy()
+    if plain.size:
+        ctime[plain], weight[plain], cycle[plain] = table.at(t)
     tt = np.array([t])
-    for k, con in enumerate(prog.contributions):
-        if con.strip is None:
-            ctime[k] = t
-            weight[k] = 1.0
-            continue
+    for k in special:
+        con = prog.contributions[k]
         c, w, cyc, _ = strip_times(con.strip, con.clip_range, tt)
         ctime[k], weight[k], cycle[k] = c[0], w[0], cyc[0]
-        lw[k] = layer_weight(con.layer, t)
+    for layer, ks in groups:
+        lw[ks] = layer_weight(layer, t)
     return ctime, weight, cycle, lw
 
 
