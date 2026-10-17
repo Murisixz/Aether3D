@@ -1,0 +1,380 @@
+{
+  "aether3d": "0.15.0",
+  "seconds": 2.568037054006709,
+  "orient": {
+    "operations": [
+      "units",
+      "parameter",
+      "add",
+      "replace",
+      "merge",
+      "append",
+      "update",
+      "delete",
+      "rename",
+      "remove",
+      "show",
+      "convert_to_mesh",
+      "info",
+      "measure",
+      "snap",
+      "schedule",
+      "expect"
+    ],
+    "features": [
+      "extrude",
+      "revolve",
+      "sweep",
+      "loft",
+      "hole",
+      "fillet",
+      "chamfer",
+      "shell",
+      "pattern",
+      "mirror",
+      "transform",
+      "boolean",
+      "box",
+      "cylinder",
+      "sphere",
+      "cone",
+      "torus",
+      "solid"
+    ],
+    "guide_chars": 10230,
+    "schema_bytes": 20534
+  },
+  "refused": {
+    "type": "CadError",
+    "code": "SKETCH_CONFLICT",
+    "message": "the sketch cannot satisfy its constraints: 'diag_len' conflicts with ['h1', 'len', 'v1', 'wid']",
+    "location": "operations[1]: sketch[Outline]",
+    "hint": "remove or change one of the conflicting constraints (or make it a reference dimension: driving=False)",
+    "details": {
+      "conflicts": [
+        {
+          "constraint": "diag_len",
+          "conflicts_with": [
+            "h1",
+            "len",
+            "v1",
+            "wid"
+          ],
+          "residual": 0.00417213733903922
+        }
+      ],
+      "dof": 0,
+      "max_residual": 0.00417213733903922
+    }
+  },
+  "diagonal_reference": "107.703 mm",
+  "diagnosis": {
+    "accepted": true,
+    "findings": []
+  },
+  "volumes_mm3": {
+    "plate": 23352.07810429365,
+    "reimported": 23352.078104293658
+  },
+  "history": [
+    "Mounting plate",
+    "Stage",
+    "Reference diagonal",
+    "Drawing",
+    "Import STEP (1 solids)"
+  ],
+  "transcript": [
+    {
+      "tool": "capabilities",
+      "seconds": 0.0347,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "topic": "cad",
+        "script_format": {
+          "format": "aether3d.cad-script",
+          "version": 1
+        },
+        "schema_resource": "aether3d://schema/cad-script"
+      }
+    },
+    {
+      "tool": "scene_new",
+      "seconds": 0.0016,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "scene": {
+          "open": true,
+          "name": "plate",
+          "project": "plate.aether",
+          "revision": 0,
+          "dirty": true,
+          "objects": 0
+        }
+      }
+    },
+    {
+      "tool": "run_script",
+      "seconds": 0.2118,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "operations": [
+          "units",
+          "parameter",
+          "parameter",
+          "add",
+          "add",
+          "show",
+          "expect",
+          "expect",
+          "expect"
+        ]
+      }
+    },
+    {
+      "tool": "execute_scene_plan",
+      "seconds": 0.0037,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "ok": true,
+        "mode": "execute",
+        "status": "applied"
+      }
+    },
+    {
+      "tool": "scene_info",
+      "seconds": 0.0024,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "open": true,
+        "name": "plate",
+        "project": "plate.aether"
+      }
+    },
+    {
+      "tool": "run_script",
+      "seconds": 0.1426,
+      "error": true,
+      "images": 0,
+      "brief": {
+        "code": "SKETCH_CONFLICT",
+        "location": "operations[1]: sketch[Outline]",
+        "message": "the sketch cannot satisfy its constraints: 'diag_len' conflicts with ['h1', 'len', 'v1', 'wid']"
+      }
+    },
+    {
+      "tool": "scene_info",
+      "seconds": 0.0019,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "open": true,
+        "name": "plate",
+        "project": "plate.aether"
+      }
+    },
+    {
+      "tool": "run_script",
+      "seconds": 0.1355,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "operations": [
+          "append",
+          "append",
+          "expect"
+        ]
+      }
+    },
+    {
+      "tool": "inspect_cad",
+      "seconds": 0.0018,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "kind": "sketch",
+        "name": "Outline",
+        "status": "fully_constrained",
+        "dof": 0,
+        "reference": {
+          "len": "100 mm",
+          "wid": "40 mm",
+          "diag_len": "107.703 mm"
+        }
+      }
+    },
+    {
+      "tool": "inspect_cad",
+      "seconds": 0.0981,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "kind": "part",
+        "name": "Plate",
+        "status": null,
+        "dof": null,
+        "reference": null
+      }
+    },
+    {
+      "tool": "diagnose_scene",
+      "seconds": 0.0519,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "accepted": true,
+        "findings": []
+      }
+    },
+    {
+      "tool": "observe_scene",
+      "seconds": 0.9865,
+      "error": false,
+      "images": 1,
+      "brief": {
+        "renderer": "gpu"
+      }
+    },
+    {
+      "tool": "export_scene",
+      "seconds": 0.0178,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "path": "plate.step",
+        "bytes": 16391,
+        "scene": {
+          "open": true,
+          "name": "plate",
+          "project": "plate.aether",
+          "revision": 3,
+          "dirty": true,
+          "objects": 5
+        }
+      }
+    },
+    {
+      "tool": "run_script",
+      "seconds": 0.0172,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "operations": [
+          "add"
+        ]
+      }
+    },
+    {
+      "tool": "export_scene",
+      "seconds": 0.0045,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "path": "plate_top.svg",
+        "bytes": 16369,
+        "drawing": {
+          "title": "Plate top",
+          "view": "top",
+          "scale": "2:1",
+          "sheet": "A3",
+          "extent_m": [
+            0.10800000000000001,
+            0.048
+          ],
+          "polylines": {
+            "hidden": 26,
+            "visible": 45
+          },
+          "hatches": 0,
+          "texts": 0,
+          "dimensions": [
+            {
+              "text": "100 mm",
+              "length_m": 0.1
+            },
+            {
+              "text": "40 mm",
+              "length_m": 0.04
+            }
+          ],
+          "notes": [],
+          "solids": 1,
+          "visibility_rays": 7359,
+          "chord_m": 4.314811699251777e-05,
+          "visibility_step_m": 0.00010787029248129443
+        }
+      }
+    },
+    {
+      "tool": "import_cad",
+      "seconds": 0.0166,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "path": "plate.step",
+        "parts": [
+          "Plate check"
+        ],
+        "scene": {
+          "open": true,
+          "name": "plate",
+          "project": "plate.aether",
+          "revision": 5,
+          "dirty": true,
+          "objects": 5
+        }
+      }
+    },
+    {
+      "tool": "inspect_cad",
+      "seconds": 0.0449,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "kind": "part",
+        "name": "Plate check",
+        "status": null,
+        "dof": null,
+        "reference": null
+      }
+    },
+    {
+      "tool": "history",
+      "seconds": 0.0016,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "steps": [
+          "Mounting plate",
+          "Stage",
+          "Reference diagonal",
+          "Drawing",
+          "Import STEP (1 solids)"
+        ]
+      }
+    },
+    {
+      "tool": "scene_save",
+      "seconds": 0.016,
+      "error": false,
+      "images": 0,
+      "brief": {
+        "scene": {
+          "open": true,
+          "name": "plate",
+          "project": "plate.aether",
+          "revision": 5,
+          "dirty": false,
+          "objects": 5
+        },
+        "saved": "plate.aether",
+        "history_file": null
+      }
+    }
+  ],
+  "failures": []
+}

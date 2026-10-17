@@ -1,0 +1,170 @@
+{
+  "aether3d": "0.15.0",
+  "build_seconds": 0.32404011199832894,
+  "sketch": {
+    "status": "fully_constrained",
+    "dof": 0,
+    "max_residual": 0.0,
+    "iterations": 12
+  },
+  "first": {
+    "valid": true,
+    "faces": 28,
+    "volume_mm3": 54138.25514048725,
+    "volume_error_estimate_mm3": 1.2197274440461925e-10,
+    "tessellation_volume_mm3": 54139.89228297915,
+    "tessellation_triangles": 2892,
+    "step_bytes": 30754,
+    "step_reimported_volume_mm3": 54138.255140487214,
+    "bolt_axis_distance_mm": 30.0,
+    "surfaces": {
+      "plane": 14,
+      "cylinder": 14
+    }
+  },
+  "edit": {
+    "seconds": 0.41801790602039546,
+    "evaluations": 7,
+    "items": 12
+  },
+  "edited": {
+    "valid": true,
+    "faces": 28,
+    "volume_mm3": 78337.60209584454,
+    "volume_error_estimate_mm3": 4.201283418381329e-10,
+    "tessellation_volume_mm3": 78339.59884016177,
+    "tessellation_triangles": 2892,
+    "step_bytes": 30777,
+    "step_reimported_volume_mm3": 78337.60209584456,
+    "bolt_axis_distance_mm": 30.0,
+    "surfaces": {
+      "plane": 14,
+      "cylinder": 14
+    }
+  },
+  "drawings": {
+    "Front": {
+      "title": "L-bracket: front",
+      "view": "front",
+      "scale": "2:1",
+      "sheet": "A4",
+      "extent_m": [
+        0.0864,
+        0.0664
+      ],
+      "polylines": {
+        "visible": 29,
+        "hidden": 45
+      },
+      "hatches": 0,
+      "texts": 0,
+      "dimensions": [
+        {
+          "text": "80 mm",
+          "length_m": 0.08
+        },
+        {
+          "text": "60 mm",
+          "length_m": 0.06
+        }
+      ],
+      "notes": [],
+      "solids": 1,
+      "visibility_rays": 14324,
+      "chord_m": 4.6647615158762406e-05,
+      "visibility_step_m": 0.00011661903789690602
+    },
+    "Top": {
+      "title": "L-bracket: top",
+      "view": "top",
+      "scale": "2:1",
+      "sheet": "A4",
+      "extent_m": [
+        0.0864,
+        0.0664
+      ],
+      "polylines": {
+        "visible": 85,
+        "hidden": 66
+      },
+      "hatches": 0,
+      "texts": 0,
+      "dimensions": [
+        {
+          "text": "80 mm",
+          "length_m": 0.08
+        },
+        {
+          "text": "60 mm",
+          "length_m": 0.06
+        }
+      ],
+      "notes": [],
+      "solids": 1,
+      "visibility_rays": 14912,
+      "chord_m": 4.6647615158762406e-05,
+      "visibility_step_m": 0.00011661903789690602
+    },
+    "Section A-A": {
+      "title": "L-bracket: section A-A",
+      "view": "section",
+      "scale": "2:1",
+      "sheet": "A4",
+      "extent_m": [
+        0.0864,
+        0.0664
+      ],
+      "polylines": {
+        "section": 20,
+        "visible": 20
+      },
+      "hatches": 3,
+      "texts": 0,
+      "dimensions": [
+        {
+          "text": "80 mm",
+          "length_m": 0.08
+        },
+        {
+          "text": "60 mm",
+          "length_m": 0.06
+        }
+      ],
+      "notes": [],
+      "solids": 1,
+      "visibility_rays": 4072,
+      "chord_m": 4.6647615158762406e-05,
+      "visibility_step_m": 0.00011661903789690602
+    },
+    "Iso": {
+      "title": "L-bracket: isometric",
+      "view": "iso",
+      "scale": "1:1",
+      "sheet": "A4",
+      "extent_m": [
+        0.09899494936611664,
+        0.10614455552060438
+      ],
+      "polylines": {
+        "visible": 47
+      },
+      "hatches": 0,
+      "texts": 0,
+      "dimensions": [],
+      "notes": [],
+      "solids": 1,
+      "visibility_rays": 14776,
+      "chord_m": 4.6647615158762406e-05,
+      "visibility_step_m": 0.00011661903789690602
+    }
+  },
+  "render": {
+    "backend": "gpu_path",
+    "seconds": 15.671600357018178,
+    "size": [
+      1200,
+      900
+    ]
+  },
+  "failures": []
+}

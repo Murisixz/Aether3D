@@ -1,0 +1,173 @@
+{
+  "aether3d": "0.15.0",
+  "build_seconds": 0.2677806769788731,
+  "stair": {
+    "checks": [
+      {
+        "check": "riser",
+        "value": 0.17647058823529413,
+        "min": 0.15,
+        "max": 0.19,
+        "pass": true
+      },
+      {
+        "check": "tread",
+        "value": 0.28,
+        "min": 0.25,
+        "max": null,
+        "pass": true
+      },
+      {
+        "check": "blondel_2r_plus_t",
+        "value": 0.6329411764705883,
+        "min": 0.6,
+        "max": 0.65,
+        "pass": true
+      },
+      {
+        "check": "width",
+        "value": 1.0,
+        "min": null,
+        "max": null,
+        "pass": true
+      }
+    ],
+    "quantities": {
+      "NumberOfRisers": 17,
+      "NumberOfTreads": 16,
+      "RiserHeight": 0.17647058823529413,
+      "TreadLength": 0.28,
+      "Run": 4.48,
+      "Width": 1.0,
+      "NetVolume": 0.3990359668504101
+    }
+  },
+  "headroom_m": 2.0063025210084033,
+  "arrival_y_m": 5.08,
+  "pilotis_top_m": [
+    2.75,
+    2.75
+  ],
+  "first_slab_underside_m": 2.75,
+  "gross_floor_areas_m2": {
+    "Ground floor": 85.49000000000001,
+    "First floor": 118.69
+  },
+  "ifc_entities": {
+    "IfcWall": 11,
+    "IfcOpeningElement": 14,
+    "IfcWindow": 10,
+    "IfcDoor": 4,
+    "IfcSpace": 5,
+    "IfcSlab": 2,
+    "IfcRoof": 1,
+    "IfcStair": 1,
+    "IfcColumn": 2
+  },
+  "ifc_products_compared": 17,
+  "ifc_volume_max_difference_m3": 2.842170943040401e-14,
+  "drawings": {
+    "House: first floor plan": {
+      "title": "House: first floor plan",
+      "view": "plan",
+      "scale": "1:50",
+      "sheet": "A3",
+      "extent_m": [
+        15.444,
+        9.444
+      ],
+      "polylines": {
+        "section": 208,
+        "visible": 118,
+        "thin": 4
+      },
+      "hatches": 52,
+      "texts": 6,
+      "dimensions": [
+        {
+          "text": "14.3 m",
+          "length_m": 14.3
+        },
+        {
+          "text": "8.3 m",
+          "length_m": 8.3
+        }
+      ],
+      "notes": [],
+      "solids": 15,
+      "visibility_rays": 30140,
+      "chord_m": 0.006740237384543665,
+      "visibility_step_m": 0.01685059346135916
+    },
+    "House: section B-B (stair)": {
+      "title": "House: section B-B (stair)",
+      "view": "section",
+      "scale": "1:50",
+      "sheet": "A3",
+      "extent_m": [
+        10.26,
+        7.31
+      ],
+      "polylines": {
+        "section": 83,
+        "visible": 85
+      },
+      "hatches": 13,
+      "texts": 0,
+      "dimensions": [
+        {
+          "text": "9.5 m",
+          "length_m": 9.5
+        },
+        {
+          "text": "6.55 m",
+          "length_m": 6.55
+        }
+      ],
+      "notes": [],
+      "solids": 19,
+      "visibility_rays": 39633,
+      "chord_m": 0.00772945017449495,
+      "visibility_step_m": 0.019323625436237377
+    },
+    "House: south elevation": {
+      "title": "House: south elevation",
+      "view": "front",
+      "scale": "1:50",
+      "sheet": "A3",
+      "extent_m": [
+        16.740000000000002,
+        7.79
+      ],
+      "polylines": {
+        "visible": 220
+      },
+      "hatches": 0,
+      "texts": 0,
+      "dimensions": [
+        {
+          "text": "15.5 m",
+          "length_m": 15.500000000000004
+        },
+        {
+          "text": "6.55 m",
+          "length_m": 6.55
+        }
+      ],
+      "notes": [],
+      "solids": 31,
+      "visibility_rays": 103309,
+      "chord_m": 0.00772945017449495,
+      "visibility_step_m": 0.019323625436237377
+    }
+  },
+  "render": {
+    "backend": "gpu_path",
+    "seconds": 63.72856464399956,
+    "size": [
+      1920,
+      1080
+    ]
+  },
+  "failures": []
+}

@@ -1,0 +1,68 @@
+{
+  "aether3d": "0.15.0",
+  "build_seconds": 0.14434284600429237,
+  "totals": {
+    "walls": 8,
+    "wall_length": 67.0,
+    "wall_net_volume": 31.867499999999968,
+    "doors": 5,
+    "windows": 6,
+    "room_area": 100.39000000000001
+  },
+  "gross_floor_area_m2": 113.3125,
+  "tiling": {
+    "rooms_m2": 100.39000000000001,
+    "wall_footprints_m2": 12.92249999999999
+  },
+  "wall_volume_max_difference_m3": 2.7533531010703882e-14,
+  "schedule_rows": 25,
+  "ifc_entities": {
+    "IfcWall": 8,
+    "IfcOpeningElement": 11,
+    "IfcDoor": 5,
+    "IfcWindow": 6,
+    "IfcSpace": 5,
+    "IfcSlab": 1
+  },
+  "plan": {
+    "title": "Flat: level 1 plan",
+    "view": "plan",
+    "scale": "1:50",
+    "sheet": "A3",
+    "extent_m": [
+      13.23,
+      10.23
+    ],
+    "polylines": {
+      "section": 240,
+      "visible": 130,
+      "thin": 10
+    },
+    "hatches": 60,
+    "texts": 10,
+    "dimensions": [
+      {
+        "text": "12.25 m",
+        "length_m": 12.25
+      },
+      {
+        "text": "9.25 m",
+        "length_m": 9.25
+      }
+    ],
+    "notes": [],
+    "solids": 19,
+    "visibility_rays": 31128,
+    "chord_m": 0.006256196927846822,
+    "visibility_step_m": 0.015640492319617054
+  },
+  "render": {
+    "backend": "gpu_path",
+    "seconds": 33.68368223498692,
+    "size": [
+      1400,
+      1050
+    ]
+  },
+  "failures": []
+}

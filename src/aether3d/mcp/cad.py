@@ -104,11 +104,15 @@ def _drawing_image(doc, item, args):
                 f"a {item.kind} has no drawing",
                 hint="parts, assemblies, building elements or drawing items",
             )
+        from ..cad.drawing.kind import _dimensions
+
         view = args.get("view", "iso")
+        frame = ViewFrame.named(view)
         solids = gather(doc, [item.name])
-        drawing = project(
-            solids, ViewFrame.named(view), title=item.name, view_name=view, hidden=view != "iso"
-        )
+        drawing = project(solids, frame, title=item.name, view_name=view, hidden=view != "iso")
+        unit = doc._settings.get("length_unit", "m")
+        drawing.unit_label = unit
+        _dimensions(doc, {"view": view}, drawing, frame, unit, None)
     w_mm = (
         420.0 if drawing.sheet == "A3" else {"A4": 297.0, "A2": 594.0, "A1": 841.0}[drawing.sheet]
     )

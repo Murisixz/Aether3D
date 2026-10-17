@@ -1,0 +1,72 @@
+{
+  "aether3d": "0.15.0",
+  "build": {
+    "seconds": 0.2203423710016068,
+    "items": 20,
+    "evaluations": 20
+  },
+  "before": {
+    "beam_count": 124,
+    "beam_length_m": 840.0,
+    "column_count": 80,
+    "slab_area_m2": 2160.0
+  },
+  "render_before": {
+    "backend": "gpu_path",
+    "seconds": 20.60736356797861
+  },
+  "edit_door": {
+    "seconds": 0.014188225992256775,
+    "evaluations": 1,
+    "cache_hits": 0
+  },
+  "edit_bay": {
+    "seconds": 0.14359365499694832,
+    "evaluations": 17,
+    "cache_hits": 1
+  },
+  "after": {
+    "beam_count": 124,
+    "beam_length_m": 936.0,
+    "column_count": 80,
+    "slab_area_m2": 2592.0
+  },
+  "undo": {
+    "seconds": 0.01018672200734727,
+    "evaluations": 0,
+    "cache_hits": 15
+  },
+  "redo": {
+    "seconds": 0.00963586600846611,
+    "evaluations": 0,
+    "cache_hits": 15
+  },
+  "plan": {
+    "title": "Office: level 2 plan (bay_x 9 m)",
+    "view": "plan",
+    "scale": "1:100",
+    "sheet": "A2",
+    "extent_m": [
+      36.5,
+      18.5
+    ],
+    "polylines": {
+      "visible": 53,
+      "section": 112,
+      "thin": 2
+    },
+    "hatches": 28,
+    "texts": 0,
+    "dimensions": [],
+    "notes": [],
+    "solids": 57,
+    "visibility_rays": 36794,
+    "chord_m": 0.016454251730176003,
+    "visibility_step_m": 0.04113562932544001
+  },
+  "render_after": {
+    "backend": "gpu_path",
+    "seconds": 21.081544874992687
+  },
+  "failures": []
+}

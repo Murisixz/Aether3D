@@ -548,3 +548,44 @@ def test_committed_texturing_outputs():
                  "texturing_pbr", "mcp_texture_agent"):  # fmt: skip
         report = json.loads((EXAMPLES / "output" / f"{name}.json").read_text())
         assert report["failures"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", report["aether3d"])
+
+
+# --------------------------------------------------------------------------- #
+# Precision modeling, CAD and architecture (0.15.0)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("name", "checks"),
+    [
+        ("cad_bracket.py", lambda r: r["edited"]["valid"] and r["edit"]["evaluations"] > 0),
+        ("cad_floor_plan.py", lambda r: r["wall_volume_max_difference_m3"] <= 1e-9),
+        ("cad_modern_house.py", lambda r: r["headroom_m"] >= 2.0),
+        ("cad_grid_building.py", lambda r: r["edit_door"]["evaluations"] == 1),
+    ],
+)
+def test_cad_examples_run(tmp_path, name, checks):
+    pytest.importorskip("manifold3d")
+    _run_example(name, str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / name.replace(".py", ".json")).read_text())
+    assert report["failures"] == [] and checks(report)
+
+
+def test_mcp_cad_agent_example_runs(tmp_path):
+    pytest.importorskip("mcp")
+    pytest.importorskip("manifold3d")
+    _run_example("mcp_cad_agent.py", str(tmp_path), "--quick", "--backend", "cpu")
+    report = json.loads((tmp_path / "mcp_cad_agent.json").read_text())
+    assert report["failures"] == [] and report["refused"]["code"] == "SKETCH_CONFLICT"
+    assert report["diagnosis"]["accepted"]
+
+
+def test_committed_cad_outputs():
+    """The Stage 15 examples' committed results: Aether3D renders, drawings and reports."""
+    image = pytest.importorskip("PIL.Image")
+    for name in ("cad_bracket", "cad_floor_plan", "cad_modern_house", "cad_grid_building",
+                 "mcp_cad_agent"):  # fmt: skip
+        with image.open(EXAMPLES / "output" / f"{name}.png") as png:
+            assert png.info["Software"].startswith("Aether3D ")
+        report = json.loads((EXAMPLES / "output" / f"{name}.json").read_text())
+        assert report["failures"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", report["aether3d"])
