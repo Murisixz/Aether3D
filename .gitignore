@@ -39,6 +39,7 @@ examples/output/mcp_workspace/
 examples/output/mcp_castle_workspace/
 examples/output/mcp_feedback_workspace/
 examples/output/mcp_sculpt_workspace/
+examples/output/mcp_texture_workspace/
 
 # The native crate (native/): build products
 native/target/

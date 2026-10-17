@@ -518,3 +518,23 @@ def test_layout_images():
     for kwargs in ({"size": 8}, {"mode": "rainbow"}, {"mode": "texture"}, {"texture": tex}):
         with pytest.raises(TexturingError):
             uv.layout_image(mesh, **{"size": 64, **kwargs})
+
+
+def test_edit_scripts_pass_uv_options():
+    from aether3d import Scene, run_edit_script
+
+    scene = Scene()
+    scene.add_cube("C", size=2)
+    script = {
+        "format": "aether3d.edit-script",
+        "version": 1,
+        "edits": [{"object": "C", "operations": [
+            {"op": "unwrap", "resolution": 128, "padding": 2, "max_stretch": 1.2},
+        ]}],
+    }  # fmt: skip
+    run_edit_script(scene, script)
+    report = uv.uv_report(scene.get_by_name("C").mesh, resolution=128)
+    assert report["overlapping_triangles"] == 0 and report["min_gap_texels"] >= 2
+    script["edits"][0]["operations"] = [{"op": "unwrap", "should_stop": True}]
+    with pytest.raises(Exception, match="no argument 'should_stop'"):
+        run_edit_script(scene, script)

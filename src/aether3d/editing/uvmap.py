@@ -53,22 +53,43 @@ class UVMapMixin:
             self._set_corners(fid, UV, [corner[k] for k in range(n)])
         return len(values)
 
+    def _render_vertex_pairs(self, mesh: Any, edges: Any) -> list[list[int]]:
+        """Render-mesh vertex pairs (first vertex at each position) of edit-mesh edges."""
+        index: dict[bytes, int] = {}
+        for i, p in enumerate(np.ascontiguousarray(mesh.positions)):
+            index.setdefault(p.tobytes(), i)
+        pairs = []
+        for a, b in edges:
+            ia = index.get(self._pos[a].astype(np.float32).tobytes())
+            ib = index.get(self._pos[b].astype(np.float32).tobytes())
+            if ia is not None and ib is not None:
+                pairs.append([ia, ib])
+        return pairs
+
     @operation
     def unwrap(
         self,
         faces: Elements | None = None,
         *,
         seams: Elements | None = None,
-        **options: Any,
+        split_by: Any = ("hard",),
+        angle_limit: float = 66.0,
+        method: str = "isometric",
+        max_stretch: float = 1.15,
+        iterations: int = 12,
+        pack: bool = True,
+        resolution: Any = 1024,
+        padding: int = 4,
+        rotate: bool = True,
+        texels_per_unit: float | None = None,
     ):
-        """Automatic UVs for ``faces`` (default: all) with :func:`aether3d.uv.unwrap`.
+        """Automatic UVs for ``faces`` (default: all) with :func:`aether3d.uv.unwrap` (the
+        options as there).
 
-        ``seams`` are edge ids the map must cut (besides boundaries, sharp edges with
-        ``split_by=["hard"]`` -- the default -- and the options of ``aether3d.uv.unwrap``);
-        the other options are passed through (``resolution``, ``padding``, ``method``,
-        ``max_stretch``, ``angle_limit``, ``split_by``, ``texels_per_unit``, ...).
-        Unselected faces keep their UV islands' shapes; their islands are repacked with the
-        new ones (``pack=True``, the default), so they move.
+        ``seams`` are edge ids the map must cut, besides boundaries and, with
+        ``split_by=["hard"]`` (the default), this mesh's sharp edges. Unselected faces keep
+        their UV islands' shapes; their islands are repacked with the new ones
+        (``pack=True``, the default), so they move.
         """
         from .. import uv
 
@@ -76,31 +97,13 @@ class UVMapMixin:
         selected = set(self._uv_faces(faces))
         tri_faces = np.array([s[0] for s in sources], dtype=np.int64)
         tri_sel = np.flatnonzero(np.isin(tri_faces, list(selected)))
-        seam_pairs = None
+        cut = []
         if seams is not None:
-            pairs = []
-            pos = mesh.positions
-            for e in self._elements(seams, "edges"):
-                a, b = self._edge_verts[e]
-                ia = np.flatnonzero(np.all(pos == self._pos[a].astype(np.float32), axis=1))
-                ib = np.flatnonzero(np.all(pos == self._pos[b].astype(np.float32), axis=1))
-                if ia.size and ib.size:
-                    pairs.append([int(ia[0]), int(ib[0])])
-            seam_pairs = pairs
-        split = options.pop("split_by", ("hard",))
-        extra_cut = None
-        if "hard" in (split if not isinstance(split, str) else (split,)):
+            cut += [self._edge_verts[e] for e in self._elements(seams, "edges")]
+        if "hard" in ((split_by,) if isinstance(split_by, str) else tuple(split_by)):
             # Sharp edges are this mesh's hard edges (normals may not differ at them yet).
-            extra_cut = [list(self._edge_verts[e]) for e in self._sharp]
-        if extra_cut:
-            pos = mesh.positions
-            more = []
-            for a, b in extra_cut:
-                ia = np.flatnonzero(np.all(pos == self._pos[a].astype(np.float32), axis=1))
-                ib = np.flatnonzero(np.all(pos == self._pos[b].astype(np.float32), axis=1))
-                if ia.size and ib.size:
-                    more.append([int(ia[0]), int(ib[0])])
-            seam_pairs = (seam_pairs or []) + more
+            cut += [self._edge_verts[e] for e in self._sharp]
+        seam_pairs = self._render_vertex_pairs(mesh, cut) if cut else None
         partial = len(selected) < len(self._faces)
         if partial and UV not in self._layers:
             raise EditError(
@@ -113,9 +116,17 @@ class UVMapMixin:
                 mesh,
                 faces=tri_sel if partial else None,
                 seams=seam_pairs or None,
-                split_by=split,
+                split_by=split_by,
+                angle_limit=angle_limit,
+                method=method,
+                max_stretch=max_stretch,
+                iterations=iterations,
+                pack=pack,
+                resolution=resolution,
+                padding=padding,
+                rotate=rotate,
+                texels_per_unit=texels_per_unit,
                 atoms=tri_faces,
-                **options,
             )
         except TexturingError as exc:
             raise EditError(exc.code, exc.message, hint=exc.hint) from None
@@ -125,16 +136,38 @@ class UVMapMixin:
         return {"faces": count, "report": result.report}
 
     @operation
-    def project_uvs(self, kind: str, faces: Elements | None = None, **options: Any):
+    def project_uvs(
+        self,
+        kind: str,
+        faces: Elements | None = None,
+        *,
+        axis: Any = "z",
+        center: Any = None,
+        pack: bool = True,
+        resolution: Any = 1024,
+        padding: int = 4,
+        rotate: bool = False,
+        texels_per_unit: float | None = None,
+    ):
         """UVs by projection (``"planar"``, ``"box"``, ``"cylindrical"``, ``"spherical"``;
-        :func:`aether3d.uv.project`) for ``faces`` (default: all; the projection is computed
-        on the whole mesh and written to the selected faces)."""
+        :func:`aether3d.uv.project`, the options as there) for ``faces`` (default: all;
+        the projection is computed on the whole mesh and written to the selected faces)."""
         from .. import uv
 
         mesh, _, sources = self._build_mesh()
         selected = set(self._uv_faces(faces))
         try:
-            result = uv.project(mesh, kind, **options)
+            result = uv.project(
+                mesh,
+                kind,
+                axis=axis,
+                center=center,
+                pack=pack,
+                resolution=resolution,
+                padding=padding,
+                rotate=rotate,
+                texels_per_unit=texels_per_unit,
+            )
         except TexturingError as exc:
             raise EditError(exc.code, exc.message, hint=exc.hint) from None
         count = self._apply_map(mesh, sources, selected, result.mesh)
