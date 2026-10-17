@@ -86,7 +86,7 @@ with a structured `CadError` and the document is left as it was.
   object's mesh cannot be edited directly (`CAD_DRIVEN`); `doc.convert_to_mesh(obj)`
   detaches it, keeping the current mesh and losing the exact geometry, the parametric
   updates and the face names -- it says so.
-* **Files.** Projects store the CAD document (format 8; older projects are migrated on
+* **Files.** Projects store the CAD document (since format 8; older projects are migrated on
   load, see [FILE_FORMAT.md](FILE_FORMAT.md)): definitions only -- results are regenerated
   on load. The history file records CAD changes like any other.
 * **Limits.** At most 100,000 items per document, 2,000 features per part; definitions are

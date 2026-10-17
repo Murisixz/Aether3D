@@ -4,6 +4,113 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.17.0: animation, rigging, motion curves and cinematics
+
+Stage 17 was built before Stage 16 (procedural worlds), which is postponed: there is no
+0.16.0. Aether3D gains animation without a GUI: keyframes on exact F-curves, rotation
+tracks, clips with layers and strips, skeletons with FK and IK, constraints, attachments,
+linear and dual-quaternion skinning, morph targets, editable motion generators, foot
+contacts and planting, retargeting, cinematic cameras and shot sequences, frame
+rendering with real motion blur, and glTF import and export of skeletons, skins, morph
+targets and animations ([docs/ANIMATION.md](docs/ANIMATION.md)). Everything works from
+Python (`scene.animation`), animation scripts, the CLI (`aether3d animation`), scene
+plans and MCP, one undo step per change. Each subsystem's language was decided before
+implementation (the design record:
+[research/2026-10-stage17/DESIGN.md](research/2026-10-stage17/DESIGN.md)): NumPy for
+curves (batched over all channels), strip timing, quaternions and blending; the existing
+native hierarchy kernels for forward kinematics; one new Rust kernel, linear blend
+skinning (`aether3d-native` 0.17.0, ABI 4), bitwise equal to its NumPy twin.
+
+Measured on the development machine (i9-12900H laptop, Python 3.14, NumPy 2.5, RTX 4060
+Laptop GPU; `benchmarks/bench_animation.py`, saved as
+`benchmarks/results/stage17-animation.json`; the tables are in
+[docs/ANIMATION.md](docs/ANIMATION.md#evaluation-pipeline-and-performance) and
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md#animation-017)):
+
+- 10,000 objects with their own clips evaluate in 9.9 ms per frame (render overlay
+  14.2 ms); 10,000 objects playing one clip through offset strips in 2.8 ms (7.2 ms);
+  the same plus 48 rigged walkers in 31.6 ms (overlay);
+- a 10,000-key curve evaluates at 100,000 times in 6.0 ms (8.7 ms with three
+  derivatives); 1,000 curves at one time in 0.15 ms;
+- linear blend skinning of 1,000,000 vertices: 171 ms in NumPy, 21.2 ms native on one
+  thread, 6.9 ms on 20 (bitwise equal); dual quaternions 678 ms (NumPy);
+- generating a walk takes 230 ms and a superhero landing 746 ms; simplifying 10,000 keys
+  77 ms; fitting 20,000 samples 16.4 ms;
+- frames at 320x180: 3.7 ms on the GPU, 44.1 ms on the CPU; the large-scene showcase
+  (10,341 objects, 48 walkers) renders 960x540 frames with shadows in a median 143 ms.
+
+During the stage, measured on the same machine before and after each change: building
+10,000 animated objects 40.3 s -> 5.9 s and evaluating them 34.5 -> 9.9 ms, keyframe
+reduction 3.9 s -> 77 ms, sample fitting 1.57 s -> 16.4 ms, walk generation
+740 -> 230 ms, 10,000 instanced strips 163 -> 2.8 ms, the crowd's overlay
+110 -> 31.6 ms.
+
+### Added
+
+- **The animation document** (`scene.animation`, `aether3d.animation`): timeline (exact
+  rational frame rates, timecode, markers, sections), clips, bindings, rigs, skins, morph
+  targets, constraints, paths and shot sequences as items with immutable definitions;
+  evaluation at a time is pure (`evaluate`, `overlay`, `rigging`) and renders, picks,
+  spatial queries, observations and exports use it; `apply_pose` is the one explicit
+  write. Project format 9 (files of format 8 and older are upgraded on load).
+- **F-curves**: constant, linear, Bezier and ten Penner easings (in, out, in-out);
+  free, aligned, vector, auto and auto-clamped handles (no overshoot, guaranteed by the
+  Fritsch-Carlson limit); weighted tangents with corrected handles and safeguarded
+  Newton time inversion; exact velocity, acceleration and jerk; jumps; extrapolation
+  (constant, linear, cycle, cycle offset, mirror) with cycle-aware automatic handles;
+  ten modifiers (offset, scale, limits, noise, wave, envelope, smooth, stepped, time
+  offset, time scale); key operations (insert, delete, set, handle, move, scale time
+  and values, reverse, quantize, distribute, retime, interpolation, extrapolation).
+- **Measurement**: curve reports (discontinuities at keys from exact one-sided limits,
+  extrema, overshoot, velocity/acceleration/jerk peaks, vertical tangents), trajectory
+  reports (speed, jerk, log dimensionless jerk), scene diagnostics with `exact` or
+  `sampled` basis; keyframe reduction within a tolerance, resampling, sample fitting and
+  baking; SVG and PNG graphs of value, velocity and acceleration.
+- **Rotations**: quaternion tracks (constant, slerp, squad, glTF cubic; shortest or
+  stored path; timing easings and CSS-style Bezier timing), Euler channels and the Euler
+  filter, look-at constraints.
+- **Non-linear animation**: actions, replace and additive layers with weights, weight
+  curves and masks (paths, joints and their descendants), strips with trims, speed,
+  repeat, reverse, blends, holds, accumulation, weight and time curves.
+- **Rigs**: skeletons (up to 4,096 joints, rotation limits), forward kinematics, rigid
+  attachments, skins (explicit, nearest or envelope weights, up to 8 influences, inverse
+  bind matrices) deformed by linear blend skinning (native) or dual quaternions, morph
+  targets; constraints (IK two-bone with pole, FABRIK and CCD with stretch, softness and
+  residuals; look-at, copy, child-of, limits, follow-path) in dependency order with
+  cycles refused.
+- **Motion**: generators writing editable keys (idle, walk, run, jump, superhero or soft
+  landing, wave, head turn; role detection for Mixamo, Rigify and blocky rigs),
+  mirroring, root-motion extraction, retargeting, foot contacts (sliding and
+  penetration, skating stances included) and planting with keyed IK.
+- **Cinematics**: arc-length paths (centripetal Catmull-Rom, Bezier, linear, closed,
+  exact circles), follow-path, dolly, truck, pedestal/crane, pan, tilt, roll, zoom,
+  orbits, damped follow cameras, shot sequences with cuts and blends.
+- **Frames**: `render_frames` (atomic PNGs, progress, cancellation, motion blur by
+  sub-frame renders in linear light), contact sheets, optional FFmpeg video.
+- **glTF**: export of skeletons, attachments, skins (8 influences), morph targets and
+  animations (`clips`, `actions`, `bake`, `auto`, `none`; exact STEP/LINEAR/CUBICSPLINE
+  mapping where glTF can say the same thing, fitted within stated tolerances
+  otherwise); import of skins, morph targets and animations as rigs, skins and clips.
+  Khronos-validator clean in the tests.
+- **For agents**: animation scripts (`aether3d.animation-script`, atomic, limits,
+  located errors, JSON Schema), `aether3d animation run|info|report|graph|render|schema`,
+  `aether3d export --animation`, the MCP tool `inspect_animation` (26 tools) and
+  animation scripts through `run_script`, the scene-plan operation `animation`, the
+  feedback checks `foot_contacts` and `animation_continuity` with the opt-in corrections
+  `plant_feet` and `smooth_keys` (policy `allow_animation`).
+- Six showcases (`examples/animation_*.py`) with their outputs in
+  `examples/output/animation/`.
+
+### Changed
+
+- Project format 9 (`FORMAT_VERSION`); existing projects load and render unchanged.
+- glTF import no longer ignores skins, morph targets and animations
+  (`SKIN_IGNORED`, `MORPH_TARGETS_IGNORED` and `ANIMATIONS_IGNORED` are gone): they
+  import faithfully.
+- The MCP tool list has 26 tools (`inspect_animation`), still within its 40,000-byte
+  budget (descriptions were tightened to pay for it).
+- `aether3d-native` 0.17.0 (ABI 4: the skinning kernel).
+
 ## 0.15.0: precision modeling, CAD and architecture
 
 Aether3D gains exact, parametric modeling beside its meshes: units and tolerances,

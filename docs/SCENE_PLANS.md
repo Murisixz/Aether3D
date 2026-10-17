@@ -298,6 +298,14 @@ Operations change objects after the plan's objects are made, in order:
   (problems point into it: `/operations/0/script/operations/2/op`); a failure rolls the
   whole plan back. A CAD item the script shows (`{"op": "show", "item": ...}`) is an
   object later operations can select by name.
+- **`animation`** (0.17.0) runs an animation script (`"script": {"format":
+  "aether3d.animation-script", ...}`, [ANIMATION.md](ANIMATION.md#animation-scripts))
+  inside the plan's step: keys and curves, clips, layers, rigs, skins, constraints,
+  generated motions, cameras and shots, on the objects the plan made (by name). Its
+  structure is checked with the rest of the plan (problems point into it:
+  `/operations/0/script/operations/1/op`), and a failure rolls the whole plan back. The
+  operation's result counts the script's operations (`animation_operations`) and the
+  scene's clips (`animation_clips`).
 
 ### Selectors
 

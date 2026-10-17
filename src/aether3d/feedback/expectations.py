@@ -171,7 +171,8 @@ CHECKS: dict[str, dict[str, Any]] = {
         "summary": "the armatures' planted feet (joints named in feet) slide at most "
         "max_sliding (default 0.005 m) and go below the ground (z = 0) at most "
         "max_penetration (default 0.002 m) over the timeline, sampled at 120 per second "
-        "(planted: within height, default 0.03 m, and slower than speed, default 0.3 m/s)",
+        "(planted: within height, default 0.03 m, of the ground and within speed, default "
+        "0.3 m/s, of the stance's steady velocity: a skating stance is measured)",
     },
     "cad_dimension": {
         "fields": ("reference", "other", "quantity", "value", "tolerance", "min", "max"),

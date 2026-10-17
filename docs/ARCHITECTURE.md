@@ -208,7 +208,23 @@ Aether3D/
 │   │   ├── axes.py        Exact Z-up <-> Y-up conversion
 │   │   ├── materials.py   glTF materials, textures and samplers, in and out
 │   │   ├── writer.py      Export: scene -> glTF document + buffer -> .glb/.gltf
-│   │   └── reader.py      Import: validated, resource-limited, path-confined
+│   │   ├── reader.py      Import: validated, resource-limited, path-confined
+│   │   └── anim_export.py, anim_import.py   Skeletons, skins, morph targets, animations
+│   ├── animation/         Animation, rigging and cinematics (see docs/ANIMATION.md)
+│   │   ├── time.py, easing.py              Exact frame rates and timecode; Penner easings
+│   │   ├── curves.py, modifiers.py         F-curves (keys, handles, exact derivatives), modifiers
+│   │   ├── rotation.py, tracks.py          Quaternion arrays; rotation tracks
+│   │   ├── batch.py                        Batched evaluation of many curves and tracks
+│   │   ├── paths.py                        The typed registry of animatable properties
+│   │   ├── clip.py, nla.py                 Clips and key operations; bindings, layers, strips
+│   │   ├── rig.py, ik.py, constraints.py   Skeletons, FK, attachments, skins; IK; constraints
+│   │   ├── evaluate.py, rigging.py         The compiled program and a frame; the rigging pass
+│   │   ├── system.py                       scene.animation: items, history, the API
+│   │   ├── report.py, fitting.py, graph.py Measuring; reduction, resampling, baking; graphs
+│   │   ├── generators.py, motion.py        Motion generators; mirroring, root motion,
+│   │   │                                   contacts and planting, retargeting
+│   │   ├── cinematics.py, frames.py        Paths, shots, camera moves; frame rendering
+│   │   └── script.py, schema.py, guide.md  Animation scripts, their schema, the agent guide
 │   ├── cad/               Precision modeling (see docs/CAD.md)
 │   │   ├── units.py, tolerance.py, expr.py   Quantities, tolerances, safe expressions
 │   │   ├── nurbs.py, geom2d.py, geom3d.py    Exact curves and surfaces
@@ -232,6 +248,7 @@ Aether3D/
 │   ├── _cli_feedback.py   `aether3d feedback`
 │   ├── _cli_sculpt.py     `aether3d sculpt`
 │   ├── _cli_cad.py        `aether3d cad`
+│   ├── _cli_animation.py  `aether3d animation`
 │   └── __main__.py        `python -m aether3d`
 ├── tests/                 pytest suite, one file per module
 │   └── data/              Khronos samples (pinned), v0.1.0/v0.4.0/v0.7.0 projects, reference renders
@@ -242,7 +259,7 @@ Aether3D/
 │                          suite (bench_engine.py) and its saved runs (results/)
 ├── native/                aether3d-native: optional Rust kernels (PyO3, maturin), exact
 │                          counterparts of NumPy code (ray traversal, hierarchies, PNG filters,
-│                          LDL^T, packing, triangulation)
+│                          LDL^T, packing, triangulation, linear blend skinning)
 ├── research/              The October 2026 architecture audit and the performance
 │                          modernization's investigations (not part of the package)
 ├── docs/                  API, file formats, glTF, inspection, architecture, install
@@ -284,6 +301,8 @@ Aether3D/
 | `texturing.*` | `uv`, `materials` (painted textures), `rendering.pathtrace` (sources as path-tracer scenes: BVH, shading), `rendering.raytrace`, `rendering.gpu` (lazily, GPU bake rays), `spatial.surface` (nearest points), `history` (transactions), `errors`; `scene` only for type hints |
 | `cad.*` | `errors`, `_native` (triangulation), `history` (aspects), `rendering.raytrace` (hidden lines), `rendering.png`; `manifold3d` (optional, lazily, booleans); `scene` only for type hints and through `scene.cad` |
 | `arch.*` | `cad` (document, kinds, B-rep, sketches, interop helpers), `errors` |
+| `animation.*` | `errors`, `diagnostics`, `history` (aspects), `mesh`, `transform`, `materials`, `rendering.scene_data` (world matrices), `rendering.overlay`, `rendering.camera`, `rendering.png`, `rendering.tonemap` (motion blur), `cad.drawing` (graph rasterizer and stroke font), `_native` (skinning); `scene` only for type hints and through `scene.animation` |
+| `gltf.anim_export`, `gltf.anim_import` | `gltf.axes`, `animation` (clips, curves, tracks, rigs), `diagnostics`, `errors` |
 | `mcp.*` | `plans`, `scene`, `serialization`, `gltf`, `rendering`, `spatial`, `history`, `editing` and `procedural` (scripts), `feedback`, `errors`; the `mcp` SDK (optional: never imported by `import aether3d`) |
 | `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `history`, `spatial`, `plans`, `feedback`, `errors`; `mcp` lazily (`aether3d mcp serve`) |
 
@@ -291,6 +310,11 @@ Lower layers never import higher ones. `scene` provides convenience methods
 (`save`/`load`, `export`/`import_file`, `inspect_geometry`, `edit_mesh`) by importing
 `serialization`, `gltf`, `inspection` and `editing` lazily inside those methods, and
 `inspection`/`gltf.writer` refer to `Scene` only for type hints.
+
+Animation feeds the renderers through one overlay: `scene.animation.overlay(t)` gives the
+posed local matrices, field overrides and deformed meshes that `extract_render_scene` and
+the retained world apply; nothing in `rendering` imports `animation` except lazily, to
+evaluate at a requested time.
 
 ## Core concepts
 
@@ -1000,3 +1024,36 @@ decisions:
 - **Same contract for agents.** CAD scripts are data, atomic, limited, schema-described;
   the CLI, MCP tools, scene-plan operation and feedback checks reuse them.
 
+## Animation, rigging and cinematics (v0.17.0)
+
+`aether3d.animation` adds animation without a GUI; see [ANIMATION.md](ANIMATION.md) and
+the design record [research/2026-10-stage17/DESIGN.md](../research/2026-10-stage17/DESIGN.md).
+Stage 17 was built before Stage 16, which is postponed. Key decisions:
+
+- **Authored versus evaluated.** The scene keeps rest values; the animation document
+  holds immutable item definitions (clips, bindings, rigs, skins, morph targets,
+  constraints, paths, the shot sequence), recorded by two history aspects
+  (`animation.item`, `animation.settings`) and saved in project format 9. Evaluation at a
+  time is a pure function returning an immutable pose; rendering at a time applies it
+  through the render overlay without changing the scene. `apply_pose` is the only write.
+- **A compiled program per revision.** Bindings and strips become contributions, channels
+  queries into one batched curve evaluation and one batched rotation evaluation per frame
+  (structure of arrays, the same bits as each curve alone); strips are timed together.
+  Nothing carries over between frames, so seeking is free and results never drift.
+- **Typed paths, never attributes.** Channels name properties through a strict grammar and
+  a registry; there is no attribute traversal, so a script cannot reach Python objects.
+- **One documented order.** Channels, world matrices, then rigs and object constraints in
+  dependency order (cycles refused when made), then morph targets and skins, then the
+  shot camera.
+- **Exact or labelled.** Curve derivatives, continuity and extrema come from closed forms;
+  trajectories, contacts and fitted errors are sampled and say so. Generated motion is
+  measured, not assumed.
+- **Caches that respect transactions.** Caches of authored state are keyed by the scene
+  revision and bypassed while an operation is open, like the spatial index.
+- **Languages decided up front.** NumPy for curves, quaternions, blending and strip
+  timing; the existing native hierarchy kernels for FK; one new Rust kernel (linear blend
+  skinning, ABI 4) bitwise equal to its NumPy twin; no new shaders, no GPU skinning, no
+  external renderer (FFmpeg, optional, only encodes Aether3D's frames).
+- **Same contract for agents.** Animation scripts are data, atomic, limited and
+  schema-described; the CLI, the MCP tools, the scene-plan operation and the feedback
+  checks reuse them.

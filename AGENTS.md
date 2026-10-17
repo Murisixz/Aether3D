@@ -42,6 +42,10 @@ apply to agents too.
   booleans, assemblies, measurements, drawings, STEP/DXF/IFC, CAD scripts); buildings and
   BIM: [docs/BUILDINGS.md](docs/BUILDINGS.md); the design record:
   [research/2026-10-stage15/DESIGN.md](research/2026-10-stage15/DESIGN.md).
+- Animation, rigging and cinematics: [docs/ANIMATION.md](docs/ANIMATION.md) (authored and
+  evaluated state, time, paths, F-curves, rotations, clips and NLA, rigs, skins, IK and
+  constraints, generators, contacts, cameras, frames, glTF, scripts); the design record:
+  [research/2026-10-stage17/DESIGN.md](research/2026-10-stage17/DESIGN.md).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 - Performance: [docs/PERFORMANCE.md](docs/PERFORMANCE.md) (how to measure with
   `benchmarks/bench_engine.py`, the correctness guards, implementation switches, the record
@@ -288,6 +292,34 @@ apply to agents too.
   - The ear-clipping triangulation has a Rust twin (`native/src/earcut.rs`): change
     `cad/triangulate.py` and it together, bitwise (`tests/test_native.py`).
 
+- Animation (`animation/`, `gltf/anim_export.py`, `gltf/anim_import.py`):
+  - **Evaluation never writes the scene.** Poses, overlays and rigging results are
+    computed from the authored scene and a time; only `apply_pose` writes (one undo
+    step). Rendering at a time must equal rendering after `apply_pose`
+    (`tests/test_animation_system.py`).
+  - **Typed paths only.** Channels resolve through the registry in `paths.py`; never look
+    up attributes by name. A new animatable property needs its registry entry (kind, unit,
+    range), evaluation, the schema, the guide and docs.
+  - **Batches equal singles.** `CurveBatch`, `RotationBatch` and `nla.StripTable` give
+    exactly the bits one curve, track or strip gives; tests compare them bitwise, and a
+    faster path must keep it.
+  - **Caches of authored state** (rest values, authored world matrices, scene order) key
+    on `evaluate.scene_key(scene)`: the revision, or nothing while an operation is open.
+  - **Exact or labelled.** Continuity, extrema and overshoot come from closed forms;
+    trajectories, contacts and fitted errors are sampled and say so. Generated motion is
+    measured (`foot_contacts`), never assumed.
+  - **Scripts are data, atomic.** A new animation-script operation needs its entry in the
+    operation table of `script.py` (whitelisted arguments), the schema, `guide.md` and
+    docs; a failing script changes nothing (`tests/test_animation_script.py` fuzzes it).
+  - **The skinning twin.** `rig.skin_linear` and `native/src/skin.rs` stay bitwise equal;
+    change both or neither (and bump `ABI` for a signature change).
+  - **glTF: exact or fitted, never silently approximate.** A channel is exported exactly
+    only when glTF expresses the same function; otherwise it is fitted within the stated
+    tolerance and its error reported. Exports stay Khronos-validator clean (0 errors,
+    0 warnings).
+  - **No fake cinematography.** No renderer simulates depth of field and nothing claims
+    it; motion blur is real temporal sampling; every frame is rendered by Aether3D.
+
 - Visual feedback (`feedback/`):
   - **Facts and judgments stay apart.** Every `Finding` names its `basis` (`geometry`,
     `render`, `scene`, `heuristic`, `vision`, `agent`) and whether it is `exact`. Never
@@ -375,6 +407,17 @@ apply to agents too.
   you actually received the image. Python: `FeedbackSession(scene, expectations)`,
   `.diagnose()`, `.propose()`, `.apply()`, `.run()`.
 
+- **Animate with scripts and measure the result.** Write an `aether3d.animation-script`
+  (`aether3d animation run PROJECT script.json --json`, or MCP `run_script`; schema:
+  `aether3d animation schema`, guide: `aether3d://animation/guide`): keys, curves, clips,
+  layers, rigs, skins, IK, generated motions, cameras and shots, as one undo step. Then
+  measure instead of guessing: `inspect_animation` / `aether3d animation report` with
+  `curve` (discontinuities, overshoot, velocity and jerk), `contacts` (foot sliding and
+  penetration) or `diagnose`; fix corners with automatic handles (`auto_clamped` never
+  overshoots) and sliding with `plant_feet` or by retiming the whole cycle; render a
+  `time` to look (`render_preview` with `time`, if you can see images). Express checks as
+  `foot_contacts` and `animation_continuity` expectations; animation corrections need the
+  policy's `allow_animation`. Match on error `code` and `location`.
 - Prefer ids (`obj.id`) over names for durable references.
 - Every change can be undone: `scene.history.undo()`, `with scene.transaction("label"):`
   for several changes as one step (all or nothing), `scene.history.checkpoint(name)` and

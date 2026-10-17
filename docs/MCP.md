@@ -109,15 +109,16 @@ problem; a plan with problems gives every problem, as in [SCENE_PLANS.md](SCENE_
 | `execute_scene_plan` | build or change the scene with one [plan](SCENE_PLANS.md): one undo step, all or nothing (`mode`, `expected_revision`, `timeout`, `max_results`) |
 | `check_scene_plan` | check a plan without changing anything (`dry_run: true` applies and rolls back, reporting exactly what it would make) |
 | `spatial_query` | one `request` or a batch of `requests` ([SPATIAL.md](SPATIAL.md)); object lists may be selectors; answers keep at most `max_results` entries (default 100) |
-| `render_preview` | a quick image, returned as image content: the GPU rasterizer when it works, the CPU rasterizer otherwise (`backend`: `auto`, `gpu`, `cpu`; `width`, `height`, `camera`, `frame`, `shadows`, `save_to`). Only the image is read back from the GPU, and it is encoded for speed (zlib level 1) |
-| `render_image` | an image file in the workspace (`.png`, linear `.hdr`/`.pfm`); `backend: "path"` or `"gpu_path"` path traces, within the server's sample budget |
+| `render_preview` | a quick image, returned as image content: the GPU rasterizer when it works, the CPU rasterizer otherwise (`backend`: `auto`, `gpu`, `cpu`; `width`, `height`, `camera`, `frame`, `shadows`, `save_to`; `time`: the animation at that time, 0.17.0). Only the image is read back from the GPU, and it is encoded for speed (zlib level 1) |
+| `render_image` | an image file in the workspace (`.png`, linear `.hdr`/`.pfm`; `time` as above); `backend: "path"` or `"gpu_path"` path traces, within the server's sample budget |
 | `history` | `list`, `undo`, `redo` (`steps`), `checkpoint`, `goto`, `remove_checkpoint` (`name`) |
-| `export_scene` | a `.glb` or `.gltf` file (`allow_lossy`, `bake_textures`, `overwrite`); since 0.15.0 also CAD data by suffix: `.step`/`.stp` (parts' exact solids: `items`, default all; `units`), `.ifc` (a building `item`), `.dxf` (a sketch or drawing `item`), `.svg` or `.png` (a drawing `item`; `dpi`) ([CAD.md](CAD.md)) |
-| `run_script` | one of the engine's JSON scripts, atomically: edit scripts (polygon editing), procedural scripts, scene scripts, sculpt scripts (strokes, masks, dynamic topology, remeshing, symmetrize; [MODELING.md](MODELING.md#sculpt-scripts)), texture scripts (UV unwrapping and island edits, painted textures and layers, strokes in surface, view and UV space, fills, bakes, texture transfer; [TEXTURING.md](TEXTURING.md#texture-scripts-cli-and-mcp); 0.14.0), CAD scripts (parameters, sketches, parts, assemblies, buildings, drawings; measurements and `expect` checks; [CAD.md](CAD.md#cad-scripts); 0.15.0) |
+| `export_scene` | a `.glb` or `.gltf` file (`allow_lossy`, `bake_textures`, `overwrite`; `animation`: `auto`, `clips`, `actions`, `bake`, `none` -- skeletons, skins, morph targets and animations, 0.17.0); since 0.15.0 also CAD data by suffix: `.step`/`.stp` (parts' exact solids: `items`, default all; `units`), `.ifc` (a building `item`), `.dxf` (a sketch or drawing `item`), `.svg` or `.png` (a drawing `item`; `dpi`) ([CAD.md](CAD.md)) |
+| `run_script` | one of the engine's JSON scripts, atomically: edit scripts (polygon editing), procedural scripts, scene scripts, sculpt scripts (strokes, masks, dynamic topology, remeshing, symmetrize; [MODELING.md](MODELING.md#sculpt-scripts)), texture scripts (UV unwrapping and island edits, painted textures and layers, strokes in surface, view and UV space, fills, bakes, texture transfer; [TEXTURING.md](TEXTURING.md#texture-scripts-cli-and-mcp); 0.14.0), CAD scripts (parameters, sketches, parts, assemblies, buildings, drawings; measurements and `expect` checks; [CAD.md](CAD.md#cad-scripts); 0.15.0), animation scripts (keys, curves, clips, layers, rigs, skins, IK and constraints, generated motions, cameras and shots, planting, retargeting, baking; [ANIMATION.md](ANIMATION.md#animation-scripts); 0.17.0) |
 | `inspect_mesh` | **inspect** (read-only, 0.13.0): one object's validity tier (`valid` < `manifold` < `closed` < `solid`) and quality in world units -- counts, boundary and non-manifold edges and vertices, winding, degenerate triangles, components, Euler characteristic, volume, edge lengths, smallest angle; `self_intersections: true` adds the exact test (needed for `solid`; meshes up to 2,000,000 triangles) |
 | `inspect_uvs` | **inspect** (read-only, 0.14.0): one object's UV diagnostics -- islands, flipped, degenerate and overlapping triangles (unintended) apart from stacked islands (deliberate), mirrored islands, stretch, texel density and spread, utilization, gaps -- with a layout image (`image`: `islands`, `density`, `stretch`, `overlaps`, `texture` with `texture`, or `none`; `size`) |
 | `inspect_texture` | **inspect** (read-only, 0.14.0): a texture's details (painted textures: size, encoding, layers with blend modes, opacity, masks, revision), the material slots using it, and a preview image (`preview_size`) |
 | `inspect_cad` | **inspect** (read-only, 0.15.0): the CAD document's items (sketches with their status and DOF), or one item's report -- a sketch's status, DOF, residuals, redundant and conflicting constraints; a part's bodies (validity, volume, area, centroid) and named faces; a building element's quantities; an assembly's DOF; a drawing's summary. `image: "drawing"` adds a drawing of the item (`view`: `iso`, `top`, `front`, `right`; a drawing item: itself) as image content |
+| `inspect_animation` | **inspect** (read-only, 0.17.0): `what` -- `summary` (timeline, clips, bindings, rigs), `curve` (one channel's exact report: discontinuities, extrema, overshoot, velocity/acceleration/jerk; `target`, `path`, `clip`), `diagnose` (findings over the whole animation), `trajectory` (an object's or a `joint`'s world motion), `contacts` (`feet`: planted intervals, sliding, penetration), `graph` (a PNG of a channel's value, velocity and acceleration, as image content); `start`, `end` |
 | `import_cad` | **change** (0.15.0): a `.step`/`.stp` (each exact solid becomes a part), `.ifc` (IFC4 products become parts with their property and quantity sets) or `.dxf` (2D geometry becomes a sketch: `name`, `plane`, `units` when the file has none, `layers`) from the workspace, as one undo step; what is not supported is refused or skipped and reported |
 | `diagnostics` | checks with stable codes: `geometry`, `procedural`, `materials`, `history` |
 | `capabilities` | what the engine offers, by `topic`: `overview`, `plan`, `primitives`, `modifiers`, `materials`, `queries`, `limits`, `gpu`, `feedback`, `sculpt`, `texturing`, `cad` |
@@ -178,6 +179,8 @@ way (`TIMEOUT`).
 | `aether3d://schema/texture-script` | the texture script format's JSON Schema |
 | `aether3d://cad/guide` | the precision modeling guide for agents (Markdown): units, sketches, features and names, buildings, drawings, measurements, exchange, CAD scripts |
 | `aether3d://schema/cad-script` | the CAD script format's JSON Schema |
+| `aether3d://animation/guide` | the animation guide for agents (Markdown): paths, keys and curves, measuring, rigs, generators, cameras, frames, scripts, interchange, honest limits |
+| `aether3d://schema/animation-script` | the animation script format's JSON Schema |
 | `aether3d://schema/expectations`, `.../vision-evaluation`, `.../corrections` | the JSON Schemas of expectations, vision evaluations and correction actions |
 | `aether3d://observations/{id}`, `aether3d://observations/{id}/{kind}` | an observation's measured facts (JSON), its images (`image`, `annotated`, `ids`, `depth`; PNG) |
 
@@ -253,6 +256,18 @@ The server treats every argument, plan, path and imported file as untrusted.
   `inspect_cad` returns the part's report and a drawing, `diagnose_scene` with
   `cad_valid` and `cad_dimension` accepts it, and a STEP export imported back has the same
   volume: 19 tool calls in 2.6 s (about 1 s of it the first render).
+- [`examples/animation_mcp_agent.py`](../examples/animation_mcp_agent.py) (0.17.0): an
+  agent animates a robot over MCP -- a plan builds it, an animation script rigs it and
+  generates a walk (feet sliding 3.6-4.3 mm), a checkpoint, the naive "30 % faster" edit
+  (root motion scaled: the feet skate 205 mm), `diagnose_scene` finds `FOOT_SLIDING`,
+  `plant_feet` (opt-in) is applied and kept by the verification (205.6 -> 11.7 mm, still
+  over the 5 mm check), the agent returns to the checkpoint and retimes the whole cycle
+  instead (accepted: 3.6-3.9 mm, 30 % more distance), three refusals change nothing (an
+  attribute path, a wrong-typed key after a valid operation, a save outside the
+  workspace), previews, a GLB and the project are written: 31 tool calls in 18.7 s (8.0 s
+  of it applying and verifying the correction). The client reads structured results only;
+  the transcript ([`transcript.md`](../examples/output/animation/mcp_agent/transcript.md))
+  marks the 3 preview images it received as not inspected.
 
 On the machine of [the benchmark](SCENE_PLANS.md#performance) (i9-12900H, Python 3.14), a
 trivial tool call takes about 1.2 ms over stdio, and a plan of 10,000 objects about 9 ms
