@@ -256,4 +256,130 @@ lavapipe labelled as software) and the path tracers.
 
 ## 10. Outcome
 
-(Written after the implementation.)
+Written after the implementation (Aether3D 0.17.0, branch
+`stage-17-animation-keyframes-rigging`). The guide ([docs/ANIMATION.md](../../docs/ANIMATION.md))
+describes the code; this section records how it compares with the plan above.
+
+### 10.1 What was built, against the architecture of section 4
+
+| Planned | Built |
+| --- | --- |
+| `time`, `easing`, `curves`, `modifiers`, `rotation`, `tracks`, `paths`, `clip`, `nla`, `constraints`, `ik`, `cinematics`, `evaluate`, `system`, `report`, `generators`, `fitting`, `graph`, `frames`, `script`, `schema`, `guide.md` | as planned |
+| `editing.py` (key operations) | in `clip.py` (pure functions on curves) |
+| `skeleton.py`, `skin.py` | `rig.py` (skeletons, FK, attachments, skins, morph targets); the rigging pass in its own `rigging.py` |
+| `retarget.py`, `rootmotion.py`, `contacts.py`, `mirror.py` | one `motion.py` |
+| `animation/gltf.py` | `gltf/anim_export.py` and `gltf/anim_import.py`, beside the writer and reader they extend |
+| -- | `batch.py`: batched evaluation of many curves and tracks (`CurveBatch`, `RotationBatch`), and `nla.StripTable` |
+
+Everything in section 4's contract holds: authored state is never written by
+evaluation; evaluation is pure and seekable; the documented order is the code's order;
+two history aspects (`animation.item`, `animation.settings`) and project format 9 record
+the document; spatial queries and observations are posed at the animation's time.
+
+### 10.2 Languages, as decided and as measured
+
+The decisions of section 3 held. The one conditional decision -- a Rust curve kernel
+only if curve evaluation dominated a frame -- was measured and not taken: 10,000 objects
+with their own clips evaluate in 9.9 ms per frame and a 10,000-key curve at 100,000
+times in 6.0 ms, so there is no native curve kernel. Linear blend skinning got its Rust
+kernel as planned (`aether3d-native` 0.17.0, ABI 4, bitwise equal to NumPy): 1,000,000
+vertices in 21.2 ms on one thread and 6.9 ms on 20, against 171 ms in NumPy. GPU skinning
+stayed deferred, as planned.
+
+### 10.3 Deviations and limitations
+
+- Dual quaternion skinning is NumPy only (678 ms for 1,000,000 vertices).
+- FABRIK and CCD are Python loops (0.93 ms for 12 joints); joint limits are Euler bounds
+  applied to the joints IK moves, not the cone and hinge limits inside FABRIK that
+  section 5 planned.
+- Squad is C1 at keys only for uniformly spaced keys.
+- `camera_orbit` circles the target's position at the orbit's start; a moving target
+  needs `follow_camera` (or a `look_at` with a path).
+- Animated material parameters render through the full extraction, not the retained
+  world's incremental path.
+- glTF: no `KHR_animation_pointer` (camera, light, material, visibility channels are
+  lossy), jumps become 1e-4 s transitions, values are float32.
+- Timecode is non-drop-frame only.
+- Generators give plausible, measured motion, not motion capture; the blocky superhero
+  landing drags a toe 8.5 mm when it steps off (a knee-less leg).
+- Motion blur averages renders; no renderer simulates depth of field.
+- Measuring motion over time (`foot_contacts`, trajectories) evaluates the whole scene at
+  every sample: seconds per character in a 10,000-object scene.
+- The benchmark plan of section 8 was narrowed: rigs of 50 and 200 joints (not 1,000
+  rigs; a crowd of 48 rigs instead), no serialization or path-tracer frame groups, and
+  frames on the RTX 4060 and the CPU rasterizer only (lavapipe runs the GPU tests, not
+  the benchmark).
+
+### 10.4 Found by the showcases and fixed
+
+Building the six showcases found real bugs, each fixed with a regression test:
+
+- a layer mask's `descendants` flag was parsed but ignored at evaluation;
+- the wave generator bent the elbow about its rest hinge axis, which the shoulder's
+  abduction turns upward, so the forearm swung forward instead of rising;
+- motion-blur sub-frames could sample before the rendered range;
+- caches of authored state were keyed by the scene revision, which an open transaction
+  does not advance: evaluation inside a transaction used values from before it;
+- `foot_contacts` missed skating: a stance moving faster than the 0.3 m/s contact speed
+  was no contact at all, so gross sliding read 0.0 (now a stance's sliding is measured
+  against its steady velocity, which leaves correct motion's numbers unchanged);
+- `plant_feet` pinned each contact at an anchor and an orientation from different
+  instants, mid-roll, and sank toes 7.2 mm; it now pins one pose, lifted clear of the
+  ground;
+- the contact defaults differed between the API (5 cm) and the feedback check (3 cm).
+
+And performance problems, each measured before and after: 10,000 instanced strips
+timed one by one (163 -> 2.8 ms per frame), a crowd's rigging pass rebuilding the scene
+order per rig (overlay 110 -> 31.6 ms), contacts sampling each joint in its own pass of
+whole-scene evaluations (a third of the work now).
+
+### 10.5 Measurements
+
+On the development machine (i9-12900H, 20 logical CPUs, Python 3.14.8, NumPy 2.5.4,
+RTX 4060 Laptop GPU), `benchmarks/results/stage17-animation.json`; full tables in
+[docs/PERFORMANCE.md](../../docs/PERFORMANCE.md#animation-017):
+
+| Workload | Time |
+| --- | --- |
+| 10,000 objects with their own clips: evaluation / overlay per frame | 9.9 / 14.2 ms |
+| 10,000 objects playing one clip through offset strips | 2.8 / 7.2 ms |
+| ... plus 48 walking rigs: overlay | 31.6 ms |
+| 200-joint rig: rigging pass | 0.58 ms |
+| two-bone IK / FABRIK, 12 joints | 12.4 us / 0.93 ms |
+| skinning 1,000,000 vertices: NumPy / native 1 thread / 20 threads / DQS | 171 / 21.2 / 6.9 / 678 ms |
+| generate a walk / a superhero landing | 230 / 746 ms |
+| simplify 10,000 keys / fit 20,000 samples | 77 / 16.4 ms |
+| 320x180 frames: CPU / GPU | 44.1 / 3.7 ms |
+| glTF export (clips) / import | 42 / 10 ms |
+
+### 10.6 Verification
+
+The local matrix on the final tree (i9-12900H, Arch Linux; GitHub CI runs the PR on
+Linux with Python 3.10 to 3.14, macOS and Windows, plus the optional-dependency, GPU,
+Khronos-validator and native-kernel jobs):
+
+| Configuration | Result |
+| --- | --- |
+| ruff check and format (Markdown code blocks included); `cargo fmt --check`, `cargo clippy --release -D warnings` | clean |
+| Python 3.14.8, `aether3d-native` 0.17.0, the RTX 4060 (Vulkan), Khronos glTF Validator required | 3,227 passed, 5 skipped |
+| the same without the native kernels (`AETHER3D_NATIVE=0`), GPU tests off | 3,095 passed, 137 skipped |
+| the GPU test files on lavapipe (software Vulkan, as CI), GPU required | 190 passed, 2 skipped |
+| portable CI: GPU tests off and GPU adapter enumeration refused by a hook | 3,095 passed, 137 skipped; only the three tests that check GPU-less behaviour on purpose reach the enumeration |
+| Python 3.10.22 without manifold3d, MCP, jsonschema, wgpu or native kernels | 2,851 passed, 196 skipped |
+| Python 3.10.22 with manifold3d 3.4.1 and MCP | 3,055 passed, 139 skipped |
+
+The first run of this matrix (at 9147036) found two portability problems, fixed before
+the PR in 251bc1c: a module-level `jsonschema` import that aborted the collection of a
+test module where it is not installed, and three animation tests that reached GPU
+adapter enumeration in the portable configuration (they now ask for the CPU explicitly).
+The first, second, fifth and sixth rows were run again at 251bc1c; the other three are
+from 9147036 (251bc1c changes only those tests, an example and Markdown formatting).
+
+The five skips in the main configuration are environment-specific tests of earlier stages
+(three CAD cross-checks that need an external validator Python with OCP, ifcopenshell or
+ezdxf; a GPU path-tracer fallback test that needs an adapter unable to run it; a CLI test
+for machines without the MCP SDK); no animation test skips.
+
+The nine animation test files hold 261 tests; `test_native.py`, `test_docs_examples.py` and
+`test_examples.py` gained eight more test functions (the skinning kernel, the quick
+starts and the guide's script, the six showcases and their committed outputs).
