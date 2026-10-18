@@ -33,6 +33,7 @@ import numpy as np
 
 from ..errors import AnimationError
 from . import rotation as R
+from .rig import METHODS
 
 if TYPE_CHECKING:
     from .system import AnimationSystem
@@ -169,7 +170,13 @@ def _posed(system, arm, rig, turns: dict[int, tuple[np.ndarray, float]], time: f
 # --------------------------------------------------------------------------------------- #
 
 
-def _tri_measures(p0: np.ndarray, p1: np.ndarray, tris: np.ndarray, n1: np.ndarray | None):
+def _tri_measures(
+    p0: np.ndarray,
+    p1: np.ndarray,
+    tris: np.ndarray,
+    n1: np.ndarray | None,
+    n0: np.ndarray | None = None,
+):
     a0, b0, c0 = p0[tris[:, 0]], p0[tris[:, 1]], p0[tris[:, 2]]
     a1, b1, c1 = p1[tris[:, 0]], p1[tris[:, 1]], p1[tris[:, 2]]
     cr0 = np.cross(b0 - a0, c0 - a0)
@@ -185,6 +192,10 @@ def _tri_measures(p0: np.ndarray, p1: np.ndarray, tris: np.ndarray, n1: np.ndarr
         nv = n1[tris].mean(axis=1)
         dots = np.einsum("ij,ij->i", cr1, nv)
         flipped = ok & (area1 > 1e-14) & (dots < 0)
+        if n0 is not None:
+            # Only what the pose turned over: a triangle that already disagrees with its
+            # vertex normals at rest (a crease of the modeled surface) is not a fold.
+            flipped &= np.einsum("ij,ij->i", cr0, n0[tris].mean(axis=1)) > 0
     edges = np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]])
     e0 = np.linalg.norm(p0[edges[:, 0]] - p0[edges[:, 1]], axis=1)
     e1 = np.linalg.norm(p1[edges[:, 0]] - p1[edges[:, 1]], axis=1)
@@ -229,6 +240,7 @@ class _Skinned:
         self.dominant = np.array([self.palette[c] for c in np.argmax(dense, axis=1)])
         self.closed = _closed(self.tris)
         self.volume0 = _volume(self.p0, self.tris) if self.closed else None
+        self.n0 = None if mesh.normals is None else mesh.normals.astype(np.float64) @ m[:3, :3].T
 
     def posed(self, result) -> tuple[np.ndarray, np.ndarray | None]:
         mesh = result.meshes.get(self.obj._id)
@@ -426,7 +438,7 @@ def diagnose_rig(
         k = pose["joint"]
         for sk in skinned:
             p1, n1 = sk.posed(result)
-            m = _tri_measures(sk.p0, p1, sk.tris, n1)
+            m = _tri_measures(sk.p0, p1, sk.tris, n1, sk.n0)
             rec: dict[str, Any] = {
                 "collapsed_triangles": int(m["collapsed"].size),
                 "flipped_triangles": int(m["flipped"].size),
@@ -716,7 +728,7 @@ def propose_rig_fix(
                         "call": "skin_method",
                         "mesh": mesh,
                         "method": "blended",
-                        "dq": {"joint": joint, "share": 1.0},
+                        "dq": {"joint": joint, "share": "auto", "pose": f["pose"]},
                     }
                 ]
                 proposals.append(
@@ -856,20 +868,14 @@ def apply_rig_fix(
     if fixes in ("safe", "verify"):
         allowed = ("safe",) if fixes == "safe" else ("safe", "verify")
         fixes = [p for p in propose_rig_fix(system, arm)["proposals"] if p["safety"] in allowed]
-    if not isinstance(fixes, list):
-        raise _err("INVALID_ARGUMENT", "fixes is a list of proposals, 'safe' or 'verify'", "fixes")
+    if not isinstance(fixes, list) or len(fixes) > MAX_FIXES:
+        raise _err(
+            "INVALID_ARGUMENT",
+            f"fixes is a list of at most {MAX_FIXES} proposals, 'safe' or 'verify'",
+            "fixes",
+        )
     for i, f in enumerate(fixes):
-        if not isinstance(f, dict) or not isinstance(f.get("operations"), list):
-            raise _err(
-                "INVALID_ARGUMENT", "a fix is a proposal {code, operations, ...}", f"fixes[{i}]"
-            )
-        for j, op in enumerate(f["operations"]):
-            if not isinstance(op, dict) or op.get("call") not in FIX_CALLS:
-                raise _err(
-                    "INVALID_ARGUMENT",
-                    f"a fix operation's call is one of {', '.join(FIX_CALLS)}",
-                    f"fixes[{i}].operations[{j}]",
-                )
+        _check_fix(system, arm, f, f"fixes[{i}]")
     if not fixes:
         return {"armature": arm.name, "applied": [], "reverted": [], "before": {}, "after": {}}
     before = diagnose_rig(system, arm, max_findings=1000)
@@ -917,6 +923,89 @@ def apply_rig_fix(
     return report
 
 
+MAX_FIXES = 200
+PROPOSAL_KEYS = ("id", "code", "safety", "title", "operations", "target", "before")
+_FIX_FIELDS = {
+    "edit_weights": ("mesh", "operations"),
+    "edit_rig": ("operations",),
+    "rebind": ("mesh",),
+    "skin_method": ("mesh", "method", "dq"),
+    "pole": ("constraint",),
+    "plant_feet": ("legs",),
+}
+
+
+def _check_fix(system, arm, f: Any, where: str) -> None:
+    """A proposal's shape, checked before anything changes (proposals may come back from
+    an agent: they are data, and each call's own arguments are validated when it runs)."""
+    if not isinstance(f, dict) or not isinstance(f.get("operations"), list):
+        raise _err("INVALID_ARGUMENT", "a fix is a proposal {code, operations, ...}", where)
+    unknown = sorted(set(f) - set(PROPOSAL_KEYS))
+    if unknown:
+        raise _err("INVALID_ARGUMENT", f"unknown proposal key {unknown[0]!r}", where)
+    if not isinstance(f.get("code"), str) or not f["code"]:
+        raise _err("INVALID_ARGUMENT", "a proposal names its finding's code", f"{where}.code")
+    if f.get("safety", "verify") not in ("safe", "verify", "approval"):
+        raise _err("INVALID_ARGUMENT", "safety is safe, verify or approval", f"{where}.safety")
+    if not 1 <= len(f["operations"]) <= 16:
+        raise _err("INVALID_ARGUMENT", "a proposal has 1 to 16 operations", f"{where}.operations")
+    rig = system.rig(arm)
+    for j, op in enumerate(f["operations"]):
+        at = f"{where}.operations[{j}]"
+        call = op.get("call") if isinstance(op, dict) else None
+        if call not in FIX_CALLS:
+            raise _err(
+                "INVALID_ARGUMENT", f"a fix operation's call is one of {', '.join(FIX_CALLS)}", at
+            )
+        allowed = _FIX_FIELDS[call]
+        extra = sorted(set(op) - {"call", *allowed})
+        if extra:
+            raise _err("INVALID_ARGUMENT", f"{call} takes no {extra[0]!r}", at)
+        required = tuple(k for k in allowed if k != "dq")
+        for key in required:
+            if key not in op:
+                raise _err("INVALID_ARGUMENT", f"{call} needs {key!r}", at)
+        if "mesh" in op:
+            obj = system._object(op["mesh"], f"{at}.mesh")
+            if ("skin", obj._id) not in system._owned:
+                raise _err("INVALID_ARGUMENT", f"{obj.name!r} is not skinned", f"{at}.mesh")
+        if "operations" in op and not isinstance(op["operations"], list):
+            raise _err("INVALID_ARGUMENT", "operations is a list", f"{at}.operations")
+        if call == "skin_method":
+            if op["method"] not in METHODS:
+                raise _err(
+                    "INVALID_ARGUMENT", f"method is one of {', '.join(METHODS)}", f"{at}.method"
+                )
+            dq = op.get("dq", {})
+            if not isinstance(dq, dict) or set(dq) - {"joint", "share", "pose"}:
+                raise _err("INVALID_ARGUMENT", "dq is {joint, share, pose}", f"{at}.dq")
+            share = dq.get("share", 1.0)
+            number = isinstance(share, (int, float)) and not isinstance(share, bool)
+            if not (share == "auto" or (number and 0.0 <= share <= 1.0)):
+                raise _err(
+                    "INVALID_ARGUMENT", "share is a number in 0..1 or 'auto'", f"{at}.dq.share"
+                )
+            if share == "auto" and not ("joint" in dq and "pose" in dq):
+                raise _err(
+                    "INVALID_ARGUMENT", "share 'auto' measures a joint in a pose", f"{at}.dq"
+                )
+            if "pose" in dq and dq["pose"] not in {q["name"] for q in pose_suite(rig)}:
+                raise _err("INVALID_ARGUMENT", "no such diagnostic pose", f"{at}.dq.pose")
+            if "joint" in dq and (
+                not isinstance(dq["joint"], str) or rig.index(dq["joint"]) is None
+            ):
+                raise _err("INVALID_ARGUMENT", "no such joint", f"{at}.dq.joint")
+        if call == "pole":
+            c = next((c for c in rig.constraints if c.name == op["constraint"]), None)
+            if c is None or not isinstance(c.p.get("pole"), dict) or "object" not in c.p["pole"]:
+                raise _err(
+                    "INVALID_ARGUMENT", "names an IK constraint with a pole object",
+                    f"{at}.constraint",
+                )  # fmt: skip
+        if call == "plant_feet" and not isinstance(op["legs"], dict):
+            raise _err("INVALID_ARGUMENT", "legs is {foot: [hip, knee, foot]}", f"{at}.legs")
+
+
 def _run_fix_op(system, arm, op: dict[str, Any]) -> None:
     call = op["call"]
     if call == "edit_weights":
@@ -926,7 +1015,11 @@ def _run_fix_op(system, arm, op: dict[str, Any]) -> None:
     elif call == "rebind":
         _rebind(system, arm, op["mesh"])
     elif call == "skin_method":
-        _blend_around(system, op["mesh"], op["method"], op.get("dq") or {})
+        dq = op.get("dq") or {}
+        if dq.get("share") == "auto":
+            _blend_measured(system, arm, op["mesh"], op["method"], dq)
+        else:
+            _blend_around(system, op["mesh"], op["method"], dq)
     elif call == "pole":
         _move_pole(system, arm, op["constraint"])
     elif call == "plant_feet":
@@ -974,6 +1067,38 @@ def _blend_around(system, mesh, method: str, dq: dict[str, Any]) -> None:
     current.flags.writeable = False
     with system._op(f"Blend the skinning of {obj.name!r}"):
         system._set(item, definition=sk.replace(method=method, dq=current))
+
+
+SHARES = (0.25, 0.5, 0.75, 1.0)
+
+
+def _blend_measured(system, arm, mesh, method: str, dq: dict[str, Any]) -> None:
+    """The smallest dual quaternion share (of :data:`SHARES`) around ``dq["joint"]`` that
+    keeps the skin there from collapsing in ``dq["pose"]`` -- measured, one share at a
+    time (dual quaternions keep volume but bulge: no more of them than needed)."""
+    obj = system._object(mesh, "mesh")
+
+    class _Retry(Exception):
+        pass
+
+    for share in SHARES:
+        try:
+            with system._op("Blend the skinning"):  # (an exception rolls the attempt back)
+                _blend_around(system, mesh, method, {**dq, "share": share})
+                d = diagnose_rig(
+                    system, arm, poses=[dq["pose"]], animation=False, max_findings=1000
+                )
+                collapsed = any(
+                    f["code"] == "JOINT_COLLAPSE"
+                    and f.get("mesh") == obj.name
+                    and dq["joint"] in (f.get("joints") or ())
+                    for f in d["findings"]
+                )
+                if collapsed and share != SHARES[-1]:
+                    raise _Retry()
+        except _Retry:
+            continue
+        return
 
 
 def _move_pole(system, arm, name: str) -> None:

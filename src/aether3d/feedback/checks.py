@@ -300,8 +300,9 @@ class Diagnoser:
         severity = kw.pop("severity", check.severity)
         basis = kw.pop("basis", "geometry")
         exact = kw.pop("exact", True)
+        qualifier = kw.pop("qualifier", None)  # (tells apart findings of one code and subject)
         return Finding(
-            key=f"{check.id}|{code}|{ids}",
+            key=f"{check.id}|{code}|{ids}" + (f"|{qualifier}" if qualifier else ""),
             check=check.id,
             kind=check.kind,
             code=code,
@@ -1447,6 +1448,62 @@ class Diagnoser:
                             "where they touched down",
                         ),
                     )
+        result.measured = measured
+
+    def _check_rig(self, check: Check, result: CheckResult) -> None:
+        system = self.scene.animation
+        p = check.params
+        ignore = set(p.get("ignore", ()))
+        rank = {"info": 0, "warning": 1, "error": 2}
+        measured = {}
+        for obj in self._animated(check, result):
+            if system.rig(obj) is None:
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "RIG_MISSING",
+                        f"{obj.name!r} has no rig",
+                        [_ref(obj, "subject")],
+                        basis="scene",
+                        hint="rig it (autorig) or select armatures only",
+                    ),
+                )
+                continue
+            report = system.diagnose_rig(
+                obj, poses=p.get("poses", "suite"), animation=p.get("timeline", True),
+                max_findings=1000,
+            )  # fmt: skip
+            measured[obj.name] = report["summary"]
+            for f in report["findings"]:
+                if f["severity"] == "info" or f["code"] in ignore:
+                    continue
+                # The rig's own severity, never above the check's.
+                severity = min(f["severity"], check.severity, key=rank.__getitem__)
+                target = [f.get(k) for k in ("pose", "mesh", "constraint") if f.get(k)]
+                target += list(f.get("joints") or ())
+                magnitude, unit = f.get("magnitude"), f.get("unit")
+                if not isinstance(magnitude, (int, float)) or isinstance(magnitude, bool):
+                    magnitude = None
+                elif f["code"] == "JOINT_COLLAPSE":  # (smaller is better, as for every finding)
+                    magnitude, unit = round(1.0 - float(magnitude), 4), "fraction lost"
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        f["code"],
+                        f"{obj.name!r}: {f['message']}",
+                        [_ref(obj, "subject")],
+                        severity=severity,
+                        exact=False,
+                        qualifier="/".join(str(t) for t in target) or None,
+                        evidence={"rig": f},
+                        magnitude=magnitude,
+                        unit=unit,
+                        hint="propose corrections (rig_fix: measured, applied one by one and "
+                        "undone when they do not help) or inspect_rig preview",
+                    ),
+                )
         result.measured = measured
 
     def _check_cad_valid(self, check: Check, result: CheckResult) -> None:

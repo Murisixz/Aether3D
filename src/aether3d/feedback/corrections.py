@@ -156,6 +156,15 @@ ACTIONS: dict[str, dict[str, Any]] = {
         "summary": "pin an armature's feet where each contact touches down (keyed IK on each "
         "leg: foot joint -> [hip, knee, foot])",
     },
+    "rig_fix": {
+        "fields": ("armature", "fixes"),
+        "required": ("armature", "fixes"),
+        "category": "animation",
+        "summary": "apply rig fix proposals (propose_rig_fix / inspect_rig fixes: weight "
+        "edits, blended skinning around a joint, rebinding, pole moves, planted feet), or "
+        "'safe' / 'verify' (every proposal of that safety and below); each is measured "
+        "again after it is made and undone when it does not help",
+    },
     "smooth_keys": {
         "fields": ("object", "path", "keys", "handles"),
         "required": ("object", "path"),
@@ -243,6 +252,8 @@ def check_action(doc: Doc, value: Any, ptr: str) -> dict[str, Any] | None:
             r = doc.string(v, p)
         elif key == "legs":
             r = _legs(doc, v, p)
+        elif key == "fixes":
+            r = _fixes(doc, v, p)
         elif key == "keys":
             ok = isinstance(v, list) and 1 <= len(v) <= 10_000
             ok = ok and all(isinstance(i, int) and not isinstance(i, bool) for i in v)
@@ -289,6 +300,20 @@ def _legs(doc: Doc, value: Any, ptr: str) -> Any:
             return BAD
         out[foot] = names
     return out
+
+
+def _fixes(doc: Doc, value: Any, ptr: str) -> Any:
+    """Rig fix proposals (their contents are checked against the rig when bound)."""
+    if value in ("safe", "verify"):
+        return value
+    ok = isinstance(value, list) and 1 <= len(value) <= 50
+    if not ok or not all(isinstance(f, dict) and isinstance(f.get("operations"), list)
+                         for f in value):  # fmt: skip
+        doc.issues.add(
+            "INVALID_VALUE", "fixes is 'safe', 'verify' or a list of 1 to 50 proposals", ptr
+        )
+        return BAD
+    return [dict(f) for f in value]
 
 
 def check_actions(actions: Any, ptr: str = "/actions") -> list[dict[str, Any]]:
@@ -630,6 +655,8 @@ def _bind_animation(scene: Scene, action: dict[str, Any], category: str, ptr: st
     """Animation corrections compile to a plan's animation operation (one script)."""
     name = action["action"]
     system = scene.animation
+    if name == "rig_fix":
+        return _bind_rig_fix(scene, action, category, ptr)
     if name == "plant_feet":
         arm = _object(scene, action["armature"], "armature", f"{ptr}/armature")
         rig = system.rig(arm)
@@ -661,6 +688,33 @@ def _bind_animation(scene: Scene, action: dict[str, Any], category: str, ptr: st
                   "before": "corners", "after": action.get("handles", "auto_clamped")}  # fmt: skip
     script = {"format": "aether3d.animation-script", "version": 1, "operations": [op]}
     return Bound(action, category, target, [change], plan_op={"op": "animation", "script": script})
+
+
+def _bind_rig_fix(scene: Scene, action: dict[str, Any], category: str, ptr: str) -> Bound:
+    from ..animation.rig_report import _check_fix
+    from ..errors import AnimationError
+
+    system = scene.animation
+    arm = _object(scene, action["armature"], "armature", f"{ptr}/armature")
+    if system.rig(arm) is None:
+        raise FeedbackError("INVALID_ACTION", f"{arm.name!r} has no rig", f"{ptr}/armature")
+    fixes = action["fixes"]
+    if isinstance(fixes, list):
+        for i, f in enumerate(fixes):
+            try:
+                _check_fix(system, arm, f, f"fixes[{i}]")
+            except AnimationError as exc:
+                message = getattr(exc, "message", str(exc))
+                raise FeedbackError("INVALID_ACTION", message, f"{ptr}/fixes/{i}") from None
+        before = ", ".join(sorted({f["code"] for f in fixes}))
+        after = "; ".join(str(f.get("title") or f["code"]) for f in fixes)
+    else:
+        before, after = "rig findings", f"every {fixes} proposal"
+    op = {"op": "apply_rig_fix", "armature": arm.id, "fixes": fixes}
+    change = {"object": arm.name, "id": arm.id, "field": "rig", "before": before,
+              "after": f"{after} (each kept only if measured better)"}  # fmt: skip
+    script = {"format": "aether3d.animation-script", "version": 1, "operations": [op]}
+    return Bound(action, category, arm, [change], plan_op={"op": "animation", "script": script})
 
 
 def _plain(value: Any) -> Any:
@@ -1262,6 +1316,12 @@ def _merge(drafts: list[Draft]) -> list[Draft]:
         if d.actions and first.actions and d.actions[0].get("targets") is not None:
             merged = _union_targets(first.actions[0].get("targets"), d.actions[0]["targets"])
             first.actions[0]["targets"] = merged
+        if d.actions and first.actions and d.actions[0].get("fixes") is not None:
+            have = first.actions[0]["fixes"]
+            ids = {f.get("id") for f in have}
+            have.extend(f for f in d.actions[0]["fixes"] if f.get("id") not in ids)
+            name = first.findings[0].subjects[0]["name"]
+            first.title = f"Fix the rig of {name!r} ({len(have)} changes, each verified)"
         if d.actions and first.actions and d.actions[0].get("legs") is not None:
             first.actions[0]["legs"] = {**first.actions[0]["legs"], **d.actions[0]["legs"]}
             first.title = f"Plant the feet of {first.title.split(chr(39))[1]!r}"
