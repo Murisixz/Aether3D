@@ -33,10 +33,15 @@ from ..errors import AnimationError
 MAX_VOXELS = 64_000_000
 UNREACHED = -1
 _OFFSETS = np.array(
-    [(dx, dy, dz) for dz in (-1, 0, 1) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
-     if (dx, dy, dz) != (0, 0, 0)],
+    [
+        (dx, dy, dz)
+        for dz in (-1, 0, 1)
+        for dy in (-1, 0, 1)
+        for dx in (-1, 0, 1)
+        if (dx, dy, dz) != (0, 0, 0)
+    ],
     np.int64,
-)  # fmt: skip
+)
 _WEIGHTS = np.array([2 + int(np.count_nonzero(o)) for o in _OFFSETS], np.int64)  # 3, 4, 5
 
 
@@ -149,8 +154,16 @@ def voxelize(
 def _mark_triangles(grid: np.ndarray, p: np.ndarray, t: np.ndarray, origin, h) -> None:
     a, b, c = p[t[:, 0]], p[t[:, 1]], p[t[:, 2]]
     longest = np.max(
-        np.stack([np.linalg.norm(b - a, axis=1), np.linalg.norm(c - b, axis=1),
-                  np.linalg.norm(a - c, axis=1)], axis=1), axis=1)  # fmt: skip
+        np.stack(
+            [
+                np.linalg.norm(b - a, axis=1),
+                np.linalg.norm(c - b, axis=1),
+                np.linalg.norm(a - c, axis=1),
+            ],
+            axis=1,
+        ),
+        axis=1,
+    )
     steps = np.maximum(1, np.ceil(longest / (h / 3.0))).astype(np.int64)
     dims = np.array(grid.shape)
     flat = grid.reshape(-1, order="F")  # x fastest
@@ -339,9 +352,17 @@ def geodesic(
     native = _native.module()
     if native is not None and hasattr(native, "geodesic_voxels"):
         native.geodesic_voxels(
-            np.ascontiguousarray(sid, np.int32), nx, ny, nz, ptr, flat_src, q, cutoff, out,
+            np.ascontiguousarray(sid, np.int32),
+            nx,
+            ny,
+            nz,
+            ptr,
+            flat_src,
+            q,
+            cutoff,
+            out,
             _native.threads(),
-        )  # fmt: skip
+        )
         return out
     offsets = _OFFSETS[:, 0] + nx * (_OFFSETS[:, 1] + ny * _OFFSETS[:, 2])
     n_solid = int((sid >= 0).sum())

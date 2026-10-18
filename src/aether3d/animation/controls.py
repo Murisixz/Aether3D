@@ -67,8 +67,12 @@ def _num(value: Any, location: str, lo: float = -math.inf, hi: float = math.inf)
 # --------------------------------------------------------------------------------------- #
 
 
-def _rigging(system: AnimationSystem, time: float, influences: dict[str, float] | None = None,
-             arm_id: str | None = None):  # fmt: skip
+def _rigging(
+    system: AnimationSystem,
+    time: float,
+    influences: dict[str, float] | None = None,
+    arm_id: str | None = None,
+):
     """The rigging pass at ``time`` with some of an armature's constraint influences
     overridden, and the world matrices of every object then."""
     from ..rendering.overlay import RenderOverlay
@@ -136,8 +140,9 @@ def _key_joint_rotation(system, arm, rig, name: str, q: np.ndarray, time: float)
         system.keyframe(arm, f'joints["{name}"].rotation', time, q.tolist())
 
 
-def _key_influence(system, arm, name: str, before: float, after: float, time: float,
-                   blend: float) -> None:  # fmt: skip
+def _key_influence(
+    system, arm, name: str, before: float, after: float, time: float, blend: float
+) -> None:
     path = f'constraints["{name}"].influence'
     if blend > 0:
         system.keyframe(arm, path, max(0.0, time - blend), before, interpolation="linear")
@@ -205,9 +210,11 @@ def add_control(
         p, q, _ = decompose(np.linalg.solve(p_world, world))
         q = q if q[3] >= 0 else -q
         obj = system.scene.add_object(
-            _unique_name(system.scene, f"{arm.name} {label}"), parent=parent,
-            position=tuple(p.tolist()), rotation=tuple(q.tolist()),
-        )  # fmt: skip
+            _unique_name(system.scene, f"{arm.name} {label}"),
+            parent=parent,
+            position=tuple(p.tolist()),
+            rotation=tuple(q.tolist()),
+        )
         obj.metadata = {"rig_control": label}
         made.append(obj.name)
         return obj
@@ -223,13 +230,25 @@ def add_control(
             tgt = empty(name, end) if target is None else system._object(target, "target")
             cname = constraint or f"{name}_ik"
             spec: dict[str, Any] = {
-                "name": cname, "type": "ik", "chain": list(chain), "influence": influence,
-                "target": {"object": tgt._id}, "end": "target",
+                "name": cname,
+                "type": "ik",
+                "chain": list(chain),
+                "influence": influence,
+                "target": {"object": tgt._id},
+                "end": "target",
                 "solver": "two_bone" if len(chain) == 3 else "fabrik",
-            }  # fmt: skip
-            controls.append({"name": name, "kind": "ik_target", "object": tgt._id,
-                             "joint": chain[-1], "constraint": cname, "group": group,
-                             **({"side": side} if side else {})})  # fmt: skip
+            }
+            controls.append(
+                {
+                    "name": name,
+                    "kind": "ik_target",
+                    "object": tgt._id,
+                    "joint": chain[-1],
+                    "constraint": cname,
+                    "group": group,
+                    **({"side": side} if side else {}),
+                }
+            )
             if pole is not False and len(chain) >= 3:
                 mid = (a_world @ model[idx[len(idx) // 2]])[:3, 3]
                 if isinstance(pole, (list, tuple, np.ndarray)):
@@ -248,14 +267,23 @@ def add_control(
                 pm[:3, 3] = where
                 pobj = empty(f"{name}_pole", pm)
                 spec["pole"] = {"object": pobj._id}
-                controls.append({"name": f"{name}_pole", "kind": "pole", "object": pobj._id,
-                                 "joint": chain[len(chain) // 2], "constraint": cname,
-                                 "group": group, **({"side": side} if side else {})})  # fmt: skip
+                controls.append(
+                    {
+                        "name": f"{name}_pole",
+                        "kind": "pole",
+                        "object": pobj._id,
+                        "joint": chain[len(chain) // 2],
+                        "constraint": cname,
+                        "group": group,
+                        **({"side": side} if side else {}),
+                    }
+                )
             constraints.append(spec)
         elif kind == "pole":
             if constraint is None:
-                raise _err("INVALID_ARGUMENT", "a pole control names its ik constraint",
-                           "constraint")  # fmt: skip
+                raise _err(
+                    "INVALID_ARGUMENT", "a pole control names its ik constraint", "constraint"
+                )
             spec = next((c for c in constraints if c["name"] == constraint), None)
             if spec is None or spec["type"] != "ik":
                 raise _err("CONSTRAINT_MISSING", f"no ik constraint {constraint!r}", "constraint")
@@ -266,8 +294,15 @@ def add_control(
             pm[:3, 3] = where
             pobj = empty(name, pm)
             spec["pole"] = {"object": pobj._id}
-            controls.append({"name": name, "kind": "pole", "object": pobj._id,
-                             "constraint": constraint, "group": group})  # fmt: skip
+            controls.append(
+                {
+                    "name": name,
+                    "kind": "pole",
+                    "object": pobj._id,
+                    "constraint": constraint,
+                    "group": group,
+                }
+            )
         elif kind == "gaze":
             k = rig.index(joint) if isinstance(joint, str) else None
             if k is None:
@@ -282,17 +317,40 @@ def add_control(
             axis = _nearest_axis(local_fwd)
             up_axis = _nearest_axis(np.linalg.solve(head[:3, :3], a_world[:3, 2]), exclude=axis)
             cname = constraint or name
-            constraints.append({"name": cname, "type": "look_at", "joint": joint,
-                                "influence": influence, "target": {"object": tgt._id},
-                                "axis": axis, "up": up_axis,
-                                "world_up": [0.0, 0.0, 1.0]})  # fmt: skip
-            controls.append({"name": name, "kind": "gaze", "object": tgt._id, "joint": joint,
-                             "constraint": cname, "group": group or "head"})  # fmt: skip
+            constraints.append(
+                {
+                    "name": cname,
+                    "type": "look_at",
+                    "joint": joint,
+                    "influence": influence,
+                    "target": {"object": tgt._id},
+                    "axis": axis,
+                    "up": up_axis,
+                    "world_up": [0.0, 0.0, 1.0],
+                }
+            )
+            controls.append(
+                {
+                    "name": name,
+                    "kind": "gaze",
+                    "object": tgt._id,
+                    "joint": joint,
+                    "constraint": cname,
+                    "group": group or "head",
+                }
+            )
         elif kind == "fk":
             if not isinstance(joint, str) or rig.index(joint) is None:
                 raise _err("JOINT_MISSING", "an fk control names its joint", "joint")
-            controls.append({"name": name, "kind": "fk", "joint": joint, "group": group,
-                             **({"side": side} if side else {})})  # fmt: skip
+            controls.append(
+                {
+                    "name": name,
+                    "kind": "fk",
+                    "joint": joint,
+                    "group": group,
+                    **({"side": side} if side else {}),
+                }
+            )
         else:
             controls.append({"name": name, "kind": "root", "object": arm._id, "group": "root"})
         raw["controls"] = controls
@@ -329,8 +387,9 @@ def _limb(rig, limb: str) -> tuple[Any, Any, Any]:
     else:
         ctl = rig.control(limb)
         if ctl is None or ctl.constraint is None or ctl.constraint not in cons:
-            raise _err("CONSTRAINT_MISSING", f"no ik limb {limb!r} (a constraint or a control)",
-                       "limb")  # fmt: skip
+            raise _err(
+                "CONSTRAINT_MISSING", f"no ik limb {limb!r} (a constraint or a control)", "limb"
+            )
         c = cons[ctl.constraint]
     if c.type != "ik":
         raise _err("INVALID_ARGUMENT", f"{c.name!r} is not an ik constraint", "limb")
@@ -464,10 +523,14 @@ def _current_local(system, arm, rig, name: str, time: float) -> np.ndarray:
     return _rest_rotation(rig, name)
 
 
-def _rotate(system, arm, rig, name: str, euler: np.ndarray, time: float,
-            relative_to: str = "rest") -> dict[str, Any]:  # fmt: skip
-    base = _rest_rotation(rig, name) if relative_to == "rest" else _current_local(
-        system, arm, rig, name, time)  # fmt: skip
+def _rotate(
+    system, arm, rig, name: str, euler: np.ndarray, time: float, relative_to: str = "rest"
+) -> dict[str, Any]:
+    base = (
+        _rest_rotation(rig, name)
+        if relative_to == "rest"
+        else _current_local(system, arm, rig, name, time)
+    )
     q = R.multiply(base[None], R.from_euler(np.asarray(euler, np.float64)))[0]
     q = q / np.linalg.norm(q)
     _key_joint_rotation(system, arm, rig, name, q if q[3] >= 0 else -q, time)
@@ -492,15 +555,24 @@ def pose_character(
         for i, cmd in enumerate(commands):
             loc = f"commands[{i}]"
             if not isinstance(cmd, dict) or cmd.get("do") not in COMMANDS:
-                raise _err("INVALID_ARGUMENT", f"a command is {{do: {' | '.join(COMMANDS)}, ...}}",
-                           loc)  # fmt: skip
+                raise _err(
+                    "INVALID_ARGUMENT", f"a command is {{do: {' | '.join(COMMANDS)}, ...}}", loc
+                )
             rig = system.rig(arm)
             out.append(_COMMANDS[cmd["do"]](system, arm, rig, cmd, time, loc))
     final = system.rigging(time)
-    residuals = {k.split("/", 1)[1]: round(v, 6) for k, v in final.residuals.items()
-                 if k.startswith(f"{arm.name}/")}  # fmt: skip
-    return {"armature": arm.name, "time": time, "commands": out, "residuals": residuals,
-            "diagnostics": [d.to_dict() for d in final.diagnostics]}  # fmt: skip
+    residuals = {
+        k.split("/", 1)[1]: round(v, 6)
+        for k, v in final.residuals.items()
+        if k.startswith(f"{arm.name}/")
+    }
+    return {
+        "armature": arm.name,
+        "time": time,
+        "commands": out,
+        "residuals": residuals,
+        "diagnostics": [d.to_dict() for d in final.diagnostics],
+    }
 
 
 def _side(cmd: dict, loc: str) -> str:
@@ -531,8 +603,16 @@ def _ensure_limb(system, arm, rig, kind: str, side: str) -> str:
     if any(c is None for c in chain):
         raise _err("ROLE_MISSING", f"the rig has no {side} {kind} chain", "commands")
     label = "hand_ik" if kind == "arm" else "foot_ik"
-    add_control(system, arm, f"{label}.{side}", "ik", chain=chain, constraint=cname,
-                group=f"{kind}.{side}", side=side)  # fmt: skip
+    add_control(
+        system,
+        arm,
+        f"{label}.{side}",
+        "ik",
+        chain=chain,
+        constraint=cname,
+        group=f"{kind}.{side}",
+        side=side,
+    )
     return cname
 
 
@@ -585,10 +665,15 @@ def _cmd_reach(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
     path = f'constraints["{cname}"].influence'
     system.keyframe(arm, path, time, 1.0, interpolation="constant")
     rr = system.rigging(time)
-    return {"do": "reach", "side": side, "distance": round(distance, 6),
-            "arm_length": round(length, 6), "reachable": distance <= length,
-            "lean_degrees": round(lean, 3),
-            "residual": round(rr.residuals.get(f"{arm.name}/{cname}", 0.0), 6)}  # fmt: skip
+    return {
+        "do": "reach",
+        "side": side,
+        "distance": round(distance, 6),
+        "arm_length": round(length, 6),
+        "reachable": distance <= length,
+        "lean_degrees": round(lean, 3),
+        "residual": round(rr.residuals.get(f"{arm.name}/{cname}", 0.0), 6),
+    }
 
 
 def _cmd_plant_feet(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
@@ -608,8 +693,9 @@ def _cmd_plant_feet(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
             world[2, 3] = max(world[2, 3], g + (foot[2, 3] - _sole(rig, model, c, a_world)))
         tgt = system.scene._objects[c.p["target"]["object"]]
         _set_object_world(system, tgt, world, worlds, time, True)
-        system.keyframe(arm, f'constraints["{cname}"].influence', time, 1.0,
-                        interpolation="constant")  # fmt: skip
+        system.keyframe(
+            arm, f'constraints["{cname}"].influence', time, 1.0, interpolation="constant"
+        )
         out[side] = [round(float(v), 6) for v in world[:3, 3]]
     return {"do": "plant_feet", "feet": out}
 
@@ -636,9 +722,13 @@ def _cmd_look_at(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
     m = np.eye(4)
     m[:3, 3] = goal
     _set_object_world(system, obj, m, worlds, time, True)
-    system.keyframe(arm, f'constraints["{gaze.constraint}"].influence', time,
-                    _num(cmd.get("weight", 1.0), f"{loc}.weight", 0.0, 1.0),
-                    interpolation="constant")  # fmt: skip
+    system.keyframe(
+        arm,
+        f'constraints["{gaze.constraint}"].influence',
+        time,
+        _num(cmd.get("weight", 1.0), f"{loc}.weight", 0.0, 1.0),
+        interpolation="constant",
+    )
     return {"do": "look_at", "target": [round(float(v), 6) for v in goal]}
 
 
@@ -651,8 +741,10 @@ def _cmd_raise_arm(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
     name = _role_joint(rig, f"upper_arm.{side}", [f"UpperArm.{side}"])
     if name is None:
         raise _err("ROLE_MISSING", f"the rig has no {side} upper arm", loc)
-    return {"do": "raise_arm", **_turn_in_armature(system, arm, rig, name, direction, side, angle,
-                                                    time)}  # fmt: skip
+    return {
+        "do": "raise_arm",
+        **_turn_in_armature(system, arm, rig, name, direction, side, angle, time),
+    }
 
 
 def _turn_in_armature(system, arm, rig, name, direction, side, angle, time) -> dict[str, Any]:
@@ -679,8 +771,9 @@ def _cmd_lean(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
     angle = _num(cmd.get("angle", 15.0), f"{loc}.angle", -90.0, 90.0)
     direction = cmd.get("direction", "forward")
     if direction not in ("forward", "back", "left", "right"):
-        raise _err("INVALID_ARGUMENT", "direction is forward, back, left or right",
-                   f"{loc}.direction")  # fmt: skip
+        raise _err(
+            "INVALID_ARGUMENT", "direction is forward, back, left or right", f"{loc}.direction"
+        )
     joints = [j for j in (_role_joint(rig, "spine", []), _role_joint(rig, "chest", [])) if j]
     if not joints:
         raise _err("ROLE_MISSING", "the rig has no spine", loc)
@@ -715,8 +808,11 @@ def _cmd_crouch(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
         down = np.linalg.solve(rig.rest_model()[parent][:3, :3], down)
     system.keyframe(arm, f'joints["{hips}"].position', time, (pos + down).tolist())
     rr = system.rigging(time)
-    res = {k2.split("/", 1)[1]: round(v, 6) for k2, v in rr.residuals.items()
-           if "leg_ik" in k2 and k2.startswith(f"{arm.name}/")}  # fmt: skip
+    res = {
+        k2.split("/", 1)[1]: round(v, 6)
+        for k2, v in rr.residuals.items()
+        if "leg_ik" in k2 and k2.startswith(f"{arm.name}/")
+    }
     return {"do": "crouch", "depth": depth, "feet": planted["feet"], "residuals": res}
 
 

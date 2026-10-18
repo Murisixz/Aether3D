@@ -73,32 +73,83 @@ def _err(code: str, message: str, location: str, hint: str | None = None) -> Ani
 def _humanoid_joints(det: LM.Detection, twist: bool) -> list[dict[str, Any]]:
     P = det.point
     J: list[dict[str, Any]] = [
-        {"name": "Hips", "at": P("pelvis"), "role": "hips", "lean": FORWARD, "end": "Spine",
-         "limits": {"swing": {"cone": 40}, "twist": [-40, 40]}},
-        {"name": "Spine", "parent": "Hips", "at": P("spine"), "role": "spine", "lean": FORWARD,
-         "end": "Chest", "limits": {"swing": {"cone": 45}, "twist": [-40, 40]}},
-        {"name": "Chest", "parent": "Spine", "at": P("chest"), "role": "chest", "lean": FORWARD,
-         "end": "Neck", "limits": {"swing": {"cone": 40}, "twist": [-40, 40]}},
-        {"name": "Neck", "parent": "Chest", "at": P("neck"), "role": "neck", "lean": FORWARD,
-         "end": "Head", "limits": {"swing": {"cone": 50}, "twist": [-60, 60]}},
-        {"name": "Head", "parent": "Neck", "at": P("head"), "role": "head", "lean": FORWARD,
-         "tip": P("head_top"), "limits": {"swing": {"cone": 45}, "twist": [-70, 70]}},
-    ]  # fmt: skip
+        {
+            "name": "Hips",
+            "at": P("pelvis"),
+            "role": "hips",
+            "lean": FORWARD,
+            "end": "Spine",
+            "limits": {"swing": {"cone": 40}, "twist": [-40, 40]},
+        },
+        {
+            "name": "Spine",
+            "parent": "Hips",
+            "at": P("spine"),
+            "role": "spine",
+            "lean": FORWARD,
+            "end": "Chest",
+            "limits": {"swing": {"cone": 45}, "twist": [-40, 40]},
+        },
+        {
+            "name": "Chest",
+            "parent": "Spine",
+            "at": P("chest"),
+            "role": "chest",
+            "lean": FORWARD,
+            "end": "Neck",
+            "limits": {"swing": {"cone": 40}, "twist": [-40, 40]},
+        },
+        {
+            "name": "Neck",
+            "parent": "Chest",
+            "at": P("neck"),
+            "role": "neck",
+            "lean": FORWARD,
+            "end": "Head",
+            "limits": {"swing": {"cone": 50}, "twist": [-60, 60]},
+        },
+        {
+            "name": "Head",
+            "parent": "Neck",
+            "at": P("head"),
+            "role": "head",
+            "lean": FORWARD,
+            "tip": P("head_top"),
+            "limits": {"swing": {"cone": 45}, "twist": [-70, 70]},
+        },
+    ]
     for side, sign in (("L", 1.0), ("R", -1.0)):
         out = -1.0 if side == "L" else 1.0  # (a left thigh abducts toward -z swing)
         elbow, wrist = P(f"elbow.{side}"), P(f"wrist.{side}")
         J += [
-            {"name": f"Shoulder.{side}", "parent": "Chest", "at": P(f"clavicle.{side}"),
-             "role": f"clavicle.{side}", "lean": FORWARD, "end": f"UpperArm.{side}",
-             "limits": {"swing": {"cone": 25}, "twist": [-10, 10]}},
-            {"name": f"UpperArm.{side}", "parent": f"Shoulder.{side}", "at": P(f"shoulder.{side}"),
-             "role": f"upper_arm.{side}", "lean": FORWARD, "end": f"ForeArm.{side}",
-             "limits": {"swing": {"cone": 130}, "twist": [-90, 90]}},
-            {"name": f"ForeArm.{side}", "parent": f"UpperArm.{side}", "at": elbow,
-             "role": f"lower_arm.{side}", "lean": FORWARD,
-             "end": f"ForeArmTwist.{side}" if twist else f"Hand.{side}",
-             "limits": {"swing": {"x": [0, 150], "z": [-5, 5]}, "twist": [-80, 80]}},
-        ]  # fmt: skip
+            {
+                "name": f"Shoulder.{side}",
+                "parent": "Chest",
+                "at": P(f"clavicle.{side}"),
+                "role": f"clavicle.{side}",
+                "lean": FORWARD,
+                "end": f"UpperArm.{side}",
+                "limits": {"swing": {"cone": 25}, "twist": [-10, 10]},
+            },
+            {
+                "name": f"UpperArm.{side}",
+                "parent": f"Shoulder.{side}",
+                "at": P(f"shoulder.{side}"),
+                "role": f"upper_arm.{side}",
+                "lean": FORWARD,
+                "end": f"ForeArm.{side}",
+                "limits": {"swing": {"cone": 130}, "twist": [-90, 90]},
+            },
+            {
+                "name": f"ForeArm.{side}",
+                "parent": f"UpperArm.{side}",
+                "at": elbow,
+                "role": f"lower_arm.{side}",
+                "lean": FORWARD,
+                "end": f"ForeArmTwist.{side}" if twist else f"Hand.{side}",
+                "limits": {"swing": {"x": [0, 150], "z": [-5, 5]}, "twist": [-80, 80]},
+            },
+        ]
         if twist:
             J.append(
                 {
@@ -108,27 +159,58 @@ def _humanoid_joints(det: LM.Detection, twist: bool) -> list[dict[str, Any]]:
                     "role": f"forearm_twist.{side}",
                     "lean": FORWARD,
                     "tip": wrist,
-                }  # fmt: skip
+                }
             )
         J += [
-            {"name": f"Hand.{side}", "parent": f"ForeArm.{side}", "at": wrist,
-             "role": f"hand.{side}", "lean": FORWARD, "tip": P(f"hand_tip.{side}"),
-             "limits": {"swing": {"x": [-70, 80], "z": [-30, 30]}, "twist": [-25, 25]}},
-            {"name": f"Thigh.{side}", "parent": "Hips", "at": P(f"hip.{side}"),
-             "role": f"thigh.{side}", "lean": BACKWARD, "end": f"Shin.{side}",
-             "limits": {"swing": {"x": [-120, 35],
-                                  "z": [-45, 25] if out < 0 else [-25, 45]},
-                        "twist": [-40, 40]}},
-            {"name": f"Shin.{side}", "parent": f"Thigh.{side}", "at": P(f"knee.{side}"),
-             "role": f"shin.{side}", "lean": BACKWARD, "end": f"Foot.{side}",
-             "limits": {"swing": {"x": [0, 150], "z": [-5, 5]}, "twist": [-15, 15]}},
-            {"name": f"Foot.{side}", "parent": f"Shin.{side}", "at": P(f"ankle.{side}"),
-             "role": f"foot.{side}", "lean": UP, "end": f"Toe.{side}",
-             "limits": {"swing": {"x": [-50, 30], "z": [-25, 25]}, "twist": [-15, 15]}},
-            {"name": f"Toe.{side}", "parent": f"Foot.{side}", "at": P(f"ball.{side}"),
-             "role": f"toe.{side}", "lean": UP, "tip": P(f"toe_tip.{side}"),
-             "limits": {"hinge": {"axis": "+x", "min": -30, "max": 60}}},
-        ]  # fmt: skip
+            {
+                "name": f"Hand.{side}",
+                "parent": f"ForeArm.{side}",
+                "at": wrist,
+                "role": f"hand.{side}",
+                "lean": FORWARD,
+                "tip": P(f"hand_tip.{side}"),
+                "limits": {"swing": {"x": [-70, 80], "z": [-30, 30]}, "twist": [-25, 25]},
+            },
+            {
+                "name": f"Thigh.{side}",
+                "parent": "Hips",
+                "at": P(f"hip.{side}"),
+                "role": f"thigh.{side}",
+                "lean": BACKWARD,
+                "end": f"Shin.{side}",
+                "limits": {
+                    "swing": {"x": [-120, 35], "z": [-45, 25] if out < 0 else [-25, 45]},
+                    "twist": [-40, 40],
+                },
+            },
+            {
+                "name": f"Shin.{side}",
+                "parent": f"Thigh.{side}",
+                "at": P(f"knee.{side}"),
+                "role": f"shin.{side}",
+                "lean": BACKWARD,
+                "end": f"Foot.{side}",
+                "limits": {"swing": {"x": [0, 150], "z": [-5, 5]}, "twist": [-15, 15]},
+            },
+            {
+                "name": f"Foot.{side}",
+                "parent": f"Shin.{side}",
+                "at": P(f"ankle.{side}"),
+                "role": f"foot.{side}",
+                "lean": UP,
+                "end": f"Toe.{side}",
+                "limits": {"swing": {"x": [-50, 30], "z": [-25, 25]}, "twist": [-15, 15]},
+            },
+            {
+                "name": f"Toe.{side}",
+                "parent": f"Foot.{side}",
+                "at": P(f"ball.{side}"),
+                "role": f"toe.{side}",
+                "lean": UP,
+                "tip": P(f"toe_tip.{side}"),
+                "limits": {"hinge": {"axis": "+x", "min": -30, "max": 60}},
+            },
+        ]
         del sign
     return J
 
@@ -136,21 +218,49 @@ def _humanoid_joints(det: LM.Detection, twist: bool) -> list[dict[str, Any]]:
 def _blocky_joints(det: LM.Detection) -> list[dict[str, Any]]:
     P = det.point
     J = [
-        {"name": "Hips", "at": P("pelvis"), "role": "hips", "lean": FORWARD,
-         "tip": P("pelvis") + [0, 0, 0.05 * det.height]},
-        {"name": "Body", "parent": "Hips", "at": P("pelvis"), "role": "spine", "lean": FORWARD,
-         "tip": P("neck")},
-        {"name": "Head", "parent": "Body", "at": P("head"), "role": "head", "lean": FORWARD,
-         "tip": P("head_top")},
-    ]  # fmt: skip
+        {
+            "name": "Hips",
+            "at": P("pelvis"),
+            "role": "hips",
+            "lean": FORWARD,
+            "tip": P("pelvis") + [0, 0, 0.05 * det.height],
+        },
+        {
+            "name": "Body",
+            "parent": "Hips",
+            "at": P("pelvis"),
+            "role": "spine",
+            "lean": FORWARD,
+            "tip": P("neck"),
+        },
+        {
+            "name": "Head",
+            "parent": "Body",
+            "at": P("head"),
+            "role": "head",
+            "lean": FORWARD,
+            "tip": P("head_top"),
+        },
+    ]
     for side in ("L", "R"):
         J += [
-            {"name": f"Arm.{side}", "parent": "Body", "at": P(f"shoulder.{side}"),
-             "role": f"upper_arm.{side}", "lean": FORWARD, "tip": P(f"hand_tip.{side}")},
-            {"name": f"Leg.{side}", "parent": "Hips", "at": P(f"hip.{side}"),
-             "role": f"thigh.{side}", "lean": BACKWARD,
-             "tip": np.array([P(f"hip.{side}")[0], 0.0, 0.0])},
-        ]  # fmt: skip
+            {
+                "name": f"Arm.{side}",
+                "parent": "Body",
+                "at": P(f"shoulder.{side}"),
+                "role": f"upper_arm.{side}",
+                "lean": FORWARD,
+                "tip": P(f"hand_tip.{side}"),
+            },
+            {
+                "name": f"Leg.{side}",
+                "parent": "Hips",
+                "at": P(f"hip.{side}"),
+                "role": f"thigh.{side}",
+                "lean": BACKWARD,
+                "tip": np.array([P(f"hip.{side}")[0], 0.0, 0.0]),
+            },
+        ]
     return J
 
 
@@ -159,19 +269,51 @@ def _quadruped_joints(det: LM.Detection) -> list[dict[str, Any]]:
     lm = det.landmarks
     J = [
         {"name": "Pelvis", "at": P("pelvis"), "role": "hips", "lean": UP, "end": "Spine"},
-        {"name": "Spine", "parent": "Pelvis", "at": P("spine"), "role": "spine", "lean": UP,
-         "end": "Chest"},
-        {"name": "Chest", "parent": "Spine", "at": P("chest"), "role": "chest", "lean": UP,
-         "end": "Neck"},
-        {"name": "Neck", "parent": "Chest", "at": P("neck"), "role": "neck", "lean": UP,
-         "end": "Head"},
-        {"name": "Head", "parent": "Neck", "at": P("head"), "role": "head", "lean": UP,
-         "tip": P("head_top")},
-    ]  # fmt: skip
+        {
+            "name": "Spine",
+            "parent": "Pelvis",
+            "at": P("spine"),
+            "role": "spine",
+            "lean": UP,
+            "end": "Chest",
+        },
+        {
+            "name": "Chest",
+            "parent": "Spine",
+            "at": P("chest"),
+            "role": "chest",
+            "lean": UP,
+            "end": "Neck",
+        },
+        {
+            "name": "Neck",
+            "parent": "Chest",
+            "at": P("neck"),
+            "role": "neck",
+            "lean": UP,
+            "end": "Head",
+        },
+        {
+            "name": "Head",
+            "parent": "Neck",
+            "at": P("head"),
+            "role": "head",
+            "lean": UP,
+            "tip": P("head_top"),
+        },
+    ]
     if "tail_tip" in lm:
         root = P("pelvis") + 0.3 * (P("tail_tip") - P("pelvis"))
-        J.append({"name": "Tail", "parent": "Pelvis", "at": root, "role": "tail", "lean": UP,
-                  "tip": P("tail_tip")})  # fmt: skip
+        J.append(
+            {
+                "name": "Tail",
+                "parent": "Pelvis",
+                "at": root,
+                "role": "tail",
+                "lean": UP,
+                "tip": P("tail_tip"),
+            }
+        )
     for end, parent in (("front", "Chest"), ("back", "Pelvis")):
         cap = end.capitalize()
         for side in ("L", "R"):
@@ -179,15 +321,31 @@ def _quadruped_joints(det: LM.Detection) -> list[dict[str, Any]]:
                 continue
             foot = P(f"{end}_foot.{side}")
             J += [
-                {"name": f"{cap}Leg.{side}", "parent": parent, "at": P(f"{end}_hip.{side}"),
-                 "role": f"{end}_thigh.{side}", "lean": FORWARD, "end": f"{cap}Shin.{side}"},
-                {"name": f"{cap}Shin.{side}", "parent": f"{cap}Leg.{side}",
-                 "at": P(f"{end}_knee.{side}"), "role": f"{end}_shin.{side}", "lean": FORWARD,
-                 "end": f"{cap}Foot.{side}"},
-                {"name": f"{cap}Foot.{side}", "parent": f"{cap}Shin.{side}", "at": foot,
-                 "role": f"{end}_foot.{side}", "lean": UP,
-                 "tip": foot + [0, -0.05 * det.height, 0]},
-            ]  # fmt: skip
+                {
+                    "name": f"{cap}Leg.{side}",
+                    "parent": parent,
+                    "at": P(f"{end}_hip.{side}"),
+                    "role": f"{end}_thigh.{side}",
+                    "lean": FORWARD,
+                    "end": f"{cap}Shin.{side}",
+                },
+                {
+                    "name": f"{cap}Shin.{side}",
+                    "parent": f"{cap}Leg.{side}",
+                    "at": P(f"{end}_knee.{side}"),
+                    "role": f"{end}_shin.{side}",
+                    "lean": FORWARD,
+                    "end": f"{cap}Foot.{side}",
+                },
+                {
+                    "name": f"{cap}Foot.{side}",
+                    "parent": f"{cap}Shin.{side}",
+                    "at": foot,
+                    "role": f"{end}_foot.{side}",
+                    "lean": UP,
+                    "tip": foot + [0, -0.05 * det.height, 0],
+                },
+            ]
     return J
 
 
@@ -260,8 +418,16 @@ def autorig(
     t0 = time.perf_counter()
     pos, tris, objs = LM.gather(system, meshes)
     detect_template = "humanoid" if template == "stylized" else template
-    det = LM.detect(pos, tris, template=detect_template, up=up, forward=forward,
-                    resolution=resolution, symmetry=symmetry, overrides=landmarks)  # fmt: skip
+    det = LM.detect(
+        pos,
+        tris,
+        template=detect_template,
+        up=up,
+        forward=forward,
+        resolution=resolution,
+        symmetry=symmetry,
+        overrides=landmarks,
+    )
     t1 = time.perf_counter()
     if template in ("humanoid", "stylized"):
         joints = _humanoid_joints(det, twist)
@@ -274,10 +440,14 @@ def autorig(
     report["template"] = template
     report["timings"] = {"detect_s": round(t1 - t0, 4)}
     report["joints"] = [
-        {"name": j["name"], "parent": j.get("parent"), "role": j.get("role"),
-         "position": [round(float(v), 6) for v in det.world(j["at"])]}
+        {
+            "name": j["name"],
+            "parent": j.get("parent"),
+            "role": j.get("role"),
+            "position": [round(float(v), 6) for v in det.world(j["at"])],
+        }
         for j in joints
-    ]  # fmt: skip
+    ]
     part_modes = _part_modes(system, objs, parts, template)
     report["parts"] = {o.name: m for o, m in part_modes}
     if dry_run:
@@ -285,8 +455,9 @@ def autorig(
         return report
     with system._op(f"Auto-rig {objs[0].name!r}"):
         arm = _armature(system, armature, name or f"{objs[0].name} Rig", det)
-        raw, made = _rig_json(system, arm, joints, frames, det, template, twist, controls,
-                              enforce_limits)  # fmt: skip
+        raw, made = _rig_json(
+            system, arm, joints, frames, det, template, twist, controls, enforce_limits
+        )
         system.set_rig(arm, raw)
         report["armature"] = arm.name
         report["controls"] = made
@@ -305,11 +476,23 @@ def autorig(
                 if mode == "skip":
                     continue
                 if mode == "geodesic":
-                    rep = system.generate_weights(obj, arm, policy=policy, context=body,
-                                                  skinning=skinning, **opts)  # fmt: skip
+                    mask = None
+                    if template in ("humanoid", "stylized") and opts.get("regions", True):
+                        mask = _region_mask(system, det, arm, obj)
+                    gen = {k: v for k, v in opts.items() if k != "regions"}
+                    rep = system.generate_weights(
+                        obj,
+                        arm,
+                        policy=policy,
+                        context=body,
+                        skinning=skinning,
+                        allowed=mask,
+                        **gen,
+                    )
                 elif mode == "rigid":  # the whole part follows its dominant joint
-                    rep = system.generate_weights(obj, arm, policy="rigid", rigid_parts="all",
-                                                  context=body, **opts)  # fmt: skip
+                    rep = system.generate_weights(
+                        obj, arm, policy="rigid", rigid_parts="all", context=body, **opts
+                    )
                     system.edit_weights(obj, [{"op": "rigid", "per": "selection"}])
                     sk = system._owned[("skin", obj._id)]._definition
                     rep["joint"] = rig.joints[
@@ -317,8 +500,9 @@ def autorig(
                     ].name
                 elif mode == "transfer":
                     if not body:
-                        raise _err("INVALID_ARGUMENT", "transfer needs a geodesic body part",
-                                   "parts")  # fmt: skip
+                        raise _err(
+                            "INVALID_ARGUMENT", "transfer needs a geodesic body part", "parts"
+                        )
                     rep = system.transfer_weights(obj, body[0], skinning=skinning)
                 else:  # attach: the joint nearest the part's centre
                     rep = _attach_part(system, obj, arm)
@@ -328,10 +512,130 @@ def autorig(
     return report
 
 
+# Which joints may weigh on each body part (the Reeb branches of the detection), and
+# which joints join them across a band around the part's junction with the torso.
+_PART_JOINTS = {
+    "arm": ("Shoulder", "UpperArm", "ForeArm", "ForeArmTwist", "Hand"),
+    "leg": ("Thigh", "Shin", "Foot", "Toe"),
+}
+_TORSO = ("Hips", "Spine", "Chest", "Neck", "Shoulder.L", "Shoulder.R")
+_ACROSS = {"arm": ("Chest", "UpperArm"), "leg": ("Hips", "Thigh"), "head": ("Chest", "Neck")}
+
+
+def _region_mask(system, det, arm, obj) -> np.ndarray | None:
+    """``(vertices, deforming joints)`` factors 0..1: each body part's joints weigh fully
+    on it, the torso's on the torso; across a junction the part's root joint (upper arm,
+    thigh, neck) reaches into the torso and the torso's joint (chest, hips) into the part,
+    fading smoothly to nothing over a band of 1.5 limb radii from the boundary (measured
+    inside the body). The skin stays continuous across shoulders, hips and the neck, and
+    torso skin never follows an arm. ``None`` when the detection has no regions."""
+    from ..rendering.scene_data import world_matrices
+    from . import voxels as V
+
+    regions = det.info.get("_regions")
+    if not regions or not regions["parts"]:
+        return None
+    origin, h, dims, to_c, shift = regions["grid"]
+    nx, ny, nz = dims
+    size = nx * ny * nz
+    solid = np.zeros(size, bool)
+    solid[regions["solid"]] = True
+    labels = np.full(size, -1, np.int64)
+    labels[regions["torso"]] = 0
+    names = sorted(regions["parts"])
+    for i, part in enumerate(names, start=1):
+        labels[regions["parts"][part]["voxels"]] = i
+    # Grow the labels over the solid voxels the eroded analysis solid left out (its
+    # surface layer), never over another label.
+    lab3 = labels.reshape(nz, ny, nx)
+    sol3 = solid.reshape(nz, ny, nx)
+    for _ in range(6):
+        grown = lab3.copy()
+        for axis in range(3):
+            for step in (1, -1):
+                src = np.roll(lab3, step, axis=axis)
+                fill = (grown < 0) & (src >= 0) & sol3
+                grown[fill] = src[fill]
+        lab3 = grown
+    labels = lab3.reshape(-1)
+    grid = V.VoxelGrid(
+        np.asarray(origin),
+        h,
+        (labels >= 0).reshape(nz, ny, nx).transpose(2, 1, 0),
+        np.zeros((nx, ny, nz), bool),
+    )
+    rig = system.rig(arm)
+    deform = list(rig.deforming)
+    jnames = [rig.joints[k].name for k in deform]
+    col = {n: c for c, n in enumerate(jnames)}
+    world = world_matrices(system.scene)[obj._id]
+    p = obj.mesh.positions.astype(np.float64) @ world[:3, :3].T + world[:3, 3]
+    prov = det.canonical(p) @ to_c + shift
+    idx = np.clip(np.floor((prov - origin) / h).astype(np.int64), 0, np.array(dims) - 1)
+    vflat = idx[:, 0] + nx * (idx[:, 1] + ny * idx[:, 2])
+    vlab = np.maximum(labels[vflat], 0)
+    uniq, inverse = np.unique(vflat, return_inverse=True)
+    mask = np.zeros((len(p), len(deform)))
+    torso = vlab == 0
+    for jn in _TORSO:
+        if jn in col:
+            mask[torso, col[jn]] = 1.0
+    unit = h / 3.0
+    for i, part in enumerate(names, start=1):
+        kind, _, side = part.partition(".")
+        mine = vlab == i
+        info = regions["parts"][part]
+        band = 1.5 * info["radius"] + 2.0 * h
+        own = (
+            ("Head", "Neck")
+            if kind == "head"
+            else tuple(f"{b}.{side}" for b in _PART_JOINTS.get(kind, ()))
+        )
+        for jn in own:
+            if jn in col:
+                mask[mine, col[jn]] = 1.0
+        a, b = _ACROSS.get(kind, (None, None))
+        if a is None:
+            continue
+        b_name = b if kind == "head" else f"{b}.{side}"
+        # Distances (inside the body) from the part's voxels and from the torso's.
+        part_vox = np.flatnonzero(labels == i)
+        torso_vox = np.flatnonzero(labels == 0)
+        d = V.geodesic(grid, [part_vox, torso_vox], uniq, cutoff=int(3 * band / h) + 3)
+        d = np.where(d >= 0, d * unit, np.inf)[inverse]
+        fade_in_torso = _fade(d[:, 0], band)  # the part's root joint into the torso
+        fade_in_part = _fade(d[:, 1], band)  # the torso joint into the part
+        if b_name in col:
+            c = col[b_name]
+            mask[torso, c] = np.maximum(mask[torso, c], fade_in_torso[torso])
+        if a in col:
+            c = col[a]
+            mask[mine, c] = np.maximum(mask[mine, c], fade_in_part[mine])
+    return mask
+
+
+def _fade(d: np.ndarray, band: float) -> np.ndarray:
+    u = np.clip(1.0 - d / band, 0.0, 1.0)
+    return u * u * (3.0 - 2.0 * u)
+
+
 def _brief(rep: dict[str, Any], mode: str) -> dict[str, Any]:
-    keep = ("method", "policy", "technique", "voxel_size", "unreached_vertices", "rigid_parts",
-            "joints_used", "influences", "far_vertices", "unmatched_parts", "confidence",
-            "distance", "joint", "timings")  # fmt: skip
+    keep = (
+        "method",
+        "policy",
+        "technique",
+        "voxel_size",
+        "unreached_vertices",
+        "rigid_parts",
+        "joints_used",
+        "influences",
+        "far_vertices",
+        "unmatched_parts",
+        "confidence",
+        "distance",
+        "joint",
+        "timings",
+    )
     return {"mode": mode, **{k: rep[k] for k in keep if k in rep}}
 
 
@@ -343,8 +647,11 @@ def _part_modes(system, objs, parts, template) -> list[tuple[Any, str]]:
     for obj in objs:
         mode = parts.pop(obj.name, parts.pop(obj._id, "geodesic"))
         if mode not in PART_MODES:
-            raise _err("INVALID_ARGUMENT", f"a part's mode is one of {', '.join(PART_MODES)}",
-                       f"parts.{obj.name}")  # fmt: skip
+            raise _err(
+                "INVALID_ARGUMENT",
+                f"a part's mode is one of {', '.join(PART_MODES)}",
+                f"parts.{obj.name}",
+            )
         out.append((obj, mode))
     if parts:
         raise _err("INVALID_ARGUMENT", f"parts names meshes not rigged: {sorted(parts)}", "parts")
@@ -379,15 +686,20 @@ def _armature(system, armature, name, det) -> Any:
     if armature is not None:
         arm = system._object(armature, "armature")
         if system.rig(arm) is not None:
-            raise _err("DUPLICATE_BINDING", f"{arm.name!r} already has a rig", "armature",
-                       hint="pass another armature or none (one is created)")  # fmt: skip
+            raise _err(
+                "DUPLICATE_BINDING",
+                f"{arm.name!r} already has a rig",
+                "armature",
+                hint="pass another armature or none (one is created)",
+            )
         return arm
     frame = det.rotation.T  # columns: the canonical axes in world space
     q = R.from_matrices(frame[None])[0]
     return system.scene.add_object(
-        _unique_name(system.scene, name), position=tuple(det.origin.tolist()),
+        _unique_name(system.scene, name),
+        position=tuple(det.origin.tolist()),
         rotation=tuple(q.tolist()),
-    )  # fmt: skip
+    )
 
 
 def _unique_name(scene: Any, base: str) -> str:
@@ -419,8 +731,13 @@ def _rig_json(system, arm, joints, frames, det, template, twist, controls, enfor
         p, q, s = decompose(local)
         if q[3] < 0:
             q = -q
-        rec: dict[str, Any] = {"name": j["name"], "parent": parent, "position": p.tolist(),
-                               "rotation": q.tolist(), "role": j.get("role")}  # fmt: skip
+        rec: dict[str, Any] = {
+            "name": j["name"],
+            "parent": parent,
+            "position": p.tolist(),
+            "rotation": q.tolist(),
+            "role": j.get("role"),
+        }
         if not np.allclose(s, 1.0, atol=1e-9):
             rec["scale"] = s.tolist()
         end = j.get("tip")
@@ -445,16 +762,24 @@ def _rig_json(system, arm, joints, frames, det, template, twist, controls, enfor
                 by_name[f"ForeArm.{side}"]["tail"] = np.linalg.solve(fa, np.append(tw, 1.0))[
                     :3
                 ].tolist()
-                constraints.append({"name": f"forearm_twist.{side}", "type": "twist",
-                                    "joint": f"ForeArmTwist.{side}",
-                                    "target": {"joint": f"Hand.{side}"}, "axis": "+y",
-                                    "factor": 0.5})  # fmt: skip
+                constraints.append(
+                    {
+                        "name": f"forearm_twist.{side}",
+                        "type": "twist",
+                        "joint": f"ForeArmTwist.{side}",
+                        "target": {"joint": f"Hand.{side}"},
+                        "axis": "+y",
+                        "factor": 0.5,
+                    }
+                )
         if controls:
             ctrl, made, cons = _humanoid_controls(system, arm, model, det)
             constraints += cons
     elif template in ("blocky", "quadruped") and controls:
-        ctrl = [{"name": f"{j['name'].lower()}_fk", "kind": "fk", "joint": j["name"],
-                 "group": "body"} for j in out]  # fmt: skip
+        ctrl = [
+            {"name": f"{j['name'].lower()}_fk", "kind": "fk", "joint": j["name"], "group": "body"}
+            for j in out
+        ]
     info = {
         "forward": "-y",
         "up": "+z",
@@ -465,8 +790,10 @@ def _rig_json(system, arm, joints, frames, det, template, twist, controls, enfor
     }
     if "pose" in det.info:
         info["pose"] = det.info["pose"]
-    lms = {name: (a_inv @ np.append(det.world(l_.position), 1.0))[:3].tolist()
-           for name, l_ in det.landmarks.items()}  # fmt: skip
+    lms = {
+        name: (a_inv @ np.append(det.world(l_.position), 1.0))[:3].tolist()
+        for name, l_ in det.landmarks.items()
+    }
     raw = {
         "joints": out,
         "constraints": constraints,
@@ -486,21 +813,30 @@ def _humanoid_controls(system, arm, model, det) -> tuple[list, list, list]:
 
     H = det.height
     ctrl: list[dict[str, Any]] = [
-        {"name": "root", "kind": "root", "object": arm._id, "group": "root", "shape": "circle",
-         "size": 0.3 * H},
+        {
+            "name": "root",
+            "kind": "root",
+            "object": arm._id,
+            "group": "root",
+            "shape": "circle",
+            "size": 0.3 * H,
+        },
         {"name": "pelvis", "kind": "fk", "joint": "Hips", "group": "spine", "shape": "cube"},
         {"name": "chest", "kind": "fk", "joint": "Chest", "group": "spine", "shape": "circle"},
         {"name": "head", "kind": "fk", "joint": "Head", "group": "head", "shape": "circle"},
-    ]  # fmt: skip
+    ]
     made = []
     cons = []
 
     def empty(label: str, m: np.ndarray, shape: str, size: float) -> Any:
         p, q, _ = decompose(m)
         q = q if q[3] >= 0 else -q
-        obj = system.scene.add_object(_unique_name(system.scene, f"{arm.name} {label}"),
-                                      parent=arm, position=tuple(p.tolist()),
-                                      rotation=tuple(q.tolist()))  # fmt: skip
+        obj = system.scene.add_object(
+            _unique_name(system.scene, f"{arm.name} {label}"),
+            parent=arm,
+            position=tuple(p.tolist()),
+            rotation=tuple(q.tolist()),
+        )
         obj.metadata = {"rig_control": label, "shape": shape, "size": size}
         made.append(obj.name)
         return obj
@@ -522,44 +858,123 @@ def _humanoid_controls(system, arm, model, det) -> tuple[list, list, list]:
         kpole[:3, 3] = knee + FORWARD * 1.5 * leg_len
         t_knee = empty(f"knee_pole.{side}", kpole, "diamond", 0.03 * H)
         cons += [
-            {"name": f"arm_ik.{side}", "type": "ik", "influence": 0.0,
-             "chain": [f"UpperArm.{side}", f"ForeArm.{side}", f"Hand.{side}"],
-             "target": {"object": t_hand._id}, "pole": {"object": t_elbow._id},
-             "solver": "two_bone", "end": "target", "bend_axis": "+x"},
-            {"name": f"leg_ik.{side}", "type": "ik", "influence": 0.0,
-             "chain": [f"Thigh.{side}", f"Shin.{side}", f"Foot.{side}"],
-             "target": {"object": t_foot._id}, "pole": {"object": t_knee._id},
-             "solver": "two_bone", "end": "target", "bend_axis": "+x"},
-        ]  # fmt: skip
+            {
+                "name": f"arm_ik.{side}",
+                "type": "ik",
+                "influence": 0.0,
+                "chain": [f"UpperArm.{side}", f"ForeArm.{side}", f"Hand.{side}"],
+                "target": {"object": t_hand._id},
+                "pole": {"object": t_elbow._id},
+                "solver": "two_bone",
+                "end": "target",
+                "bend_axis": "+x",
+            },
+            {
+                "name": f"leg_ik.{side}",
+                "type": "ik",
+                "influence": 0.0,
+                "chain": [f"Thigh.{side}", f"Shin.{side}", f"Foot.{side}"],
+                "target": {"object": t_foot._id},
+                "pole": {"object": t_knee._id},
+                "solver": "two_bone",
+                "end": "target",
+                "bend_axis": "+x",
+            },
+        ]
         mirror = "R" if side == "L" else "L"
         ctrl += [
-            {"name": f"hand_ik.{side}", "kind": "ik_target", "object": t_hand._id,
-             "joint": f"Hand.{side}", "constraint": f"arm_ik.{side}", "group": group_a,
-             "side": side, "shape": "cube", "size": 0.06 * H, "mirror": f"hand_ik.{mirror}"},
-            {"name": f"elbow_pole.{side}", "kind": "pole", "object": t_elbow._id,
-             "joint": f"ForeArm.{side}", "constraint": f"arm_ik.{side}", "group": group_a,
-             "side": side, "shape": "diamond", "size": 0.03 * H,
-             "mirror": f"elbow_pole.{mirror}"},
-            {"name": f"foot_ik.{side}", "kind": "ik_target", "object": t_foot._id,
-             "joint": f"Foot.{side}", "constraint": f"leg_ik.{side}", "group": group_l,
-             "side": side, "shape": "cube", "size": 0.07 * H, "mirror": f"foot_ik.{mirror}"},
-            {"name": f"knee_pole.{side}", "kind": "pole", "object": t_knee._id,
-             "joint": f"Shin.{side}", "constraint": f"leg_ik.{side}", "group": group_l,
-             "side": side, "shape": "diamond", "size": 0.03 * H, "mirror": f"knee_pole.{mirror}"},
-        ]  # fmt: skip
-        for jn, grp in ((f"UpperArm.{side}", group_a), (f"ForeArm.{side}", group_a),
-                        (f"Hand.{side}", group_a), (f"Thigh.{side}", group_l),
-                        (f"Shin.{side}", group_l), (f"Foot.{side}", group_l)):  # fmt: skip
-            ctrl.append({"name": f"{jn.split('.')[0].lower()}_fk.{side}", "kind": "fk",
-                         "joint": jn, "group": grp, "side": side})  # fmt: skip
+            {
+                "name": f"hand_ik.{side}",
+                "kind": "ik_target",
+                "object": t_hand._id,
+                "joint": f"Hand.{side}",
+                "constraint": f"arm_ik.{side}",
+                "group": group_a,
+                "side": side,
+                "shape": "cube",
+                "size": 0.06 * H,
+                "mirror": f"hand_ik.{mirror}",
+            },
+            {
+                "name": f"elbow_pole.{side}",
+                "kind": "pole",
+                "object": t_elbow._id,
+                "joint": f"ForeArm.{side}",
+                "constraint": f"arm_ik.{side}",
+                "group": group_a,
+                "side": side,
+                "shape": "diamond",
+                "size": 0.03 * H,
+                "mirror": f"elbow_pole.{mirror}",
+            },
+            {
+                "name": f"foot_ik.{side}",
+                "kind": "ik_target",
+                "object": t_foot._id,
+                "joint": f"Foot.{side}",
+                "constraint": f"leg_ik.{side}",
+                "group": group_l,
+                "side": side,
+                "shape": "cube",
+                "size": 0.07 * H,
+                "mirror": f"foot_ik.{mirror}",
+            },
+            {
+                "name": f"knee_pole.{side}",
+                "kind": "pole",
+                "object": t_knee._id,
+                "joint": f"Shin.{side}",
+                "constraint": f"leg_ik.{side}",
+                "group": group_l,
+                "side": side,
+                "shape": "diamond",
+                "size": 0.03 * H,
+                "mirror": f"knee_pole.{mirror}",
+            },
+        ]
+        for jn, grp in (
+            (f"UpperArm.{side}", group_a),
+            (f"ForeArm.{side}", group_a),
+            (f"Hand.{side}", group_a),
+            (f"Thigh.{side}", group_l),
+            (f"Shin.{side}", group_l),
+            (f"Foot.{side}", group_l),
+        ):
+            ctrl.append(
+                {
+                    "name": f"{jn.split('.')[0].lower()}_fk.{side}",
+                    "kind": "fk",
+                    "joint": jn,
+                    "group": grp,
+                    "side": side,
+                }
+            )
     head = model["Head"]
     gaze_m = np.eye(4)
     gaze_m[:3, 3] = head[:3, 3] + FORWARD * 1.2 * H
     t_gaze = empty("gaze", gaze_m, "sphere", 0.05 * H)
-    cons.append({"name": "gaze", "type": "look_at", "joint": "Head", "influence": 0.0,
-                 "target": {"object": t_gaze._id}, "axis": "+z", "up": "+y",
-                 "world_up": [0.0, 0.0, 1.0]})  # fmt: skip
-    ctrl.append({"name": "gaze", "kind": "gaze", "object": t_gaze._id, "joint": "Head",
-                 "constraint": "gaze", "group": "head", "shape": "sphere",
-                 "size": 0.05 * H})  # fmt: skip
+    cons.append(
+        {
+            "name": "gaze",
+            "type": "look_at",
+            "joint": "Head",
+            "influence": 0.0,
+            "target": {"object": t_gaze._id},
+            "axis": "+z",
+            "up": "+y",
+            "world_up": [0.0, 0.0, 1.0],
+        }
+    )
+    ctrl.append(
+        {
+            "name": "gaze",
+            "kind": "gaze",
+            "object": t_gaze._id,
+            "joint": "Head",
+            "constraint": "gaze",
+            "group": "head",
+            "shape": "sphere",
+            "size": 0.05 * H,
+        }
+    )
     return ctrl, made, cons

@@ -224,6 +224,7 @@ class Chain:
     sizes: np.ndarray  # voxels per slice piece
     junction: np.ndarray | None  # where the branch splits off the body (None: not found)
     reason: str
+    components: tuple = ()  # the Reeb pieces the branch is made of
 
 
 class Reeb:
@@ -295,7 +296,9 @@ class Reeb:
         front = {int(self.comp_of[voxel])}
         cents, sizes = [], []
         reason, junction = "the core", None
+        visited: list[int] = []
         while front:
+            visited.extend(front)
             members = np.array(sorted(front))
             sz = self.size[members]
             cents.append((self.centroid[members] * sz[:, None]).sum(axis=0) / max(sz.sum(), 1))
@@ -317,7 +320,7 @@ class Reeb:
                 junction = self.centroid[max(inner, key=lambda p: self.size[p])]
                 break
             front = inner
-        return Chain(np.array(cents), np.array(sizes), junction, reason)
+        return Chain(np.array(cents), np.array(sizes), junction, reason, tuple(visited))
 
 
 def _arc(points: np.ndarray) -> np.ndarray:
@@ -418,9 +421,12 @@ def detect(
     counts = np.bincount(lab, minlength=ncomp)
     main = int(np.argmax(counts))
     if ncomp > 1:
-        det.diag("DETACHED_PARTS", "info",
-                 f"{ncomp - 1} parts do not touch the body; they are not measured",
-                 parts=int(ncomp - 1))  # fmt: skip
+        det.diag(
+            "DETACHED_PARTS",
+            "info",
+            f"{ncomp - 1} parts do not touch the body; they are not measured",
+            parts=int(ncomp - 1),
+        )
     keep = lab == main
     # Facing and symmetry plane.
     sub = centers[keep][:: max(1, int(keep.sum()) // 40000)]
@@ -432,9 +438,12 @@ def detect(
         f_c, how, conf_f = _facing(centers[keep], n, height, template)
         det.info["facing"] = how
         if conf_f < 0.6:
-            det.diag("FORWARD_AMBIGUOUS", "warning",
-                     f"the facing is uncertain ({how}); pass forward= to fix it",
-                     confidence=round(conf_f, 2))  # fmt: skip
+            det.diag(
+                "FORWARD_AMBIGUOUS",
+                "warning",
+                f"the facing is uncertain ({how}); pass forward= to fix it",
+                confidence=round(conf_f, 2),
+            )
     else:
         fw = _axis(forward, "forward")
         f_c = fw @ rot0.T
@@ -455,9 +464,13 @@ def detect(
     shift = np.array([proj[0], proj[1], 0.0])
     c_centers = (centers - shift) @ to_c.T
     if sym < 0.75:
-        det.diag("ASYMMETRIC_BODY", "info",
-                 f"only {sym:.0%} of the body mirrors onto itself; left and right are measured "
-                 "separately", symmetry=round(sym, 3))  # fmt: skip
+        det.diag(
+            "ASYMMETRIC_BODY",
+            "info",
+            f"only {sym:.0%} of the body mirrors onto itself; left and right are measured "
+            "separately",
+            symmetry=round(sym, 3),
+        )
     if template == "blocky":
         _blocky(det, grid, c_centers, solid_flat, keep, height)
     elif template == "quadruped":
@@ -534,9 +547,13 @@ def _symmetrize(det: Detection, height: float) -> None:
             a.position, b.position = mean, mean * flip
             a.confidence = b.confidence = conf
         else:
-            det.diag("ASYMMETRIC_LANDMARK", "info",
-                     f"{base} differs between sides by {diff:.3f} (kept as measured)",
-                     landmark=base, difference=round(diff, 4))  # fmt: skip
+            det.diag(
+                "ASYMMETRIC_LANDMARK",
+                "info",
+                f"{base} differs between sides by {diff:.3f} (kept as measured)",
+                landmark=base,
+                difference=round(diff, 4),
+            )
 
 
 # --------------------------------------------------------------------------------------- #
@@ -573,8 +590,9 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame) -> None:
     agrid, a_flat, a_centers, contacts = _analysis_solid(grid, solid_flat, centers, keep)
     det.info["contacts_broken"] = contacts
     z = a_centers[:, 2]
-    a_depth = V.geodesic(agrid, [np.flatnonzero(agrid.surface.transpose(2, 1, 0).reshape(-1))],
-                         a_flat)[:, 0].astype(np.float64)  # fmt: skip
+    a_depth = V.geodesic(
+        agrid, [np.flatnonzero(agrid.surface.transpose(2, 1, 0).reshape(-1))], a_flat
+    )[:, 0].astype(np.float64)
     band = (z > 0.45 * H) & (z < 0.75 * H) & (np.abs(a_centers[:, 0]) < 0.12 * H)
     if not band.any():
         band = np.ones(len(z), bool)
@@ -618,18 +636,34 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame) -> None:
         if cand:
             foot[side] = max(cand, key=lambda x: g_core[x[0]])
     for x in others:
-        det.diag("EXTRA_EXTREMITY", "info",
-                 "a protrusion that is not a head, hand or foot (a tail, a weapon, hair...)",
-                 position=[round(float(v), 3) for v in det.world(a_centers[x[0]])])  # fmt: skip
+        det.diag(
+            "EXTRA_EXTREMITY",
+            "info",
+            "a protrusion that is not a head, hand or foot (a tail, a weapon, hair...)",
+            position=[round(float(v), 3) for v in det.world(a_centers[x[0]])],
+        )
     slice_units = 5  # (a slice is 5/3 voxels thick)
     reeb = Reeb(agrid, a_centers, a_flat, g_units, slice_units)
     debug = det.info.setdefault("_debug", {"chains": {}})
-    debug.update(centers=centers[keep], extremities=[a_centers[e] for e, _ in extremities],
-                 core=a_centers[core])  # fmt: skip
+    debug.update(
+        centers=centers[keep],
+        extremities=[a_centers[e] for e, _ in extremities],
+        core=a_centers[core],
+    )
+
+    regions: dict[str, Any] = {}
 
     def branch(voxel: int, label: str) -> Chain:
         ch = reeb.branch(voxel, 0.1 * H)
         debug["chains"][label] = ch
+        if label not in regions and ch.components:
+            members = np.isin(reeb.comp_of, np.array(ch.components))
+            r = float(np.median(np.sqrt(np.maximum(ch.sizes[len(ch.sizes) // 3 :], 1.0))))
+            regions[label] = {
+                "voxels": a_flat[members],
+                "end": ch.centroids[-1],
+                "radius": r * grid.h / 1.6,
+            }
         return ch
 
     sections = _Sections(centers[keep], grid.h)
@@ -650,8 +684,17 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame) -> None:
             continue
         e, _ = foot[side]
         ch = branch(e, f"leg.{side}")
-        _leg(det, side, sign, ch, _tip(a_centers[e], ch, grid.h), centers[keep], sections, H,
-             float(a_centers[core][2]))  # fmt: skip
+        _leg(
+            det,
+            side,
+            sign,
+            ch,
+            _tip(a_centers[e], ch, grid.h),
+            centers[keep],
+            sections,
+            H,
+            float(a_centers[core][2]),
+        )
     # Arms.
     for side, sign in (("L", 1.0), ("R", -1.0)):
         if side not in hands:
@@ -663,6 +706,12 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame) -> None:
         ch = branch(e, f"arm.{side}")
         _arm(det, side, sign, ch, _tip(a_centers[e], ch, grid.h), sections, H)
     _spine(det, centers, keep, H)
+    det.info["_regions"] = {
+        "parts": regions,
+        "torso": a_flat,
+        "solid": solid_flat[keep],
+        "grid": (grid.origin.copy(), grid.h, grid.dims, to_c, shift),
+    }
     sh, wr = det.landmarks.get("shoulder.L"), det.landmarks.get("wrist.L")
     if sh is not None and wr is not None:
         d = wr.position - sh.position
@@ -815,9 +864,13 @@ def _leg(det, side, sign, ch: Chain, toe_tip, centers, sections, H, core_z: floa
             "the legs join below the hips: below the hips' widest section",
             "section",
         )
-        det.diag("LEGS_FUSED", "info",
-                 f"the {side} leg joins the body below the hips; the hip sits below the "
-                 "hips' widest section", leg=side)  # fmt: skip
+        det.diag(
+            "LEGS_FUSED",
+            "info",
+            f"the {side} leg joins the body below the hips; the hip sits below the "
+            "hips' widest section",
+            leg=side,
+        )
     # The knee: the strongest bend if the rest pose bends, else the proportion by height.
     frac = (PRIOR["knee"] - PRIOR["ankle"]) / (PRIOR["hip"] - PRIOR["ankle"])
     k_h = int(np.argmin(np.abs(pts[:, 2] - hip[2]))) if pts[-1][2] >= hip[2] else len(pts) - 1
@@ -933,11 +986,20 @@ def _arm_prior(det, side, sign, H) -> None:
     z = PRIOR["shoulder"] * H
     det.add(f"shoulder.{side}", [x, 0, z], 0.3, "proportion", "prior (arms down)")
     det.add(f"elbow.{side}", [x, 0, z - PRIOR["upper_arm"] * H], 0.3, "proportion", "prior")
-    det.add(f"wrist.{side}", [x, 0, z - (PRIOR["upper_arm"] + PRIOR["forearm"]) * H], 0.3,
-            "proportion", "prior")  # fmt: skip
-    det.add(f"hand_tip.{side}",
-            [x, 0, z - (PRIOR["upper_arm"] + PRIOR["forearm"] + PRIOR["hand"]) * H], 0.3,
-            "proportion", "prior")  # fmt: skip
+    det.add(
+        f"wrist.{side}",
+        [x, 0, z - (PRIOR["upper_arm"] + PRIOR["forearm"]) * H],
+        0.3,
+        "proportion",
+        "prior",
+    )
+    det.add(
+        f"hand_tip.{side}",
+        [x, 0, z - (PRIOR["upper_arm"] + PRIOR["forearm"] + PRIOR["hand"]) * H],
+        0.3,
+        "proportion",
+        "prior",
+    )
 
 
 def _head(det, ch: Chain, tip, H) -> None:
@@ -967,8 +1029,13 @@ def _head(det, ch: Chain, tip, H) -> None:
     neck = pts[k_b].copy()
     det.add("head_top", tip, 0.9, "extremity", "the top of the head")
     det.add("head", head, 0.7, "narrowest", "the top of the neck, where the head widens")
-    det.add("neck", neck, 0.7 if k_b < n - 1 else 0.5, "widening",
-            "the neck's base, where the section widens into the shoulders")  # fmt: skip
+    det.add(
+        "neck",
+        neck,
+        0.7 if k_b < n - 1 else 0.5,
+        "widening",
+        "the neck's base, where the section widens into the shoulders",
+    )
 
 
 def _spine(det, centers, keep, H) -> None:
@@ -992,8 +1059,7 @@ def _spine(det, centers, keep, H) -> None:
     det.add("chest", out[2], 0.65, "section_centroid", "70 % up the torso, centred in its section")
     for side, sign in (("L", 1.0), ("R", -1.0)):
         sh = lm[f"shoulder.{side}"].position
-        base = np.array([sign * 0.02 * H, 0.5 * (neck[1] + sh[1]) - 0.005 * H,
-                         neck[2] - 0.035 * H])  # fmt: skip
+        base = np.array([sign * 0.02 * H, 0.5 * (neck[1] + sh[1]) - 0.005 * H, neck[2] - 0.035 * H])
         det.add(
             f"clavicle.{side}", base, 0.6, "between", "beside the neck's base, toward the shoulder"
         )
@@ -1019,19 +1085,44 @@ def _blocky(det, grid, centers, solid_flat, keep, H) -> None:
         arm = body & (sign * x > torso_w * 0.98)
         if arm.any():
             ax = float(np.median(x[arm]))
-            det.add(f"shoulder.{side}", [ax, 0, body_top - 0.05 * H], 0.8, "block",
-                    "the top of the arm block, on its axis")  # fmt: skip
-            det.add(f"hand_tip.{side}", [ax, 0, float(z[arm].min())], 0.8, "block",
-                    "the bottom of the arm block")  # fmt: skip
+            det.add(
+                f"shoulder.{side}",
+                [ax, 0, body_top - 0.05 * H],
+                0.8,
+                "block",
+                "the top of the arm block, on its axis",
+            )
+            det.add(
+                f"hand_tip.{side}",
+                [ax, 0, float(z[arm].min())],
+                0.8,
+                "block",
+                "the bottom of the arm block",
+            )
         else:
-            det.add(f"shoulder.{side}", [sign * torso_w * 1.25, 0, body_top - 0.05 * H], 0.3,
-                    "proportion", "no arm block found")  # fmt: skip
-            det.add(f"hand_tip.{side}", [sign * torso_w * 1.25, 0, leg_top], 0.3, "proportion",
-                    "no arm block found")  # fmt: skip
+            det.add(
+                f"shoulder.{side}",
+                [sign * torso_w * 1.25, 0, body_top - 0.05 * H],
+                0.3,
+                "proportion",
+                "no arm block found",
+            )
+            det.add(
+                f"hand_tip.{side}",
+                [sign * torso_w * 1.25, 0, leg_top],
+                0.3,
+                "proportion",
+                "no arm block found",
+            )
         leg = legs & (sign * x > 0)
         lx = float(np.median(x[leg])) if leg.any() else sign * 0.5 * torso_w
-        det.add(f"hip.{side}", [lx, 0, leg_top], 0.8 if leg.any() else 0.3, "block",
-                "the top of the leg block")  # fmt: skip
+        det.add(
+            f"hip.{side}",
+            [lx, 0, leg_top],
+            0.8 if leg.any() else 0.3,
+            "block",
+            "the top of the leg block",
+        )
         det.add(f"toe_tip.{side}", [lx, -0.06 * H, 0.0], 0.6, "block", "the front of the leg block")
         det.add(f"heel.{side}", [lx, 0.06 * H, 0.0], 0.6, "block", "the back of the leg block")
     del grid, solid_flat
@@ -1053,8 +1144,13 @@ def _quadruped(det, grid, centers, solid_flat, keep, H) -> None:
     headpart = keep & (y < front + 0.15 * length) & (z > body_z)
     if headpart.any():
         hp = centers[headpart]
-        det.add("head", hp.mean(axis=0) + [0, 0.25 * (hp[:, 1].max() - hp[:, 1].min()), 0], 0.6,
-                "body", "the head's back")  # fmt: skip
+        det.add(
+            "head",
+            hp.mean(axis=0) + [0, 0.25 * (hp[:, 1].max() - hp[:, 1].min()), 0],
+            0.6,
+            "body",
+            "the head's back",
+        )
         det.add("head_top", hp[np.argmin(hp[:, 1])], 0.7, "extremity", "the snout")
     else:
         det.add("head", [0, front, body_z + 0.2 * H], 0.3, "proportion", "no head found")
@@ -1064,8 +1160,10 @@ def _quadruped(det, grid, centers, solid_flat, keep, H) -> None:
     if tail.any():
         tp = centers[tail]
         det.add("tail_tip", tp[np.argmax(tp[:, 1])], 0.6, "extremity", "the tail's tip")
-    for end, (y0, y1) in (("front", (front, front + 0.45 * length)),
-                          ("back", (front + 0.55 * length, back))):  # fmt: skip
+    for end, (y0, y1) in (
+        ("front", (front, front + 0.45 * length)),
+        ("back", (front + 0.55 * length, back)),
+    ):
         for side, sign in (("L", 1.0), ("R", -1.0)):
             leg = keep & (z < 0.45 * H) & (y >= y0) & (y <= y1) & (sign * centers[:, 0] > 0)
             if leg.any():

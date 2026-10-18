@@ -357,6 +357,7 @@ def generate_weights(
     max_seconds: float | None = None,
     bind: bool = True,
     context: list[Any] | None = None,
+    allowed: np.ndarray | None = None,
 ) -> dict[str, Any]:
     """Compute skin weights for ``mesh_object`` from ``armature``'s rig and (``bind``)
     bind it -- one undo step. ``context``: more mesh objects voxelized with it (a body
@@ -367,8 +368,9 @@ def generate_weights(
     if policy not in POLICIES:
         raise _err("INVALID_ARGUMENT", f"policy is one of {', '.join(POLICIES)}", "policy")
     if rigid_parts not in RIGID_PARTS:
-        raise _err("INVALID_ARGUMENT", f"rigid_parts is one of {', '.join(RIGID_PARTS)}",
-                   "rigid_parts")  # fmt: skip
+        raise _err(
+            "INVALID_ARGUMENT", f"rigid_parts is one of {', '.join(RIGID_PARTS)}", "rigid_parts"
+        )
     pol = dict(POLICIES[policy])
     k = pol["influences"] if influences is None else _int(influences, "influences", 1, 8)
     iterations = pol["smooth"] if smooth is None else _int(smooth, "smooth", 0, 200)
@@ -464,9 +466,24 @@ def generate_weights(
     dense = _normalize_rows(dense)
     # Only the nearest bone and its neighbours in the skeleton (within ``hops``) may
     # weigh on a vertex: the other thigh never reaches across the pelvis.
-    allowed = None
+    region = None
+    if allowed is not None:  # (body-part regions: which joints may weigh where)
+        factor = np.array(allowed, np.float64)
+        if factor.shape != dense.shape or not np.all((factor >= 0) & (factor <= 1)):
+            raise _err("INVALID_ARGUMENT", f"allowed is ({n}, {m}) factors 0..1", "allowed")
+        report["regions"] = "joints keep to their body part, fading across its junction"
+        factor[rigid_rows] = 1.0  # (rigid parts keep their joint)
+        orig = dense
+        dense = dense * factor
+        empty = dense.sum(axis=1) <= 0
+        if empty.any():  # (a vertex its region gives no reachable joint keeps them all)
+            factor[empty] = 1.0
+            dense[empty] = orig[empty]
+        region = factor > 0
+    allowed = region
     if hops and policy != "rigid":
-        allowed = _neighbourhood(ctx, np.argmax(dense, axis=1), hops)
+        near = _neighbourhood(ctx, _nearest_allowed(dense, dist, region), hops)
+        allowed = near if allowed is None else allowed & near
     if sides == "auto" and policy != "rigid":
         side_ok = _sides(ctx)
         if side_ok is not None:
@@ -506,13 +523,29 @@ def generate_weights(
         if method_skin == "blended" and dq is None and old is not None:
             dq = old._definition.dq
         report["skin"] = system.skin(
-            ctx.obj, ctx.arm, weights={"indices": idx, "weights": w, "joints": names},
-            influences=k, method=method_skin, dq=dq,
-        )  # fmt: skip
+            ctx.obj,
+            ctx.arm,
+            weights={"indices": idx, "weights": w, "joints": names},
+            influences=k,
+            method=method_skin,
+            dq=dq,
+        )
     else:
         report["dense"] = dense
         report["joint_names"] = [ctx.rig.joints[j].name for j in ctx.joints]
     return report
+
+
+def _nearest_allowed(dense: np.ndarray, dist: np.ndarray, region: np.ndarray | None):
+    """Each vertex's nearest joint (by distance) among those its region allows."""
+    d = np.where(np.isfinite(dist), dist, np.inf)
+    if region is not None:
+        d = np.where(region, d, np.inf)
+    out = np.argmin(d, axis=1)
+    none = ~np.isfinite(d.min(axis=1))
+    if none.any():
+        out[none] = np.argmax(dense[none], axis=1)
+    return out
 
 
 def _neighbourhood(ctx: _Context, nearest: np.ndarray, hops: int) -> np.ndarray:
@@ -690,8 +723,9 @@ class _Edit:
         self.arm = system.scene._objects[self.rig.object]
         n, m = self.skin.vertex_count, len(self.skin.joints)
         if n * m > MAX_DENSE:
-            raise _err("LIMIT_EXCEEDED", f"{n} x {m} weights are too many to edit at once",
-                       "mesh_object")  # fmt: skip
+            raise _err(
+                "LIMIT_EXCEEDED", f"{n} x {m} weights are too many to edit at once", "mesh_object"
+            )
         self.w = self.skin.dense()
         self.palette = list(self.skin.joints)  # joint ids
         self.names = [self.rig.joints[self.rig.index_of_id(j)].name for j in self.palette]
@@ -802,8 +836,9 @@ class _Edit:
         if "role" in raw:
             k = self.rig.role_index(raw["role"])
             if k is None:
-                raise _err("JOINT_MISSING", f"no joint has the role {raw['role']!r}",
-                           f"{location}.role")  # fmt: skip
+                raise _err(
+                    "JOINT_MISSING", f"no joint has the role {raw['role']!r}", f"{location}.role"
+                )
             ids = {self.rig.joints[k].id}
             if raw.get("descendants", False):
                 ids |= {self.rig.joints[d].id for d in self.rig.descendants(k)}
@@ -819,8 +854,9 @@ class _Edit:
         if "near_joint" in raw:
             k = self.rig.index(raw["near_joint"])
             if k is None:
-                raise _err("JOINT_MISSING", f"no joint {raw['near_joint']!r}",
-                           f"{location}.near_joint")  # fmt: skip
+                raise _err(
+                    "JOINT_MISSING", f"no joint {raw['near_joint']!r}", f"{location}.near_joint"
+                )
             c = (self.a_world @ self.rig.rest_model()[k])[:3, 3]
             r = _number(raw.get("radius"), f"{location}.radius", 0.0)
             return self._distance(c, raw.get("distance", "euclidean"), r, location) <= r
@@ -847,8 +883,9 @@ class _Edit:
         if raw is None:
             return np.ones(n)
         if not isinstance(raw, dict):
-            raise _err("INVALID_ARGUMENT", "falloff is {center | joint, radius, curve, distance}",
-                       location)  # fmt: skip
+            raise _err(
+                "INVALID_ARGUMENT", "falloff is {center | joint, radius, curve, distance}", location
+            )
         if "joint" in raw:
             k = self.rig.index(raw["joint"])
             if k is None:
@@ -859,8 +896,9 @@ class _Edit:
         r = _number(raw.get("radius"), f"{location}.radius", 1e-9)
         curve = raw.get("curve", "smooth")
         if curve not in CURVES:
-            raise _err("INVALID_ARGUMENT", f"curve is one of {', '.join(CURVES)}",
-                       f"{location}.curve")  # fmt: skip
+            raise _err(
+                "INVALID_ARGUMENT", f"curve is one of {', '.join(CURVES)}", f"{location}.curve"
+            )
         d = self._distance(center, raw.get("distance", "euclidean"), r, location)
         u = np.clip(d / r, 0.0, 1.0)
         f = {
@@ -896,8 +934,12 @@ class _Edit:
         }[op]
         unknown = set(raw) - allowed - {"op"}
         if unknown:
-            raise _err("INVALID_ARGUMENT", f"unknown arguments {sorted(unknown)} of {op}",
-                       location, hint=f"arguments: {', '.join(sorted(allowed))}")  # fmt: skip
+            raise _err(
+                "INVALID_ARGUMENT",
+                f"unknown arguments {sorted(unknown)} of {op}",
+                location,
+                hint=f"arguments: {', '.join(sorted(allowed))}",
+            )
         sel = self.select(raw.get("select"), f"{location}.select")
         getattr(self, f"_op_{op}")(raw, sel, location)
 
@@ -936,8 +978,14 @@ class _Edit:
         current = self.w[rows, c]
         target = fn(current, f[rows])
         stuck = self._set_joint(c, target, rows)
-        self.notes.append({"op": raw["op"], "joint": self.names[c], "vertices": int(rows.sum()),
-                           **({"no_recipient": stuck} if stuck else {})})  # fmt: skip
+        self.notes.append(
+            {
+                "op": raw["op"],
+                "joint": self.names[c],
+                "vertices": int(rows.sum()),
+                **({"no_recipient": stuck} if stuck else {}),
+            }
+        )
 
     def _op_assign(self, raw, sel, loc):
         v = _number(raw.get("value", 1.0), f"{loc}.value", 0.0, 1.0)
@@ -965,8 +1013,14 @@ class _Edit:
         moved = self.w[rows, a] * f[rows]
         self.w[rows, b] += moved
         self.w[rows, a] -= moved
-        self.notes.append({"op": "replace", "from": self.names[a], "to": self.names[b],
-                           "weight_moved": round(float(moved.sum()), 6)})  # fmt: skip
+        self.notes.append(
+            {
+                "op": "replace",
+                "from": self.names[a],
+                "to": self.names[b],
+                "weight_moved": round(float(moved.sum()), 6),
+            }
+        )
 
     def _op_normalize(self, raw, sel, loc):
         rows = self._editable(sel)
@@ -1008,8 +1062,9 @@ class _Edit:
     def _op_mirror(self, raw, sel, loc):
         side = raw.get("from", "+x")
         if side not in ("+x", "-x"):
-            raise _err("INVALID_ARGUMENT", "from is '+x' (the character's left) or '-x'",
-                       f"{loc}.from")  # fmt: skip
+            raise _err(
+                "INVALID_ARGUMENT", "from is '+x' (the character's left) or '-x'", f"{loc}.from"
+            )
         tol = _number(raw.get("tolerance", 0.002), f"{loc}.tolerance", 0.0, 1.0)
         # Armature space: the rig's mirror plane is x = 0.
         inv = np.linalg.inv(self.a_world)
@@ -1033,15 +1088,15 @@ class _Edit:
         for c in range(srcw.shape[1]):
             new[:, mapping[c]] += srcw[:, c]
         self.w[dst_idx[ok]] = new
-        self.notes.append({"op": "mirror", "matched": int(ok.sum()),
-                           "unmatched": int((~ok).sum())})  # fmt: skip
+        self.notes.append({"op": "mirror", "matched": int(ok.sum()), "unmatched": int((~ok).sum())})
 
     def _op_rigid(self, raw, sel, loc):
         rows = self._editable(sel)
         per = raw.get("per", "selection")
         if per not in ("selection", "component", "vertex"):
-            raise _err("INVALID_ARGUMENT", "per is 'selection', 'component' or 'vertex'",
-                       f"{loc}.per")  # fmt: skip
+            raise _err(
+                "INVALID_ARGUMENT", "per is 'selection', 'component' or 'vertex'", f"{loc}.per"
+            )
         if raw.get("joint") is not None:
             c = self.col(raw["joint"], f"{loc}.joint", add=True)
             self.w[rows] = 0.0
@@ -1052,8 +1107,11 @@ class _Edit:
             self.w[rows] = 0.0
             self.w[np.flatnonzero(rows), dom] = 1.0
             return
-        groups = [rows] if per == "selection" else [
-            rows & (self.comp == c) for c in np.unique(self.comp[rows]).tolist()]  # fmt: skip
+        groups = (
+            [rows]
+            if per == "selection"
+            else [rows & (self.comp == c) for c in np.unique(self.comp[rows]).tolist()]
+        )
         for g in groups:
             if not g.any():
                 continue
@@ -1092,14 +1150,17 @@ class _Edit:
             touched |= np.any(w[:, m0:] != 0.0, axis=1)
         empty = touched & (w.sum(axis=1) <= 0)
         if empty.any():
-            raise _err("INVALID_SKIN", f"{int(empty.sum())} vertices would have no weight",
-                       "operations", hint="assign them to a joint")  # fmt: skip
+            raise _err(
+                "INVALID_SKIN",
+                f"{int(empty.sum())} vertices would have no weight",
+                "operations",
+                hint="assign them to a joint",
+            )
         k_old = int(old.indices.shape[1])
         wt = w[touched]
         if wt.size:
             limit = min(8, max(self.k, 1))
-            wt = _cap_keep_locked(wt, max(limit, int((wt > 0).sum(axis=1).max())),
-                                  self.locked_cols)  # fmt: skip
+            wt = _cap_keep_locked(wt, max(limit, int((wt > 0).sum(axis=1).max())), self.locked_cols)
             if int((wt > 0).sum(axis=1).max()) > 8:
                 wt = _cap_keep_locked(wt, 8, self.locked_cols)
             k_t = int((wt > 0).sum(axis=1).max())
@@ -1124,9 +1185,17 @@ class _Edit:
             "vertices": np.flatnonzero(self.locked_rows).tolist(),
         }
         new = make_skin(
-            old.object, old.rig, self.palette, np.array(binds), idx, ww,
-            old.method, "skin", dq=old.dq, locks=locks,
-        )  # fmt: skip
+            old.object,
+            old.rig,
+            self.palette,
+            np.array(binds),
+            idx,
+            ww,
+            old.method,
+            "skin",
+            dq=old.dq,
+            locks=locks,
+        )
         exact = new.weights.copy()
         exact[keep] = ww[keep]  # (make_skin renormalizes every row; untouched rows were)
         exact.flags.writeable = False
@@ -1296,15 +1365,21 @@ def transfer_weights(
     for c in range(n_comp):
         members = comp == c
         parts.append(
-            {"part": c, "vertices": int(members.sum()),
-             "median_distance": round(float(np.median(best_d[members])), 6),
-             "matched": bool(far[members].mean() <= 0.5)}
-        )  # fmt: skip
+            {
+                "part": c,
+                "vertices": int(members.sum()),
+                "median_distance": round(float(np.median(best_d[members])), 6),
+                "matched": bool(far[members].mean() <= 0.5),
+            }
+        )
         if far[members].mean() > 0.5:
             unmatched_parts.append(
-                {"part": c, "vertices": int(members.sum()),
-                 "distance": round(float(np.median(best_d[members])), 6)}
-            )  # fmt: skip
+                {
+                    "part": c,
+                    "vertices": int(members.sum()),
+                    "distance": round(float(np.median(best_d[members])), 6),
+                }
+            )
     if unmatched_parts and unmatched == "refuse":
         raise _err(
             "UNMATCHED_PARTS",
@@ -1331,9 +1406,12 @@ def transfer_weights(
     idx, w = _sparse(dense, k)
     method = skinning or src.skin.method
     report = system.skin(
-        tgt_obj, src.arm, weights={"indices": idx, "weights": w, "joints": src.names},
-        influences=k, method=method if method != "blended" else "linear",
-    )  # fmt: skip
+        tgt_obj,
+        src.arm,
+        weights={"indices": idx, "weights": w, "joints": src.names},
+        influences=k,
+        method=method if method != "blended" else "linear",
+    )
     q = np.quantile(best_d, [0.5, 0.95, 1.0]) if best_d.size else np.zeros(3)
     return {
         "target": tgt_obj.name,
@@ -1346,7 +1424,7 @@ def transfer_weights(
             "mean": round(float(conf.mean()), 4),
             "min": round(float(conf.min()), 4),
             "low_vertices": int((conf < 0.5).sum()),
-        },  # fmt: skip
+        },
         "parts": parts[:64],
         "unmatched_parts": unmatched_parts,
         "skin": report,
@@ -1373,9 +1451,13 @@ def inspect_weights(
     bad_sum = np.flatnonzero(np.abs(total - 1.0) > 1e-6)
     if bad_sum.size:
         findings.append(
-            {"code": "WEIGHTS_NOT_NORMALIZED", "severity": "error",
-             "vertices": bad_sum[:max_list].tolist(), "count": int(bad_sum.size)}
-        )  # fmt: skip
+            {
+                "code": "WEIGHTS_NOT_NORMALIZED",
+                "severity": "error",
+                "vertices": bad_sum[:max_list].tolist(),
+                "count": int(bad_sum.size),
+            }
+        )
     if not np.all(np.isfinite(w)) or (w < 0).any():
         findings.append({"code": "WEIGHTS_INVALID", "severity": "error"})
     # Joint positions in world space at rest (for leakage).
@@ -1420,26 +1502,50 @@ def inspect_weights(
                 info["other_side_vertices"] = int(across.sum())
                 side_rows.extend(np.flatnonzero(across)[:max_list].tolist())
         if not rig.joints[k].deform and used.any():
-            findings.append({"code": "HELPER_JOINT_WEIGHTED", "severity": "warning",
-                             "joint": name, "count": int(used.sum())})  # fmt: skip
+            findings.append(
+                {
+                    "code": "HELPER_JOINT_WEIGHTED",
+                    "severity": "warning",
+                    "joint": name,
+                    "count": int(used.sum()),
+                }
+            )
     if leak_rows:
-        findings.append({"code": "WEIGHT_LEAK", "severity": "warning", "basis": "geometry",
-                         "message": "weights far from where their joint dominates",
-                         "vertices": sorted(set(leak_rows))[:max_list],
-                         "count": len(set(leak_rows))})  # fmt: skip
+        findings.append(
+            {
+                "code": "WEIGHT_LEAK",
+                "severity": "warning",
+                "basis": "geometry",
+                "message": "weights far from where their joint dominates",
+                "vertices": sorted(set(leak_rows))[:max_list],
+                "count": len(set(leak_rows)),
+            }
+        )
     if side_rows:
-        findings.append({"code": "CROSS_SIDE_WEIGHTS", "severity": "warning", "basis": "geometry",
-                         "message": "a left or right joint weighs on the other side",
-                         "vertices": sorted(set(side_rows))[:max_list],
-                         "count": len(set(side_rows))})  # fmt: skip
+        findings.append(
+            {
+                "code": "CROSS_SIDE_WEIGHTS",
+                "severity": "warning",
+                "basis": "geometry",
+                "message": "a left or right joint weighs on the other side",
+                "vertices": sorted(set(side_rows))[:max_list],
+                "count": len(set(side_rows)),
+            }
+        )
     unused = []
     for k in rig.deforming:
         jid = rig.joints[k].id
         if jid not in ed.palette or not w[:, ed.palette.index(jid)].any():
             unused.append(rig.joints[k].name)
     if unused:
-        findings.append({"code": "UNUSED_JOINTS", "severity": "info", "joints": unused[:max_list],
-                         "count": len(unused)})  # fmt: skip
+        findings.append(
+            {
+                "code": "UNUSED_JOINTS",
+                "severity": "info",
+                "joints": unused[:max_list],
+                "count": len(unused),
+            }
+        )
     counts = (w > 0).sum(axis=1)
     out = {
         "mesh": ed.obj.name,

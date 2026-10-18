@@ -300,10 +300,22 @@ def _check_keys(raw: dict, allowed: set[str], location: str) -> None:
 def _op_add_joint(st: _State, raw: dict, loc: str, rig: Any) -> None:
     _check_keys(
         raw,
-        {"name", "parent", "position", "space", "rotation", "euler", "scale", "tail", "role",
-         "deform", "limits", "id"},
+        {
+            "name",
+            "parent",
+            "position",
+            "space",
+            "rotation",
+            "euler",
+            "scale",
+            "tail",
+            "role",
+            "deform",
+            "limits",
+            "id",
+        },
         loc,
-    )  # fmt: skip
+    )
     t = st.table
     name = t.unique(raw.get("name"), f"{loc}.name")
     parent = None if raw.get("parent") is None else t.find(raw["parent"], f"{loc}.parent")
@@ -342,9 +354,19 @@ def _op_add_joint(st: _State, raw: dict, loc: str, rig: Any) -> None:
     if any(r.id == jid for r in t.rows):
         raise _err("INVALID_RIG", "joint ids must be unique", f"{loc}.id")
     t.rows.append(
-        _Row(jid, name, None if parent is None else parent.name, local_p, local_q, scl, tail,
-             limits, raw.get("role"), deform)
-    )  # fmt: skip
+        _Row(
+            jid,
+            name,
+            None if parent is None else parent.name,
+            local_p,
+            local_q,
+            scl,
+            tail,
+            limits,
+            raw.get("role"),
+            deform,
+        )
+    )
     st.added.append(name)
     st.report.append({"op": "add_joint", "joint": name, "position": point.tolist()})
 
@@ -562,8 +584,18 @@ def _op_insert_joint(st: _State, raw: dict, loc: str, rig: Any) -> None:
     m[:3, 3] = a + at * (b - a)
     import uuid
 
-    row = _Row(str(uuid.uuid4()), name, parent.name, np.zeros(3), np.array([0, 0, 0, 1.0]),
-               np.ones(3), None, "null", raw.get("role"), raw.get("deform", True))  # fmt: skip
+    row = _Row(
+        str(uuid.uuid4()),
+        name,
+        parent.name,
+        np.zeros(3),
+        np.array([0, 0, 0, 1.0]),
+        np.ones(3),
+        None,
+        "null",
+        raw.get("role"),
+        raw.get("deform", True),
+    )
     t.rows.append(row)
     t.set_model(row, m, models)
     child_m = models[child.name]
@@ -600,11 +632,17 @@ def _op_split_bone(st: _State, raw: dict, loc: str, rig: Any) -> None:
     for i in range(count - 1, 0, -1):
         _op_insert_joint(
             st,
-            {"op": "insert_joint", "name": names[i - 1], "child": child.name, "at": i / (i + 1),
-             "weights": "split", "blend": blend},
+            {
+                "op": "insert_joint",
+                "name": names[i - 1],
+                "child": child.name,
+                "at": i / (i + 1),
+                "weights": "split",
+                "blend": blend,
+            },
             loc,
             rig,
-        )  # fmt: skip
+        )
         child = t.find(names[i - 1], loc)
     st.report.append({"op": "split_bone", "joint": r.name, "new": names})
 
@@ -686,8 +724,18 @@ def _op_mirror_joints(st: _State, raw: dict, loc: str, rig: Any) -> None:
         dst = t.get(target_name)
         if dst is None:
             ident = np.array([0, 0, 0, 1.0])
-            dst = _Row(str(uuid.uuid4()), target_name, parent_name, np.zeros(3), ident,
-                       np.ones(3), None, "null", None, src.deform)  # fmt: skip
+            dst = _Row(
+                str(uuid.uuid4()),
+                target_name,
+                parent_name,
+                np.zeros(3),
+                ident,
+                np.ones(3),
+                None,
+                "null",
+                None,
+                src.deform,
+            )
             t.rows.append(dst)
             made.append(target_name)
             st.added.append(target_name)
@@ -1245,9 +1293,12 @@ class _Plan:
                 report["renamed_channels"] = len(renamed)
             if changed:
                 new_clip = Clip(
-                    clip.target, tuple(sorted(new_items, key=lambda x: x[0])), clip.events,
-                    clip.range, clip.metadata,
-                )  # fmt: skip
+                    clip.target,
+                    tuple(sorted(new_items, key=lambda x: x[0])),
+                    clip.events,
+                    clip.range,
+                    clip.metadata,
+                )
                 self.clip_updates.append((item, new_clip))
                 self.clip_report.append(report)
 

@@ -1209,6 +1209,32 @@ class AnimationSystem:
 
         return pose_character(self, armature, commands, time=time)
 
+    def diagnose_rig(self, armature: Any, **options: Any) -> dict[str, Any]:
+        """Measure a rig, its skins and their deformation under a diagnostic pose suite
+        and over the timeline (read-only); see :mod:`.rig_report`."""
+        from .rig_report import diagnose_rig
+
+        return diagnose_rig(self, armature, **options)
+
+    def propose_rig_fix(self, armature: Any, **options: Any) -> dict[str, Any]:
+        """Correction proposals (operations with a safety class) for the rig's findings."""
+        from .rig_report import propose_rig_fix
+
+        return propose_rig_fix(self, armature, **options)
+
+    def apply_rig_fix(self, armature: Any, fixes: Any, **options: Any) -> dict[str, Any]:
+        """Apply proposals as one undo step, re-measure, and undo what does not improve."""
+        from .rig_report import apply_rig_fix
+
+        return apply_rig_fix(self, armature, fixes, **options)
+
+    def rig_preview(self, armature: Any, **options: Any) -> dict[str, Any]:
+        """A picture of the rigged character: a pose, weight or stretch heatmaps, or the
+        skeleton and controls over it (also as SVG); see :mod:`.rig_preview`."""
+        from .rig_preview import rig_preview
+
+        return rig_preview(self, armature, **options)
+
     def generate_weights(self, mesh_object: Any, armature: Any, **options: Any) -> dict:
         """Automatic skin weights (``method``: ``geodesic`` voxel binding by default,
         ``envelope``, ``nearest``; ``policy``: ``organic``, ``stylized``, ``rigid``) and the

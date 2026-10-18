@@ -261,8 +261,9 @@ def implicit_surface(
         off[axis] = eps
         grad[:, axis] = _field(checked, positions + off) - _field(checked, positions - off)
     nrm = grad / np.maximum(np.linalg.norm(grad, axis=1, keepdims=True), 1e-12)
-    return Mesh(positions.astype(np.float32), triangles.astype(np.uint32),
-                normals=nrm.astype(np.float32))  # fmt: skip
+    return Mesh(
+        positions.astype(np.float32), triangles.astype(np.uint32), normals=nrm.astype(np.float32)
+    )
 
 
 # --------------------------------------------------------------------------------------- #
@@ -318,36 +319,71 @@ def humanoid_shapes(**options: Any) -> list[dict[str, Any]]:
 
     def capsule(a, b, r0, r1=None, blend=0.03 * s):
         rb = r0 if r1 is None else r1
-        shapes.append({"type": "capsule", "a": list(map(float, a)), "b": list(map(float, b)),
-                       "radius": r0, "radius_b": rb, "blend": blend})  # fmt: skip
+        shapes.append(
+            {
+                "type": "capsule",
+                "a": list(map(float, a)),
+                "b": list(map(float, b)),
+                "radius": r0,
+                "radius_b": rb,
+                "blend": blend,
+            }
+        )
 
     def ell(c, r, blend=0.04 * s, rot=None):
-        d = {"type": "ellipsoid", "center": list(map(float, c)), "radii": list(map(float, r)),
-             "blend": blend}  # fmt: skip
+        d = {
+            "type": "ellipsoid",
+            "center": list(map(float, c)),
+            "radii": list(map(float, r)),
+            "blend": blend,
+        }
         if rot is not None:
             d["rotation"] = list(rot)
         shapes.append(d)
 
     # Torso: a backbone capsule (the waist), pelvis, belly, chest and shoulder girdle.
     chest_c = shoulder_z - 0.085 * H
-    capsule([0, 0.0, pelvis_z], [0, 0.0, neck_base - 0.02 * H], 0.075 * H * o["belly"] ** 0.5,
-            0.07 * H, blend=0.06 * s)  # fmt: skip
+    capsule(
+        [0, 0.0, pelvis_z],
+        [0, 0.0, neck_base - 0.02 * H],
+        0.075 * H * o["belly"] ** 0.5,
+        0.07 * H,
+        blend=0.06 * s,
+    )
     ell([0, 0.0, pelvis_z], [0.1 * H * o["hips"], 0.065 * H, 0.07 * H], 0.06 * s)
     belly_c = 0.55 * pelvis_z + 0.45 * chest_c
-    ell([0, -0.006 * H * o["belly"], belly_c],
-        [0.085 * H * max(o["belly"], 0.6), 0.06 * H * o["belly"], 0.09 * H], 0.07 * s)  # fmt: skip
+    ell(
+        [0, -0.006 * H * o["belly"], belly_c],
+        [0.085 * H * max(o["belly"], 0.6), 0.06 * H * o["belly"], 0.09 * H],
+        0.07 * s,
+    )
     ell([0, 0.0, chest_c], [0.1 * H * o["shoulders"], 0.065 * H, 0.1 * H], 0.07 * s)
-    capsule([-sw * 0.9, 0.0, shoulder_z - 0.006 * H], [sw * 0.9, 0.0, shoulder_z - 0.006 * H],
-            0.032 * H * limb, blend=0.06 * s)  # fmt: skip
+    capsule(
+        [-sw * 0.9, 0.0, shoulder_z - 0.006 * H],
+        [sw * 0.9, 0.0, shoulder_z - 0.006 * H],
+        0.032 * H * limb,
+        blend=0.06 * s,
+    )
     # Neck and head (a nose and a jaw make the face readable and the facing measurable).
-    capsule([0, 0.004 * H, neck_base - 0.02 * H], [0, 0.0, chin + 0.02 * H], 0.03 * H * limb,
-            0.027 * H * limb, blend=0.04 * s)  # fmt: skip
+    capsule(
+        [0, 0.004 * H, neck_base - 0.02 * H],
+        [0, 0.0, chin + 0.02 * H],
+        0.03 * H * limb,
+        0.027 * H * limb,
+        blend=0.04 * s,
+    )
     head_rx, head_ry = 0.8 * head_rz, 0.9 * head_rz
     ell([0, 0.0, head_c], [head_rx, head_ry, head_rz], 0.03 * s)
-    ell([0, -head_ry * 0.35, head_c - head_rz * 0.5], [head_rx * 0.7, head_ry * 0.6, head_rz * 0.5],
-        0.03 * s)  # fmt: skip
-    ell([0, -head_ry * 0.98, head_c - head_rz * 0.12],
-        [head_rz * 0.11, head_rz * 0.18, head_rz * 0.17], 0.012 * s)  # fmt: skip
+    ell(
+        [0, -head_ry * 0.35, head_c - head_rz * 0.5],
+        [head_rx * 0.7, head_ry * 0.6, head_rz * 0.5],
+        0.03 * s,
+    )
+    ell(
+        [0, -head_ry * 0.98, head_c - head_rz * 0.12],
+        [head_rz * 0.11, head_rz * 0.18, head_rz * 0.17],
+        0.012 * s,
+    )
     # Arms: shoulder -> elbow -> wrist -> hand, out from hanging by arm_angle.
     upper = 0.186 * H * o["arms"]
     fore = 0.146 * H * o["arms"]
@@ -366,13 +402,22 @@ def humanoid_shapes(**options: Any) -> list[dict[str, Any]]:
         lat = np.cross(d2, fwd)
         lat = lat / max(np.linalg.norm(lat), 1e-9)
         palm = wrist + d2 * hand * 0.32
-        ell(palm, [0.026 * H * limb, 0.012 * H * limb, 0.034 * H], 0.02 * s,
-            _basis_quat(lat, d2))  # fmt: skip
-        capsule(palm + d2 * 0.02 * H, wrist + d2 * hand, 0.017 * H * limb, 0.012 * H * limb,
-                blend=0.02 * s)  # fmt: skip
+        ell(palm, [0.026 * H * limb, 0.012 * H * limb, 0.034 * H], 0.02 * s, _basis_quat(lat, d2))
+        capsule(
+            palm + d2 * 0.02 * H,
+            wrist + d2 * hand,
+            0.017 * H * limb,
+            0.012 * H * limb,
+            blend=0.02 * s,
+        )
         thumb0 = wrist + d2 * 0.022 * H + fwd * 0.014 * H
-        capsule(thumb0, thumb0 + d2 * 0.028 * H + fwd * 0.017 * H, 0.009 * H * limb,
-                0.0075 * H * limb, blend=0.012 * s)  # fmt: skip
+        capsule(
+            thumb0,
+            thumb0 + d2 * 0.028 * H + fwd * 0.017 * H,
+            0.009 * H * limb,
+            0.0075 * H * limb,
+            blend=0.012 * s,
+        )
     # Legs: hip -> knee -> ankle -> foot and toes (feet point forward, -Y).
     kb = math.radians(o["knee_bend"])
     for side in (1.0, -1.0):
@@ -385,8 +430,13 @@ def humanoid_shapes(**options: Any) -> list[dict[str, Any]]:
         heel = ankle + [0, 0.02 * H, -ankle_z + 0.02 * H]
         ball = ankle + [0, -0.075 * H, -ankle_z + 0.017 * H]
         capsule(heel, ball, 0.02 * H * limb, 0.0195 * H * limb, blend=0.03 * s)
-        capsule(ball, ball + [0, -0.035 * H, -0.003 * H], 0.017 * H * limb, 0.014 * H * limb,
-                blend=0.015 * s)  # fmt: skip
+        capsule(
+            ball,
+            ball + [0, -0.035 * H, -0.003 * H],
+            0.017 * H * limb,
+            0.014 * H * limb,
+            blend=0.015 * s,
+        )
     return shapes
 
 
@@ -408,29 +458,65 @@ def quadruped_shapes(*, length: float = 1.2, height: float = 0.8, tail: bool = T
     s = L / 1.2
     body_z = Hh * 0.68
     shapes: list[dict[str, Any]] = [
-        {"type": "ellipsoid", "center": [0, 0, body_z], "radii": [0.17 * s, 0.42 * s, 0.17 * s],
-         "blend": 0.06 * s},
-        {"type": "capsule", "a": [0, -0.36 * s, body_z + 0.05 * s],
-         "b": [0, -0.55 * s, body_z + 0.25 * s], "radius": 0.08 * s, "radius_b": 0.065 * s,
-         "blend": 0.05 * s},
-        {"type": "ellipsoid", "center": [0, -0.64 * s, body_z + 0.3 * s],
-         "radii": [0.085 * s, 0.13 * s, 0.085 * s], "blend": 0.04 * s},
-    ]  # fmt: skip
+        {
+            "type": "ellipsoid",
+            "center": [0, 0, body_z],
+            "radii": [0.17 * s, 0.42 * s, 0.17 * s],
+            "blend": 0.06 * s,
+        },
+        {
+            "type": "capsule",
+            "a": [0, -0.36 * s, body_z + 0.05 * s],
+            "b": [0, -0.55 * s, body_z + 0.25 * s],
+            "radius": 0.08 * s,
+            "radius_b": 0.065 * s,
+            "blend": 0.05 * s,
+        },
+        {
+            "type": "ellipsoid",
+            "center": [0, -0.64 * s, body_z + 0.3 * s],
+            "radii": [0.085 * s, 0.13 * s, 0.085 * s],
+            "blend": 0.04 * s,
+        },
+    ]
     for y in (-0.3 * s, 0.3 * s):
         for side in (1.0, -1.0):
             top = np.array([side * 0.11 * s, y, body_z - 0.05 * s])
             knee = top + [0, 0.03 * s * (1 if y < 0 else -1), -(body_z - 0.05 * s) * 0.5]
             foot = np.array([side * 0.11 * s, y, 0.035 * s])
             shapes += [
-                {"type": "capsule", "a": list(top), "b": list(knee), "radius": 0.06 * s,
-                 "radius_b": 0.042 * s, "blend": 0.05 * s},
-                {"type": "capsule", "a": list(knee), "b": list(foot), "radius": 0.04 * s,
-                 "radius_b": 0.032 * s, "blend": 0.03 * s},
-                {"type": "ellipsoid", "center": list(foot + [0, -0.03 * s, -0.005 * s]),
-                 "radii": [0.04 * s, 0.06 * s, 0.03 * s], "blend": 0.02 * s},
-            ]  # fmt: skip
+                {
+                    "type": "capsule",
+                    "a": list(top),
+                    "b": list(knee),
+                    "radius": 0.06 * s,
+                    "radius_b": 0.042 * s,
+                    "blend": 0.05 * s,
+                },
+                {
+                    "type": "capsule",
+                    "a": list(knee),
+                    "b": list(foot),
+                    "radius": 0.04 * s,
+                    "radius_b": 0.032 * s,
+                    "blend": 0.03 * s,
+                },
+                {
+                    "type": "ellipsoid",
+                    "center": list(foot + [0, -0.03 * s, -0.005 * s]),
+                    "radii": [0.04 * s, 0.06 * s, 0.03 * s],
+                    "blend": 0.02 * s,
+                },
+            ]
     if tail:
-        shapes.append({"type": "capsule", "a": [0, 0.38 * s, body_z + 0.04 * s],
-                       "b": [0, 0.75 * s, body_z + 0.18 * s], "radius": 0.04 * s,
-                       "radius_b": 0.015 * s, "blend": 0.03 * s})  # fmt: skip
+        shapes.append(
+            {
+                "type": "capsule",
+                "a": [0, 0.38 * s, body_z + 0.04 * s],
+                "b": [0, 0.75 * s, body_z + 0.18 * s],
+                "radius": 0.04 * s,
+                "radius_b": 0.015 * s,
+                "blend": 0.03 * s,
+            }
+        )
     return shapes
