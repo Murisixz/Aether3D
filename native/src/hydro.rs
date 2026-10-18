@@ -190,7 +190,11 @@ pub fn sediment(
             }
         } else {
             let mut d = deposition * q / area[c] * a2;
-            let mut top = (if before[c] > after[c] { before[c] } else { after[c] }) + aggradation;
+            let mut top = (if before[c] > after[c] {
+                before[c]
+            } else {
+                after[c]
+            }) + aggradation;
             if low[c] < top {
                 top = low[c];
             }
@@ -227,7 +231,7 @@ pub fn thermal(
     threads: usize,
 ) {
     let n = nx * ny;
-    let sqrt2 = 1.4142135623730951f64;
+    let sqrt2 = std::f64::consts::SQRT_2;
     let mut dist = [0.0f64; 8];
     for (k, (di, dj)) in OFFSETS.iter().enumerate() {
         dist[k] = cell * (if *di != 0 && *dj != 0 { sqrt2 } else { 1.0 });

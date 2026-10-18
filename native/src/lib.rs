@@ -741,7 +741,9 @@ fn priority_flood(
     ny: usize,
     out: &Bound<'_, PyAny>,
 ) -> PyResult<()> {
-    let n = nx.checked_mul(ny).ok_or_else(|| PyValueError::new_err("grid too large"))?;
+    let n = nx
+        .checked_mul(ny)
+        .ok_or_else(|| PyValueError::new_err("grid too large"))?;
     let mut arrays = Arrays::new();
     let hh = arrays.input::<f64>(h, "h", Some(n))?;
     let ol = arrays.input::<u8>(outlet, "outlet", Some(n))?;
@@ -895,14 +897,28 @@ fn thermal(
     out: &Bound<'_, PyAny>,
     threads: usize,
 ) -> PyResult<()> {
-    let n = nx.checked_mul(ny).ok_or_else(|| PyValueError::new_err("grid too large"))?;
+    let n = nx
+        .checked_mul(ny)
+        .ok_or_else(|| PyValueError::new_err("grid too large"))?;
     let mut arrays = Arrays::new();
     let hh = arrays.input::<f64>(h, "h", Some(n))?;
     let o = arrays.output::<f64>(out, "out", Some(n))?;
-    check(iterations <= 100_000, || "iterations: at most 100000".into())?;
+    check(iterations <= 100_000, || {
+        "iterations: at most 100000".into()
+    })?;
     arrays.check_overlaps()?;
     py.detach(|| unsafe {
-        hydro::thermal(hh.slice(), nx, ny, cell, talus_tan, rate, iterations, o.slice(), threads)
+        hydro::thermal(
+            hh.slice(),
+            nx,
+            ny,
+            cell,
+            talus_tan,
+            rate,
+            iterations,
+            o.slice(),
+            threads,
+        )
     });
     drop(arrays);
     Ok(())
