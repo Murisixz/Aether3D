@@ -483,50 +483,66 @@ class World:
                     key=lambda p: math.dist(sites[p[0]]["at"], sites[p[1]]["at"]),
                 )
                 prefix = _unique_prefix(self._definition, f"road-{a}-{b}")
-                plan = plan_road(model, sites[a]["at"], sites[b]["at"], prefix=prefix)
+                done.add(b)
+                try:
+                    plan = plan_road(
+                        model, sites[a]["at"], sites[b]["at"], prefix=prefix, bridges=st["bridges"]
+                    )
+                except WorldError as exc:
+                    summary["roads"].append({"prefix": prefix, "skipped": exc.message})
+                    continue
                 items += plan["items"]
                 features += plan["roads"]
                 summary["roads"].append(
                     {"prefix": prefix, "length": plan["length"], "bridges": len(plan["items"])}
                 )
-                done.add(b)
-        castles = st["castles"]
-        if castles:
+        # Landmarks: castles and towers on high ground, ruins on flat ground.
+        landmarks = (
+            ("castle", st["castles"], 30.0, 18.0, [40.0, 36.0], 60.0, 101),
+            ("tower", st["towers"], 12.0, 24.0, [7.0, 7.0], 20.0, 202),
+            ("ruin", st["ruins"], 12.0, 20.0, [8.0, 6.0], 15.0, 303),
+        )
+        taken = [site["at"] for site in sites]
+        for kind, count, radius, slope, size, clearing, salt in landmarks:
+            if not count:
+                continue
             spots = find_sites(
                 model,
-                castles,
-                kind="castle",
-                radius=30.0,
-                max_slope=max(opts.get("max_slope", 0) or 0, 18.0),
-                seed=seed + 101,
+                count + len(taken),
+                kind="castle" if kind == "tower" else ("village" if kind == "ruin" else kind),
+                radius=radius,
+                max_slope=max(opts.get("max_slope", 0) or 0, slope),
+                seed=seed + salt,
                 spacing=opts.get("spacing"),
                 region=opts.get("region"),
                 biomes=opts.get("biomes"),
             )
-            for k, spot in enumerate(spots):
-                cid = _unique_prefix(self._definition, f"castle-{k}")
+            spots = [p for p in spots if all(math.dist(p["at"], t) > 2 * clearing for t in taken)]
+            for k, spot in enumerate(spots[:count]):
+                sid = _unique_prefix(self._definition, f"{kind}-{k}")
                 items.append(
                     {
-                        "id": cid,
-                        "kind": "castle",
+                        "id": sid,
+                        "kind": kind,
                         "at": spot["at"],
-                        "rotation": 0.0,
-                        "size": [40.0, 36.0],
-                        "floors": 1,
+                        "rotation": round(float(nz_u(seed + salt, k)) * 360.0 - 180.0, 2),
+                        "size": size,
+                        "floors": 2 if kind == "tower" else 1,
                         "style": "stone",
-                        "seed": seed + k,
+                        "seed": seed + salt + k,
                     }
                 )
                 features.append(
                     {
                         "type": "clear",
-                        "id": f"{cid}-clearing",
-                        "shape": {"circle": [spot["at"][0], spot["at"][1], 60.0]},
+                        "id": f"{sid}-clearing",
+                        "shape": {"circle": [spot["at"][0], spot["at"][1], clearing]},
                         "what": ["trees"],
-                        "falloff": 20.0,
+                        "falloff": clearing / 3.0,
                     }
                 )
-                summary["castles"].append({"id": cid, "at": spot["at"]})
+                taken.append(spot["at"])
+                summary.setdefault(f"{kind}s", []).append({"id": sid, "at": spot["at"]})
         if not items and not features:
             return summary
         self._replace_structures([*st["items"], *items], features, "Build settlements")

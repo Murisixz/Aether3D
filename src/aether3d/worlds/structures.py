@@ -1033,6 +1033,7 @@ def plan_road(
     prefix: str,
     cell: float = 16.0,
     max_cells: int = 250_000,
+    bridges: bool = True,
 ) -> dict:
     """A road from ``a`` to ``b`` following the natural terrain: A* over a grid of ``cell``
     metres (cost: distance, times a penalty growing with the square of the grade; water is
@@ -1112,7 +1113,7 @@ def plan_road(
     wet[0] = wet[-1] = False  # (the ends are on land by construction or are kept)
     # Runs on land become roads (simplified); runs over water become bridges from bank to
     # bank, two metres onto each.
-    roads, bridges = [], []
+    roads, bridges_found = [], []
     k = 0
     while k < len(t):
         if not wet[k]:
@@ -1122,10 +1123,10 @@ def plan_road(
         while end < len(t) and wet[end]:
             end += 1
         lo, hi = max(0.0, t[k - 1] - 2.0), min(float(dist[-1]), t[min(end, len(t) - 1)] + 2.0)
-        bridges.append((lo, hi))
+        bridges_found.append((lo, hi))
         k = end
     cuts = [0.0]
-    for lo, hi in bridges:
+    for lo, hi in bridges_found:
         cuts += [lo, hi]
     cuts.append(float(dist[-1]))
     for n in range(0, len(cuts), 2):
@@ -1143,8 +1144,14 @@ def plan_road(
             (float(np.interp(a1, dist, nodes[:, 0])), float(np.interp(a1, dist, nodes[:, 1]))),
         ]
         roads.append(_simplify(line))
+    if bridges_found and not bridges:
+        raise WorldError(
+            "NO_ROUTE",
+            "the road would cross water and structures.bridges is false",
+            "structures.bridges",
+        )
     items = []
-    for lo, hi in bridges:
+    for lo, hi in bridges_found:
         p = (float(np.interp(lo, dist, nodes[:, 0])), float(np.interp(lo, dist, nodes[:, 1])))
         q = (float(np.interp(hi, dist, nodes[:, 0])), float(np.interp(hi, dist, nodes[:, 1])))
         if 2.0 <= math.dist(p, q) <= 400.0:

@@ -186,3 +186,42 @@ def test_roads_bridge_rivers():
     plan = w.route(a, b, cell=8.0)
     assert plan["length"] > 150
     assert any(i["kind"] == "bridge" for i in plan["items"])
+
+
+def test_landmarks_and_the_bridges_setting():
+    scene = Scene("Landmarks")
+    w = scene.worlds.create(
+        "W",
+        "rolling_plains",
+        seed=4,
+        size=4096.0,
+        overrides={**SMALL, "structures": {"towers": 1, "ruins": 1, "castles": 1}},
+    )
+    summary = w.build_settlements(1, houses=[4, 6])
+    kinds = {i["kind"] for i in w.structures()}
+    assert {"castle", "tower", "ruin"} <= kinds and summary["towers"] and summary["ruins"]
+    alps = Scene("Alps").worlds.create(
+        "A",
+        "alpine_valley",
+        seed=7,
+        size=4096.0,
+        overrides={**SMALL, "structures": {"bridges": False}},
+    )
+    reg = alps.runtime.regional()
+    inside = [s for s in reg.segments if max(abs(s[0]), abs(s[1]), abs(s[2]), abs(s[3])) < 1500]
+    seg = max(inside, key=lambda s: max(s[6], s[7]))
+    mx, my = (seg[0] + seg[2]) / 2, (seg[1] + seg[3]) / 2
+    n = math.hypot(seg[2] - seg[0], seg[3] - seg[1])
+    nx, ny = -(seg[3] - seg[1]) / n, (seg[2] - seg[0]) / n
+    from aether3d.worlds.structures import plan_road
+
+    with pytest.raises(WorldError) as info:
+        plan_road(
+            alps.runtime.model(),
+            [mx - 80 * nx, my - 80 * ny],
+            [mx + 80 * nx, my + 80 * ny],
+            prefix="r",
+            cell=8.0,
+            bridges=False,
+        )
+    assert info.value.code == "NO_ROUTE"
