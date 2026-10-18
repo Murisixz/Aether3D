@@ -21,7 +21,8 @@ directional light with an ``angle``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from typing import Any
 
 import numpy as np
 
@@ -36,6 +37,7 @@ class EnvironmentModel:
     zenith: np.ndarray  # (3,) linear x intensity ("sky")
     horizon: np.ndarray
     ground: np.ndarray
+    atmosphere: Any = None  # the atmosphere (its sun and horizon glow add to the sky)
 
     @classmethod
     def build(cls, env, background: np.ndarray, ambient: np.ndarray) -> EnvironmentModel:
@@ -60,8 +62,20 @@ class EnvironmentModel:
             return not (self.zenith.any() or self.horizon.any() or self.ground.any())
         return not self.uniform.any()
 
+    def with_atmosphere(self, model: Any) -> EnvironmentModel:
+        """This environment with the atmosphere's glows (``scene.world.atmosphere``)."""
+        return self if model is None else replace(self, atmosphere=model)
+
     def radiance(self, d: np.ndarray) -> np.ndarray:
         """``(n, 3)`` radiance arriving from unit directions ``d`` (toward the sky)."""
+        base = self._radiance(d)
+        if self.atmosphere is not None:
+            from ..atmosphere import glow
+
+            base = base + glow(self.atmosphere, d)
+        return base
+
+    def _radiance(self, d: np.ndarray) -> np.ndarray:
         if self.kind != "sky":
             return np.broadcast_to(self.uniform, d.shape).copy()
         z = np.clip(d[:, 2], -1.0, 1.0)
@@ -74,7 +88,12 @@ class EnvironmentModel:
     def camera(self, d: np.ndarray) -> np.ndarray:
         """What camera rays that miss show."""
         if self.kind == "ambient":
-            return np.broadcast_to(self.background, d.shape).copy()
+            base = np.broadcast_to(self.background, d.shape).copy()
+            if self.atmosphere is not None:
+                from ..atmosphere import glow
+
+                base = base + glow(self.atmosphere, d)
+            return base
         return self.radiance(d)
 
     def to_dict(self) -> dict:

@@ -208,6 +208,10 @@ def _export_mesh(
         attributes["TEXCOORD_0"] = buffers.add(
             axes.flip_uvs(mesh.uvs), FLOAT, "VEC2", ARRAY_BUFFER, False
         )
+    if mesh.colors is not None:  # linear RGBA, as Mesh.colors (glTF's COLOR_0 semantics)
+        attributes["COLOR_0"] = buffers.add(
+            np.ascontiguousarray(mesh.colors, dtype=np.float32), FLOAT, "VEC4", ARRAY_BUFFER, False
+        )
     if tangent is not None and "NORMAL" in attributes:
         # MikkTSpace on Aether3D's V-up UVs gives glTF's tangent and sign directly (the axes
         # change is a rotation; flipping V for TEXCOORD_0 is accounted for by the sign

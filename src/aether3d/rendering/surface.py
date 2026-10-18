@@ -84,6 +84,8 @@ class ShadeContext:
     step_x: float  # d(xn) per sample column
     step_y: float  # d(yn) per sample row (negative: rows go down)
     frames: Any = None  # MikkTSpace corner frames, built on first use (see world_frames)
+    CO: Any = None  # (V, 4) linear vertex colours (ones where a mesh has none), or None
+    has_colors: Any = None  # (instances,) bool, or None (no mesh has colours)
 
 
 @dataclass
@@ -414,6 +416,15 @@ def evaluate_material(
         emissive=np.tile(m.emissive, (n, 1)),
         normal=s.normal,
     )
+    if ctx.CO is not None:
+        rows = ctx.has_colors[s.inst]
+        if rows.any():
+            tv = ctx.TRI[s.tri[rows]]
+            b = s.b[rows]
+            co = ctx.CO
+            c = b[:, 0:1] * co[tv[:, 0]] + b[:, 1:2] * co[tv[:, 1]] + b[:, 2:3] * co[tv[:, 2]]
+            values.base[rows] *= c[:, :3]
+            values.alpha[rows] *= c[:, 3]
     slots = ("base_color", "opacity") if alpha_only else tuple(m.textures)
     cache: dict[tuple, np.ndarray] = {}
     for slot in slots:
@@ -479,6 +490,16 @@ def _light_vectors(light, px, py, pz):
     return lx, ly, lz, atten
 
 
+def _hemisphere(rs: RenderScene, nz: np.ndarray) -> np.ndarray | None:
+    """Per-sample hemisphere ambient light, or ``None`` (uniform ambient)."""
+    atm = getattr(rs, "atmosphere", None)
+    if atm is None or not atm["settings"].enabled or atm["settings"].ambient != "hemisphere":
+        return None
+    from .atmosphere import ambient_at, resolve
+
+    return ambient_at(resolve(rs), rs.ambient, nz)
+
+
 def shade_simple(
     rs: RenderScene,
     base: np.ndarray,
@@ -494,7 +515,10 @@ def shade_simple(
     px, py, pz = p
     count = nx.shape[0]
     any_spec = bool(np.any(spec > 0.0))
-    if occlusion is None:
+    hemi = _hemisphere(rs, nz)
+    if hemi is not None:  # (scene.world.atmosphere ambient="hemisphere")
+        diffuse = [hemi[:, c] if occlusion is None else hemi[:, c] * occlusion for c in range(3)]
+    elif occlusion is None:
         diffuse = [np.full(count, rs.ambient[c]) for c in range(3)]
     else:
         diffuse = [rs.ambient[c] * occlusion for c in range(3)]
@@ -553,7 +577,9 @@ def shade_standard(
     f0 = (0.08 * np.asarray(specular, dtype=np.float64)) * (1.0 - metallic) + base * metallic
     ndv = np.maximum((n * v).sum(axis=1), 1e-4)[:, None]
     scale, bias = env_brdf(rough, ndv[:, 0])
-    out = rs.ambient * sv.occlusion[:, None] * (c_diff + f0 * scale[:, None] + bias[:, None])
+    hemi = _hemisphere(rs, n[:, 2])
+    amb = rs.ambient if hemi is None else hemi
+    out = amb * sv.occlusion[:, None] * (c_diff + f0 * scale[:, None] + bias[:, None])
     px, py, pz = p[:, 0], p[:, 1], p[:, 2]
     for light in rs.lights:
         lx, ly, lz, atten = _light_vectors(light, px, py, pz)

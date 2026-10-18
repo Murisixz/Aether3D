@@ -56,14 +56,18 @@ def shader_source(name: str) -> str:
 def module_source(kind: str, multisampled: bool = False) -> str:
     """The complete WGSL of a shader module: ``"scene"``, ``"shadow"``, ``"finalize"`` or
     ``"pathtrace"`` (the GPU path tracer, which evaluates materials with the same code)."""
-    if kind in ("scene", "shadow"):
+    if kind == "scene":
+        return "\n".join(shader_source(k) for k in ("common", "material", "atmosphere", kind))
+    if kind == "shadow":
         return "\n".join(shader_source(k) for k in ("common", "material", kind))
     if kind == "pathtrace":
-        return "\n".join(shader_source(k) for k in ("common", "material", "traverse", kind))
+        return "\n".join(
+            shader_source(k) for k in ("common", "material", "traverse", "atmosphere", kind)
+        )
     if kind == "bake":
         return "\n".join(shader_source(k) for k in ("traverse", "bake"))
     if kind == "finalize":
-        text = shader_source("finalize")
+        text = shader_source("atmosphere") + "\n" + shader_source("finalize")
         for marker, value in _FINALIZE_VARIANTS[bool(multisampled)].items():
             text = text.replace(marker, value)
         return text

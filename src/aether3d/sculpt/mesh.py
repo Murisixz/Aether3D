@@ -366,6 +366,13 @@ class SculptMesh:
             raise SculptError(
                 "TOO_MANY_ELEMENTS", f"meshes of more than {MAX_ELEMENTS} elements are refused"
             )
+        if mesh.colors is not None:
+            raise SculptError(
+                "VERTEX_COLORS_UNSUPPORTED",
+                "sculpting does not carry vertex colours yet; this mesh has them",
+                hint="remove the colours first (mesh.with_colors(None)) or edit the mesh with "
+                "the editing engine, which keeps them",
+            )
         sm = cls()
         sm._source = mesh
         n = mesh.vertex_count

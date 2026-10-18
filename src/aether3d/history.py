@@ -82,6 +82,7 @@ _LIBRARY = "library"  # rebuild the material library's name indexes, bump its ve
 _PROCEDURAL = "procedural"  # bump the procedural revision
 _CAD = "cad"  # rebuild the CAD document's indexes, forget derived results
 _ANIMATION = "animation"  # rebuild the animation document's indexes, forget evaluations
+_WORLDS = "worlds"  # rebuild the world system's name index, forget compiled worlds
 
 _UNSET = object()
 _UNRECORDED = contextlib.nullcontext()
@@ -258,9 +259,11 @@ class _World(Aspect):
     def capture(self, scene: Scene) -> tuple:
         world = scene._world
         env = world._environment
+        atm = world._atmosphere
         return (
             *(getattr(world, f) for f in self._FIELDS),
             tuple(getattr(env, f"_{f}") for f in env._FIELDS),
+            tuple(getattr(atm, f"_{f}") for f in atm._FIELDS),
         )
 
     def apply(self, scene: Scene, state: tuple) -> None:
@@ -270,6 +273,9 @@ class _World(Aspect):
         env = world._environment
         for f, v in zip(env._FIELDS, state[3], strict=True):
             object.__setattr__(env, f"_{f}", v)
+        atm = world._atmosphere
+        for f, v in zip(atm._FIELDS, state[4], strict=True):
+            object.__setattr__(atm, f"_{f}", v)
 
     def path(self, target: Any) -> str:
         return "world"
@@ -552,6 +558,36 @@ class _AnimationSettings(Aspect):
         return "animation.settings"
 
 
+class _WorldItem(Aspect):
+    """A procedural world: alive, name, its definition (immutable JSON values) and its
+    edits (an immutable :class:`~aether3d.worlds.edits.Edits`; payloads are its arrays)."""
+
+    __slots__ = ()
+
+    def capture(self, world: Any) -> tuple:
+        return (world._alive, world._name, world._definition, world._edits)
+
+    def apply(self, world: Any, state: tuple) -> None:
+        world._alive, world._name, world._definition, world._edits = state
+
+    def same(self, a: tuple, b: tuple) -> bool:
+        return (
+            a[0] == b[0]
+            and a[1] == b[1]
+            and (a[2] is b[2] or a[2] == b[2])
+            and (a[3] is b[3] or a[3] == b[3])
+        )
+
+    def payloads(self, state: tuple) -> tuple:
+        return state[3].payloads() if state[3] is not None else ()
+
+    def size(self, state: tuple) -> int:
+        return 256 + _json_size(state[2])
+
+    def path(self, world: Any) -> str:
+        return f"worlds[{world.id}]"
+
+
 def _definition_size(definition: Any) -> int:
     """Bytes held by an animation definition's key arrays (an estimate for budgets)."""
     total = 0
@@ -639,6 +675,7 @@ CAD_ITEM = _CadItem("cad.item", (_CAD,))
 CAD_SETTINGS = _CadSettings("cad.settings", (_CAD,))
 ANIMATION_ITEM = _AnimationItem("animation.item", (_ANIMATION,))
 ANIMATION_SETTINGS = _AnimationSettings("animation.settings", (_ANIMATION,))
+WORLD_ITEM = _WorldItem("world.item", (_WORLDS,))
 
 
 # --------------------------------------------------------------------------- #
@@ -979,6 +1016,8 @@ class History:
             scene._cad._restored()
         if _ANIMATION in flags and scene._animation is not None:
             scene._animation._restored()
+        if _WORLDS in flags and scene._worlds is not None:
+            scene._worlds._restored()
 
     # ------------------------------------------------------------------ #
     # Memory and limits

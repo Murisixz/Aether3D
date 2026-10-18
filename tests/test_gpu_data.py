@@ -22,7 +22,7 @@ from aether3d.rendering.shadows import plan_shadows
 SCALARS = {"f32": (4, 4), "u32": (4, 4), "i32": (4, 4)}
 
 
-def wgsl_type(name: str) -> tuple[int, int]:
+def wgsl_type(name: str, source: str | None = None) -> tuple[int, int]:
     name = name.strip()
     if name in SCALARS:
         return SCALARS[name]
@@ -37,7 +37,18 @@ def wgsl_type(name: str) -> tuple[int, int]:
         size, align = wgsl_type(m.group(1))
         stride = (size + align - 1) // align * align
         return (stride * int(m.group(2)), align)
+    if source is not None and re.search(r"struct\s+" + name + r"\s*\{", source):
+        offsets, size = struct_layout(source, name)  # a nested struct
+        return (size, _struct_align(source, name))
     raise AssertionError(f"unexpected WGSL type {name}")
+
+
+def _struct_align(source: str, struct: str) -> int:
+    body = re.search(r"struct\s+" + struct + r"\s*\{(.*?)\};", source, re.S).group(1)
+    kinds = [
+        line.split("//")[0].strip().rstrip(",").partition(":")[2] for line in body.splitlines()
+    ]
+    return max(wgsl_type(k, source)[1] for k in kinds if k.strip())
 
 
 def struct_layout(source: str, struct: str) -> tuple[dict[str, int], int]:
@@ -48,7 +59,7 @@ def struct_layout(source: str, struct: str) -> tuple[dict[str, int], int]:
         if not line:
             continue
         name, _, kind = line.partition(":")
-        size, align = wgsl_type(kind)
+        size, align = wgsl_type(kind, source)
         offset = (offset + align - 1) // align * align
         offsets[name.strip()] = offset
         offset += size
@@ -71,7 +82,7 @@ def test_instance_layout_matches_the_shader():
         "shininess": 112,
         "flags": 116,
         "index": 120,
-        "_pad": 124,
+        "colors": 124,  # (Stage 16: was "_pad"; the first vertex colour, HAS_COLORS)
     }
 
 
@@ -80,6 +91,7 @@ def test_frame_light_shadow_and_finalize_layouts_match_the_shaders():
     assert size == 4 * resources.FRAME_FLOATS
     assert (frame["forward"], frame["ambient"], frame["light_count"]) == (64, 80, 96)
     assert (frame["pcf_radius"], frame["shadow_texel"]) == (100, 104)
+    assert (frame["eye"], frame["atmo"]) == (112, 4 * 32)  # pack_frame: atmosphere at [32:80]
     light, size = struct_layout(SCENE, "Light")
     assert size == 4 * resources.LIGHT_FLOATS
     assert [light[k] for k in ("radiance", "kind", "vector", "range", "falloff", "shadow")] == [
@@ -90,11 +102,59 @@ def test_frame_light_shadow_and_finalize_layouts_match_the_shaders():
         32,
         36,
     ]
+    assert light["cascades"] == 40  # pack_lights: word 10
     shadow, size = struct_layout(SCENE, "ShadowMap")
     assert size == 4 * resources.SHADOW_FLOATS
-    assert (shadow["bias"], shadow["normal_offset"]) == (64, 68)
+    assert (shadow["bias"], shadow["normal_offset"], shadow["split"]) == (64, 68, 72)
+    # (Stage 16: the finalize pass also gets the camera basis and the atmosphere; it was
+    # {"size": 0, "depth": 16} and 32 bytes.)
     params, size = struct_layout(FINALIZE, "Params")
-    assert params == {"size": 0, "depth": 16} and size == 32
+    assert params == {"size": 0, "depth": 16, "forward": 32, "right": 48, "up": 64, "atmo": 80}
+    assert size == 4 * (20 + resources.ATMO_FLOATS)
+
+
+def test_atmosphere_layout_matches_the_shader_and_the_packing():
+    atmo, size = struct_layout(SCENE, "Atmo")
+    assert size == 4 * resources.ATMO_FLOATS
+    names = [
+        "flags",
+        "sun",
+        "zenith",
+        "horizon",
+        "ground",
+        "glow",
+        "fog",
+        "fog_color",
+        "fog_sun",
+        "ground_ambient",
+        "background",
+        "_pad",
+    ]
+    assert atmo == {name: 16 * k for k, name in enumerate(names)}
+    scene = lit_scene()
+    scene.world.atmosphere.configure(
+        enabled=True,
+        sun="Sun",
+        fog_density=0.002,
+        fog_height=5.0,
+        fog_falloff=0.1,
+        ambient="hemisphere",
+    )
+    rs = extract(scene)
+    data = resources.pack_atmosphere(rs)
+    words = data.view(np.uint32)
+    assert words[0] == 1 and words[2] == 1  # enabled, hemisphere ambient
+    assert data[4 * 0 + 7] == 1.0  # a sun
+    np.testing.assert_allclose(
+        data[4:7], -np.array([0.3, 0.4, -1.0]) / np.linalg.norm([0.3, 0.4, -1]), rtol=1e-6
+    )
+    assert data[atmo["fog"] // 4] == pytest.approx(0.002)
+    assert data[atmo["fog"] // 4 + 1] == pytest.approx(0.1)
+    assert data[atmo["fog"] // 4 + 3] == 1.0
+    frame = resources.pack_frame(rs, 16 / 9, None)
+    np.testing.assert_array_equal(frame[32:80], data)
+    off = resources.pack_atmosphere(extract(lit_scene()))
+    assert not off.any()
 
 
 def lit_scene():

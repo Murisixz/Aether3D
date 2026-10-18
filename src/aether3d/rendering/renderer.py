@@ -533,6 +533,10 @@ def render(
     rs = extract_render_scene(
         scene, render_camera, default_lights=settings.default_lights, aspect=aspect, overlay=overlay
     )
+    if scene._worlds is not None and len(scene._worlds):
+        from ..worlds.render import contribute
+
+        rs = contribute(scene, rs, settings.height, aspect)  # procedural worlds for this camera
     diagnostics += list(rs.diagnostics)
     plan = None if shadow_settings is None else plan_shadows(rs, shadow_settings, aspect)
 

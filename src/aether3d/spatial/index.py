@@ -404,7 +404,9 @@ class SpatialIndex:
                 if k is None:
                     k = index[id(e.mesh)] = len(meshes)
                     m = e.mesh
-                    meshes.append(RenderMesh(m.positions, m.triangles, m.normals, m.uvs, m.groups))
+                    meshes.append(
+                        RenderMesh(m.positions, m.triangles, m.normals, m.uvs, m.groups, m.colors)
+                    )
                 instances.append(_Instance(k, e.world))
             accel = SceneAccel.build(_Instances(meshes, instances), BLAS_CACHE)
             if len(self._accels) >= MAX_ACCELS:

@@ -42,6 +42,7 @@ from . import _polygon as poly
 
 UV = "uv"
 NORMAL = "normal"
+COLOR = "color"
 
 
 @dataclass
@@ -243,7 +244,9 @@ class MeshCore:
     max_history: int = 256
     max_elements: int = 20_000_000
 
-    def __init__(self, *, uvs: bool = True, normals: bool = True, groups: bool = False) -> None:
+    def __init__(
+        self, *, uvs: bool = True, normals: bool = True, groups: bool = False, colors: bool = False
+    ) -> None:
         self._pos = np.zeros((16, 3), dtype=np.float64)
         self._alive = np.zeros(16, dtype=bool)
         self._nv = 0
@@ -263,6 +266,8 @@ class MeshCore:
             self._layers[UV] = CornerLayer(UV, 2)
         if normals:
             self._layers[NORMAL] = CornerLayer(NORMAL, 3, normalize=True)
+        if colors:  # vertex colours (Mesh.colors), interpolated like every corner layer
+            self._layers[COLOR] = CornerLayer(COLOR, 4)
         self._dirty_faces: set[int] = set()
         self._journal: list | None = None
         self._op_diagnostics: list[Diagnostic] = []
@@ -313,6 +318,7 @@ class MeshCore:
             uvs=mesh.uvs is not None,
             normals=mesh.normals is not None,
             groups=mesh.groups is not None,
+            colors=mesh.colors is not None,
         )
         n = mesh.vertex_count
         positions = mesh.positions.astype(np.float64)
@@ -337,6 +343,7 @@ class MeshCore:
         )
         uv = mesh.uvs.astype(np.float64) if mesh.uvs is not None else None
         nor = mesh.normals.astype(np.float64) if mesh.normals is not None else None
+        col = mesh.colors.astype(np.float64) if mesh.colors is not None else None
         source = mesh.triangles
         groups = mesh.groups
         if _features.enabled("AETHER3D_EDITING_BULK"):
@@ -346,6 +353,8 @@ class MeshCore:
                 corners_of[UV] = uv[source[kept]]
             if nor is not None:
                 corners_of[NORMAL] = nor[source[kept]]
+            if col is not None:
+                corners_of[COLOR] = col[source[kept]]
             em._bulk_faces(tris[kept], corners_of, None if groups is None else groups[kept])
         else:
             for t in np.flatnonzero(~degenerate):
@@ -354,6 +363,8 @@ class MeshCore:
                     corners[UV] = [tuple(uv[i]) for i in source[t]]
                 if nor is not None:
                     corners[NORMAL] = [tuple(nor[i]) for i in source[t]]
+                if col is not None:
+                    corners[COLOR] = [tuple(col[i]) for i in source[t]]
                 group = int(groups[t]) if groups is not None else 0
                 em._new_face([int(v) for v in tris[t]], corners, smooth=False, group=group)
         if degenerate.any():
@@ -530,10 +541,12 @@ class MeshCore:
             corner_normals(self, recompute_all=NORMAL not in self._layers) if want_normals else None
         )
         uvs = self._layers[UV].data if UV in self._layers else None
+        colors = self._layers[COLOR].data if COLOR in self._layers else None
         key_index: dict[tuple, int] = {}
         out_vertex: list[int] = []
         out_normal: list[tuple] = []
         out_uv: list[tuple] = []
+        out_color: list[tuple] = []
         triangles: list[tuple[int, int, int]] = []
         sources: list[tuple[int, int, int, int]] = []
         triangle_groups: list[int] = []
@@ -552,13 +565,15 @@ class MeshCore:
             for k, v in enumerate(loop):
                 nk = normals[fid][k] if normals is not None else ()
                 uk = uvs[fid][k] if uvs is not None else ()
-                key = (v, nk, uk)
+                ck = colors[fid][k] if colors is not None else ()
+                key = (v, nk, uk, ck)
                 index = key_index.get(key)
                 if index is None:
                     index = key_index[key] = len(out_vertex)
                     out_vertex.append(v)
                     out_normal.append(nk)
                     out_uv.append(uk)
+                    out_color.append(ck)
                 corner_out.append(index)
             triangles.extend((corner_out[a], corner_out[b], corner_out[c]) for a, b, c in local)
             sources.extend((fid, a, b, c) for a, b, c in local)
@@ -581,6 +596,10 @@ class MeshCore:
             normals=np.array(out_normal).reshape(-1, 3) if normals is not None else None,
             uvs=np.array(out_uv).reshape(-1, 2) if uvs is not None else None,
             groups=np.array(triangle_groups, dtype=np.int64) if self._has_groups else None,
+            # (interpolation keeps colours in [0, 1]; extrapolating operations are clamped)
+            colors=np.clip(np.array(out_color).reshape(-1, 4), 0.0, 1.0)
+            if colors is not None
+            else None,
         )
         return mesh, diagnostics, sources
 

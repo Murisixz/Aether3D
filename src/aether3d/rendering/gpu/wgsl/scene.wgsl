@@ -25,6 +25,7 @@ struct Frame {
   shadow_texel: f32,       // one shadow-map texel in texture coordinates
   _pad: u32,
   eye: vec4<f32>,          // xyz: the camera position in world space (for world coordinates)
+  atmo: Atmo,              // scene.world.atmosphere (atmosphere.wgsl)
 };
 
 struct Light {
@@ -33,8 +34,8 @@ struct Light {
   vector: vec3<f32>,       // directional: direction of travel; point: camera-relative position
   range: f32,              // point: distance where the light fades out, 0 = no range
   falloff: u32,            // point: 1 inverse square, 0 none
-  shadow: i32,             // shadow-map layer, -1 = casts no shadow
-  _pad0: u32,
+  shadow: i32,             // first shadow-map layer, -1 = casts no shadow
+  cascades: u32,           // consecutive layers of this light (cascades by view depth)
   _pad1: u32,
 };
 
@@ -42,7 +43,7 @@ struct ShadowMap {
   matrix: mat4x4<f32>,     // camera-relative world -> shadow clip (x, y in [-1, 1], depth in [0, 1])
   bias: f32,               // constant depth bias, shadow depth units
   normal_offset: f32,      // world units, scaled by the sine of the light angle
-  _pad0: f32,
+  split: f32,              // cascades: the far view depth this layer covers
   _pad1: f32,
 };
 
@@ -77,6 +78,22 @@ fn smooth_surface_point(in: VertexOut, side: f32) -> vec3<f32> {
   let d1 = min(0.0, dot(p - in.p1, n1));
   let d2 = min(0.0, dot(p - in.p2, n2));
   return p - (b.x * d0) * n0 - (b.y * d1) * n1 - (b.z * d2) * n2;
+}
+
+// The layer of a light's shadow for a point at camera-relative `position`: with cascades,
+// the first whose far split lies beyond the point's view depth.
+fn shadow_layer(light: Light, position: vec3<f32>) -> i32 {
+  if (light.cascades <= 1u) {
+    return light.shadow;
+  }
+  let depth = dot(position, frame.forward.xyz);
+  for (var c = 0u; c < light.cascades; c++) {
+    let layer = light.shadow + i32(c);
+    if (depth <= shadow_maps[layer].split) {
+      return layer;
+    }
+  }
+  return -1;  // beyond the shadowed distance
 }
 
 // Fraction of a directional light reaching `position` (1 = fully lit), from its shadow map.
@@ -141,7 +158,7 @@ fn shade_simple(
   position: vec3<f32>, n: vec3<f32>, shadow_origin: vec3<f32>
 ) -> vec3<f32> {
   let v = view_direction(position);
-  var diffuse = frame.ambient.rgb * occlusion;
+  var diffuse = atmo_ambient(frame.atmo, frame.ambient.rgb, n) * occlusion;
   var highlight = vec3<f32>(0.0);
   for (var i = 0u; i < frame.light_count; i++) {
     let light = lights[i];
@@ -152,7 +169,10 @@ fn shade_simple(
     }
     var visibility = 1.0;
     if (light.shadow >= 0) {
-      visibility = shadow_visibility(light.shadow, shadow_origin, n, ls.l);
+      let layer = shadow_layer(light, position);
+      if (layer >= 0) {
+        visibility = shadow_visibility(layer, shadow_origin, n, ls.l);
+      }
     }
     let weight = ls.attenuation * visibility;
     diffuse += light.radiance * (ndl * weight);
@@ -187,7 +207,7 @@ fn shade_standard(
   let f0 = vec3<f32>(0.08 * specular * (1.0 - metallic)) + sv.base * metallic;
   let ndv = max(dot(n, v), 1e-4);
   let ab = env_brdf(rough, ndv);
-  var out = frame.ambient.rgb * sv.occlusion * (c_diff + f0 * ab.x + ab.y);
+  var out = atmo_ambient(frame.atmo, frame.ambient.rgb, n) * sv.occlusion * (c_diff + f0 * ab.x + ab.y);
   for (var i = 0u; i < frame.light_count; i++) {
     let light = lights[i];
     let ls = light_at(light, position);
@@ -197,7 +217,10 @@ fn shade_standard(
     }
     var visibility = 1.0;
     if (light.shadow >= 0) {
-      visibility = shadow_visibility(light.shadow, shadow_origin, n, ls.l);
+      let layer = shadow_layer(light, position);
+      if (layer >= 0) {
+        visibility = shadow_visibility(layer, shadow_origin, n, ls.l);
+      }
     }
     let h = safe_normalize(ls.l + v);
     let ndh = max(dot(n, h), 0.0);
@@ -252,7 +275,7 @@ fn fs_main(in: VertexOut, @builtin(front_facing) front: bool) -> FragmentOut {
   }
   let s = SurfaceInput(
     in.instance, in.barycentric, dbdx, dbdy, in.p0, in.p1, in.p2,
-    in.uv01.xy, in.uv01.zw, in.uv2, n * toward, vnormal, in.tangent
+    in.uv01.xy, in.uv01.zw, in.uv2, n * toward, vnormal, in.tangent, in.color
   );
   let has_uvs = (inst.flags & INSTANCE_HAS_UVS) != 0u;
   let mb = material_base(m);
@@ -269,8 +292,13 @@ fn fs_main(in: VertexOut, @builtin(front_facing) front: bool) -> FragmentOut {
   } else {
     radiance = shade_simple(sv.base, wordf(mb + 8u), wordf(mb + 9u), sv.occlusion, in.position, n, shadow_origin);
   }
+  var color = radiance + sv.emissive;
+  if (frame.atmo.fog.w > 0.5) {  // aerial perspective along the camera ray
+    let dist = length(in.position);
+    color = atmo_fog(frame.atmo, color, in.position / max(dist, 1e-30), dist);
+  }
   var out: FragmentOut;
-  out.color = vec4<f32>(radiance + sv.emissive, 1.0);
+  out.color = vec4<f32>(color, 1.0);
   out.object = f32(inst.index + 1u);
   return out;
 }

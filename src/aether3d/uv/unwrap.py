@@ -303,7 +303,8 @@ def _area(t: np.ndarray) -> float:
 
 def _rebuild(mesh: Mesh, topo: Topology, corner_id: np.ndarray, corner_uv: np.ndarray) -> Mesh:
     """A mesh whose vertices are the distinct (render vertex, map vertex) pairs of the
-    corners, numbered by first use; positions, normals and groups are kept exactly."""
+    corners, numbered by first use; positions, normals, vertex colours and groups are kept
+    exactly."""
     tris = topo.triangles
     rv = tris.reshape(-1)
     mv = corner_id.reshape(-1)
@@ -317,4 +318,12 @@ def _rebuild(mesh: Mesh, topo: Topology, corner_id: np.ndarray, corner_uv: np.nd
     positions = mesh.positions[rv[src_corner]]
     normals = None if mesh.normals is None else mesh.normals[rv[src_corner]]
     uvs = corner_uv.reshape(-1, 2)[src_corner].astype(np.float32)
-    return Mesh(positions, new_index.reshape(-1, 3), normals=normals, uvs=uvs, groups=mesh.groups)
+    colors = None if mesh.colors is None else mesh.colors[rv[src_corner]]
+    return Mesh(
+        positions,
+        new_index.reshape(-1, 3),
+        normals=normals,
+        uvs=uvs,
+        groups=mesh.groups,
+        colors=colors,
+    )

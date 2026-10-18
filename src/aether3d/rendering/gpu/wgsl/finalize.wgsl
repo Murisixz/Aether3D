@@ -15,6 +15,10 @@
 struct Params {
   size: vec4<u32>,   // width, height, supersample, msaa
   depth: vec4<f32>,  // near, far, 1 = perspective / 0 = orthographic, exposure scale
+  forward: vec4<f32>,  // camera forward; w: 1 perspective
+  right: vec4<f32>,    // camera right; w: horizontal half extent
+  up: vec4<f32>,       // camera up; w: vertical half extent
+  atmo: Atmo,          // the atmosphere (sky behind geometry, fog toward the sky)
 };
 
 @group(0) @binding(0) var color_texture: {{COLOR_TEXTURE}};
@@ -66,6 +70,9 @@ fn finalize(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
   let k = params.size.z;
   let m = params.size.w;
+  // With the atmosphere's sky or fog, background samples take the sky (through the fog)
+  // at the pixel centre's view direction, added after the covered samples, as on the CPU.
+  let atmo_bg = params.atmo.flags.x != 0u && (params.atmo.flags.y != 0u || params.atmo.fog.w > 0.5);
   var sum = vec3<f32>(0.0);
   var covered = 0u;
   var run_id = 0u;
@@ -74,8 +81,10 @@ fn finalize(@builtin(global_invocation_id) gid: vec3<u32>) {
     for (var sx = 0u; sx < k; sx++) {
       let texel = vec2<i32>(vec2<u32>(gid.x * k + sx, gid.y * k + sy));
       for (var s = 0u; s < m; s++) {
-        sum += textureLoad(color_texture, texel, {{SAMPLE}}).rgb;
         let id = object_id(textureLoad(object_texture, texel, {{SAMPLE}}).r);
+        if (!atmo_bg || id != 0u) {
+          sum += textureLoad(color_texture, texel, {{SAMPLE}}).rgb;
+        }
         if (id != 0u) {
           covered += 1u;
           if (id == run_id) {
@@ -112,6 +121,21 @@ fn finalize(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   let total = f32(k * k * m);
+  if (atmo_bg && covered < k * k * m) {
+    let xn = (f32(gid.x) + 0.5) * (2.0 / f32(width)) - 1.0;
+    let yn = 1.0 - (f32(gid.y) + 0.5) * (2.0 / f32(height));
+    var d = params.forward.xyz;
+    if (params.forward.w > 0.5) {
+      d = normalize(params.forward.xyz + (xn * params.right.w) * params.right.xyz
+                    + (yn * params.up.w) * params.up.xyz);
+    }
+    var bg = params.atmo.background.rgb;
+    if (params.atmo.flags.y != 0u) {
+      bg = atmo_sky(params.atmo, d);
+    }
+    bg = atmo_fog(params.atmo, bg, d, -1.0);
+    sum += f32(k * k * m - covered) * bg;
+  }
   let value = sum / total * params.depth.w;
   let p = gid.y * width + gid.x;
   out_image[p] = encode_srgb(value.r) | (encode_srgb(value.g) << 8u) | (encode_srgb(value.b) << 16u);

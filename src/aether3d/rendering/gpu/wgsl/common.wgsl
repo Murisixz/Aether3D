@@ -14,6 +14,7 @@ const INSTANCE_MIRRORED: u32 = 1u;     // world determinant < 0: screen winding 
 const INSTANCE_HAS_NORMALS: u32 = 2u;  // the mesh has vertex normals
 const INSTANCE_HAS_UVS: u32 = 4u;      // the mesh has texture coordinates
 const INSTANCE_HAS_GROUPS: u32 = 8u;   // the mesh has per-triangle face groups
+const INSTANCE_HAS_COLORS: u32 = 16u;  // the mesh has vertex colours (after its UVs, below)
 
 struct Instance {
   model: array<vec4<f32>, 3>,   // rows of the camera-relative model matrix (3 x 4)
@@ -23,7 +24,7 @@ struct Instance {
   shininess: f32,               // Blinn-Phong exponent
   flags: u32,                   // INSTANCE_* bits
   index: u32,                   // index in RenderScene.instances (object index)
-  _pad: u32,
+  colors: u32,                  // first float of the vertex colours in mesh_uvs
 };
 
 @group(0) @binding(1) var<storage, read> instances: array<Instance>;
@@ -31,7 +32,9 @@ struct Instance {
 @group(1) @binding(0) var<storage, read> mesh_positions: array<f32>;  // 3 floats per vertex
 @group(1) @binding(1) var<storage, read> mesh_normals: array<f32>;    // 3 floats per vertex
 @group(1) @binding(2) var<storage, read> mesh_indices: array<u32>;    // 3 per triangle
-@group(1) @binding(3) var<storage, read> mesh_uvs: array<f32>;        // 2 floats per vertex
+// 2 floats per vertex (UVs), then 4 per vertex (linear RGBA vertex colours) when the mesh
+// has colours, from float Instance.colors on.
+@group(1) @binding(3) var<storage, read> mesh_uvs: array<f32>;
 @group(1) @binding(4) var<storage, read> mesh_groups: array<u32>;     // 1 per triangle
 // MikkTSpace tangent (xyz) and bitangent sign (w) of every triangle corner, uploaded for
 // meshes drawn with a UV normal map (aether3d/rendering/tangents.py); a dummy otherwise.
@@ -50,6 +53,11 @@ fn mesh_normal(vertex: u32) -> vec3<f32> {
 fn mesh_uv(vertex: u32) -> vec2<f32> {
   let b = 2u * vertex;
   return vec2<f32>(mesh_uvs[b], mesh_uvs[b + 1u]);
+}
+
+fn mesh_color(inst: Instance, vertex: u32) -> vec4<f32> {
+  let b = inst.colors + 4u * vertex;
+  return vec4<f32>(mesh_uvs[b], mesh_uvs[b + 1u], mesh_uvs[b + 2u], mesh_uvs[b + 3u]);
 }
 
 fn mesh_tangent(corner: u32) -> vec4<f32> {

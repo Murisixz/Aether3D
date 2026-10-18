@@ -475,9 +475,21 @@ class PolyMesh:
 
     @classmethod
     def from_mesh(cls, mesh: Mesh, *, quads: bool = True) -> PolyMesh:
-        """Polygon form of a triangle mesh (exact welding; quads rebuilt as when editing)."""
+        """Polygon form of a triangle mesh (exact welding; quads rebuilt as when editing).
+
+        Procedural geometry carries UVs and normals but not vertex colours: a mesh with
+        colours is refused (``VERTEX_COLORS_UNSUPPORTED``) rather than losing them."""
         from ..editing import EditableMesh
 
+        if mesh.colors is not None:
+            from .params import ProceduralError
+
+            raise ProceduralError(
+                "VERTEX_COLORS_UNSUPPORTED",
+                "procedural geometry does not carry vertex colours; this mesh has them",
+                hint="use the mesh as an object's static mesh, or remove its colours first "
+                "(mesh.with_colors(None))",
+            )
         return cls.from_editable(EditableMesh.from_mesh(mesh, quads=quads))
 
     @classmethod

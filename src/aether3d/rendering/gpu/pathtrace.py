@@ -58,7 +58,7 @@ HEADER_WORDS = 16
 INST_WORDS = 24
 LIGHT_WORDS = 24
 EMITTER_WORDS = 12
-PARAMS_WORDS = 68
+PARAMS_WORDS = 116  # 68 + struct Atmo (48)
 TILE = 512
 """Largest tile side of one dispatch (bounds the work and the 32-bit counters per dispatch)."""
 MAX_PIXEL_SAMPLES_PER_DISPATCH = 1 << 20
@@ -123,6 +123,18 @@ def pack_meshes(rs: RenderScene) -> tuple[list[np.ndarray], np.ndarray]:
         raise RenderError(
             "GPU_LIMIT_EXCEEDED", "the scene has more vertices than the GPU path tracer indexes"
         )
+
+    if any(m.colors is not None for m in rs.meshes):
+        # Vertex colours follow every UV, in the same buffer (common.wgsl's mesh_color):
+        # 4 floats per vertex of every mesh, white for meshes without colours.
+        uvs = uvs + [
+            (
+                np.ones((m.positions.shape[0], 4), np.float32)
+                if m.colors is None
+                else np.asarray(m.colors, np.float32)
+            ).reshape(-1)
+            for m in rs.meshes
+        ]
 
     def join(parts: list[np.ndarray], dtype) -> np.ndarray:
         return _nonempty(np.concatenate(parts).astype(dtype) if parts else np.zeros(0, dtype))
@@ -252,7 +264,7 @@ def pack_scene_words(
 
 
 class Params:
-    """The kernel's uniform ``Params`` (68 words; see pathtrace.wgsl)."""
+    """The kernel's uniform ``Params`` (116 words; see pathtrace.wgsl)."""
 
     def __init__(self) -> None:
         self.words = np.zeros(PARAMS_WORDS, dtype=np.uint32)
@@ -329,6 +341,9 @@ def base_params(
     )
     pr.vec(60, root_lo)
     pr.vec(64, root_hi)
+    from .resources import pack_atmosphere
+
+    pr.words[68:116] = pack_atmosphere(rs).view(np.uint32)
     return pr
 
 
@@ -421,6 +436,11 @@ def render_scene(
     meshes, mesh_tri_base = pack_meshes(rs)
     order = np.arange(len(rs.instances), dtype=np.int64)
     instance_words = pack_instances(rs, order, eye)
+    # Global vertex indices here: every mesh's colours start after all UVs (pack_meshes).
+    total_vertices = sum(int(m.positions.shape[0]) for m in rs.meshes)
+    instance_words.view(np.uint32)[: len(rs.instances), 31] = np.where(
+        instance_words.view(np.uint32)[: len(rs.instances), 29] & 16, 2 * total_vertices, 0
+    )
     materials = pack_material_data(rs, order)
     scene_words = pack_scene_words(ps, lights, eye, mesh_tri_base)
     n_pix = width * height

@@ -15,6 +15,27 @@ MAX_GROUP = 2**16 - 1
 """Largest face group index."""
 
 
+def _colors(value: Any, vertex_count: int) -> np.ndarray:
+    """Vertex colours as ``(N, 4)`` float32 in [0, 1] (``(N, 3)`` gets alpha 1)."""
+    try:
+        arr = np.array(value, dtype=POSITION_DTYPE)
+    except (TypeError, ValueError):
+        raise ValidationError("mesh colors must be numeric") from None
+    if arr.ndim == 2 and arr.shape[1] == 3:
+        arr = np.concatenate([arr, np.ones((arr.shape[0], 1), dtype=POSITION_DTYPE)], axis=1)
+    if arr.ndim != 2 or arr.shape[1] != 4:
+        raise ValidationError(f"mesh colors must have shape (N, 3) or (N, 4), got {arr.shape}")
+    if arr.shape[0] != vertex_count:
+        raise ValidationError(
+            f"mesh colors has {arr.shape[0]} entries but the mesh has {vertex_count} vertices"
+        )
+    if not np.all(np.isfinite(arr)) or (arr.size and (arr.min() < 0.0 or arr.max() > 1.0)):
+        raise ValidationError("mesh colors must be finite and within [0, 1]")
+    arr = np.ascontiguousarray(arr)
+    arr.flags.writeable = False
+    return arr
+
+
 def _attribute(value: Any, components: int, name: str, vertex_count: int | None) -> np.ndarray:
     try:
         arr = np.array(value, dtype=POSITION_DTYPE)
@@ -48,13 +69,16 @@ class Mesh:
     * ``groups``    -- ``(M,) uint16`` face group of every triangle, or
       ``None`` (all triangles in group 0). Objects can give each group its
       own material (``obj.group_materials``); glTF primitives import as groups.
+    * ``colors``    -- ``(N, 4) float32`` linear RGBA vertex colours in [0, 1], or
+      ``None`` (since 0.18.0; ``(N, 3)`` input gets alpha 1). As glTF's ``COLOR_0``,
+      they multiply the material's base colour and opacity.
 
     Arrays are copied on construction and marked read-only, so a mesh can be
     safely shared by several scene objects. To change geometry, build a new
     ``Mesh``. Flat ``(N*3,)`` inputs are accepted and reshaped.
     """
 
-    __slots__ = ("_positions", "_triangles", "_normals", "_uvs", "_groups", "_derived")
+    __slots__ = ("_positions", "_triangles", "_normals", "_uvs", "_groups", "_colors", "_derived")
 
     def __init__(
         self,
@@ -63,6 +87,7 @@ class Mesh:
         normals: Any | None = None,
         uvs: Any | None = None,
         groups: Any | None = None,
+        colors: Any | None = None,
     ) -> None:
         self._positions = _attribute(positions, 3, "positions", None)
         n = self._positions.shape[0]
@@ -70,6 +95,7 @@ class Mesh:
         self._uvs = None if uvs is None else _attribute(uvs, 2, "uvs", n)
         self._triangles = self._validate_triangles(triangles, n)
         self._groups = None if groups is None else self._validate_groups(groups)
+        self._colors = None if colors is None else _colors(colors, n)
 
     def _validate_groups(self, value: Any) -> np.ndarray:
         raw = np.asarray(value)
@@ -135,6 +161,11 @@ class Mesh:
         return self._groups
 
     @property
+    def colors(self) -> np.ndarray | None:
+        """``(N, 4)`` linear RGBA vertex colours, or ``None`` (see the class docstring)."""
+        return self._colors
+
+    @property
     def group_ids(self) -> tuple[int, ...]:
         """The face groups used by the mesh, ascending (``(0,)`` without groups)."""
         if self._groups is None:
@@ -149,6 +180,7 @@ class Mesh:
         normals: np.ndarray | None = None,
         uvs: np.ndarray | None = None,
         groups: np.ndarray | None = None,
+        colors: np.ndarray | None = None,
     ) -> Mesh:
         """A mesh sharing (not copying) arrays that are already in the mesh's dtypes and
         read-only -- such as another mesh's -- and validating the rest as usual. Sculpt
@@ -193,6 +225,12 @@ class Mesh:
             mesh._groups = groups
         else:
             mesh._groups = mesh._validate_groups(groups)
+        if colors is None:
+            mesh._colors = None
+        elif shared(colors, POSITION_DTYPE, 4) and colors.shape[0] == n:
+            mesh._colors = colors
+        else:
+            mesh._colors = _colors(colors, n)
         return mesh
 
     def with_groups(self, groups: Any | None) -> Mesh:
@@ -200,7 +238,17 @@ class Mesh:
         mesh = Mesh.__new__(Mesh)
         mesh._positions, mesh._triangles = self._positions, self._triangles
         mesh._normals, mesh._uvs = self._normals, self._uvs
+        mesh._colors = self._colors
         mesh._groups = None if groups is None else mesh._validate_groups(groups)
+        return mesh
+
+    def with_colors(self, colors: Any | None) -> Mesh:
+        """A copy of this mesh (sharing its arrays) with other vertex colours (``None``
+        removes them)."""
+        mesh = Mesh.__new__(Mesh)
+        mesh._positions, mesh._triangles = self._positions, self._triangles
+        mesh._normals, mesh._uvs, mesh._groups = self._normals, self._uvs, self._groups
+        mesh._colors = None if colors is None else _colors(colors, self.vertex_count)
         return mesh
 
     def _derived_get(self, key: str) -> Any:
@@ -253,12 +301,17 @@ class Mesh:
             and same(self._normals, other._normals)
             and same(self._uvs, other._uvs)
             and same(self._groups, other._groups)
+            and same(self._colors, other._colors)
         )
 
     __hash__ = None  # type: ignore[assignment]
 
     def __repr__(self) -> str:
-        extras = [name for name in ("normals", "uvs", "groups") if getattr(self, name) is not None]
+        extras = [
+            name
+            for name in ("normals", "uvs", "groups", "colors")
+            if getattr(self, name) is not None
+        ]
         return (
             f"Mesh(vertices={self.vertex_count}, triangles={self.triangle_count}"
             + (f", attributes={'+'.join(extras)}" if extras else "")

@@ -50,6 +50,7 @@ class RenderMesh:
     normals: np.ndarray | None  # (N, 3) float32 or None (flat shading from geometry)
     uvs: np.ndarray | None = None  # (N, 2) float32 or None
     groups: np.ndarray | None = None  # (M,) uint16 face groups or None (all group 0)
+    colors: np.ndarray | None = None  # (N, 4) float32 linear vertex colours or None
 
 
 @dataclass(frozen=True)
@@ -161,6 +162,7 @@ class RenderScene:
     timings: dict[str, float] = field(default_factory=dict)
     materials: tuple[RenderMaterial, ...] = ()
     environment: Environment | None = None  # scene.world.environment (path tracer)
+    atmosphere: dict | None = None  # {"settings": scene.world.atmosphere, "ambient_intensity"}
     arrays: InstanceArrays | None = field(default=None, repr=False, compare=False)
     cache: dict[str, Any] | None = field(default=None, repr=False, compare=False)
 
@@ -804,6 +806,10 @@ def _finish(
         },
         materials=materials,
         environment=world_settings.environment.copy(),
+        atmosphere={
+            "settings": world_settings.atmosphere.copy(),
+            "ambient_intensity": world_settings.ambient_intensity,
+        },
         arrays=arrays,
         cache=cache,
     )
@@ -834,4 +840,6 @@ def default_light(frame: CameraFrame) -> RenderLight:
 
 
 def _render_mesh(mesh: Mesh) -> RenderMesh:
-    return RenderMesh(mesh.positions, mesh.triangles, mesh.normals, mesh.uvs, mesh.groups)
+    return RenderMesh(
+        mesh.positions, mesh.triangles, mesh.normals, mesh.uvs, mesh.groups, mesh.colors
+    )

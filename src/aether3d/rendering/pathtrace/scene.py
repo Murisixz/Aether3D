@@ -143,6 +143,9 @@ class PathScene:
         )
         self.mirrored = np.array([i.mirrored for i in rs.instances], dtype=bool)
         frame = rs.camera.frame
+        from ..cpu import vertex_colors
+
+        co, has_co = vertex_colors(rs)
         self.ctx = surface.ShadeContext(
             rs,
             self.P,
@@ -158,12 +161,19 @@ class PathScene:
             rs.camera.camera.is_perspective,
             0.0,
             0.0,
+            CO=co,
+            has_colors=has_co,
         )
         mats = rs.materials
         self.double_sided = np.array([m.double_sided for m in mats], dtype=bool)
         self.masked = np.array([m.masked for m in mats], dtype=bool)
         self.pass_through = bool((~self.double_sided).any() or self.masked.any())
-        self.environment = EnvironmentModel.build(rs.environment, rs.background, rs.ambient)
+        from ..atmosphere import resolve as _atmosphere
+
+        self.atmosphere = _atmosphere(rs)
+        self.environment = EnvironmentModel.build(
+            rs.environment, rs.background, rs.ambient
+        ).with_atmosphere(self.atmosphere)
         self.timings = {"bvh": t1 - t0, "geometry": time.perf_counter() - t1}
         self.pass_through_rays = 0  # extra ray segments behind transparent hits
         self.layer_limited = 0  # rays stopped by MAX_LAYERS
