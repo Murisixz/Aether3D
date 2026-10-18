@@ -17,6 +17,7 @@ Resources (read-only):
 * ``aether3d://schema/cad-script`` -- the JSON Schema of CAD scripts.
 * ``aether3d://animation/guide`` -- the animation guide for agents (Markdown).
 * ``aether3d://schema/animation-script`` -- the JSON Schema of animation scripts.
+* ``aether3d://rigging/guide`` -- the rigging guide for agents (Markdown).
 * ``aether3d://worlds/guide`` -- the procedural worlds guide for agents (Markdown).
 * ``aether3d://schema/world-script`` -- the JSON Schema of world scripts.
 * ``aether3d://schema/expectations``, ``.../vision-evaluation``, ``.../corrections`` -- the
@@ -77,6 +78,14 @@ def animation_guide() -> str:
     return (
         importlib_resources.files("aether3d.animation")
         .joinpath("guide.md")
+        .read_text(encoding="utf-8")
+    )
+
+
+def rigging_guide() -> str:
+    return (
+        importlib_resources.files("aether3d.animation")
+        .joinpath("rigging_guide.md")
         .read_text(encoding="utf-8")
     )
 
@@ -240,6 +249,16 @@ def resources(session: Session) -> list[types.Resource]:
     )
     out.append(
         types.Resource(
+            uri="aether3d://rigging/guide",
+            name="rigging-guide",
+            title="Rigging guide",
+            description="Landmarks, auto-rigging, weights, controls, IK/FK, posing, rig "
+            "diagnostics and verified fixes; rigid-part characters without bones",
+            mime_type="text/markdown",
+        )
+    )
+    out.append(
+        types.Resource(
             uri="aether3d://worlds/guide",
             name="worlds-guide",
             title="Procedural worlds guide",
@@ -375,6 +394,8 @@ def read_resource(session: Session, uri: str) -> list[Any]:
         from ..animation.schema import animation_script_schema
 
         return data(animation_script_schema(), "application/schema+json")
+    if uri == "aether3d://rigging/guide":
+        return text(rigging_guide(), "text/markdown")
     if uri == "aether3d://worlds/guide":
         return text(worlds_guide(), "text/markdown")
     if uri == "aether3d://schema/world-script":

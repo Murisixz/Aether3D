@@ -39,6 +39,7 @@ the body on the ground) unless one is given.
 
 from __future__ import annotations
 
+import math
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -68,6 +69,21 @@ def _err(code: str, message: str, location: str, hint: str | None = None) -> Ani
 # --------------------------------------------------------------------------------------- #
 # Templates: joints on landmarks
 # --------------------------------------------------------------------------------------- #
+
+
+def _rest_bend(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
+    """Degrees a limb bends at ``b`` at rest (0: straight)."""
+    d1, d2 = b - a, c - b
+    n1, n2 = float(np.linalg.norm(d1)), float(np.linalg.norm(d2))
+    if n1 < 1e-9 or n2 < 1e-9:
+        return 0.0
+    return math.degrees(math.acos(min(1.0, max(-1.0, float(d1 @ d2) / (n1 * n2)))))
+
+
+def _flexion(bend: float, most: float = 150.0, beyond: float = 5.0) -> list[float]:
+    """A flexion range (degrees about +X from the rest pose) from straight-and-a-little
+    to ``most``, for a limb modeled with ``bend`` degrees of bend at rest."""
+    return [-(bend + beyond), max(most - bend, 1.0)]
 
 
 def _humanoid_joints(det: LM.Detection, twist: bool) -> list[dict[str, Any]]:
@@ -121,6 +137,8 @@ def _humanoid_joints(det: LM.Detection, twist: bool) -> list[dict[str, Any]]:
     for side, sign in (("L", 1.0), ("R", -1.0)):
         out = -1.0 if side == "L" else 1.0  # (a left thigh abducts toward -z swing)
         elbow, wrist = P(f"elbow.{side}"), P(f"wrist.{side}")
+        elbow_bend = _rest_bend(P(f"shoulder.{side}"), elbow, wrist)
+        knee_bend = _rest_bend(P(f"hip.{side}"), P(f"knee.{side}"), P(f"ankle.{side}"))
         J += [
             {
                 "name": f"Shoulder.{side}",
@@ -147,7 +165,10 @@ def _humanoid_joints(det: LM.Detection, twist: bool) -> list[dict[str, Any]]:
                 "role": f"lower_arm.{side}",
                 "lean": FORWARD,
                 "end": f"ForeArmTwist.{side}" if twist else f"Hand.{side}",
-                "limits": {"swing": {"x": [0, 150], "z": [-5, 5]}, "twist": [-80, 80]},
+                "limits": {
+                    "swing": {"x": _flexion(elbow_bend), "z": [-5, 5]},
+                    "twist": [-80, 80],
+                },
             },
         ]
         if twist:
@@ -190,7 +211,10 @@ def _humanoid_joints(det: LM.Detection, twist: bool) -> list[dict[str, Any]]:
                 "role": f"shin.{side}",
                 "lean": BACKWARD,
                 "end": f"Foot.{side}",
-                "limits": {"swing": {"x": [0, 150], "z": [-5, 5]}, "twist": [-15, 15]},
+                "limits": {
+                    "swing": {"x": _flexion(knee_bend, beyond=3.0), "z": [-5, 5]},
+                    "twist": [-15, 15],
+                },
             },
             {
                 "name": f"Foot.{side}",

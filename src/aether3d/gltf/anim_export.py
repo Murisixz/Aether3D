@@ -948,7 +948,7 @@ def build_animations(
                     "ANIMATED_PROPERTY_NOT_EXPORTED", WARNING,
                     f"clip {name!r}: glTF animates node transforms and morph weights only; "
                     f"not exported: {', '.join(sorted(set(lost))[:8])}",
-                    f"/animations/{name}", len(set(lost)), lossy=True,
+                    f"/animations/{name}", count=len(set(lost)), lossy=True,
                 ))  # fmt: skip
             for (node, path), src in sorted(sources.items(), key=lambda kv: kv[0]):
                 ch, notes = fit_source(src, t0, max(t1, t0), tol[path])
@@ -985,20 +985,25 @@ _NOTE_TEXT = {
 
 
 def _check_property_channels(scene, system, clip, diagnostics) -> None:
+    """Channels glTF cannot animate (baking: constraint influences shape the baked
+    transforms, so they are represented; cameras, lights and materials are not)."""
     from ..animation import paths as P
 
     lost = set()
     for item in system._clip_names.values():
         for path, _ in item._definition.channels:
             spec = P.parse(path, item._definition.target)
-            if spec.group not in ("transform", "joint", "morph"):
-                lost.add(path)
+            if spec.group in ("transform", "joint", "morph"):
+                continue
+            if spec.group == "constraint":
+                continue  # (baked: their effect is in the joint and node keys)
+            lost.add(path)
     if lost:
         diagnostics.append(_diag(
             "ANIMATED_PROPERTY_NOT_EXPORTED", WARNING,
             "glTF animates node transforms and morph weights only; not exported: "
             + ", ".join(sorted(lost)[:8]),
-            "/animations", len(lost), lossy=True,
+            "/animations", count=len(lost), lossy=True,
         ))  # fmt: skip
 
 

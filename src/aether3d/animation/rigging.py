@@ -518,8 +518,16 @@ def _align_bend(model: np.ndarray, chain: list, pos: np.ndarray, axis: str) -> N
     d2 = pos[2] - pos[1]
     n = np.cross(d1, d2)
     nn = float(np.linalg.norm(n))
-    if nn < 1e-9 * float(np.linalg.norm(d1) * np.linalg.norm(d2)) or nn == 0.0:
+    scale_len = float(np.linalg.norm(d1) * np.linalg.norm(d2))
+    if nn < 1e-9 * scale_len or nn == 0.0:
         return  # a straight chain: no plane
+    # A nearly straight chain has an ill-defined plane: the alignment fades in between
+    # 2 and 10 degrees of bend (no twist pops as a limb straightens).
+    bend = math.degrees(math.asin(min(1.0, nn / scale_len)))
+    fade = min(1.0, max(0.0, (bend - 2.0) / 8.0))
+    fade = fade * fade * (3.0 - 2.0 * fade)
+    if fade <= 0.0:
+        return
     n /= nn
     a_local = AXES[axis]
     for k, d in ((chain[0], d1), (chain[1], d2)):
@@ -534,7 +542,7 @@ def _align_bend(model: np.ndarray, chain: list, pos: np.ndarray, axis: str) -> N
             continue
         cur /= np.linalg.norm(cur)
         want /= np.linalg.norm(want)
-        angle = math.atan2(float(np.cross(cur, want) @ bone), float(cur @ want))
+        angle = math.atan2(float(np.cross(cur, want) @ bone), float(cur @ want)) * fade
         turn = R.matrices(R.axis_angle(bone, angle))[0]
         model[k][:3, :3] = (turn @ rot) * scale
 
