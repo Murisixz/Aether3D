@@ -379,10 +379,12 @@ def humanoid_shapes(**options: Any) -> list[dict[str, Any]]:
         [head_rx * 0.7, head_ry * 0.6, head_rz * 0.5],
         0.03 * s,
     )
+    # (a soft ridge rather than a blob: a blob's underside faces away from any light from
+    # above and reads as a dark pit)
     ell(
-        [0, -head_ry * 0.98, head_c - head_rz * 0.12],
-        [head_rz * 0.11, head_rz * 0.18, head_rz * 0.17],
-        0.012 * s,
+        [0, -head_ry * 0.98 + head_rz * 0.01, head_c - head_rz * 0.04],
+        [head_rz * 0.08, head_rz * 0.12, head_rz * 0.32],
+        0.025 * s,
     )
     # Arms: shoulder -> elbow -> wrist -> hand, out from hanging by arm_angle.
     upper = 0.186 * H * o["arms"]
