@@ -12,6 +12,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 mod buffers;
+mod dqs;
 mod earcut;
 mod hierarchy;
 mod hydro;
@@ -25,7 +26,7 @@ use buffers::Arrays;
 
 /// The calling convention between `aether3d._native` and this module: a module whose
 /// `ABI` differs from what Aether3D expects is not used.
-const ABI: u32 = 5;
+const ABI: u32 = 6;
 
 fn check(ok: bool, message: impl FnOnce() -> String) -> PyResult<()> {
     if ok {
@@ -730,6 +731,101 @@ fn skin_linear(
     Ok(())
 }
 
+/// Dual quaternion skinning (`animation.rig.skin_dual_quaternion`): `out_p` (n, 3)
+/// float32 from `pos` (n, 3) float32, `idx` (n, k) int32, `w` (n, k) float64 and per joint
+/// `q`, `d` (m, 4) and `kmat` (m, 9) float64; with `pal` (m, 12) and `blend` (n), mixed
+/// with linear blend skinning per vertex; with `nrm`, also `out_n` (n, 3).
+#[pyfunction]
+#[pyo3(signature = (pos, nrm, idx, w, q, d, kmat, pal, blend, out_p, out_n, threads=1))]
+#[allow(clippy::too_many_arguments)]
+fn skin_dual_quaternion(
+    py: Python<'_>,
+    pos: &Bound<'_, PyAny>,
+    nrm: Option<&Bound<'_, PyAny>>,
+    idx: &Bound<'_, PyAny>,
+    w: &Bound<'_, PyAny>,
+    q: &Bound<'_, PyAny>,
+    d: &Bound<'_, PyAny>,
+    kmat: &Bound<'_, PyAny>,
+    pal: Option<&Bound<'_, PyAny>>,
+    blend: Option<&Bound<'_, PyAny>>,
+    out_p: &Bound<'_, PyAny>,
+    out_n: Option<&Bound<'_, PyAny>>,
+    threads: usize,
+) -> PyResult<()> {
+    let mut arrays = Arrays::new();
+    let p = arrays.input::<f32>(pos, "pos", None)?;
+    let n = unsafe { p.slice() }.len() / 3;
+    check(unsafe { p.slice() }.len() == 3 * n, || {
+        "pos: not (n, 3)".into()
+    })?;
+    let ix = arrays.input::<i32>(idx, "idx", None)?;
+    let len = unsafe { ix.slice() }.len();
+    let k = len.checked_div(n).unwrap_or(1);
+    check(n * k == len && (n > 0 || len == 0), || {
+        "idx: not (n, k)".into()
+    })?;
+    check((1..=8).contains(&k), || {
+        format!("idx: {k} influences per vertex (1..8)")
+    })?;
+    let wt = arrays.input::<f64>(w, "w", Some(n * k))?;
+    let qq = arrays.input::<f64>(q, "q", None)?;
+    let m = unsafe { qq.slice() }.len() / 4;
+    check(unsafe { qq.slice() }.len() == 4 * m, || {
+        "q: not (m, 4)".into()
+    })?;
+    let dd = arrays.input::<f64>(d, "d", Some(4 * m))?;
+    let km = arrays.input::<f64>(kmat, "kmat", Some(9 * m))?;
+    for (e, &j) in unsafe { ix.slice() }.iter().enumerate() {
+        check(j >= 0 && (j as usize) < m, || {
+            format!("idx[{e}] = {j}: not a joint of the palette ({m})")
+        })?;
+    }
+    let pl = match pal {
+        Some(obj) => Some(arrays.input::<f64>(obj, "pal", Some(12 * m))?),
+        None => None,
+    };
+    let bl = match blend {
+        Some(obj) => Some(arrays.input::<f64>(obj, "blend", Some(n))?),
+        None => None,
+    };
+    check(pl.is_some() == bl.is_some(), || {
+        "pal and blend go together".into()
+    })?;
+    let op = arrays.output::<f32>(out_p, "out_p", Some(3 * n))?;
+    let nr = match nrm {
+        Some(obj) => Some(arrays.input::<f32>(obj, "nrm", Some(3 * n))?),
+        None => None,
+    };
+    let on = match out_n {
+        Some(obj) => Some(arrays.output::<f32>(obj, "out_n", Some(3 * n))?),
+        None => None,
+    };
+    check(nr.is_some() == on.is_some(), || {
+        "nrm and out_n go together".into()
+    })?;
+    arrays.check_overlaps()?;
+    py.detach(|| unsafe {
+        dqs::skin_dual_quaternion(
+            p.slice(),
+            nr.as_ref().map(|a| a.slice() as &[f32]),
+            ix.slice(),
+            wt.slice(),
+            qq.slice(),
+            dd.slice(),
+            km.slice(),
+            pl.as_ref().map(|a| a.slice() as &[f64]),
+            bl.as_ref().map(|a| a.slice() as &[f64]),
+            k,
+            op.slice(),
+            on.as_ref().map(|a| a.slice()),
+            threads,
+        )
+    });
+    drop(arrays);
+    Ok(())
+}
+
 /// Priority-Flood with an epsilon (`worlds.hydrology.priority_flood`): `out` (n) float64
 /// from `h` (n) float64 and `outlet` (n) uint8 on an `nx` x `ny` grid.
 #[pyfunction]
@@ -944,6 +1040,7 @@ fn aether3d_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pack_horizon, m)?)?;
     m.add_function(wrap_pyfunction!(triangulate, m)?)?;
     m.add_function(wrap_pyfunction!(skin_linear, m)?)?;
+    m.add_function(wrap_pyfunction!(skin_dual_quaternion, m)?)?;
     m.add_function(wrap_pyfunction!(priority_flood, m)?)?;
     m.add_function(wrap_pyfunction!(accumulate, m)?)?;
     m.add_function(wrap_pyfunction!(stream_power, m)?)?;

@@ -29,6 +29,10 @@ Types:
 * ``limit_location`` / ``limit_rotation`` (Euler XYZ degrees) / ``limit_scale``: clamp
   local values to ``min``/``max`` (per axis, ``null`` for no bound).
 * ``limit_distance``: keep the distance to the target within ``min``..``max``.
+* ``twist`` (joint): the owner joint turns about its ``axis`` (``+y``: along the bone) by
+  ``factor`` times the twist of the target joint (``{"joint": NAME}``) from its rest
+  rotation -- twist distribution: forearm or upper-arm twist joints take part of a
+  wrist's or shoulder's twist, so skins twist along the limb instead of at one joint.
 
 Evaluation order: the units (objects with constraints, rigs) run in dependency order --
 a unit reads the transforms of its targets after their own units ran -- and a cycle is
@@ -62,8 +66,9 @@ TYPES = (
     "limit_scale",
     "limit_distance",
     "follow_path",
+    "twist",
 )
-JOINT_ONLY = ("ik",)
+JOINT_ONLY = ("ik", "twist")
 MAX_CONSTRAINTS = 256
 MAX_CHAIN = 64
 AXES = {
@@ -122,6 +127,7 @@ _PARAMS: dict[str, dict[str, Any]] = {
         "required": ("path",),
         "optional": {"offset": 0.0, "follow": True, "axis": "+y", "up": "+z", "loop": False},
     },
+    "twist": {"required": ("target",), "optional": {"axis": "+y", "factor": 0.5}},
 }
 
 
@@ -344,6 +350,19 @@ def parse_constraint(raw: Any, location: str, *, joints: bool) -> Constraint:
                 "INVALID_CONSTRAINT", "inverse is a 4x4 matrix (rows)", f"{location}.inverse"
             )
         p["inverse"] = inv.tolist()
+    if kind == "twist":
+        t = p["target"]
+        if set(t) != {"joint"}:
+            raise _err(
+                "INVALID_CONSTRAINT",
+                "a twist constraint's target is a joint of the same rig: {joint: NAME}",
+                f"{location}.target",
+            )
+        if p["axis"] not in AXES:
+            raise _err(
+                "INVALID_CONSTRAINT", f"axis is one of {', '.join(AXES)}", f"{location}.axis"
+            )
+        p["factor"] = _num(p["factor"], f"{location}.factor", "factor", -1.0, 1.0)
     if kind == "follow_path":
         if not isinstance(p["path"], str) or not p["path"]:
             raise _err("INVALID_CONSTRAINT", "path is a path item (id or name)", f"{location}.path")

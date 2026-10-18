@@ -843,7 +843,29 @@ class AnimationSystem:
             self._canonical_constraint(c, f"constraints[{i}]")
             for i, c in enumerate(raw.get("constraints", []))
         ]
+        # Controls and correctives name scene objects: stored by id (renames keep them).
+        controls = raw.get("controls")
+        if isinstance(controls, list):
+            raw["controls"] = [
+                {**c, "object": self._object(c["object"], f"controls[{i}].object")._id}
+                if isinstance(c, dict) and isinstance(c.get("object"), str)
+                else c
+                for i, c in enumerate(controls)
+            ]
+        correctives = raw.get("correctives")
+        if isinstance(correctives, list):
+            raw["correctives"] = [
+                {**c, "mesh": self._object(c["mesh"], f"correctives[{i}].mesh")._id}
+                if isinstance(c, dict) and isinstance(c.get("mesh"), str)
+                else c
+                for i, c in enumerate(correctives)
+            ]
         rig = parse_rig(raw, "rig")
+        for c in rig.controls:
+            if c.object == obj._id and c.kind != "root":
+                raise _err(
+                    "INVALID_RIG", "only a root control may be the armature itself", "controls"
+                )
         ancestors = {a._id for a in obj.iter_ancestors()}
         for oid, _ in rig.attachments:
             if oid in ancestors:
@@ -994,6 +1016,7 @@ class AnimationSystem:
         joints: list[str] | None = None,
         influences: int = 4,
         method: str = "linear",
+        dq: Any = None,
     ) -> dict[str, Any]:
         """Bind a mesh object to a rig smoothly, in the current (rest) pose. ``weights``:
         ``{"indices": (n, k), "weights": (n, k), "joints": [names], "inverse_bind": (m, 4,
@@ -1001,7 +1024,9 @@ class AnimationSystem:
         matrices, mesh space to joint space, as glTF files carry them),
         ``"nearest"`` (each vertex follows its nearest bone fully: rigid parts) or
         ``"envelope"`` (inverse-distance weights over the ``influences`` nearest bones: an
-        automatic starting point, not production weight painting). Returns a report."""
+        automatic starting point, not production weight painting). ``method``:
+        ``"linear"``, ``"dual_quaternion"`` or ``"blended"`` (per vertex: ``dq``, the DQS
+        share 0..1 -- one number or one per vertex). Returns a report."""
         from .rig import MAX_INFLUENCES, make_skin
 
         obj = self._object(mesh_object, "mesh_object")
@@ -1067,8 +1092,10 @@ class AnimationSystem:
             raise _err(
                 "INVALID_SKIN", "weights is 'nearest', 'envelope' or {indices, weights}", "weights"
             )
+        if method == "blended" and dq is not None and np.ndim(dq) == 0:
+            dq = np.full(mesh.vertex_count, float(dq))
         skin = make_skin(
-            obj._id, "", [rig.joints[k].id for k in idx], bind_inv, vi, vw, method, "skin"
+            obj._id, "", [rig.joints[k].id for k in idx], bind_inv, vi, vw, method, "skin", dq=dq
         )
         if skin.vertex_count != mesh.vertex_count:
             raise _err(
@@ -1077,15 +1104,7 @@ class AnimationSystem:
                 "weights",
             )
         rig_item = self._owned[("rig", arm._id)]
-        skin = type(skin)(
-            obj._id,
-            rig_item.id,
-            skin.joints,
-            skin.inverse_bind,
-            skin.indices,
-            skin.weights,
-            skin.method,
-        )
+        skin = skin.replace(object=obj._id, rig=rig_item.id)
         item = self._owned.get(("skin", obj._id))
         with self._op(f"Skin {obj.name!r} to {arm.name!r}"):
             if item is None:
@@ -1427,8 +1446,24 @@ class AnimationSystem:
             elif kind == "rig":
                 rig = item._definition
                 kept = tuple(a for a in rig.attachments if a[0] not in gone)
-                if len(kept) != len(rig.attachments):
-                    self._set(item, definition=_replace_rig(rig, attachments=kept))
+                controls = tuple(c for c in rig.controls if c.object not in gone)
+                correctives = tuple(c for c in rig.correctives if c.mesh not in gone)
+                if (
+                    len(kept) != len(rig.attachments)
+                    or len(controls) != len(rig.controls)
+                    or len(correctives) != len(rig.correctives)
+                ):
+                    names = {c.name for c in controls}
+                    controls = tuple(
+                        c if c.mirror is None or c.mirror in names else _replace_control(c)
+                        for c in controls
+                    )
+                    self._set(
+                        item,
+                        definition=_replace_rig(
+                            rig, attachments=kept, controls=controls, correctives=correctives
+                        ),
+                    )
 
     def _dead_rigs(self, gone: set[str]) -> set[str]:
         return {i.id for (k, oid), i in self._owned.items() if k == "rig" and oid in gone}
@@ -1884,6 +1919,22 @@ class AnimationSystem:
                                     f"rig {raw['name']!r} attaches a missing object {oid!r}",
                                     loc,
                                 )
+                        for c in item._definition.controls:
+                            if c.object is not None and c.object not in self.scene._objects:
+                                raise _err(
+                                    "INVALID_DOCUMENT",
+                                    f"control {c.name!r} of rig {raw['name']!r} names a missing "
+                                    f"object {c.object!r}",
+                                    loc,
+                                )
+                        for c in item._definition.correctives:
+                            if c.mesh not in self.scene._objects:
+                                raise _err(
+                                    "INVALID_DOCUMENT",
+                                    f"corrective {c.name!r} of rig {raw['name']!r} names a "
+                                    f"missing mesh object {c.mesh!r}",
+                                    loc,
+                                )
         for raw, loc, item in records:
             if item.kind != "binding":
                 continue
@@ -2014,13 +2065,14 @@ def _duplicate(key: tuple[str, Any]) -> AnimationError:
 
 
 def _replace_rig(rig: Any, **changes: Any) -> Any:
-    from .rig import Rig
+    return rig.replace(**changes)
 
-    fields = {
-        f: getattr(rig, f) for f in ("object", "joints", "attachments", "constraints", "mirror")
-    }
-    fields.update(changes)
-    return Rig(**fields)
+
+def _replace_control(control: Any) -> Any:
+    """A control whose mirror partner is gone."""
+    import dataclasses
+
+    return dataclasses.replace(control, mirror=None)
 
 
 class _RigRest:
@@ -2392,10 +2444,13 @@ def definition_from_json(
             "indices",
             "weights",
             "method",
+            "dq",
+            "locks",
         }:
             raise _err(
                 "INVALID_DOCUMENT",
-                "a skin is {object, rig, joints, inverse_bind, indices, weights, method}",
+                "a skin is {object, rig, joints, inverse_bind, indices, weights, method, dq, "
+                "locks}",
                 location,
             )
         try:
@@ -2408,6 +2463,8 @@ def definition_from_json(
                 data["weights"],
                 data.get("method", "linear"),
                 location,
+                dq=data.get("dq"),
+                locks=data.get("locks"),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise _err(

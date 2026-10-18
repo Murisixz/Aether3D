@@ -9,7 +9,9 @@ deformed meshes and joint matrices. Order (the documented contract):
    kinematics, its joint constraints in order, then its attachments) or an object's
    constraint list -- where a unit runs after every unit that moves one of its targets
    (or a target's ancestor); a cycle is reported and its units skipped;
-3. skins and morph targets deform their meshes with the final matrices.
+3. **correctives** read the final joint rotations and add to morph target weights;
+4. morph targets, then skins (linear, dual quaternion or blended) deform their meshes with
+   the final matrices.
 
 Nothing here changes the scene; the result only feeds the render overlay.
 """
@@ -41,6 +43,8 @@ class RiggingResult:
     )  # armature -> (rig, model)
     residuals: dict[str, float] = field(default_factory=dict)  # "Armature/constraint" -> distance
     diagnostics: list[Diagnostic] = field(default_factory=list)
+    # "Armature/corrective" -> (driver angle in degrees, weight added to the morph target)
+    correctives: dict[str, tuple[float, float]] = field(default_factory=dict)
 
 
 def _diag(code: str, message: str, location: str) -> Diagnostic:
@@ -134,15 +138,57 @@ def evaluate_rigging(system: AnimationSystem, pose: AnimationPose) -> RiggingRes
         else:
             _run_object_constraints(system, pose, oid, object_constraints[oid][1], worlds, result)
     result.local = worlds.local
+    extra = _corrective_weights(system, rigs, morphs, result)
     # Deformation: morph targets then skins, with the final matrices.
     for oid, skin in skins.items():
-        _run_skin(system, pose, oid, skin, worlds, result)
+        _run_skin(system, pose, oid, skin, worlds, result, extra.get(oid))
     for oid in morphs:
         if oid not in result.meshes:
-            mesh = _morphed(system, pose, oid)
+            mesh = _morphed(system, pose, oid, extra.get(oid))
             if mesh is not None:
                 result.meshes[oid] = mesh
     return result
+
+
+def _corrective_weights(
+    system: AnimationSystem, rigs: dict, morphs: dict, result: RiggingResult
+) -> dict[str, dict[str, float]]:
+    """Mesh object id -> {morph target: weight to add}, from every rig's correctives
+    (their driver joints' final rotations)."""
+    out: dict[str, dict[str, float]] = {}
+    for arm, (_item, rig) in rigs.items():
+        if not rig.correctives:
+            continue
+        found = result.joints.get(arm)
+        if found is None:
+            continue
+        _, model = found
+        rest_rot = rig.rest_trs()[1]
+        parents = rig.parents
+        arm_obj = system.scene._objects.get(arm)
+        arm_name = arm if arm_obj is None else arm_obj.name
+        for c in rig.correctives:
+            k = rig.index(c.joint)
+            morph = morphs.get(c.mesh)
+            if k is None or morph is None or c.target not in morph.names:
+                result.diagnostics.append(
+                    _diag(
+                        "CORRECTIVE_TARGET_MISSING",
+                        f"corrective {c.name!r} of {arm_name!r} drives a morph target its "
+                        "mesh does not have",
+                        f"objects[{arm_name}].correctives[{c.name}]",
+                    )
+                )
+                continue
+            parent_m = np.eye(4) if parents[k] < 0 else model[parents[k]]
+            _, q, _ = decompose(np.linalg.solve(parent_m, model[k]))
+            value = c.value(q, rest_rot[k])
+            weight = c.weight_for(value)
+            result.correctives[f"{arm_name}/{c.name}"] = (value, weight)
+            if weight != 0.0:
+                bucket = out.setdefault(c.mesh, {})
+                bucket[c.target] = bucket.get(c.target, 0.0) + weight
+    return out
 
 
 def _cached(scene: Any, name: str, make: Any) -> Any:
@@ -317,6 +363,17 @@ def _run_rig(
                     f"objects[{arm.name}].constraints[{c.name}]",
                 )
             )
+    if rig.enforce_limits == "always":
+        limited = False
+        for k, j in enumerate(rig.joints):
+            if j.limits != "null":
+                new = _limit(rig, k, local[k])
+                if new is not local[k]:
+                    local = local if limited else local.copy()
+                    local[k] = new
+                    limited = True
+        if limited:
+            model = forward_kinematics(local, parents, depth)
     result.joints[arm_id] = (rig, model)
     # Attachments: W' = A' J' (A J)^-1 W (rest: authored).
     if rig.attachments:
@@ -416,6 +473,19 @@ def _joint_constraint(
             new_local[k] = np.linalg.solve(parent_m, new_model[k])
             new_local[k] = _limit(rig, k, new_local[k])
         result.residuals[f"{arm.name}/{c.name}"] = float(residual)
+    elif c.type == "twist":
+        from . import limits as L
+        from .constraints import compose
+
+        src = rig.index(p["target"]["joint"])
+        k = rig.index(p["joint"])
+        _, q_src, _ = decompose(local[src])
+        axis = L.AXES[p["axis"]]
+        angle = L.twist_angle(L.relative(q_src, rig.rest_trs()[1][src]), axis) * p["factor"]
+        pl, ql, sl = decompose(local[k])
+        h = np.radians(angle) / 2.0
+        turn = np.array([*(axis * np.sin(h)), np.cos(h)])
+        new_local[k] = compose(pl, R.multiply(ql[None], turn[None])[0], sl)
     else:
         k = rig.index(p["joint"])
         parent_m = np.eye(4) if parents[k] < 0 else model[parents[k]]
@@ -437,6 +507,13 @@ def _limit(rig: Rig, k: int, local: np.ndarray) -> np.ndarray:
     limits = joint_limits(rig, k)
     if not limits:
         return local
+    if "rotation" not in limits:  # swing-twist or hinge, from the rest rotation
+        from . import limits as L
+        from .constraints import compose
+
+        p, q, s = decompose(local)
+        clamped = L.clamp(limits, q, rig.rest_trs()[1][k])
+        return local if clamped is None else compose(p, clamped, s)
     rot = limits["rotation"]
     p, q, s = decompose(local)
     e = R.to_euler(q[None])[0]
@@ -534,6 +611,7 @@ def _run_skin(
     skin: Any,
     worlds: _Worlds,
     result: RiggingResult,
+    extra: dict[str, float] | None = None,
 ) -> None:
     from ..mesh import Mesh
 
@@ -550,7 +628,7 @@ def _run_skin(
     if found is None:
         return
     _, model = found
-    base = _morphed(system, pose, oid)
+    base = _morphed(system, pose, oid, extra)
     mesh = base if base is not None else obj.mesh
     if mesh is None or mesh.vertex_count != skin.vertex_count:
         result.diagnostics.append(
@@ -575,8 +653,13 @@ def _run_skin(
     a_world = worlds.world[rig.object]
     m_world_inv = np.linalg.inv(worlds.world[oid])
     palette = m_world_inv @ a_world @ model[idx] @ skin.inverse_bind
-    fn = skin_linear if skin.method == "linear" else skin_dual_quaternion
-    pos, nrm = fn(mesh.positions, mesh.normals, skin.indices, skin.weights, palette)
+    if skin.method == "linear":
+        pos, nrm = skin_linear(mesh.positions, mesh.normals, skin.indices, skin.weights, palette)
+    else:
+        pos, nrm = skin_dual_quaternion(
+            mesh.positions, mesh.normals, skin.indices, skin.weights, palette,
+            skin.dq if skin.method == "blended" else None,
+        )  # fmt: skip
     if not np.all(np.isfinite(pos)):
         result.diagnostics.append(
             _diag(
@@ -591,10 +674,20 @@ def _run_skin(
     )
 
 
-def _morphed(system: AnimationSystem, pose: AnimationPose, oid: str) -> Any:
-    """The morphed mesh of ``oid`` (``None``: no morph targets or all weights 0)."""
+def _morphed(
+    system: AnimationSystem, pose: AnimationPose, oid: str, extra: dict[str, float] | None = None
+) -> Any:
+    """The morphed mesh of ``oid`` (``None``: no morph targets or all weights 0);
+    ``extra``: weights correctives add to the animated (or default) ones."""
     morphs = system._morphs() if hasattr(system, "_morphs") else {}
     morph = morphs.get(oid)
     if morph is None:
         return None
-    return morph.apply(system.scene._objects[oid].mesh, pose.morphs.get(oid, {}))
+    weights = pose.morphs.get(oid, {})
+    if extra:
+        weights = dict(weights)
+        for name, w in extra.items():
+            if name in morph.names:
+                base = weights.get(name, morph.defaults[morph.names.index(name)])
+                weights[name] = base + w
+    return morph.apply(system.scene._objects[oid].mesh, weights)

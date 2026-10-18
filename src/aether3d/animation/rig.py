@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -42,7 +43,7 @@ MAX_JOINTS = 4096
 MAX_INFLUENCES = 8
 MAX_SKIN_VERTICES = 10_000_000
 SKIN_CHUNK = 65536
-METHODS = ("linear", "dual_quaternion")
+METHODS = ("linear", "dual_quaternion", "blended")
 
 
 def _err(code: str, message: str, location: str) -> AnimationError:
@@ -68,7 +69,9 @@ class Joint:
     rotation: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
     tail: tuple[float, float, float] | None = None
-    limits: str = "null"  # canonical JSON: {"rotation": {"min": [...], "max": [...]}}
+    limits: str = "null"  # canonical JSON (see :mod:`.limits`)
+    role: str | None = None  # semantic role: "hips", "upper_arm.L", ... (unique per rig)
+    deform: bool = True  # False: a helper joint (controls, IK, twist sources): no weights
 
     def to_json(self, joints: tuple[Joint, ...]) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -84,7 +87,126 @@ class Joint:
             out["tail"] = list(self.tail)
         if self.limits != "null":
             out["limits"] = json.loads(self.limits)
+        if self.role is not None:
+            out["role"] = self.role
+        if not self.deform:
+            out["deform"] = False
         return out
+
+
+CONTROL_KINDS = ("ik_target", "pole", "gaze", "fk", "root", "custom")
+CONTROL_SHAPES = ("sphere", "cube", "diamond", "circle", "arrow", "none")
+CORRECTIVE_DRIVERS = ("angle", "swing", "twist", "rotation")
+ENFORCE_LIMITS = ("ik", "always")
+INFO_KEYS = ("forward", "up", "description", "source", "style", "pose")
+MAX_CONTROLS = 4096
+MAX_CORRECTIVES = 1024
+MAX_LANDMARKS = 1024
+_ROLE = re.compile(r"^[a-z][a-z0-9_]*(\.[A-Za-z0-9_]+)*$")
+
+
+@dataclass(frozen=True)
+class Control:
+    """A named animation control of a rig. Controls the animator moves are ordinary scene
+    objects (``object``: IK targets, poles, gaze targets, the root), so every transform
+    channel, layer, path and export works on them; ``fk`` controls are the joints
+    themselves (their channels). ``constraint`` names the rig constraint the control
+    feeds (an ``ik`` or ``look_at``); ``group`` and ``side`` organize controls (``arm.L``,
+    ``leg.R``, ``spine``, ``head``); ``shape`` and ``size`` are display hints."""
+
+    name: str
+    kind: str
+    object: str | None = None  # scene object id (targets, poles, gaze, root)
+    joint: str | None = None  # the joint it drives or follows (by name)
+    constraint: str | None = None  # the rig constraint it feeds (by name)
+    group: str = ""
+    side: str | None = None  # "L" | "R" | None
+    shape: str = "sphere"
+    size: float = 0.05
+    mirror: str | None = None  # the control on the other side (by name)
+
+    def to_json(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"name": self.name, "kind": self.kind}
+        for key in ("object", "joint", "constraint", "side", "mirror"):
+            v = getattr(self, key)
+            if v is not None:
+                out[key] = v
+        if self.group:
+            out["group"] = self.group
+        if self.shape != "sphere":
+            out["shape"] = self.shape
+        if self.size != 0.05:
+            out["size"] = self.size
+        return out
+
+
+@dataclass(frozen=True)
+class Corrective:
+    """A pose-driven corrective: the weight of morph target ``target`` of mesh object
+    ``mesh`` follows an angle of ``joint`` (from its rest rotation, after constraints):
+    ``driver`` ``angle`` (the whole rotation), ``swing`` (how far the bone ``axis``
+    turned; with ``direction``, the signed part toward that axis), ``twist`` (signed,
+    about ``axis``) or ``rotation`` (the signed rotation-vector component along ``axis``:
+    a hinge's bend). ``range`` (degrees) maps to 0..1, shaped by ``curve`` (``linear`` or
+    ``smooth``), times ``weight``; the result adds to the target's animated weight."""
+
+    name: str
+    mesh: str  # mesh object id
+    target: str  # morph target name
+    joint: str  # driver joint name
+    driver: str = "rotation"
+    axis: str = "+x"
+    direction: str | None = None
+    range: tuple[float, float] = (0.0, 90.0)
+    curve: str = "smooth"
+    weight: float = 1.0
+
+    def to_json(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "name": self.name,
+            "mesh": self.mesh,
+            "target": self.target,
+            "joint": self.joint,
+            "driver": self.driver,
+            "axis": self.axis,
+            "range": list(self.range),
+            "curve": self.curve,
+        }
+        if self.direction is not None:
+            out["direction"] = self.direction
+        if self.weight != 1.0:
+            out["weight"] = self.weight
+        return out
+
+    def value(self, q_local: Any, q_rest: Any) -> float:
+        """The driver's angle (degrees) for a joint rotation."""
+        from . import limits as L
+
+        q = L.relative(np.asarray(q_local, np.float64), np.asarray(q_rest, np.float64))
+        if self.driver == "angle":
+            return math.degrees(2.0 * math.acos(min(1.0, float(q[3]))))
+        axis = L.AXES[self.axis]
+        if self.driver == "twist":
+            return L.twist_angle(q, axis)
+        if self.driver == "swing":
+            sv = L.swing_vector(q, axis)
+            if self.direction is None:
+                return float(np.linalg.norm(sv))
+            return float(sv @ L.AXES[self.direction])
+        # rotation: the rotation vector's component along the axis
+        n = float(np.linalg.norm(q[:3]))
+        if n < 1e-15:
+            return 0.0
+        angle = 2.0 * math.atan2(n, float(q[3]))
+        return math.degrees(angle) * float(q[:3] @ axis) / n
+
+    def weight_for(self, value: float) -> float:
+        a, b = self.range
+        u = (value - a) / (b - a)
+        u = min(1.0, max(0.0, u))
+        if self.curve == "smooth":
+            u = u * u * (3.0 - 2.0 * u)
+        return u * self.weight
 
 
 @dataclass(frozen=True)
@@ -96,6 +218,12 @@ class Rig:
     attachments: tuple[tuple[str, str], ...] = ()  # (object id, joint id)
     constraints: tuple[Constraint, ...] = ()
     mirror: tuple[tuple[str, str], ...] = ((".L", ".R"), ("Left", "Right"), ("_l", "_r"))
+    controls: tuple[Control, ...] = ()
+    correctives: tuple[Corrective, ...] = ()
+    landmarks: tuple[tuple[str, tuple[float, float, float]], ...] = ()  # armature space
+    template: str | None = None
+    info: str = "null"  # canonical JSON: {forward, up, description, source, style, pose}
+    enforce_limits: str = "ik"  # "ik": limits on joints IK moves (Stage 17); "always"
     _cache: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     # -- structure -------------------------------------------------------------------------
@@ -197,6 +325,43 @@ class Rig:
                 out.append(i)
         return out
 
+    def role_index(self, role: str) -> int | None:
+        """The joint with semantic ``role`` (``"hips"``, ``"upper_arm.L"``...), or ``None``."""
+        found = self._cache.get("roles")
+        if found is None:
+            found = self._cache["roles"] = {
+                j.role: k for k, j in enumerate(self.joints) if j.role is not None
+            }
+        return found.get(role)
+
+    @property
+    def roles(self) -> dict[str, str]:
+        """Role -> joint name."""
+        return {j.role: j.name for j in self.joints if j.role is not None}
+
+    @property
+    def deforming(self) -> tuple[int, ...]:
+        """Indices of the joints that may carry skin weights (``deform``)."""
+        return tuple(k for k, j in enumerate(self.joints) if j.deform)
+
+    def control(self, name: str) -> Control | None:
+        for c in self.controls:
+            if c.name == name:
+                return c
+        return None
+
+    @property
+    def info_dict(self) -> dict[str, Any]:
+        return {} if self.info == "null" else json.loads(self.info)
+
+    @property
+    def landmark_dict(self) -> dict[str, tuple[float, float, float]]:
+        return dict(self.landmarks)
+
+    def forward_axis(self, default: str = "-y") -> str:
+        """The direction the character faces in armature space (``info.forward``)."""
+        return self.info_dict.get("forward", default)
+
     def mirror_name(self, name: str) -> str | None:
         """The joint name on the other side (``Arm.L`` -> ``Arm.R``), or ``None``."""
         for left, right in self.mirror:
@@ -223,7 +388,25 @@ class Rig:
             out["constraints"] = [c.to_json() for c in self.constraints]
         if self.mirror != Rig.__dataclass_fields__["mirror"].default:
             out["mirror"] = [list(p) for p in self.mirror]
+        if self.controls:
+            out["controls"] = [c.to_json() for c in self.controls]
+        if self.correctives:
+            out["correctives"] = [c.to_json() for c in self.correctives]
+        if self.landmarks:
+            out["landmarks"] = {name: list(p) for name, p in self.landmarks}
+        if self.template is not None:
+            out["template"] = self.template
+        if self.info != "null":
+            out["info"] = json.loads(self.info)
+        if self.enforce_limits != "ik":
+            out["enforce_limits"] = self.enforce_limits
         return out
+
+    def replace(self, **changes: Any) -> Rig:
+        """A copy with some fields changed (caches are not shared)."""
+        fields = {f: getattr(self, f) for f in Rig.__dataclass_fields__ if f != "_cache"}
+        fields.update(changes)
+        return Rig(**fields)
 
 
 def parse_rig(raw: Any, location: str) -> Rig:
@@ -231,16 +414,8 @@ def parse_rig(raw: Any, location: str) -> Rig:
     unique (generated when missing), no cycles."""
     if isinstance(raw, Rig):
         return raw
-    if not isinstance(raw, dict) or set(raw) - {
-        "object",
-        "joints",
-        "attachments",
-        "constraints",
-        "mirror",
-    }:
-        raise _err(
-            "INVALID_RIG", "a rig is {object, joints, attachments, constraints, mirror}", location
-        )
+    if not isinstance(raw, dict) or set(raw) - set(RIG_KEYS):
+        raise _err("INVALID_RIG", f"a rig is {{{', '.join(RIG_KEYS)}}}", location)
     obj = raw.get("object")
     if not isinstance(obj, str) or not obj:
         raise _err("INVALID_RIG", "a rig names its armature object", f"{location}.object")
@@ -250,22 +425,14 @@ def parse_rig(raw: Any, location: str) -> Rig:
     rows = []
     names: dict[str, int] = {}
     ids: set[str] = set()
+    roles: set[str] = set()
     for i, j in enumerate(joints_raw):
         loc = f"{location}.joints[{i}]"
-        if not isinstance(j, dict) or set(j) - {
-            "id",
-            "name",
-            "parent",
-            "position",
-            "rotation",
-            "euler",
-            "scale",
-            "tail",
-            "limits",
-        }:
+        if not isinstance(j, dict) or set(j) - set(JOINT_KEYS):
             raise _err(
                 "INVALID_RIG",
-                "a joint is {id, name, parent, position, rotation, scale, tail, limits}",
+                "a joint is {id, name, parent, position, rotation, scale, tail, limits, role, "
+                "deform}",
                 loc,
             )
         name = P.check_name(j.get("name"), "a joint name", f"{loc}.name")
@@ -301,7 +468,21 @@ def parse_rig(raw: Any, location: str) -> Rig:
         limits_json = "null"
         if limits is not None:
             limits_json = _check_limits(limits, f"{loc}.limits")
-        rows.append((jid, name, parent, pos, rot, scl, tail, limits_json))
+        role = j.get("role")
+        if role is not None:
+            if not isinstance(role, str) or len(role) > 64 or not _ROLE.match(role):
+                raise _err(
+                    "INVALID_RIG",
+                    "a role is lower-case words with an optional side: 'hips', 'upper_arm.L'",
+                    f"{loc}.role",
+                )
+            if role in roles:
+                raise _err("INVALID_RIG", f"two joints have the role {role!r}", f"{loc}.role")
+            roles.add(role)
+        deform = j.get("deform", True)
+        if not isinstance(deform, bool):
+            raise _err("INVALID_RIG", "deform is true or false", f"{loc}.deform")
+        rows.append((jid, name, parent, pos, rot, scl, tail, limits_json, role, deform))
     # Order parents first (stable), refusing unknown parents and cycles.
     for _, name, parent, *_ in rows:
         if parent is not None and parent not in names:
@@ -337,6 +518,8 @@ def parse_rig(raw: Any, location: str) -> Rig:
             rows[i][5],
             rows[i][6],
             rows[i][7],
+            rows[i][8],
+            rows[i][9],
         )
         for i in order
     )
@@ -401,10 +584,282 @@ def parse_rig(raw: Any, location: str) -> Rig:
                 "INVALID_RIG", "mirror is a list of [left, right] name parts", f"{location}.mirror"
             )
         mirror_t = tuple((a, b) for a, b in mirror)
-    return Rig(obj, joints, tuple(attachments), constraints, mirror_t)
+    base = Rig(obj, joints, tuple(attachments), constraints, mirror_t)
+    controls = _parse_controls(raw.get("controls", []), base, f"{location}.controls")
+    correctives = _parse_correctives(raw.get("correctives", []), base, f"{location}.correctives")
+    landmarks = _parse_landmarks(raw.get("landmarks"), f"{location}.landmarks")
+    template = raw.get("template")
+    if template is not None:
+        template = P.check_name(template, "a template name", f"{location}.template")
+    info = _parse_info(raw.get("info"), f"{location}.info")
+    enforce = raw.get("enforce_limits", "ik")
+    if enforce not in ENFORCE_LIMITS:
+        raise _err(
+            "INVALID_RIG",
+            "enforce_limits is 'ik' (limits on joints IK moves) or 'always'",
+            f"{location}.enforce_limits",
+        )
+    if not (controls or correctives or landmarks or template or info != "null" or enforce != "ik"):
+        return base
+    return base.replace(
+        controls=controls,
+        correctives=correctives,
+        landmarks=landmarks,
+        template=template,
+        info=info,
+        enforce_limits=enforce,
+    )
+
+
+RIG_KEYS = (
+    "object",
+    "joints",
+    "attachments",
+    "constraints",
+    "mirror",
+    "controls",
+    "correctives",
+    "landmarks",
+    "template",
+    "info",
+    "enforce_limits",
+)
+JOINT_KEYS = (
+    "id",
+    "name",
+    "parent",
+    "position",
+    "rotation",
+    "euler",
+    "scale",
+    "tail",
+    "limits",
+    "role",
+    "deform",
+)
+CONTROL_KEYS = (
+    "name",
+    "kind",
+    "object",
+    "joint",
+    "constraint",
+    "group",
+    "side",
+    "shape",
+    "size",
+    "mirror",
+)
+CORRECTIVE_KEYS = (
+    "name",
+    "mesh",
+    "target",
+    "joint",
+    "driver",
+    "axis",
+    "direction",
+    "range",
+    "curve",
+    "weight",
+)
+
+
+def _opt_str(raw: dict, key: str, location: str, what: str) -> str | None:
+    v = raw.get(key)
+    if v is None:
+        return None
+    return P.check_name(v, what, f"{location}.{key}")
+
+
+def _parse_controls(raw: Any, rig: Rig, location: str) -> tuple[Control, ...]:
+    if not isinstance(raw, list) or len(raw) > MAX_CONTROLS:
+        raise _err("INVALID_RIG", f"controls is a list of at most {MAX_CONTROLS}", location)
+    out = []
+    names: set[str] = set()
+    constraint_names = {c.name for c in rig.constraints}
+    for i, c in enumerate(raw):
+        loc = f"{location}[{i}]"
+        if isinstance(c, Control):
+            c = c.to_json()
+        if not isinstance(c, dict) or set(c) - set(CONTROL_KEYS):
+            raise _err("INVALID_RIG", f"a control is {{{', '.join(CONTROL_KEYS)}}}", loc)
+        name = P.check_name(c.get("name"), "a control name", f"{loc}.name")
+        if name in names:
+            raise _err("INVALID_RIG", f"two controls are named {name!r}", f"{loc}.name")
+        names.add(name)
+        kind = c.get("kind")
+        if kind not in CONTROL_KINDS:
+            raise _err("INVALID_RIG", f"kind is one of {', '.join(CONTROL_KINDS)}", f"{loc}.kind")
+        obj = c.get("object")
+        if obj is not None and (not isinstance(obj, str) or not obj):
+            raise _err("INVALID_RIG", "object is a scene object id", f"{loc}.object")
+        if kind == "fk" and obj is not None:
+            raise _err("INVALID_RIG", "an fk control is its joint (no object)", f"{loc}.object")
+        if kind != "fk" and obj is None:
+            raise _err("INVALID_RIG", f"a {kind} control is a scene object", f"{loc}.object")
+        joint = _opt_str(c, "joint", loc, "a joint name")
+        if joint is not None and rig.index(joint) is None:
+            raise _err("INVALID_RIG", f"no joint {joint!r} in the rig", f"{loc}.joint")
+        if kind == "fk" and joint is None:
+            raise _err("INVALID_RIG", "an fk control names its joint", f"{loc}.joint")
+        constraint = _opt_str(c, "constraint", loc, "a constraint name")
+        if constraint is not None and constraint not in constraint_names:
+            raise _err("INVALID_RIG", f"no rig constraint {constraint!r}", f"{loc}.constraint")
+        group = c.get("group", "")
+        if not isinstance(group, str) or len(group) > 64:
+            raise _err("INVALID_RIG", "group is a short name", f"{loc}.group")
+        side = c.get("side")
+        if side not in (None, "L", "R"):
+            raise _err("INVALID_RIG", "side is 'L', 'R' or null", f"{loc}.side")
+        shape = c.get("shape", "sphere")
+        if shape not in CONTROL_SHAPES:
+            raise _err(
+                "INVALID_RIG", f"shape is one of {', '.join(CONTROL_SHAPES)}", f"{loc}.shape"
+            )
+        size = c.get("size", 0.05)
+        if (
+            isinstance(size, bool)
+            or not isinstance(size, (int, float))
+            or not (math.isfinite(size) and size > 0)
+        ):
+            raise _err("INVALID_RIG", "size is a positive number", f"{loc}.size")
+        mirror = _opt_str(c, "mirror", loc, "a control name")
+        out.append(
+            Control(name, kind, obj, joint, constraint, group, side, shape, float(size), mirror)
+        )
+    for i, c in enumerate(out):
+        if c.mirror is not None and c.mirror not in names:
+            raise _err("INVALID_RIG", f"no control {c.mirror!r} to mirror", f"{location}[{i}]")
+    return tuple(out)
+
+
+def _parse_correctives(raw: Any, rig: Rig, location: str) -> tuple[Corrective, ...]:
+    from .limits import AXES
+
+    if not isinstance(raw, list) or len(raw) > MAX_CORRECTIVES:
+        raise _err("INVALID_RIG", f"correctives is a list of at most {MAX_CORRECTIVES}", location)
+    out = []
+    names: set[str] = set()
+    for i, c in enumerate(raw):
+        loc = f"{location}[{i}]"
+        if isinstance(c, Corrective):
+            c = c.to_json()
+        if not isinstance(c, dict) or set(c) - set(CORRECTIVE_KEYS):
+            raise _err("INVALID_RIG", f"a corrective is {{{', '.join(CORRECTIVE_KEYS)}}}", loc)
+        name = P.check_name(c.get("name"), "a corrective name", f"{loc}.name")
+        if name in names:
+            raise _err("INVALID_RIG", f"two correctives are named {name!r}", f"{loc}.name")
+        names.add(name)
+        mesh = c.get("mesh")
+        if not isinstance(mesh, str) or not mesh:
+            raise _err("INVALID_RIG", "mesh is a mesh object id", f"{loc}.mesh")
+        target = P.check_name(c.get("target"), "a morph target name", f"{loc}.target")
+        joint = P.check_name(c.get("joint"), "a joint name", f"{loc}.joint")
+        if rig.index(joint) is None:
+            raise _err("INVALID_RIG", f"no joint {joint!r} in the rig", f"{loc}.joint")
+        driver = c.get("driver", "rotation")
+        if driver not in CORRECTIVE_DRIVERS:
+            raise _err(
+                "INVALID_RIG",
+                f"driver is one of {', '.join(CORRECTIVE_DRIVERS)}",
+                f"{loc}.driver",
+            )
+        axis = c.get("axis", "+y" if driver in ("swing", "twist") else "+x")
+        if axis not in AXES:
+            raise _err("INVALID_RIG", f"axis is one of {', '.join(AXES)}", f"{loc}.axis")
+        direction = c.get("direction")
+        if direction is not None and (
+            driver != "swing" or direction not in AXES or direction[1] == axis[1]
+        ):
+            raise _err(
+                "INVALID_RIG",
+                "direction (a swing's signed part) is an axis other than the bone axis",
+                f"{loc}.direction",
+            )
+        rng = c.get("range", [0.0, 90.0])
+        if (
+            not isinstance(rng, (list, tuple))
+            or len(rng) != 2
+            or not all(
+                not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v)
+                for v in rng
+            )
+            or rng[0] == rng[1]
+        ):
+            raise _err("INVALID_RIG", "range is [from, to] degrees (different)", f"{loc}.range")
+        curve = c.get("curve", "smooth")
+        if curve not in ("linear", "smooth"):
+            raise _err("INVALID_RIG", "curve is 'linear' or 'smooth'", f"{loc}.curve")
+        weight = c.get("weight", 1.0)
+        if (
+            isinstance(weight, bool)
+            or not isinstance(weight, (int, float))
+            or not math.isfinite(weight)
+        ):
+            raise _err("INVALID_RIG", "weight is a finite number", f"{loc}.weight")
+        out.append(
+            Corrective(
+                name,
+                mesh,
+                target,
+                joint,
+                driver,
+                axis,
+                direction,
+                (float(rng[0]), float(rng[1])),
+                curve,
+                float(weight),
+            )
+        )
+    return tuple(out)
+
+
+def _parse_landmarks(raw: Any, location: str) -> tuple:
+    if raw is None:
+        return ()
+    if isinstance(raw, (list, tuple)):  # (the dataclass form: pairs)
+        raw = dict(raw)
+    if not isinstance(raw, dict) or len(raw) > MAX_LANDMARKS:
+        raise _err(
+            "INVALID_RIG", f"landmarks map names to [x, y, z] (at most {MAX_LANDMARKS})", location
+        )
+    out = []
+    for name, p in raw.items():
+        P.check_name(name, "a landmark name", f"{location}.{name}")
+        out.append((name, _vec(p, 3, f"{location}.{name}", "a landmark")))
+    return tuple(out)
+
+
+def _parse_info(raw: Any, location: str) -> str:
+    from .limits import AXES
+
+    if raw is None:
+        return "null"
+    if isinstance(raw, str) and raw.startswith("{"):
+        raw = json.loads(raw)
+    if not isinstance(raw, dict) or set(raw) - set(INFO_KEYS):
+        raise _err("INVALID_RIG", f"info has the keys {', '.join(INFO_KEYS)}", location)
+    out: dict[str, Any] = {}
+    for key, v in raw.items():
+        if key in ("forward", "up"):
+            if v not in AXES:
+                raise _err("INVALID_RIG", f"{key} is one of {', '.join(AXES)}", f"{location}.{key}")
+        elif not isinstance(v, str) or len(v) > 2000:
+            raise _err("INVALID_RIG", f"{key} is a text of at most 2000 characters", location)
+        out[key] = v
+    if "forward" in out and "up" in out and out["forward"][1] == out["up"][1]:
+        raise _err("INVALID_RIG", "forward and up must be different axes", location)
+    return json.dumps(out, sort_keys=True, separators=(",", ":")) if out else "null"
 
 
 def _check_limits(raw: Any, location: str) -> str:
+    if isinstance(raw, dict) and set(raw) == {"rotation"}:
+        return _check_limits_euler(raw, location)  # (Stage 17's form, unchanged)
+    from .limits import check_limits
+
+    return check_limits(raw, location)
+
+
+def _check_limits_euler(raw: Any, location: str) -> str:
     if not isinstance(raw, dict) or set(raw) - {"rotation"}:
         raise _err("INVALID_RIG", "limits are {rotation: {min, max}} (Euler XYZ degrees)", location)
     rot = raw.get("rotation")
@@ -476,10 +931,21 @@ class Skin:
     indices: np.ndarray  # (n, k) int32 into joints
     weights: np.ndarray  # (n, k) float64, rows summing to 1
     method: str = "linear"
+    dq: np.ndarray | None = None  # (n,) float64 0..1: the DQS share per vertex ("blended")
+    locked_joints: tuple[str, ...] = ()  # joint ids whose weights edits keep
+    locked_vertices: np.ndarray | None = None  # (l,) int32 sorted: vertices edits keep
 
     @property
     def vertex_count(self) -> int:
         return int(self.indices.shape[0])
+
+    def dense(self) -> np.ndarray:
+        """``(n, m)`` weights over the palette (for editing and inspection)."""
+        n, m = self.vertex_count, len(self.joints)
+        out = np.zeros((n, m))
+        rows = np.repeat(np.arange(n), self.indices.shape[1])
+        np.add.at(out, (rows, self.indices.reshape(-1)), self.weights.reshape(-1))
+        return out
 
     def to_json(self, rig: Rig | None = None) -> dict[str, Any]:
         names = (
@@ -496,9 +962,25 @@ class Skin:
             "indices": self.indices.tolist(),
             "weights": self.weights.tolist(),
             "method": self.method,
+            **({} if self.dq is None else {"dq": self.dq.tolist()}),
+            **(
+                {}
+                if not self.locked_joints and self.locked_vertices is None
+                else {
+                    "locks": {
+                        "joints": list(self.locked_joints),
+                        "vertices": []
+                        if self.locked_vertices is None
+                        else self.locked_vertices.tolist(),
+                    }
+                }
+            ),
         }
 
     def same(self, other: Skin) -> bool:
+        def arrays(a: np.ndarray | None, b: np.ndarray | None) -> bool:
+            return (a is None) == (b is None) and (a is None or a.tobytes() == b.tobytes())
+
         return (
             self.object == other.object
             and self.rig == other.rig
@@ -507,7 +989,15 @@ class Skin:
             and self.inverse_bind.tobytes() == other.inverse_bind.tobytes()
             and self.indices.tobytes() == other.indices.tobytes()
             and self.weights.tobytes() == other.weights.tobytes()
+            and arrays(self.dq, other.dq)
+            and self.locked_joints == other.locked_joints
+            and arrays(self.locked_vertices, other.locked_vertices)
         )
+
+    def replace(self, **changes: Any) -> Skin:
+        fields = {f: getattr(self, f) for f in Skin.__dataclass_fields__}
+        fields.update(changes)
+        return Skin(**fields)
 
 
 def make_skin(
@@ -519,9 +1009,14 @@ def make_skin(
     weights: Any,
     method: str = "linear",
     location: str = "skin",
+    *,
+    dq: Any = None,
+    locks: Any = None,
 ) -> Skin:
     """A checked skin: weights non-negative, normalized per vertex (rows summing to 0 are
-    refused), at most :data:`MAX_INFLUENCES` per vertex, indices within the palette."""
+    refused), at most :data:`MAX_INFLUENCES` per vertex, indices within the palette;
+    ``dq`` (``blended``: each vertex's DQS share, 0..1), ``locks`` (``{"joints": [ids],
+    "vertices": [indices]}``: what weight edits keep)."""
     m = len(joints)
     if not 1 <= m <= MAX_JOINTS or len(set(joints)) != m:
         raise _err(
@@ -566,9 +1061,44 @@ def make_skin(
     if method not in METHODS:
         raise _err("INVALID_SKIN", f"method is one of {', '.join(METHODS)}", f"{location}.method")
     idx = idx.astype(np.int32)
-    for a in (ib, idx, w):
-        a.flags.writeable = False
-    return Skin(obj, rig_id, tuple(joints), ib, idx, w, method)
+    n = idx.shape[0]
+    dq_arr = None
+    if method == "blended":
+        if dq is None:
+            raise _err(
+                "INVALID_SKIN", "a blended skin gives dq: each vertex's DQS share 0..1", location
+            )
+        dq_arr = np.asarray(dq, np.float64).reshape(-1)
+        if dq_arr.shape != (n,) or not np.all(np.isfinite(dq_arr)):
+            raise _err("INVALID_SKIN", f"dq is {n} finite numbers", f"{location}.dq")
+        if dq_arr.size and (dq_arr.min() < 0.0 or dq_arr.max() > 1.0):
+            raise _err("INVALID_SKIN", "dq values are within 0..1", f"{location}.dq")
+        dq_arr = dq_arr.copy()
+    elif dq is not None:
+        raise _err("INVALID_SKIN", "dq applies to method 'blended'", f"{location}.dq")
+    locked_joints: tuple[str, ...] = ()
+    locked_vertices = None
+    if locks is not None:
+        if not isinstance(locks, dict) or set(locks) - {"joints", "vertices"}:
+            raise _err("INVALID_SKIN", "locks are {joints, vertices}", f"{location}.locks")
+        lj = locks.get("joints", [])
+        if not isinstance(lj, (list, tuple)) or any(j not in joints for j in lj):
+            raise _err(
+                "INVALID_SKIN", "locked joints are joint ids of the skin", f"{location}.locks"
+            )
+        locked_joints = tuple(sorted(set(lj), key=list(joints).index))
+        lv = locks.get("vertices", [])
+        arr = np.asarray(lv if lv is not None else [], np.int64).reshape(-1)
+        if arr.size and (arr.min() < 0 or arr.max() >= n):
+            raise _err("INVALID_SKIN", f"locked vertices are 0..{n - 1}", f"{location}.locks")
+        if arr.size:
+            locked_vertices = np.unique(arr).astype(np.int32)
+    for a in (ib, idx, w, dq_arr, locked_vertices):
+        if a is not None:
+            a.flags.writeable = False
+    return Skin(
+        obj, rig_id, tuple(joints), ib, idx, w, method, dq_arr, locked_joints, locked_vertices
+    )
 
 
 def skin_linear(
@@ -641,21 +1171,14 @@ def _cofactor_normals(m: np.ndarray, nr: np.ndarray) -> np.ndarray:
     return np.stack([nx * inv, ny * inv, nz * inv], axis=1).astype(np.float32)
 
 
-def skin_dual_quaternion(
-    positions: np.ndarray,
-    normals: np.ndarray | None,
-    indices: np.ndarray,
-    weights: np.ndarray,
-    palette: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray | None]:
-    """Dual quaternion skinning (Kavan et al. 2008) with Kavan's scale stage: each
-    skinning matrix ``S = T R K`` is split into a rigid part ``(R, T)`` and a scale/shear
-    part ``K``; ``K`` is blended linearly and applied first, the rigid parts as dual
-    quaternions (antipodality resolved against the first influence)."""
+def dual_quaternion_palette(palette: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per joint: the rotation ``q`` (unit quaternion, ``x, y, z, w``), the dual part
+    ``d = 0.5 (t, 0) q`` and the scale/shear ``K = R^T L`` (row-major 3x3) of each skinning
+    matrix ``S = T R K`` (``R`` the closest rotation to ``L``, by the polar
+    decomposition; Kavan et al. 2008's scale stage)."""
     pal = np.asarray(palette[:, :3, :4], np.float64)
     m = pal.shape[0]
     lin = pal[:, :, :3]
-    # Polar decomposition per joint: lin = R K (R the closest rotation).
     u, _, vt = np.linalg.svd(lin)
     rot = u @ vt
     flip = np.linalg.det(rot) < 0
@@ -665,45 +1188,184 @@ def skin_dual_quaternion(
     k_mat = np.einsum("nji,njk->nik", rot, lin)  # R^T lin
     q = R.from_matrices(rot)  # (m, 4)
     t = pal[:, :, 3]
-    # Dual part: 0.5 * (t, 0) * q.
     tq = np.concatenate([t, np.zeros((m, 1))], axis=1)
     d = 0.5 * R.multiply(tq, q)
+    return (
+        np.ascontiguousarray(q, np.float64),
+        np.ascontiguousarray(d, np.float64),
+        np.ascontiguousarray(k_mat.reshape(m, 9), np.float64),
+    )
+
+
+def skin_dual_quaternion(
+    positions: np.ndarray,
+    normals: np.ndarray | None,
+    indices: np.ndarray,
+    weights: np.ndarray,
+    palette: np.ndarray,
+    blend: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Dual quaternion skinning (Kavan et al. 2008) with Kavan's scale stage: each
+    skinning matrix ``S = T R K`` is split into a rigid part ``(R, T)`` and a scale/shear
+    part ``K``; ``K`` is blended linearly and applied first, the rigid parts as dual
+    quaternions (antipodality resolved against the first influence). Normals: the
+    cofactor of the blended ``K`` (signed by its determinant), then the rotation.
+
+    ``blend`` (per vertex, 0..1) mixes with linear blend skinning: ``p = p_lbs + b (p_dq -
+    p_lbs)`` (exactly LBS at 0 and DQS at 1), normals likewise, renormalized.
+
+    The NumPy reference: per vertex in a fixed operation order (no reductions, no BLAS),
+    which the native kernel repeats bit for bit."""
+    from .. import _native
+
+    q, d, kmat = dual_quaternion_palette(palette)
+    pal = np.ascontiguousarray(palette[:, :3, :4], np.float64).reshape(-1, 12)
     n = positions.shape[0]
     out_p = np.empty((n, 3), np.float32)
     out_n = None if normals is None else np.empty((n, 3), np.float32)
-    kk = indices.shape[1]
+    native = _native.module()
+    if native is not None and hasattr(native, "skin_dual_quaternion"):
+        native.skin_dual_quaternion(
+            np.ascontiguousarray(positions, np.float32),
+            None if normals is None else np.ascontiguousarray(normals, np.float32),
+            np.ascontiguousarray(indices, np.int32),
+            np.ascontiguousarray(weights, np.float64),
+            q,
+            d,
+            kmat,
+            None if blend is None else pal,
+            None if blend is None else np.ascontiguousarray(blend, np.float64),
+            out_p,
+            out_n,
+            _native.threads(),
+        )
+        return out_p, out_n
     for start in range(0, n, SKIN_CHUNK):
         sl = slice(start, min(n, start + SKIN_CHUNK))
-        idx = indices[sl]
-        w = weights[sl]
-        q0 = q[idx[:, 0]]
-        real = np.zeros((idx.shape[0], 4))
-        dual = np.zeros((idx.shape[0], 4))
-        kblend = np.zeros((idx.shape[0], 3, 3))
-        for j in range(kk):
-            qj = q[idx[:, j]]
-            s = np.where(np.sum(qj * q0, axis=1) < 0.0, -1.0, 1.0) * w[:, j]
-            real = real + s[:, None] * qj
-            dual = dual + s[:, None] * d[idx[:, j]]
-            kblend = kblend + w[:, j, None, None] * k_mat[idx[:, j]]
-        norm = np.sqrt(np.sum(real * real, axis=1))
-        norm = np.where(norm > 0.0, norm, 1.0)
-        real = real / norm[:, None]
-        dual = dual / norm[:, None]
-        p = positions[sl].astype(np.float64)
-        p = np.einsum("nij,nj->ni", kblend, p)
-        rp = R.rotate(real, p)
-        # translation = 2 * dual * conj(real) (vector part)
-        trans = 2.0 * R.multiply(dual, R.conjugate(real))[:, :3]
-        out_p[sl] = (rp + trans).astype(np.float32)
-        if normals is not None:
-            nr = normals[sl].astype(np.float64)
-            # Normals: the inverse transpose of K, then the rotation.
-            kin = np.linalg.inv(kblend).transpose(0, 2, 1)
-            nn = R.rotate(real, np.einsum("nij,nj->ni", kin, nr))
-            length = np.linalg.norm(nn, axis=1)
-            out_n[sl] = (nn / np.where(length > 0, length, 1.0)[:, None]).astype(np.float32)  # type: ignore[index]
+        p64, n64 = _dq_chunk(
+            positions[sl], None if normals is None else normals[sl], indices[sl], weights[sl],
+            q, d, kmat,
+        )  # fmt: skip
+        if blend is not None:
+            b = np.asarray(blend[sl], np.float64)
+            pl, nl = _lbs_chunk(positions[sl], None if normals is None else normals[sl],
+                                indices[sl], weights[sl], pal)  # fmt: skip
+            p64 = _mix(pl, p64, b)
+            if n64 is not None:
+                n64 = _unit(_mix(nl, n64, b))
+        out_p[sl] = p64.astype(np.float32)
+        if n64 is not None:
+            out_n[sl] = n64.astype(np.float32)  # type: ignore[index]
     return out_p, out_n
+
+
+def _mix(a: np.ndarray, b: np.ndarray, t: np.ndarray) -> np.ndarray:
+    out = a + t[:, None] * (b - a)
+    out = np.where((t == 0.0)[:, None], a, out)
+    return np.where((t == 1.0)[:, None], b, out)
+
+
+def _unit(v: np.ndarray) -> np.ndarray:
+    x, y, z = v[:, 0], v[:, 1], v[:, 2]
+    length = np.sqrt((x * x + y * y) + z * z)
+    inv = np.where(length > 0.0, 1.0 / np.where(length > 0.0, length, 1.0), 0.0)
+    return np.stack([x * inv, y * inv, z * inv], axis=1)
+
+
+def _lbs_chunk(pos, nrm, idx, w, pal):
+    """Linear blend skinning of a chunk in float64 (``skin_linear``'s arithmetic)."""
+    k = idx.shape[1]
+    m = w[:, 0, None] * pal[idx[:, 0]]
+    for j in range(1, k):
+        m = m + w[:, j, None] * pal[idx[:, j]]
+    p = pos.astype(np.float64)
+    x, y, z = p[:, 0], p[:, 1], p[:, 2]
+    out = np.stack(
+        [
+            ((m[:, 0] * x + m[:, 1] * y) + m[:, 2] * z) + m[:, 3],
+            ((m[:, 4] * x + m[:, 5] * y) + m[:, 6] * z) + m[:, 7],
+            ((m[:, 8] * x + m[:, 9] * y) + m[:, 10] * z) + m[:, 11],
+        ],
+        axis=1,
+    )
+    if nrm is None:
+        return out, None
+    a, b, c = m[:, 0], m[:, 1], m[:, 2]
+    d_, e, f = m[:, 4], m[:, 5], m[:, 6]
+    g, h, i = m[:, 8], m[:, 9], m[:, 10]
+    return out, _cofactor_apply(a, b, c, d_, e, f, g, h, i, nrm.astype(np.float64))
+
+
+def _cofactor_apply(a, b, c, d, e, f, g, h, i, nr):
+    """``sign(det) cof(M) n`` normalized, in float64."""
+    c00, c01, c02 = e * i - f * h, f * g - d * i, d * h - e * g
+    c10, c11, c12 = c * h - b * i, a * i - c * g, b * g - a * h
+    c20, c21, c22 = b * f - c * e, c * d - a * f, a * e - b * d
+    x, y, z = nr[:, 0], nr[:, 1], nr[:, 2]
+    nx = (c00 * x + c01 * y) + c02 * z
+    ny = (c10 * x + c11 * y) + c12 * z
+    nz = (c20 * x + c21 * y) + c22 * z
+    det = (a * c00 + b * c01) + c * c02
+    sign = np.where(det < 0.0, -1.0, 1.0)
+    length = np.sqrt((nx * nx + ny * ny) + nz * nz)
+    inv = np.where(length > 0.0, sign / np.where(length > 0.0, length, 1.0), 0.0)
+    return np.stack([nx * inv, ny * inv, nz * inv], axis=1)
+
+
+def _dq_chunk(pos, nrm, idx, w, q, d, kmat):
+    """Dual quaternion skinning of a chunk in float64 (the reference operation order)."""
+    k = idx.shape[1]
+    i0 = idx[:, 0]
+    q0x, q0y, q0z, q0w = q[i0, 0], q[i0, 1], q[i0, 2], q[i0, 3]
+    zeros = np.zeros(idx.shape[0])
+    rx, ry, rz, rw = zeros, zeros, zeros, zeros
+    dx, dy, dz, dw = zeros, zeros, zeros, zeros
+    kb = [zeros] * 9
+    for j in range(k):
+        ij = idx[:, j]
+        wj = w[:, j]
+        qx, qy, qz, qw = q[ij, 0], q[ij, 1], q[ij, 2], q[ij, 3]
+        dot = ((qx * q0x + qy * q0y) + qz * q0z) + qw * q0w
+        s = np.where(dot < 0.0, -1.0, 1.0) * wj
+        rx, ry, rz, rw = rx + s * qx, ry + s * qy, rz + s * qz, rw + s * qw
+        dx = dx + s * d[ij, 0]
+        dy = dy + s * d[ij, 1]
+        dz = dz + s * d[ij, 2]
+        dw = dw + s * d[ij, 3]
+        kb = [kb[e] + wj * kmat[ij, e] for e in range(9)]
+    norm = np.sqrt(((rx * rx + ry * ry) + rz * rz) + rw * rw)
+    norm = np.where(norm > 0.0, norm, 1.0)
+    rx, ry, rz, rw = rx / norm, ry / norm, rz / norm, rw / norm
+    dx, dy, dz, dw = dx / norm, dy / norm, dz / norm, dw / norm
+    p = pos.astype(np.float64)
+    x, y, z = p[:, 0], p[:, 1], p[:, 2]
+    px = (kb[0] * x + kb[1] * y) + kb[2] * z
+    py = (kb[3] * x + kb[4] * y) + kb[5] * z
+    pz = (kb[6] * x + kb[7] * y) + kb[8] * z
+    ox, oy, oz = _rotate(rx, ry, rz, rw, px, py, pz)
+    # translation = 2 * vector part of (dual * conj(real))
+    cx, cy, cz, cw = -rx, -ry, -rz, rw
+    tx = 2.0 * (((dw * cx + dx * cw) + dy * cz) - dz * cy)
+    ty = 2.0 * (((dw * cy - dx * cz) + dy * cw) + dz * cx)
+    tz = 2.0 * (((dw * cz + dx * cy) - dy * cx) + dz * cw)
+    out = np.stack([ox + tx, oy + ty, oz + tz], axis=1)
+    if nrm is None:
+        return out, None
+    nk = _cofactor_apply(*kb, nrm.astype(np.float64))
+    nx, ny, nz = _rotate(rx, ry, rz, rw, nk[:, 0], nk[:, 1], nk[:, 2])
+    return out, _unit(np.stack([nx, ny, nz], axis=1))
+
+
+def _rotate(ux, uy, uz, w, vx, vy, vz):
+    """``v`` rotated by the unit quaternion ``(u, w)`` (``rotation.rotate``'s order)."""
+    tx = 2.0 * (uy * vz - uz * vy)
+    ty = 2.0 * (uz * vx - ux * vz)
+    tz = 2.0 * (ux * vy - uy * vx)
+    return (
+        (vx + w * tx) + (uy * tz - uz * ty),
+        (vy + w * ty) + (uz * tx - ux * tz),
+        (vz + w * tz) + (ux * ty - uy * tx),
+    )
 
 
 def joint_limits(rig: Rig, k: int) -> dict[str, Any] | None:
