@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import weakref
 from collections.abc import Sequence
@@ -2489,8 +2490,25 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p.set_defaults(handler=cmd_history_verify)
 
 
+_LIST_OPTIONS = ("--region", "--at")  # comma lists of numbers that may start with "-"
+
+
+def _glue_negative_lists(argv: Sequence[str]) -> list[str]:
+    """``--region -32,-32,32,32`` as ``--region=-32,-32,32,32``: before Python 3.14,
+    argparse reads a value starting with ``-`` as an option unless it is one number."""
+    items, out, i = list(argv), [], 0
+    while i < len(items):
+        if items[i] in _LIST_OPTIONS and i + 1 < len(items) and re.match(r"-[0-9.]", items[i + 1]):
+            out.append(f"{items[i]}={items[i + 1]}")
+            i += 2
+            continue
+        out.append(items[i])
+        i += 1
+    return out
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    args = build_parser().parse_args(_glue_negative_lists(sys.argv[1:] if argv is None else argv))
     command = args.command
     subcommand = getattr(args, "procedural_command", None) or getattr(args, "subcommand", None)
     if subcommand:

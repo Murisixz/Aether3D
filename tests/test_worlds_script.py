@@ -254,3 +254,9 @@ def test_the_command_line(tmp_path, capsys):
     assert main(["world", "sample", str(project), "--at", "1e9,0", "--json"]) != 0
     err = json.loads(capsys.readouterr().out)
     assert err["ok"] is False and err["error"].get("code") == "OUTSIDE_WORLD"
+    # Lists that start with a minus parse on every Python (argparse reads "-1,2" as an
+    # option before 3.14 unless it is glued: --at=-1,2), spaced or glued.
+    capsys.readouterr()
+    for args in (["--at", "-10,5"], ["--at=-10,5"]):
+        assert main(["world", "sample", str(project), *args, "--field", "height", "--json"]) == 0
+        assert json.loads(capsys.readouterr().out)["x"] == [-10.0]
