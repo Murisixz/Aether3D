@@ -84,9 +84,9 @@ def _rigging(
         merged = {k: dict(v) for k, v in pose.influences.items()}
         merged.setdefault(arm_id, {}).update(influences)
         pose = dataclasses.replace(pose, influences=merged, extra={})
-        result = evaluate_rigging(system, pose)
+        result = evaluate_rigging(system, pose, deform=False)
     else:
-        result = system.rigging(time)
+        result = system.rigging(time, deform=False)  # (measuring: no mesh to deform)
     ids = tuple(result.local)
     overlay = RenderOverlay(
         ids=ids, local=np.array([result.local[i] for i in ids]).reshape(-1, 4, 4)
@@ -683,7 +683,8 @@ def _cmd_plant_feet(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
         cname = _ensure_limb(system, arm, rig, "leg", side)
         rig = system.rig(arm)
         c, _, _ = _limb(rig, cname)
-        result, worlds = _rigging(system, time, {cname: 0.0}, arm._id)
+        # Where the foot is now -- planted already (IK) or as the FK pose puts it.
+        result, worlds = _rigging(system, time)
         _, model = result.joints[arm._id]
         a_world = worlds[arm._id]
         foot = a_world @ model[rig.index(c.p["chain"][-1])]

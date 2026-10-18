@@ -150,3 +150,21 @@ def test_pose_commands(body_mesh):
         a.pose_character(arm, [{"do": "fly"}], time=1.0)
     with pytest.raises(AnimationError):
         a.pose_character(arm, [{"do": "rotate", "joint": "Tail"}], time=1.0)
+
+
+def test_a_held_crouch_keeps_the_feet_where_they_were_planted(body_mesh):
+    """Planting feet measures them where they are: already planted by IK while the hips
+    are low, they stay on the floor (not where a straight FK leg would put them)."""
+    s, arm, _ = rigged(body_mesh)
+    a = s.animation
+    a.generate(arm, "idle", forward="-y")
+    feet = []
+    for t, depth in ((0.5, 0.0), (1.2, 0.4), (1.9, 0.4), (2.6, 0.0)):
+        rep = a.pose_character(arm, [{"do": "crouch", "depth": depth}], time=t)
+        assert max(rep["commands"][0]["residuals"].values()) < 2e-3, (t, rep)
+        feet.append(np.array([rep["commands"][0]["feet"][s_] for s_ in ("L", "R")]))
+    for f in feet[1:]:
+        assert np.abs(f - feet[0]).max() < 3e-3  # (the same spot, on the floor)
+    hips = chain_positions(a, arm, ["Hips"], 1.5)[0]
+    rest = chain_positions(a, arm, ["Hips"], 0.5)[0]
+    assert rest[2] - hips[2] == pytest.approx(0.4, abs=0.02)
