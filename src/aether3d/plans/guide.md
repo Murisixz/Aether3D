@@ -118,6 +118,9 @@ A prefab is a template, not an object: reach its copies through the objects that
   (parametric sketches and parts, buildings, drawings) in the plan's step; a CAD item
   shown with `{"op": "show", "item": ...}` becomes an object later operations can select
   by its name (guide: `aether3d://cad/guide`).
+- `{"op": "animation", "script": {"format": "aether3d.animation-script", ...}}`: keys,
+  clips, rigs, motion generators and cameras for the plan's objects, in the plan's step
+  (guide: `aether3d://animation/guide`).
 - **Selectors:** a reference, a list of them, or
   `{"refs", "ids", "names", "tags", "any_tags", "name_glob", "kind", "under", "material",
   "expect"}`.

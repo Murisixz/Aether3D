@@ -1,6 +1,6 @@
 # The `.aether` project format
 
-**Current version: 8** (Aether3D 0.15.0; version 1–7 files are upgraded on load)
+**Current version: 9** (Aether3D 0.17.0; version 1–8 files are upgraded on load)
 
 An `.aether` file stores one scene:
 
@@ -14,7 +14,10 @@ An `.aether` file stores one scene:
   (see [MATERIALS.md](MATERIALS.md)). Image textures are stored as paths
   relative to the project, or embedded; painted textures are embedded with every
   layer and mask (16 bits per channel);
-- its objects' tags and metadata (see [SPATIAL.md](SPATIAL.md#tags-and-metadata)).
+- its objects' tags and metadata (see [SPATIAL.md](SPATIAL.md#tags-and-metadata));
+- its CAD document (see [CAD.md](CAD.md));
+- its animation document: timeline, clips, bindings, rigs, skins, morph targets,
+  constraints, paths and shot sequences (see [ANIMATION.md](ANIMATION.md)).
 
 It is a UTF-8 encoded JSON document (RFC 8259), designed to be readable,
 diffable, and safely editable by people, scripts, and AI agents.
@@ -24,8 +27,8 @@ diffable, and safely editable by people, scripts, and AI agents.
 ```json
 {
   "format": "aether3d.project",
-  "format_version": 8,
-  "generator": "aether3d 0.15.0",
+  "format_version": 9,
+  "generator": "aether3d 0.17.0",
   "scene": {
     "name": "First Scene",
     "active_camera": "5b0f1c2e-…",
@@ -156,6 +159,7 @@ diffable, and safely editable by people, scripts, and AI agents.
 | `textures` | array | Image and procedural textures. Since version 4. |
 | `objects` | array of objects | All scene objects (see below). |
 | `cad` | object | The CAD document (see [CAD document](#cad-document)). Since version 8. |
+| `animation` | object | The animation document (see [Animation document](#animation-document)). Since version 9. |
 
 Writers emit objects in depth-first hierarchy order (each parent before its
 children). Readers accept any order. The relative order of objects that share
@@ -435,6 +439,38 @@ Readers are strict, so mistakes are reported instead of silently ignored:
 Every error names the offending element with a dotted path, such as
 `scene.objects[1].transform.scale` or `meshes[0].triangles[12]`.
 
+## Animation document
+
+`scene.animation` holds the animation ([ANIMATION.md](ANIMATION.md)): the timeline
+settings and the items, each with an immutable JSON definition.
+
+```json
+"animation": {
+  "settings": {"fps": "30000/1001", "start": 0.0, "end": 2.0,
+               "markers": [{"time": 1.0, "name": "hit"}], "sections": [], "enabled": true},
+  "items": [
+    {"id": "9f2ba36d-…", "kind": "binding", "name": "Box",
+     "definition": {"object": "013105d3-…", "action": "8e9f5335-…"}},
+    {"id": "8e9f5335-…", "kind": "clip", "name": "Box Action",
+     "definition": {"target": "object", "channels": {
+       "transform.position.z": {"keys": {"time": [0.0, 1.0], "value": [0.0, 1.0],
+         "interpolation": "bezier", "left_type": "auto_clamped",
+         "right_type": "auto_clamped"}}}}}
+  ]
+}
+```
+
+| Key | Description |
+| --- | --- |
+| `settings` | The timeline: `fps` (an integer or an exact rational `"num/den"`), `start` and `end` (seconds), `markers` (`{time, name, data?}`), `sections`, `enabled`. |
+| `items` | Every item: `id`, `kind` (`clip`, `binding`, `rig`, `skin`, `constraints`, `morph`, `path`, `sequence`), `name`, `definition` (plain JSON: clips hold channels by property path as structure-of-arrays keys, rotation tracks, modifiers and events; bindings reference an object or material and clips by id; rigs, skins, morph targets and constraints reference scene objects by id). |
+
+Only authored data is stored: evaluated poses, deformed meshes and the current time are
+not. Definitions are checked by their item kinds on load as on any change (finite
+numbers, key order, handle shapes, quaternion norms, acyclic joint hierarchies and
+constraint graphs, influence counts, references); a reference to a missing object or
+clip is an error.
+
 ## History files
 
 `scene.save(path, history=True)` (and the command line, for projects that keep a
@@ -453,7 +489,7 @@ The history file is a JSON document, `"format": "aether3d.history"`,
 | `undo`, `redo` | Steps: `{"index", "parent", "label", "changes"}`, the undone ones in `redo` (the next to redo last) |
 | `checkpoints` | Names and the index of the step behind their state |
 | `max_entries`, `max_bytes`, `dropped` | The limits and how many steps were dropped |
-| `objects`, `materials`, `textures`, `cad_items` | Full records of entities the steps refer to that are not in the project (removed ones, which undo can bring back; `cad_items` since 0.15.0) |
+| `objects`, `materials`, `textures`, `cad_items`, `animation_items` | Full records of entities the steps refer to that are not in the project (removed ones, which undo can bring back; `cad_items` since 0.15.0, `animation_items` since 0.17.0) |
 | `meshes`, `blobs` | Meshes (as in the project's `meshes`) and embedded image bytes (base64) the states refer to by index; painted textures' states refer to their tiles (64 x 64 texels, 16-bit RGBA, zlib-compressed) as blobs, so a stroke's step stores only the tiles it changed |
 
 A change is `{"aspect", "target", "before", "after"}`:
@@ -463,8 +499,10 @@ A change is `{"aspect", "target", "before", "after"}`:
   (tags and metadata, since 0.10.0), `object.parent`,
   `object.children`, `object.alive`, `scene.name`, `scene.roots`,
   `scene.active_camera`, `scene.world`, `scene.render`, `library.materials`,
-  `library.textures`, `material`, `texture`, `procedural`, and since 0.15.0
-  `cad.item` (one CAD item: kind, name, definition, links, alive) and `cad.settings`.
+  `library.textures`, `material`, `texture`, `procedural`, since 0.15.0
+  `cad.item` (one CAD item: kind, name, definition, links, alive) and `cad.settings`,
+  and since 0.17.0 `animation.item` (one animation item: kind, name, definition, alive)
+  and `animation.settings` (the timeline).
 - `target` is the id of the object, material or texture (`null` for the others).
 - The states use the project's encodings (transforms as position, rotation and
   scale arrays; cameras, lights, appearances, world and render settings as in
@@ -500,6 +538,7 @@ copy comes back to the same document.
 | 6 | 0.10.0 | Object tags and metadata: `tags` and `metadata` on every object. The migration from 5 changes nothing: their defaults are empty. |
 | 7 | 0.14.0 | Painted textures: textures of `"type": "painted"` with their layers and masks. The migration from 6 changes nothing: a version 6 document has none. |
 | 8 | 0.15.0 | The CAD document: `scene.cad` (settings and items). The migration from 7 adds an empty document with the default settings. |
+| 9 | 0.17.0 | The animation document: `scene.animation` (timeline settings and items). The migration from 8 adds an empty document with the default timeline (24 fps, 0 to 10 s), so every project loads and renders unchanged. |
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged, and Aether3D
 0.6.0 reads and writes version 3 unchanged (GPU rendering added render

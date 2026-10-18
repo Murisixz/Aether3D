@@ -81,6 +81,7 @@ _NAMES = "names"  # rebuild the scene's name index
 _LIBRARY = "library"  # rebuild the material library's name indexes, bump its version
 _PROCEDURAL = "procedural"  # bump the procedural revision
 _CAD = "cad"  # rebuild the CAD document's indexes, forget derived results
+_ANIMATION = "animation"  # rebuild the animation document's indexes, forget evaluations
 
 _UNSET = object()
 _UNRECORDED = contextlib.nullcontext()
@@ -515,6 +516,50 @@ class _CadSettings(Aspect):
         return "cad.settings"
 
 
+class _AnimationItem(Aspect):
+    """An animation item (clip or binding): alive, name and its immutable definition."""
+
+    __slots__ = ()
+
+    def capture(self, item: Any) -> tuple:
+        return (item._alive, item._name, item._definition)
+
+    def apply(self, item: Any, state: tuple) -> None:
+        item._alive, item._name, item._definition = state
+
+    def same(self, a: tuple, b: tuple) -> bool:
+        return a[0] == b[0] and a[1] == b[1] and a[2] is b[2]
+
+    def size(self, state: tuple) -> int:
+        return 256 + _definition_size(state[2])
+
+    def path(self, item: Any) -> str:
+        return f"animation.items[{item.id}]"
+
+
+class _AnimationSettings(Aspect):
+    """The animation document's timeline settings: an immutable dict."""
+
+    __slots__ = ()
+
+    def capture(self, system: Any) -> Any:
+        return system._settings
+
+    def apply(self, system: Any, state: Any) -> None:
+        system._settings = state
+
+    def path(self, target: Any) -> str:
+        return "animation.settings"
+
+
+def _definition_size(definition: Any) -> int:
+    """Bytes held by an animation definition's key arrays (an estimate for budgets)."""
+    total = 0
+    for _path, channel in getattr(definition, "channels", ()):
+        total += 64 * max(len(channel), 1)
+    return total
+
+
 def _json_size(value: Any, depth: int = 0) -> int:
     if isinstance(value, dict):
         return 64 + sum(48 + _json_size(v, depth + 1) for v in value.values())
@@ -592,6 +637,8 @@ TEXTURE = _Texture("texture", (_LIBRARY,))
 PROCEDURAL = _Procedural("procedural", (_PROCEDURAL,))
 CAD_ITEM = _CadItem("cad.item", (_CAD,))
 CAD_SETTINGS = _CadSettings("cad.settings", (_CAD,))
+ANIMATION_ITEM = _AnimationItem("animation.item", (_ANIMATION,))
+ANIMATION_SETTINGS = _AnimationSettings("animation.settings", (_ANIMATION,))
 
 
 # --------------------------------------------------------------------------- #
@@ -930,6 +977,8 @@ class History:
             scene._procedural._revision += 1
         if _CAD in flags and scene._cad is not None:
             scene._cad._restored()
+        if _ANIMATION in flags and scene._animation is not None:
+            scene._animation._restored()
 
     # ------------------------------------------------------------------ #
     # Memory and limits

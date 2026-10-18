@@ -207,7 +207,7 @@ safety rules, are in [GLTF.md](GLTF.md).
 
 | Name | Description |
 | --- | --- |
-| `export_gltf(scene, path, *, allow_lossy=False, bake_textures=None)` | Write `.glb` or `.gltf` (embedded buffer), with materials and textures. Returns `ExportResult`. Raises `UnsupportedFeatureError` (nothing written) for content glTF cannot store, unless `allow_lossy=True`. `bake_textures` (16–8192) bakes UV-mapped procedural textures into PNG images. |
+| `export_gltf(scene, path, *, allow_lossy=False, bake_textures=None, animation="auto", fps=None, position_tolerance=1e-4, rotation_tolerance=0.01, weight_tolerance=1e-4)` | Write `.glb` or `.gltf` (embedded buffer), with materials and textures, and (0.17.0) skeletons, skins, morph targets and animations (`animation`: `auto`, `clips`, `actions`, `bake`, `none`; tolerances for fitted channels; `fps` for baking). Returns `ExportResult`. Raises `UnsupportedFeatureError` (nothing written) for content glTF cannot store, unless `allow_lossy=True`. `bake_textures` (16–8192) bakes UV-mapped procedural textures into PNG images. `scene.export(path, **options)` takes the same options. |
 | `import_gltf(path, *, allow_lossy=False, limits=None)` | Read `.glb`/`.gltf`. Returns `ImportResult`. Raises `AssetFormatError`, `ResourceLimitError`, `UnsupportedFeatureError`, `FileNotFoundError`. |
 | `ImportLimits(max_file_bytes, max_buffer_bytes, max_nodes, max_vertices, max_triangles)` | Safety limits for untrusted files (frozen dataclass with defaults). |
 
@@ -216,6 +216,8 @@ safety rules, are in [GLTF.md](GLTF.md).
 - `path`, `format` (`"glb"`/`"gltf"`), `byte_length`;
 - `node_count`, `mesh_count`;
 - `nodes`: a list of `{"node", "id", "name", "mesh"}`;
+- `animations`: per glTF animation, its name, channels, fitted channels and largest
+  errors (0.17.0); `skins`: how many skins were written;
 - `diagnostics`.
 
 `ImportResult` has these fields:
@@ -223,6 +225,8 @@ safety rules, are in [GLTF.md](GLTF.md).
 - `scene`, `source`, `format`, `generator`;
 - `objects`: a list of `{"node", "id", "name", "id_source"}`, where
   `id_source` is `"extras"` or `"generated"`;
+- `animation`: `{rigs: [{armature, joints}], skins, morph_targets, animations: [{name,
+  clips}]}` (0.17.0);
 - `diagnostics`;
 - `lossy`: true if anything was dropped or approximated.
 
@@ -373,6 +377,30 @@ lengths are in the document's unit or quantities (`"80 mm"`).
 | `aether3d.cad.script.run_cad_script(scene, script, *, label=None, should_stop=None)` | apply an `aether3d.cad-script` atomically; `check_script(script)`; `aether3d.cad.schema.cad_script_schema()` |
 | `aether3d.cad.brep`: `build` (`box`, `cylinder`, `sphere`, `cone`, `torus`, `extrude`, `revolve`), `topology` (`Body`, `validate`, `merge`), `tessellate` (`tessellate`, `max_deviation`), `properties` (`mass_properties`), `boolean` (`boolean`) | the kernel |
 | `aether3d.cad.assembly.clashes(doc, assembly)`, `aether3d.arch.quantities.schedule(doc, kind)`, `to_csv(rows)` | clashes; schedules |
+
+## Animation, rigging and cinematics
+
+Keyframes, curves, clips, layers, rigs, skins, IK, constraints, generators and cameras
+([ANIMATION.md](ANIMATION.md)). Since 0.17.0. Every changing call is one undo step;
+times are seconds; targets are objects (or ids, names), materials as `{"material": ...}`.
+
+| Name | Description |
+| --- | --- |
+| `anim = scene.animation` | the `AnimationSystem` |
+| `anim.set_timeline(fps=, start=, end=)`, `anim.fps` (`FrameRate`: `frame_time`, `frame_at`, `timecode`), `anim.start`, `anim.end`, `anim.add_marker(name, time, data=None)`, `anim.set_markers`, `anim.set_sections`, `anim.time` (the playhead: runtime state), `anim.frame_time(n)` | the timeline |
+| `anim.keyframe(target, path, time, value, **key)`, `anim.set_channel(target, path, keys_or_curve, **options)`, `anim.channel(target, path)`, `anim.edit_keys(target, path, op, *, clip=None, **args)`, `anim.set_modifiers(target, path, modifiers, *, clip=None)` | keys and curves (paths: [ANIMATION.md](ANIMATION.md#animatable-properties)) |
+| `anim.add_clip(name, clip=None)`, `anim.clip(ref)`, `anim.clips()`, `anim.remove_clip(ref)`; a clip handle: `set_channel`, `keyframe`, `edit_keys`, `set_events`, `set_range`, `rename`, `data`, `to_json()` | clips |
+| `anim.set_action(target, clip)`, `anim.action(target)`, `anim.binding(target)`, `anim.set_binding(target, data)`, `anim.add_layer(target, name, *, mode, weight, mask, index)`, `anim.update_layer`, `anim.remove_layer`, `anim.add_strip(target, layer, clip, **options)`, `anim.update_strip`, `anim.remove_strip` | bindings, layers and strips |
+| `anim.evaluate(time=None) -> AnimationPose`, `anim.overlay(time=None)`, `anim.rigging(time=None)`, `anim.sample(target, path, times, *, order=0)`, `anim.apply_pose(time=None)` | evaluation (pure, cached per revision and time); `apply_pose` writes a pose into authored state |
+| `anim.add_rig(armature, joints, **options)`, `anim.rig(armature)`, `anim.set_rig`, `anim.attach(obj, armature, joint)`, `anim.detach`, `anim.skin(mesh_object, armature, *, weights="envelope", joints=None, influences=4, method="linear")`, `anim.unbind`, `anim.set_morph_targets(obj, targets)`, `anim.morph_targets`, `anim.pose_joints(armature, time, space)` | rigs, attachments, skins, morph targets |
+| `anim.add_constraint(owner, constraint)`, `anim.set_constraints`, `anim.constraints(owner)`, `anim.remove_constraint` | constraints and IK |
+| `anim.add_path(name, points=None, **options)`, `anim.path(ref)`, `anim.follow_path(obj, path, *, start, end, offsets, easing, follow, axis, up, loop, name)`, `anim.camera_move(camera, move, amount, start, end)`, `anim.camera_orbit(camera, target, start, end, degrees=)`, `anim.follow_camera(camera, target, **options)`, `anim.set_shots(shots)`, `anim.add_shot`, `anim.shots()` | cinematics |
+| `anim.generate(armature, motion, **parameters)` | motion generators: `idle`, `walk`, `run`, `jump`, `land`, `wave`, `head_turn` (returns a report: clip, keys, errors, speed, ...) |
+| `anim.mirror_clip(clip, armature, name=)`, `anim.extract_root_motion(clip, joint, mode=, yaw=)`, `anim.retarget(source, target, clip, mapping=)`, `anim.foot_contacts(armature, feet, **options)`, `anim.plant_feet(armature, legs, **options)` | motion editing and measurement |
+| `anim.curve_report(target, path, clip=None)`, `anim.trajectory(target, start=, end=, joint=)`, `anim.diagnose()`, `anim.simplify(target, path, tolerance)`, `anim.resample(target, path, fps=)`, `anim.bake(targets, ...)`, `anim.graph(channels, format="svg"\|"png", ...)` | measuring, fitting and graphs |
+| `aether3d.animation.frames.render_frames(scene, directory, ...)`, `contact_sheet(images, columns=, labels=)`, `assemble_video(...)` | frames, sheets, video |
+| `aether3d.animation.FCurve`, `.tracks.RotationTrack`, `.clip.Clip`, `.time.FrameRate`, `.rotation`, `.fitting.fit_samples` | the value types (immutable) |
+| `aether3d.animation.script.run_animation_script(scene, script, ...)`, `check_script(script)`, `aether3d.animation.schema.animation_script_schema()` | animation scripts |
 
 ## Procedural geometry
 
@@ -634,6 +662,8 @@ All deliberate errors derive from `AetherError`.
 | `PlanError` | `ValueError` | A scene plan is invalid or cannot be applied; nothing changed (except completed chunks of an opt-in chunked plan). `.code` (stable: `UNKNOWN_REFERENCE`, `NAME_CONFLICT`, `REVISION_MISMATCH`, `LIMIT_EXCEEDED`, ...; see [SCENE_PLANS.md](SCENE_PLANS.md#errors)), `.pointer` (a JSON pointer into the plan), `.operation`, `.hint`, `.details`, `.issues` (every problem found), `to_dict()` |
 | `FeedbackError` | `ValueError` | A visual-feedback request cannot be carried out: a view, an expectations document, a vision evaluation, a correction or a loop (`INVALID_VIEW`, `UNKNOWN_KEY`, `OBSERVATION_MISMATCH`, `STALE_PROPOSALS`, `REVISION_MISMATCH`, `NOT_ALLOWED`, ...; see [FEEDBACK.md](FEEDBACK.md)); nothing changed. `.code` (stable), `.location` (a JSON pointer or argument), `.hint`, `.details`, `.issues`, `to_dict()` |
 | `CadError` | `ValueError` | A CAD definition, regeneration, measurement, script or exchange cannot be carried out (`SKETCH_CONFLICT`, `REFERENCE_LOST`, `REFERENCE_AMBIGUOUS`, `HOLE_OFF_FACE`, `FILLET_CORNER_UNSUPPORTED`, `BOOLEAN_FAILED`, `WALLS_CROSS`, `OPENING_OVERLAP`, `ROOM_NOT_ENCLOSED`, `UNSUPPORTED_STEP`, `INVALID_DXF`, `EXPECTATION_FAILED`, `LIMIT_EXCEEDED`, `CANCELLED`, ...; see [CAD.md](CAD.md)); nothing changed. `.code` (stable), `.location` (e.g. `part[Bracket].features[2](h)`), `.hint`, `.details`, `to_dict()` |
+| `AnimationError` | `ValueError` | A time, frame rate, key, curve, rotation track, clip, layer, strip, rig, skin, morph target, constraint, path, shot or animation export/import request cannot be carried out (`INVALID_KEYS`, `UNKNOWN_PROPERTY`, `INVALID_RIG`, `CONSTRAINT_CYCLE`, `ROLE_MISSING`, `RIG_MISSING`, `JOINT_MISSING`, `INVALID_RANGE`, `LIMIT_EXCEEDED`, ...; see [ANIMATION.md](ANIMATION.md)); nothing changed and no file was written. `.code` (stable), `.location`, `.hint`, `.details` |
+| `AnimationScriptError` | `ValueError` | An animation script is malformed or one of its operations failed; nothing changed. `.code` (the operation's own, or `INVALID_SCRIPT`), `.location` (e.g. `operations[1].keyframe.value`), `.details`, `to_dict()` |
 | `HistoryError` | `ValueError` | An undo, redo, checkpoint or history file operation cannot be performed (`NOTHING_TO_UNDO`, `TRANSACTION_OPEN`, `HISTORY_MISMATCH`, `INVALID_HISTORY`, ...; see [HISTORY.md](HISTORY.md#errors)); nothing changed. `.code` (stable), `.location`, `.hint`, `.details` |
 
 Missing files raise the standard `FileNotFoundError`.

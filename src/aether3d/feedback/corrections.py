@@ -149,6 +149,20 @@ ACTIONS: dict[str, dict[str, Any]] = {
         "category": "procedural",
         "summary": "set a procedural scene parameter",
     },
+    "plant_feet": {
+        "fields": ("armature", "legs"),
+        "required": ("armature", "legs"),
+        "category": "animation",
+        "summary": "pin an armature's feet where each contact touches down (keyed IK on each "
+        "leg: foot joint -> [hip, knee, foot])",
+    },
+    "smooth_keys": {
+        "fields": ("object", "path", "keys", "handles"),
+        "required": ("object", "path"),
+        "category": "animation",
+        "summary": "give keys of a channel of the object's action automatic handles "
+        "(auto_clamped, default, or auto): no corners, no overshoot",
+    },
 }
 
 
@@ -225,6 +239,18 @@ def check_action(doc: Doc, value: Any, ptr: str) -> dict[str, Any] | None:
                 r = v if isinstance(v, bool) else doc.number(v, p)
             else:
                 r = doc.string(v, p)
+        elif key in ("armature", "path"):
+            r = doc.string(v, p)
+        elif key == "legs":
+            r = _legs(doc, v, p)
+        elif key == "keys":
+            ok = isinstance(v, list) and 1 <= len(v) <= 10_000
+            ok = ok and all(isinstance(i, int) and not isinstance(i, bool) for i in v)
+            if not ok:
+                doc.issues.add("INVALID_VALUE", "keys is a list of key indices", p)
+            r = list(v) if ok else BAD
+        elif key == "handles":
+            r = doc.enum(v, p, ("auto_clamped", "auto"))
         else:  # pragma: no cover - every field is handled above
             r = BAD
         if r is not BAD:
@@ -243,6 +269,25 @@ def check_action(doc: Doc, value: Any, ptr: str) -> dict[str, Any] | None:
         )
     if doc.issues.total > before:
         return None
+    return out
+
+
+def _legs(doc: Doc, value: Any, ptr: str) -> Any:
+    obj = doc.object(value, ptr, 'legs {"Foot.L": ["Thigh.L", "Shin.L", "Foot.L"], ...}')
+    if obj is None or not 1 <= len(obj) <= 8:
+        if obj is not None:
+            doc.issues.add("INVALID_VALUE", "1 to 8 legs", ptr)
+        return BAD
+    out = {}
+    for foot, chain in obj.items():
+        if not isinstance(chain, list) or len(chain) != 3 or chain[-1] != foot:
+            doc.issues.add("INVALID_VALUE", "a leg is [hip, knee, foot] ending at its foot",
+                           join(ptr, foot))  # fmt: skip
+            return BAD
+        names = [doc.string(n, join(join(ptr, foot), i)) for i, n in enumerate(chain)]
+        if any(n is BAD for n in names):
+            return BAD
+        out[foot] = names
     return out
 
 
@@ -341,6 +386,8 @@ def bind(scene: Scene, action: dict[str, Any], ptr: str = "") -> Bound:
     if "object" in action:
         target = _object(scene, action["object"], "object", f"{ptr}/object")
         sel = {"ids": [target.id]}
+    if category == "animation":
+        return _bind_animation(scene, action, category, ptr)
     if name == "translate":
         frame = action.get("frame", "world")
         world_offset = action["offset"]
@@ -577,6 +624,43 @@ def bind(scene: Scene, action: dict[str, Any], ptr: str = "") -> Bound:
     raise FeedbackError(
         "UNSUPPORTED_ACTION", f"unsupported action {name!r}", ptr
     )  # pragma: no cover
+
+
+def _bind_animation(scene: Scene, action: dict[str, Any], category: str, ptr: str) -> Bound:
+    """Animation corrections compile to a plan's animation operation (one script)."""
+    name = action["action"]
+    system = scene.animation
+    if name == "plant_feet":
+        arm = _object(scene, action["armature"], "armature", f"{ptr}/armature")
+        rig = system.rig(arm)
+        if rig is None:
+            raise FeedbackError("INVALID_ACTION", f"{arm.name!r} has no rig", f"{ptr}/armature")
+        for foot, chain in action["legs"].items():
+            for joint in chain:
+                if rig.index(joint) is None:
+                    raise FeedbackError(
+                        "INVALID_ACTION", f"no joint {joint!r}", f"{ptr}/legs/{foot}"
+                    )
+        op = {"op": "plant_feet", "armature": arm.id, "legs": action["legs"]}
+        target = arm
+        change = {"object": arm.name, "id": arm.id, "field": "feet", "before": "sliding",
+                  "after": "planted (keyed IK)"}  # fmt: skip
+    else:
+        target = _object(scene, action["object"], "object", f"{ptr}/object")
+        channel = system.channel(target, action["path"])
+        from ..animation.curves import FCurve
+
+        if not isinstance(channel, FCurve):
+            raise FeedbackError("INVALID_ACTION", f"{target.name!r} has no curve {action['path']}",
+                                f"{ptr}/path")  # fmt: skip
+        keys = action.get("keys", "all")
+        op = {"op": "edit_keys", "target": target.id, "path": action["path"],
+              "edit": "handle_type", "keys": keys, "side": "both",
+              "type": action.get("handles", "auto_clamped")}  # fmt: skip
+        change = {"object": target.name, "id": target.id, "field": action["path"],
+                  "before": "corners", "after": action.get("handles", "auto_clamped")}  # fmt: skip
+    script = {"format": "aether3d.animation-script", "version": 1, "operations": [op]}
+    return Bound(action, category, target, [change], plan_op={"op": "animation", "script": script})
 
 
 def _plain(value: Any) -> Any:
@@ -819,6 +903,7 @@ CATEGORY_SWITCH = {
     "visibility": "allow_visibility",
     "procedural": "allow_procedural",
     "placement": "allow_placement",
+    "animation": "allow_animation",
 }
 
 
@@ -846,6 +931,7 @@ class CorrectionPolicy:
     allow_materials: bool = True
     allow_visibility: bool = True
     allow_procedural: bool = False
+    allow_animation: bool = False
     max_actions: int = 20
     max_objects: int = 10
     max_translation: float | None = None
@@ -866,6 +952,7 @@ class CorrectionPolicy:
         "allow_materials",
         "allow_visibility",
         "allow_procedural",
+        "allow_animation",
         "max_actions",
         "max_objects",
         "max_translation",
@@ -1175,6 +1262,9 @@ def _merge(drafts: list[Draft]) -> list[Draft]:
         if d.actions and first.actions and d.actions[0].get("targets") is not None:
             merged = _union_targets(first.actions[0].get("targets"), d.actions[0]["targets"])
             first.actions[0]["targets"] = merged
+        if d.actions and first.actions and d.actions[0].get("legs") is not None:
+            first.actions[0]["legs"] = {**first.actions[0]["legs"], **d.actions[0]["legs"]}
+            first.title = f"Plant the feet of {first.title.split(chr(39))[1]!r}"
     return out
 
 

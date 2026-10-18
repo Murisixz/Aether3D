@@ -152,6 +152,8 @@ An expectations document states what the scene must satisfy, as checks:
 | `uv_quality` | each object's mesh (a group: its parts' meshes) has UVs (`NO_UVS`) with at most `max_flipped` flipped (`UV_FLIPPED`) and `max_overlapping` overlapping triangles (`UV_OVERLAP`; default 0 each; stacked islands -- deliberate copies -- are not counted), and optionally an L2 stretch of at most `max_stretch` (`UV_STRETCH`), a texel-density spread of at most `max_density_spread` (`UV_DENSITY_SPREAD`) and gaps of at least `min_gap` texels (`UV_GAP`) at `resolution` (default 1024); basis `geometry`, exact ([TEXTURING.md](TEXTURING.md#diagnostics)). Never corrected: corrections do not edit UVs (0.14.0) |
 | `cad_valid` | the CAD `items` (default: every item) regenerate (`CAD_ERROR`, basis `scene`, with the item's error), every part body is a valid solid (`CAD_INVALID_SOLID`), and with `fully_constrained` no sketch has degrees of freedom left (`CAD_UNDERCONSTRAINED`, magnitude the DOF); exact, from the CAD document ([CAD.md](CAD.md)). Never corrected (0.15.0) |
 | `cad_dimension` | an exact measurement of a CAD `reference` (and `other`): `quantity` (`distance`, `parallel_distance`, `axis_distance`, `angle_deg`, `length`, `area`, `radius`) equals `value` within `tolerance`, or lies within `min`..`max` (document units, degrees); `CAD_DIMENSION` with the difference as magnitude, `CAD_REFERENCE` for a reference that does not resolve, `CAD_NOT_MEASURABLE` for a quantity that does not apply. Never corrected: change the driving dimension (0.15.0) |
+| `animation_continuity` | the objects' animation curves (their actions) have no unintended jump at any key up to `order` -- 0 value, 1 velocity (the default), 2 acceleration -- from the curves' exact one-sided limits; constant keys and jump pairs are intended. `MOTION_DISCONTINUITY` (basis `scene`, exact) with the jump as magnitude; corrected by `smooth_keys` (`approval`) (0.17.0) |
+| `foot_contacts` | the armatures' planted `feet` (joint names) slide at most `max_sliding` (default 0.005 m) and go below the ground (z = 0) at most `max_penetration` (0.002 m) over the timeline, sampled at 120 per second (planted: within `height`, 0.03 m, of the ground and within `speed`, 0.3 m/s, of the stance's steady velocity, so a skating stance is measured); `FOOT_SLIDING`, `FOOT_PENETRATION` (basis `scene`, sampled); corrected by `plant_feet` (`verify`) ([ANIMATION.md](ANIMATION.md#foot-contacts-and-planting); 0.17.0) |
 
 Every check takes `id`, `severity` (`"error"`, default, or `"warning"`), `label`, and
 `fix`: `move` (`"objects"`, `"against"`, `"support"` or `"none"`: which side a correction
@@ -276,10 +278,12 @@ not used.
 | `frame_camera` (`targets`, `direction`, `margin`), `aim_camera` (`look_at`), `dolly_camera` (`distance`), `set_camera` (`fov`, `near`, `far`) | a camera |
 | `set_light` (`intensity`, `color`), `add_light`, `set_exposure`, `set_ambient` | light |
 | `set_parameter` | a procedural scene parameter (off by default: `allow_procedural`) |
+| `plant_feet` (`armature`, `legs`: foot -> `[hip, knee, foot]`), `smooth_keys` (`object`, `path`, `keys`, `handles`) | animation (off by default: `allow_animation`; 0.17.0): keyed IK pins each foot contact where it touched down; the keys of a channel get automatic handles (`auto_clamped` by default: no corners, no overshoot) |
 
 No deletion, no mesh editing, no file, no network, no code. Actions **compile** to the
 engine's own documents -- a scene plan (`update`, `frame_camera`, `set_parameters`,
-`world`, `render_settings`) and, for lenses and lights, a scene script -- shown in the
+`world`, `render_settings`, and since 0.17.0 `animation`, whose animation script runs
+`plant_feet` or `edit_keys`) and, for lenses and lights, a scene script -- shown in the
 proposal (`compiled`), so what will run can be read and run by hand.
 
 Each proposal carries its `findings`, `rationale` (why, from the evidence), `expected`
@@ -298,7 +302,7 @@ decision (a plan of the agent's).
 
 **Policy** (`CorrectionPolicy`, or its JSON): `auto_apply`; `allow_placement`,
 `allow_camera`, `allow_lighting`, `allow_materials`, `allow_visibility`,
-`allow_procedural`; limits per application `max_actions`, `max_objects`,
+`allow_procedural`, `allow_animation` (0.17.0); limits per application `max_actions`, `max_objects`,
 `max_translation` (default a quarter of the scene's diagonal, at least 1 m),
 `max_rotation` (90 degrees), `max_scale` (4), `max_exposure_change` (4 stops),
 `max_light_factor` (8); `verify`, `rollback_on_regression`, `rollback_if_ineffective`;

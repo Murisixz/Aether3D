@@ -166,7 +166,19 @@ def _check_schema(kind: str) -> dict[str, Any]:
         "other": {"type": "object", "description": "a second CAD reference"},
         "quantity": {"enum": list(expectations.CAD_QUANTITIES)},
         "value": {"type": "number"},
+        "order": {"type": "integer", "minimum": 0, "maximum": 2, "default": 1},
+        "feet": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1,
+            "maxItems": 16,
+        },  # fmt: skip
+        "max_sliding": {"type": "number", "minimum": 0, "default": 0.005},
+        "max_penetration": {"type": "number", "minimum": 0, "default": 0.002},
+        "speed": {"type": "number", "minimum": 0, "default": 0.3},
     }
+    if kind == "foot_contacts":
+        types["height"] = {"type": "number", "minimum": 0, "maximum": 10, "default": 0.03}
     for key in spec["fields"]:
         if key == "region":
             fields[key] = (
@@ -275,6 +287,21 @@ def action_schema() -> dict[str, Any]:
         "type": {"enum": ["directional", "point"]},
         "exposure": {"type": "number", "minimum": -20, "maximum": 20},
         "value": {"type": ["number", "string", "boolean"]},
+        "armature": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "legs": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 3,
+                "maxItems": 3,
+            },
+            "minProperties": 1,
+            "maxProperties": 8,
+        },  # fmt: skip
+        "keys": {"type": "array", "items": {"type": "integer"}, "minItems": 1},
+        "handles": {"enum": ["auto_clamped", "auto"]},
     }
     variants = []
     for name, spec in corrections.ACTIONS.items():

@@ -8,7 +8,8 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.15.0 (precision modeling, CAD and architecture).** Aether3D provides:
+> **Status: v0.17.0 (animation, rigging, motion curves and cinematics).** Aether3D
+> provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -81,15 +82,25 @@ graphical interface required.
 >   families, rooms found from the walls, slabs, roofs, stairs checked against your
 >   criteria, columns and beams, IFC base quantities, schedules, and IFC4 export and
 >   import validated with IfcOpenShell;
+> - **animation, rigging and cinematics**: keyframes on exact F-curves (every
+>   interpolation and Penner easing, five handle types with weighted tangents, exact
+>   derivatives to jerk, cycle-aware loops, modifiers, continuity and overshoot reports,
+>   keyframe reduction, baking, SVG/PNG graphs), quaternion tracks, clips with layers and
+>   strips, skeletons with FK, IK (two-bone with poles, FABRIK, CCD) and constraints,
+>   rigid attachments, linear and dual-quaternion skinning, morph targets, editable motion
+>   generators (idle, walk, run, jump, superhero landing, wave, head turns), foot
+>   contacts and planting, mirroring, root motion, retargeting, camera moves and shot
+>   sequences, frame rendering with real motion blur, and glTF animation, skin and morph
+>   import/export -- all headless, from Python, JSON scripts, the CLI and MCP;
 > - **incremental rendering and optional native kernels**: renders update only what
 >   changed since the last one (a 10,000-object GPU frame in 7-8 ms when nothing
 >   changed), and the optional `aether3d-native` package (Rust) traces rays, builds
->   transform hierarchies, filters PNG rows and triangulates polygons with exactly the
->   results of the NumPy code ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
+>   transform hierarchies, skins meshes, filters PNG rows and triangulates polygons with
+>   exactly the results of the NumPy code ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
-> Animation, physics and other systems are intentionally **not** part of
-> this stage. See the [changelog](CHANGELOG.md).
+> Physics and procedural worlds (Stage 16, postponed: there is no 0.16.0) are not part
+> of this release. See the [changelog](CHANGELOG.md).
 
 ## Quick start
 
@@ -354,6 +365,86 @@ See [docs/CAD.md](docs/CAD.md), [docs/BUILDINGS.md](docs/BUILDINGS.md) and the e
 [`mcp_cad_agent.py`](examples/mcp_cad_agent.py) (outputs in `examples/output/`: renders,
 drawings, STEP, IFC, DXF, schedules).
 
+### Animation, rigging and cinematics
+
+```python
+from aether3d import Scene
+
+scene = Scene()
+ball = scene.add_sphere("Ball", radius=0.25, position=(0, 0, 1))
+anim = scene.animation
+anim.set_timeline(fps=24, start=0, end=2)
+
+# A bounce that loops: keys in seconds; automatic handles are smooth and never overshoot.
+anim.set_channel(
+    ball, "transform.position.z", [(0, 1.0), (0.5, 0.25), (1, 1.0)], extrapolation="cycle"
+)
+print(round(anim.evaluate(1.5).position[0][2], 6))  # 0.25
+print(ball.position)  # (0.0, 0.0, 1.0): authored state stays the rest pose
+report = anim.curve_report(ball, "transform.position.z")
+print(len(report["discontinuities"]), len(report["overshoot"]))  # 0 0
+print(round(report["velocity"]["max"], 2))  # 2.25 (m/s, the velocity's peak)
+
+# A rig, and an editable generated walk whose feet are measured, not assumed.
+hero = scene.add_object("Hero", position=(2, 0, 0))
+anim.add_rig(
+    hero,
+    [
+        {"name": "Hips", "position": [0, 0, 0.75]},
+        {"name": "Body", "parent": "Hips", "tail": [0, 0, 0.75]},
+        {"name": "Head", "parent": "Body", "position": [0, 0, 0.75], "tail": [0, 0, 0.5]},
+        {"name": "Arm.L", "parent": "Body", "position": [0.375, 0, 0.625], "tail": [0, 0, -0.75]},
+        {"name": "Arm.R", "parent": "Body", "position": [-0.375, 0, 0.625], "tail": [0, 0, -0.75]},
+        {"name": "Leg.L", "parent": "Hips", "position": [0.125, 0, 0], "tail": [0, 0, -0.75]},
+        {"name": "Leg.R", "parent": "Hips", "position": [-0.125, 0, 0], "tail": [0, 0, -0.75]},
+    ],
+)
+walk = anim.generate(hero, "walk")  # a clip of ordinary keys, played as the action
+feet = anim.foot_contacts(hero, ["Leg.L", "Leg.R"])
+print(walk["clip"], max(f["sliding_max"] for f in feet["feet"].values()) < 0.005)  # Walk True
+
+# Render any time: the evaluated pose, without changing the scene.
+image = scene.render(time=0.4, width=320, height=180, backend="cpu", frame=True)
+print(image.image.shape)  # (180, 320, 3)
+```
+
+- **Authored and evaluated.** The scene saves rest values and the animation document;
+  evaluating a time is pure (no history step, nothing kept between frames, seekable), and
+  rendering at a time is bit for bit rendering an applied pose.
+- **The graph editor as mathematics.** Constant, linear, Bezier and Penner easings;
+  free, aligned, vector, auto and auto-clamped handles (no overshoot, guaranteed);
+  weighted tangents with monotone time inversion; exact velocity, acceleration and jerk;
+  cycle-aware loops; ten modifiers; key operations; exact continuity, extrema and
+  overshoot reports; keyframe reduction within a tolerance; SVG and PNG graphs.
+- **Rigs and motion.** Skeletons, FK, IK, constraints, attachments, linear (native) and
+  dual-quaternion skinning, morph targets; layers and strips with masks and crossfades;
+  generated motions written as editable keys; foot contacts measured and planted;
+  mirroring, root motion and retargeting.
+- **Cinematics.** Arc-length paths, dolly, truck, crane, pan, tilt, roll, zoom, orbits,
+  damped follows, shot sequences with cuts and blends, timecode; real motion blur, and
+  no depth of field (not claimed).
+- **For agents.** Animation scripts (atomic JSON), `aether3d animation
+  run|info|report|graph|render|schema`, the MCP tools `run_script` and
+  `inspect_animation`, the scene-plan operation `animation`, and the feedback checks
+  `foot_contacts` and `animation_continuity` with opt-in corrections.
+
+![Nova, an original pixel-skin character: a superhero landing through three cameras (a cut, a blend with motion blur, a cut), rendered by Aether3D](examples/output/animation/minecraft/cinematic_sheet.png)
+
+![Curve repair, before and after: value, velocity and acceleration of a crate's height and travel and of a jittery swing](examples/output/animation/curve_repair/graphs_side_by_side.png)
+
+![A smooth-skinned mannequin: linear blend skinning (left) collapses a 160-degree wrist twist, dual quaternion skinning (right) keeps its volume](examples/output/animation/skinned/twist_lbs_vs_dqs.png)
+
+![10,000 blocks playing one clip through offset strips (a stadium wave) and 48 walkers, filmed by a crane](examples/output/animation/large/hero_pool.png)
+
+See [docs/ANIMATION.md](docs/ANIMATION.md) and the examples
+[`animation_minecraft.py`](examples/animation_minecraft.py),
+[`animation_curve_repair.py`](examples/animation_curve_repair.py),
+[`animation_skinned_character.py`](examples/animation_skinned_character.py),
+[`animation_cinematics.py`](examples/animation_cinematics.py),
+[`animation_large_scene.py`](examples/animation_large_scene.py) and
+[`animation_mcp_agent.py`](examples/animation_mcp_agent.py) (outputs in
+`examples/output/animation/`).
+
 ### Procedural geometry
 
 ```python
@@ -605,15 +696,17 @@ pip install -e ".[mcp]"
 claude mcp add aether3d -- aether3d mcp serve --workspace "$PWD"   # Claude Code
 ```
 
-The server gives MCP clients 25 tools -- `execute_scene_plan`, `spatial_query`,
+The server gives MCP clients 26 tools -- `execute_scene_plan`, `spatial_query`,
 `render_preview` (the GPU rasterizer when it works, the CPU one otherwise, and it says
-which), `history`, `scene_save`, `export_scene` (glTF, and STEP, IFC, DXF, SVG and PNG of
-CAD items), `run_script` (edit, procedural, scene, sculpt, texture and CAD scripts),
-`inspect_mesh`, `inspect_uvs`, `inspect_texture`, `inspect_cad`, `import_cad`, the visual
-feedback tools (`observe_scene`, `diagnose_scene`, `propose_corrections`,
-`apply_corrections`, `feedback_loop`), ... -- plus the plan, feedback, sculpting,
-texturing and CAD guides, their JSON Schemas and example plans as resources. It speaks stdio only, keeps every file inside the
-workspace, and never runs code from its arguments.
+which; at any animation `time`), `history`, `scene_save`, `export_scene` (glTF with
+skeletons, skins, morph targets and animations, and STEP, IFC, DXF, SVG and PNG of CAD
+items), `run_script` (edit, procedural, scene, sculpt, texture, CAD and animation
+scripts), `inspect_mesh`, `inspect_uvs`, `inspect_texture`, `inspect_cad`, `import_cad`,
+`inspect_animation`, the visual feedback tools (`observe_scene`, `diagnose_scene`,
+`propose_corrections`, `apply_corrections`, `feedback_loop`), ... -- plus the plan,
+feedback, sculpting, texturing, CAD and animation guides, their JSON Schemas and example
+plans as resources. It speaks stdio only, keeps every file inside the workspace, and
+never runs code from its arguments.
 
 ![An agent's castle: built with two mistakes, found by spatial queries, fixed, undone, redone, previewed and exported over MCP](examples/output/mcp_castle_agent.png)
 
@@ -796,6 +889,10 @@ $ aether3d cad run part.aether bracket.json --json         # CAD script (atomic;
 $ aether3d cad info part.aether Bracket                    # one CAD item's report
 $ aether3d cad export part.aether bracket.step --item Bracket   # STEP, IFC, DXF, SVG or PNG by suffix
 $ aether3d cad import part.aether supplier.step --name Bought   # STEP, IFC or DXF
+$ aether3d animation run scene.aether walk.json --json      # animation script (atomic)
+$ aether3d animation report scene.aether --kind contacts --target Hero --feet Foot.L --feet Foot.R
+$ aether3d animation render scene.aether frames/ --contact-sheet sheet.png --video walk.mp4
+$ aether3d export scene.aether hero.glb --animation clips   # skins, morphs, animations
 $ aether3d procedural run castle.aether build.json         # declarative procedural script
 $ aether3d procedural set castle.aether tower_count=8      # change parameters (validated)
 $ aether3d procedural inspect castle.aether --evaluate     # parameters, nodes, stacks
@@ -939,6 +1036,7 @@ see [docs/PERFORMANCE.md](docs/PERFORMANCE.md#phase-3-native-kernels-rust).
 | [docs/EDITING.md](docs/EDITING.md) | Mesh editing: topology, ids, sessions, operations, scripts, limitations |
 | [docs/MODELING.md](docs/MODELING.md) | Advanced modeling and sculpting: bevels, cuts, bridges, slides, sweeps; the sculpt mesh, brushes, strokes, masks, symmetry, dynamic topology, remeshing, symmetrize, validity tiers, scripts, CLI, MCP, history, design, performance, limitations |
 | [docs/TEXTURING.md](docs/TEXTURING.md) | UV mapping, texture painting and baking: unwrapping, projections, island tools, diagnostics, MikkTSpace, painted textures and layers, brushes and strokes, baking, texture transfer, scripts, CLI, MCP, safety, performance, limitations |
+| [docs/ANIMATION.md](docs/ANIMATION.md) | Animation, rigging and cinematics: authored and evaluated state, time, paths, F-curves (interpolation, handles, easing, derivatives, extrapolation, modifiers, key operations, reports, fitting, graphs), rotations, clips and NLA, rigs, skins, IK and constraints, motion generators, contacts, retargeting, cameras, frame rendering, glTF, scripts, CLI, MCP, security, limitations |
 | [docs/CAD.md](docs/CAD.md) | Precision modeling and CAD: the document, units and tolerances, sketches and the constraint solver, features and persistent names, the B-rep kernel and booleans, assemblies, measurements and snapping, drawings, STEP/DXF/IFC exchange, CAD scripts, CLI, MCP, limitations |
 | [docs/BUILDINGS.md](docs/BUILDINGS.md) | Architecture and BIM: buildings, levels, walls and joins, openings and families, rooms, slabs, roofs, stairs, columns, beams, quantities and schedules, plans, IFC, limitations |
 | [docs/PROCEDURAL.md](docs/PROCEDURAL.md) | Procedural geometry: parameters, expressions, modifiers, caching, scripts, CLI, limitations |

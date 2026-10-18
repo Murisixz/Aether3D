@@ -15,6 +15,8 @@ Resources (read-only):
 * ``aether3d://schema/texture-script`` -- the JSON Schema of texture scripts.
 * ``aether3d://cad/guide`` -- the precision modeling guide for agents (Markdown).
 * ``aether3d://schema/cad-script`` -- the JSON Schema of CAD scripts.
+* ``aether3d://animation/guide`` -- the animation guide for agents (Markdown).
+* ``aether3d://schema/animation-script`` -- the JSON Schema of animation scripts.
 * ``aether3d://schema/expectations``, ``.../vision-evaluation``, ``.../corrections`` -- the
   JSON Schemas of the feedback documents.
 * ``aether3d://observations/{id}`` -- an observation's measured facts (JSON), and
@@ -66,6 +68,14 @@ def texturing_guide() -> str:
 def cad_guide() -> str:
     return (
         importlib_resources.files("aether3d.cad").joinpath("guide.md").read_text(encoding="utf-8")
+    )
+
+
+def animation_guide() -> str:
+    return (
+        importlib_resources.files("aether3d.animation")
+        .joinpath("guide.md")
+        .read_text(encoding="utf-8")
     )
 
 
@@ -199,6 +209,25 @@ def resources(session: Session) -> list[types.Resource]:
             mime_type="application/schema+json",
         )
     )
+    out.append(
+        types.Resource(
+            uri="aether3d://animation/guide",
+            name="animation-guide",
+            title="Animation guide",
+            description="Clips, curves and keys, NLA, rigs, skins, IK, constraints, motion "
+            "generators, cameras, reports and animation scripts",
+            mime_type="text/markdown",
+        )
+    )
+    out.append(
+        types.Resource(
+            uri="aether3d://schema/animation-script",
+            name="animation-script-schema",
+            title="Animation script JSON Schema",
+            description="The JSON Schema (2020-12) of aether3d.animation-script version 1",
+            mime_type="application/schema+json",
+        )
+    )
     for uri, (name, title) in FEEDBACK_SCHEMAS.items():
         out.append(
             types.Resource(
@@ -311,6 +340,12 @@ def read_resource(session: Session, uri: str) -> list[Any]:
         from ..cad.schema import cad_script_schema
 
         return data(cad_script_schema(), "application/schema+json")
+    if uri == "aether3d://animation/guide":
+        return text(animation_guide(), "text/markdown")
+    if uri == "aether3d://schema/animation-script":
+        from ..animation.schema import animation_script_schema
+
+        return data(animation_script_schema(), "application/schema+json")
     if uri in FEEDBACK_SCHEMAS:
         return data(feedback_schema(uri), "application/schema+json")
     if uri.startswith("aether3d://observations/"):

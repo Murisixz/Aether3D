@@ -49,7 +49,11 @@ Checks: `exists`, `visible`, `framing`, `rests_on`, `no_overlap`, `inside_region
 `mesh_validity` (a mesh's validity tier: `{"check": "mesh_validity", "objects": "Head",
 "tier": "closed"}`; useful after sculpting or remeshing), `uv_quality` (no flipped or
 overlapping UV triangles, optional stretch, texel-density and gap limits:
-`{"check": "uv_quality", "objects": "Crate", "max_density_spread": 0.2}`) (schema:
+`{"check": "uv_quality", "objects": "Crate", "max_density_spread": 0.2}`),
+`foot_contacts` (planted feet slide and sink at most `max_sliding` / `max_penetration`
+over the timeline: `{"check": "foot_contacts", "objects": "Hero", "feet": ["Foot.L",
+"Foot.R"]}`), `animation_continuity` (no unintended jump of value, velocity or, with
+`order: 2`, acceleration at any key of the objects' actions) (schema:
 `aether3d://schema/expectations`; `capabilities {"topic": "feedback"}` summarizes them).
 `objects` takes ids, names or selectors (`{"tags": [...]}`, `{"name_glob": "Chair*"}`).
 `severity: "warning"` makes a check advisory. `fix` states which side may move
@@ -102,7 +106,9 @@ observation made before the scene changed are marked stale.
 Actions (the only changes possible): `translate` (world offset), `place`, `rotate`,
 `scale`, `set_visibility`, `assign_material`, `set_color`, `frame_camera`, `aim_camera`,
 `dolly_camera`, `set_camera` (fov, near, far), `set_light`, `add_light`, `set_exposure`,
-`set_ambient`, `set_parameter`. No deletion, no mesh editing, no files.
+`set_ambient`, `set_parameter`, and for animation `plant_feet` (keyed IK pins each
+contact; `verify`) and `smooth_keys` (automatic handles; `approval`) -- both only with the
+policy's `allow_animation: true`. No deletion, no mesh editing, no files.
 
 Safety: `safe` (exact repair of a stated expectation -- applied automatically),
 `verify` (applied when the policy allows it, kept only if it measurably helps),

@@ -445,7 +445,14 @@ def cmd_export(args: argparse.Namespace) -> CommandOutput:
     scene, info = _load_scene(source, args.allow_lossy)
     try:
         result = export_gltf(
-            scene, destination, allow_lossy=args.allow_lossy, bake_textures=args.bake_textures
+            scene,
+            destination,
+            allow_lossy=args.allow_lossy,
+            bake_textures=args.bake_textures,
+            animation=args.animation,
+            fps=args.fps,
+            rotation_tolerance=args.rotation_tolerance,
+            position_tolerance=args.position_tolerance,
         )
     except (AetherError, OSError) as exc:
         raise _command_error(exc, destination) from None
@@ -453,7 +460,8 @@ def cmd_export(args: argparse.Namespace) -> CommandOutput:
     text = "\n".join(
         [
             f"Exported {source} -> {destination} ({result.format}, {result.node_count} nodes, "
-            f"{result.mesh_count} meshes, {result.byte_length} bytes)",
+            f"{result.mesh_count} meshes, {len(result.animations)} animations, "
+            f"{result.byte_length} bytes)",
             *_diagnostic_lines([d.to_dict() for d in result.diagnostics]),
         ]
     )
@@ -1972,6 +1980,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="bake procedural textures into SIZE x SIZE PNG images (16-8192); without it they "
         "are left out, with a warning",
     )
+    p_export.add_argument(
+        "--animation",
+        choices=("auto", "clips", "actions", "bake", "none"),
+        default="auto",
+        help="how motion is exported (auto: bake when layers, constraints or IK shape it)",
+    )
+    p_export.add_argument("--fps", help="bake rate (default: the timeline's)")
+    p_export.add_argument(
+        "--rotation-tolerance", type=float, default=0.01, help="degrees, for fitted channels"
+    )
+    p_export.add_argument(
+        "--position-tolerance", type=float, default=1e-4, help="scene units, for fitted channels"
+    )
     p_export.set_defaults(handler=cmd_export)
 
     p_topology = sub.add_parser(
@@ -2059,6 +2080,9 @@ def build_parser() -> argparse.ArgumentParser:
     from ._cli_cad import add_cad_parsers
 
     add_cad_parsers(sub, common, writing)
+    from ._cli_animation import add_animation_parsers
+
+    add_animation_parsers(sub, common, writing)
     _add_mcp_parsers(sub)
     return parser
 

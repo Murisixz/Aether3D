@@ -853,3 +853,69 @@ Optimizations made during the stage, each checked equal to the code it replaced:
 Known slow spot: clash detection between a pin and a hole of its own diameter intersects
 coincident cylinders exactly (about 1.4 s per pair); it is exact (contact, not
 interference) but not yet fast.
+
+## Animation (0.17)
+
+Stage 17 decided its languages before implementation
+([research/2026-10-stage17/DESIGN.md](../research/2026-10-stage17/DESIGN.md), section 3):
+NumPy for curves (structure of arrays, every channel of every strip in one batched
+evaluation), quaternions, blending and strip timing; the existing hierarchy kernels for
+forward kinematics; and one native kernel:
+
+- **Linear blend skinning** (`native/src/skin.rs`, `aether3d-native` 0.17.0, ABI 4):
+  per vertex, the weighted blend of up to 8 skinning matrices, positions and cofactor
+  normals, threaded by vertex range with the GIL released. It performs the NumPy
+  code's operations in its order (no fused multiply-adds), so the results are bitwise
+  identical (`tests/test_native.py`, and the benchmark checks every run). 1,000,000
+  vertices: 171 ms NumPy, 21.2 ms on one thread, 6.9 ms on 20.
+
+A native curve kernel was planned only if curve evaluation dominated a frame; it does not
+(10,000 animated objects evaluate in 9.9 ms, most of it outside the curve kernels), so
+there is none. Dual quaternion skinning stays in NumPy, and there is no GPU skinning: the
+path tracers need deformed geometry on the CPU anyway.
+
+Measured with `benchmarks/bench_animation.py` at f9a088e
+(`benchmarks/results/stage17-animation.json`; i9-12900H laptop, 20 logical CPUs, Python
+3.14.8, NumPy 2.5.4, RTX 4060 Laptop GPU through wgpu 0.32 on Vulkan). Each group runs in
+its own process; medians after a warm-up, each run at a new time (no cache):
+
+| Workload | Size | Time | Peak RSS |
+| --- | --- | ---: | ---: |
+| curve at 100,000 times: values / 3 derivatives / weighted keys | 100 keys | 5.2 / 8.5 / 9.3 ms | 75 MiB |
+| same | 10,000 keys | 6.0 / 8.7 / 10.6 ms | 79 MiB |
+| 1,000 curves at one time each (one batch) | | 0.14 ms | |
+| objects with their own clips: evaluation / overlay / posed worlds | 100 / 1,000 / 10,000 | 0.43 / 1.22 / 9.87 ms; 0.53 / 1.74 / 14.2 ms; 0.62 / 2.48 / 24.0 ms | 59 / 88 / 375 MiB |
+| objects playing one clip through offset strips (same three) | 1,000 / 10,000 | 0.48 / 2.77 ms; 1.06 / 7.16 ms; 1.60 / 15.2 ms | 65 / 175 MiB |
+| the 10,000 instances and 48 walking rigs: evaluation / overlay / posed worlds | 10,337 objects | 3.7 / 31.6 / 39.9 ms | 216 MiB |
+| rig: evaluation / rigging pass | 50 / 200 joints | 0.26 / 0.34 ms; 0.42 / 0.58 ms | 56-58 MiB |
+| linear blend skinning: NumPy / native 1 thread / native 20 threads | 10k / 100k / 1M vertices | 2.1 / 0.20 / 0.20; 22.1 / 2.0 / 0.72; 171 / 21.2 / 6.9 ms | 63 / 106 / 267 MiB |
+| dual quaternion skinning (NumPy) | 10k / 100k / 1M vertices | 6.9 / 73 / 678 ms | |
+| IK: two-bone / FABRIK (12 joints) / rigging pass with IK | | 12.4 us / 0.93 ms / 0.50 ms | 65 MiB |
+| NLA: 4 layers of 4 strips | | 0.79 ms | 55 MiB |
+| generate: walk / superhero landing / blocky walk | 644 / 616 keys | 230 / 746 / 103 ms | 64 MiB |
+| frames at 320x180 to PNG: CPU / GPU / 4-sample blur (CPU) | 48 frames | 44.1 / 3.7 / 131 ms per frame | 457 MiB |
+| glTF: export clips / bake / import | 67 / 50 kB | 42 / 56 / 10 ms | 72 MiB |
+| simplify / fit | 10,000 keys / 20,000 samples | 77 / 16.4 ms | 86 MiB |
+
+Optimizations made during the stage, each measured before and after on this machine with
+the same harness and checked equal to the code it replaced (bitwise where stated):
+
+| Change | Before | After |
+| --- | ---: | ---: |
+| 10,000 animated objects, build: incremental animation indexes instead of re-indexing on every change | 40.3 s | 5.9 s |
+| same, evaluation per frame: vectorized pose assembly, the authored base cached per revision, exact passthrough at full influence | 34.5 ms | 9.9 ms |
+| keyframe reduction of 10,000 keys: a heap of candidate insertions on direct Hermite evaluation | 3,901 ms | 77 ms |
+| fitting 20,000 samples (same) | 1,572 ms | 16.4 ms |
+| generating a walk / a landing: plain-float quaternion helpers in the per-sample solver | 740 / 2,247 ms | 230 / 746 ms |
+| 10,000 instanced strips: strips timed together (`nla.StripTable`, bit for bit the per-strip mapping) | 163 ms | 2.8 ms |
+| the crowd's overlay: scene order, authored world matrices and circle bases cached per revision (never inside an open operation) | 110 ms | 31.6 ms |
+
+The before figures are kept: `stage17-animation-before.json` (19785b7: the first five
+rows), `stage17-instances-before.json` (e74d32b) and `stage17-crowd-before.json`
+(d09dc1e).
+
+Known slow spots: sampling one rig's joints over time (`foot_contacts`, trajectories,
+`plant_feet`) evaluates the whole scene at every sample -- about 40 ms a sample in the
+10,341-object showcase -- so measuring motion in a large scene takes seconds per
+character (one pass serves all of a rig's joints); dual quaternion skinning is NumPy only;
+FABRIK and CCD are Python loops (0.93 ms for 12 joints).

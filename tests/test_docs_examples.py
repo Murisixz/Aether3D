@@ -476,3 +476,36 @@ def test_buildings_quick_start(capsys):
     source = python_block(ROOT / "docs/BUILDINGS.md", CAD_START.replace('"mm"', '"m"'))
     exec(compile(source, "BUILDINGS.md", "exec"), {})
     assert_printed(source, capsys.readouterr().out)
+
+
+# --------------------------------------------------------------------------- #
+# Animation, rigging and cinematics (0.17.0)
+# --------------------------------------------------------------------------- #
+
+ANIMATION_START = (
+    'from aether3d import Scene\n\nscene = Scene()\nball = scene.add_sphere("Ball", radius=0.25'
+)
+
+
+@pytest.mark.parametrize("doc", ["docs/ANIMATION.md", "README.md"])
+def test_animation_quick_start(doc, capsys):
+    source = python_block(ROOT / doc, ANIMATION_START)
+    exec(compile(source, doc, "exec"), {})
+    assert_printed(source, capsys.readouterr().out)
+
+
+def test_animation_doc_script_example():
+    from aether3d.animation.schema import animation_script_schema
+    from aether3d.animation.script import run_animation_script
+
+    jsonschema = pytest.importorskip("jsonschema")
+    text = (ROOT / "docs/ANIMATION.md").read_text(encoding="utf-8")
+    script = json.loads(re.search(r'```json\n(\{"format": "aether3d.animation-script".*?)\n```',
+                                  text, re.S).group(1))  # fmt: skip
+    jsonschema.validate(script, animation_script_schema())
+    scene = Scene()
+    scene.add_sphere("Ball")
+    out = run_animation_script(scene, script)
+    report = out["operations"][-1]["result"]
+    assert report["keys"] == 3 and not report["overshoot"]
+    assert scene.history.entries[-1].label == "Bounce"

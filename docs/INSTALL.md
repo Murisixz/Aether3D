@@ -6,7 +6,9 @@ a GPU is optional: it needs Python 3.11+, the `gpu` extra and a Vulkan,
 Metal or Direct3D 12 driver (see [GPU rendering](#gpu-rendering-optional)).
 JPEG textures are optional too: they need the `images` extra (PNG textures
 need nothing). So is the MCP server for AI agents: it needs the `mcp` extra
-(see [The MCP server](#the-mcp-server-optional)).
+(see [The MCP server](#the-mcp-server-optional)). Animation needs nothing more; only
+turning rendered frames into a video uses an external FFmpeg, when one is installed
+(see [Animation](#animation)).
 
 ## Arch Linux
 
@@ -163,3 +165,19 @@ big enough to gain from it). On macOS and Windows renders use one process, and
 `result.backend["parallel"]` says why. Worker processes need a little memory
 each (about 100 MB per batch of 65,536 paths) and share the scene, its BVH
 and its textures with the main process.
+
+## Animation
+
+Animation, rigging, skinning, cinematics and frame rendering
+([ANIMATION.md](ANIMATION.md)) need nothing beyond the base install. Two things are
+optional:
+
+- **Video.** `aether3d animation render ... --video out.mp4` and
+  `aether3d.animation.frames.assemble_video` encode Aether3D's PNG frames into an H.264
+  MP4 with an external `ffmpeg` (GPL or LGPL builds; it is run as a separate program,
+  never linked) when it is on the `PATH`; without it they report `FFMPEG_UNAVAILABLE`
+  and give the command to run elsewhere (`video_command`). The MCP server never runs it.
+  On Arch Linux: `sudo pacman -S ffmpeg`.
+- **Native skinning.** The optional `aether3d-native` package (0.17.0, ABI 4) skins
+  meshes about 8 times faster on one thread (and more on several) with exactly the
+  NumPy results; without it, or with `AETHER3D_NATIVE=0`, the NumPy code runs.

@@ -359,7 +359,7 @@ def test_village_example_on_the_gpu(tmp_path, gpu):
 def test_mcp_client_example_runs(tmp_path):
     pytest.importorskip("mcp")
     result = _run_example("mcp_client.py", str(tmp_path), "--backend", "cpu")
-    assert "25 tools" in result.stdout and "on the CPU: preview.png" in result.stdout
+    assert "26 tools" in result.stdout and "on the CPU: preview.png" in result.stdout
     assert (tmp_path / "preview.png").read_bytes().startswith(b"\x89PNG")
     assert len(Scene.load(tmp_path / "courtyard.aether")) == 44
 
@@ -589,3 +589,78 @@ def test_committed_cad_outputs():
             assert png.info["Software"].startswith("Aether3D ")
         report = json.loads((EXAMPLES / "output" / f"{name}.json").read_text())
         assert report["failures"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", report["aether3d"])
+
+
+# --------------------------------------------------------------------------- #
+# Animation, rigging and cinematics (0.17.0)
+# --------------------------------------------------------------------------- #
+
+ANIMATION = EXAMPLES / "output" / "animation"
+
+
+def _worst_sliding(feet: dict) -> float:
+    return max(f["sliding_m"] for f in feet.values())
+
+
+@pytest.mark.parametrize(
+    ("name", "args", "checks"),
+    [
+        ("animation_minecraft.py", ("--no-video",),
+         lambda r: _worst_sliding(r["contacts"]["Walk"]) < 0.005),
+        ("animation_curve_repair.py", (),
+         lambda r: r["same_python_json"] and not r["after"]["transform.position.z"]["overshoot"]
+         and not r["after"]["penetrates_shelf"]),
+        ("animation_skinned_character.py", (),
+         lambda r: r["twist"]["linear"]["kept"] < 0.9 < r["twist"]["dual_quaternion"]["kept"]
+         and all(x["residual_m"] < 1e-6 for x in r["step"]["samples"])),
+        ("animation_cinematics.py", ("--no-video",),
+         lambda r: max(r["orbit_radius_m"]) - min(r["orbit_radius_m"]) < 1e-6
+         and max(r["vertigo_subject_height_fraction"])
+         - min(r["vertigo_subject_height_fraction"]) < 1e-3),
+        ("animation_large_scene.py", ("--no-video",),
+         lambda r: all(w["contacts"] > 0 and w["sliding_max_m"] < 0.01
+                       for w in r["foot_sliding_m"].values())),
+    ],
+)  # fmt: skip
+def test_animation_examples_run(tmp_path, name, args, checks):
+    _run_example(name, str(tmp_path), "--quick", "--backend", "cpu", *args)
+    report = json.loads((tmp_path / "report.json").read_text())
+    assert report["backend"] == "cpu" and checks(report)
+
+
+def test_animation_mcp_agent_example_runs(tmp_path):
+    pytest.importorskip("mcp")
+    _run_example("animation_mcp_agent.py", str(tmp_path), "--backend", "cpu")
+    report = json.loads((tmp_path / "report.json").read_text())
+    assert report["accepted"] and report["applied"]["decision"] == "kept"
+    assert report["refusals"]["revision_unchanged"]
+    assert report["images_received"] == 3 and report["images_inspected_by_the_client"] == 0
+
+
+def test_committed_animation_outputs():
+    """The Stage 17 showcases' committed results: Aether3D images (renders, and sheets and
+    graphs composed from its output, all tagged), scenes that load, GLBs that import with
+    their animations, and reports that say what was measured."""
+    image = pytest.importorskip("PIL.Image")
+    from aether3d import import_gltf
+
+    pngs = sorted(ANIMATION.glob("*/*.png"))
+    assert len(pngs) >= 30
+    for path in pngs:
+        with image.open(path) as png:
+            assert png.info["Software"].startswith("Aether3D "), path
+    reports = {d.name: json.loads((d / "report.json").read_text())
+               for d in ANIMATION.iterdir() if d.is_dir()}  # fmt: skip
+    assert set(reports) == {"minecraft", "curve_repair", "skinned", "cinematics", "large",
+                            "mcp_agent"}  # fmt: skip
+    for validator in (reports["minecraft"]["gltf"]["validator"],
+                      reports["skinned"]["walk"]["gltf"]["validator"]):  # fmt: skip
+        assert validator["ran"] and validator["errors"] == validator["warnings"] == 0
+    assert reports["curve_repair"]["same_python_json"]
+    assert reports["curve_repair"]["same_python_mcp"]
+    agent = reports["mcp_agent"]
+    assert agent["accepted"] and agent["images_inspected_by_the_client"] == 0
+    for path in sorted(ANIMATION.glob("*/*.aether")):
+        Scene.load(path)
+    for path in sorted(ANIMATION.glob("*/*.glb")):
+        assert import_gltf(path).animation["animations"], path

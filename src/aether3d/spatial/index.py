@@ -171,14 +171,17 @@ class _Instances:
 class SpatialIndex:
     """Every object with geometry in a scene, in world space (see the module docstring)."""
 
-    def __init__(self, scene: Scene, previous: SpatialIndex | None = None) -> None:
+    def __init__(
+        self, scene: Scene, previous: SpatialIndex | None = None, overlay: Any = None
+    ) -> None:
         """Index ``scene`` now. Entries of ``previous`` (an index of the same scene at an
         earlier revision) whose object, mesh, visibility and world matrix are unchanged are
         reused with what they built (vertices, BVHs, boxes): results are those of a fresh
-        index, computed once."""
+        index, computed once. An ``overlay`` (an animated pose) is indexed as posed."""
         self.scene = scene
         self.revision = scene.revision
-        worlds = world_matrices(scene)
+        self.overlay = overlay
+        worlds = world_matrices(scene, overlay)
         self.worlds = worlds
         self.order: dict[str, int] = {}
         self.entries: list[Entry] = []
@@ -198,7 +201,8 @@ class SpatialIndex:
             if obj._mesh is None and obj._geometry is None:
                 continue
             try:
-                mesh = obj.mesh  # procedural objects: the current evaluation (cached)
+                # procedural objects: the current evaluation (cached); animated: deformed
+                mesh = obj.mesh if overlay is None else overlay.meshes.get(obj._id, obj.mesh)
             except AetherError as exc:
                 code = getattr(exc, "code", type(exc).__name__)
                 self.failed[obj.id] = QueryError(
@@ -232,7 +236,7 @@ class SpatialIndex:
                     entry is not None
                     and entry.obj is obj
                     and entry.mesh is mesh
-                    and entry.visible == obj.visible
+                    and entry.visible == self.visible_of(obj)
                 ):
                     rows.append(row)
                     olds.append(entry)
@@ -251,7 +255,7 @@ class SpatialIndex:
             if not ok:
                 continue
             if entry is None:
-                entry = Entry(k, obj, mesh, worlds[obj.id], obj.visible, det)
+                entry = Entry(k, obj, mesh, worlds[obj.id], self.visible_of(obj), det)
             elif entry.order != k:
                 entry = replace(entry, order=k)
             self.entries.append(entry)
@@ -286,7 +290,11 @@ class SpatialIndex:
         )
         for oid, error in self.failed.items():
             obj = self.scene._objects[oid]
-            if (ids is None or oid in ids) and oid not in drop and (include_hidden or obj.visible):
+            if (
+                (ids is None or oid in ids)
+                and oid not in drop
+                and (include_hidden or self.visible_of(obj))
+            ):
                 raise error
         chosen = self.entries if ids is None else [e for e in self.entries if e.obj.id in ids]
         if drop:
@@ -294,6 +302,11 @@ class SpatialIndex:
         if not include_hidden:
             chosen = [e for e in chosen if e.visible]
         return chosen
+
+    def visible_of(self, obj: Any) -> bool:
+        """Whether ``obj`` is visible in what this index describes (an animated pose may
+        show or hide it)."""
+        return obj._visible if self.overlay is None else self.overlay.is_visible(obj)
 
     def resolve(self, ref: Any, location: str = "object") -> SceneObject:
         """A scene object by object, id or name (``QueryError`` if unknown)."""
@@ -407,18 +420,24 @@ def _as_list(value: Any) -> list[Any]:
 
 
 def get_index(scene: Scene) -> SpatialIndex:
-    """The scene's spatial index, reused while ``scene.revision`` is unchanged.
+    """The scene's spatial index, reused while ``scene.revision`` (and, for an animated
+    scene, the evaluated pose of its current time) is unchanged.
 
-    The last index is kept in the scene's derived caches (``Scene._derived``), so it dies
-    with the scene. (It references the scene and its objects: kept in a module-level
-    ``WeakKeyDictionary`` keyed by the scene, it would keep every queried scene alive.)
+    An animated scene is indexed as posed at ``scene.animation.time``, so queries and
+    picks agree with renders at that time. The last index is kept in the scene's derived
+    caches (``Scene._derived``), so it dies with the scene. (It references the scene and
+    its objects: kept in a module-level ``WeakKeyDictionary`` keyed by the scene, it
+    would keep every queried scene alive.)
     """
+    from ..rendering.overlay import animation_overlay
+
+    overlay = animation_overlay(scene)
     if scene.history.in_progress:  # inside an operation: its changes are not counted yet
-        return SpatialIndex(scene)
+        return SpatialIndex(scene, overlay=overlay)
     derived = scene._derived()
     cached = derived.get("spatial")
-    if cached is not None and cached.revision == scene.revision:
+    if cached is not None and cached.revision == scene.revision and cached.overlay is overlay:
         return cached
-    index = SpatialIndex(scene, previous=cached)
+    index = SpatialIndex(scene, previous=cached, overlay=overlay)
     derived["spatial"] = index
     return index

@@ -1068,6 +1068,7 @@ class Scene:
         self._history = History(self)
         self._procedural: ProceduralSystem | None = None
         self._cad: Any = None  # the CAD document, created on first use (scene.cad)
+        self._animation: Any = None  # the animation document, on first use (scene.animation)
         self._name = _check_name(name, "scene name")
         self._objects: dict[str, SceneObject] = {}
         self._by_name: dict[str, SceneObject] = {}
@@ -1465,6 +1466,8 @@ class Scene:
 
             if self._cad is not None:
                 self._cad._objects_removed(doomed)
+            if self._animation is not None:
+                self._animation._objects_removed(doomed)
             self._detach(target)
             for item in doomed:
                 del self._objects[item._id]
@@ -1862,6 +1865,16 @@ class Scene:
     # -- precision modeling (docs/CAD.md) --------------------------------------
 
     @property
+    def animation(self) -> Any:
+        """The scene's :class:`~aether3d.animation.AnimationSystem`: timeline, clips,
+        keyframes, layers and strips (created on first use)."""
+        if self._animation is None:
+            from .animation.system import AnimationSystem
+
+            self._animation = AnimationSystem(self)
+        return self._animation
+
+    @property
     def cad(self) -> Any:
         """The scene's :class:`~aether3d.cad.CadDocument`: parameters, sketches, parts,
         assemblies, buildings and drawings (created on first use)."""
@@ -2022,16 +2035,20 @@ class Scene:
         *,
         allow_lossy: bool = False,
         bake_textures: int | None = None,
+        **animation_options: Any,
     ) -> ExportResult:
         """Export to an interchange format chosen by extension (``.glb`` or ``.gltf``).
 
         Returns an :class:`aether3d.gltf.ExportResult` describing what was
         written. See :func:`aether3d.gltf.export_gltf` for details
-        (``bake_textures`` bakes procedural textures to PNG images of that size).
+        (``bake_textures`` bakes procedural textures to PNG images of that size;
+        ``animation``, ``fps`` and the tolerances choose how motion is exported).
         """
         from .gltf import export_gltf
 
-        return export_gltf(self, path, allow_lossy=allow_lossy, bake_textures=bake_textures)
+        return export_gltf(
+            self, path, allow_lossy=allow_lossy, bake_textures=bake_textures, **animation_options
+        )
 
     @classmethod
     def import_file(

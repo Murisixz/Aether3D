@@ -206,7 +206,9 @@ def rendered_scene(index: SpatialIndex, entries: list[Entry]):
         frame, _ = frame_from_matrix(np.eye(4))
         camera = RenderCamera(None, "spatial query", Camera(), frame)
         try:
-            index._render_scene = extract_render_scene(index.scene, camera, default_lights=False)
+            index._render_scene = extract_render_scene(
+                index.scene, camera, default_lights=False, overlay=index.overlay
+            )
         except RenderError as exc:  # e.g. a non-finite world matrix, which renders refuse too
             raise QueryError(exc.code, exc.message, exc.location, hint=exc.hint) from None
     rs = index._render_scene

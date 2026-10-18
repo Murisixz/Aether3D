@@ -304,15 +304,13 @@ def specs() -> tuple[Any, ...]:
         ToolSpec(
             "observe_scene",
             "Observe the scene (render and measure)",
-            "Render one or more views and return the images (image content) with what they "
-            "show, measured: per object visible pixels, pixel bounds, center, depth range, "
-            "whether it touches the border, and for focus objects the exact geometry facts "
-            "(in the view volume, projected bounds, near/far clipping; occlusion: its "
-            "unoccluded footprint and what covers it); for the image coverage, luminance, "
-            "black and clipped fractions. images: image (clean), annotated (numbered markers, "
-            "listed in markers with object ids), ids (object colors), depth. crops: "
-            "normalized rects, enlarged. Views can be virtual cameras or framed on objects: "
-            "nothing is added to the scene. Never changes the scene.",
+            "Render views and return the images with what they show, measured: per object "
+            "visible pixels, pixel bounds, center, depth range, border contact; for focus "
+            "objects exact geometry (view volume, projected bounds, clipping, occlusion: "
+            "unoccluded footprint and what covers it); image coverage, luminance, black and "
+            "clipped fractions. images: image, annotated (numbered markers with object ids), "
+            "ids, depth. crops: normalized rects, enlarged. Views: virtual cameras or framed on "
+            "objects (nothing added). Never changes the scene.",
             _schema(
                 {
                     "view": _VIEW,
@@ -365,12 +363,11 @@ def specs() -> tuple[Any, ...]:
             "diagnose_scene",
             "Diagnose the scene against expectations",
             "Check the scene against an expectations document (what must exist, rest on what, "
-            "not intersect, be visible and how framed, how bright, which material, upright, in "
-            "a region, at a distance, in a relation) and default render checks. Findings have "
-            "stable codes, the objects concerned, measured evidence and magnitude, the image "
-            "region, and their basis: geometry/render (measured), heuristic (default "
-            "threshold), vision/agent (your evaluations, grounded in the object index; never "
-            "facts). Never changes the scene.",
+            "not intersect, be visible and framed, how bright, which material, upright, in a "
+            "region, at a distance, in a relation) and default render checks. Findings: stable "
+            "codes, objects, measured evidence and magnitude, image region, and basis: "
+            "geometry/render (measured), heuristic (default threshold), vision/agent (your "
+            "evaluations; never facts). Never changes the scene.",
             _schema(
                 {
                     "expectations": _EXPECTATIONS,
@@ -388,14 +385,12 @@ def specs() -> tuple[Any, ...]:
         ToolSpec(
             "propose_corrections",
             "Propose corrections",
-            "Diagnose, then propose typed corrections for the findings: each with its target, "
-            "actions (allowlisted: move, place, rotate, scale, show/hide, material, color, frame/"
-            "aim/dolly camera, lens, light, exposure, ambient, procedural parameter), the "
-            "evidence, expected effect, what verification checks, alternatives, the exact "
-            "scene plan/script it compiles to, and a safety class: safe (exact repair of a "
-            "stated expectation), verify (applied only if it measurably helps), approval "
-            "(subjective or ambiguous). preview applies them in a transaction, re-renders "
-            "and rolls back. Never changes the scene.",
+            "Diagnose, then propose typed corrections for the findings: target, allowlisted "
+            "actions (move, place, rotate, scale, show/hide, material, color, frame/aim/dolly "
+            "camera, lens, light, exposure, ambient, procedural parameter), evidence, expected "
+            "effect, verification, alternatives, the exact plan/script, and a safety class: "
+            "safe (exact repair), verify (applied only if it measurably helps), approval "
+            "(subjective). preview applies, re-renders and rolls back. Never changes the scene.",
             _schema(
                 {
                     "expectations": _EXPECTATIONS,
@@ -414,11 +409,10 @@ def specs() -> tuple[Any, ...]:
             "apply_corrections",
             "Apply corrections",
             "Apply proposals from the last propose_corrections (proposals: ids; default: those "
-            "the policy applies automatically; approval ones need approve), or your own typed "
-            "actions, as ONE undo step, all or nothing. Refused if the scene changed since "
-            "(expected_revision). Then verifies: observes and diagnoses again, and undoes the "
-            "step when a passing check now fails or the findings it addressed did not improve. "
-            "Reports changes, resolved, persisting and new findings.",
+            "the policy applies; approval ones need approve), or your own typed actions, as ONE "
+            "undo step, all or nothing; refused if the scene changed (expected_revision). Then "
+            "verifies: observes and diagnoses again, and undoes the step when a passing check "
+            "fails or its findings did not improve. Reports changes and findings.",
             _schema(
                 {
                     "proposals": _IDS,

@@ -664,3 +664,59 @@ def test_triangulation_rejects_bad_tables():
         native.triangulate(pts, *good, out[:1], owner)  # no room
     with pytest.raises(ValueError):
         native.triangulate(np.array([[0.0, np.nan]] * 4), *good, out, owner)
+
+
+# -- skinning (0.17) ----------------------------------------------------------------------
+
+
+def _skin_inputs(seed: int, n: int = 5000, m: int = 24, k: int = 4):
+    rng = np.random.default_rng(seed)
+    pos = (rng.normal(size=(n, 3)) * 10.0 ** rng.integers(-3, 4, (n, 1))).astype(np.float32)
+    nrm = rng.normal(size=(n, 3)).astype(np.float32)
+    nrm[:7] = 0.0  # zero normals stay zero
+    idx = rng.integers(0, m, (n, k)).astype(np.int32)
+    w = rng.random((n, k))
+    w[::5, 1:] = 0.0  # rigid vertices
+    w /= w.sum(axis=1, keepdims=True)
+    pal = rng.normal(size=(m, 3, 4))
+    pal[0, :, :3] = -np.eye(3)  # a mirrored joint
+    pal[1, :, :3] = 0.0  # a collapsed one
+    return pos, nrm, idx, w, pal
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_linear_blend_skinning_is_numpys(seed, monkeypatch):
+    from aether3d.animation.rig import skin_linear
+
+    args = _skin_inputs(seed, k=1 + seed)
+    fast = skin_linear(*args)
+    monkeypatch.setattr(_native, "module", lambda: None)
+    slow = skin_linear(*args)
+    assert_bitwise(fast[0], slow[0], "positions")
+    assert_bitwise(fast[1], slow[1], "normals")
+    no_normals = skin_linear(args[0], None, *args[2:])
+    assert no_normals[1] is None
+    assert_bitwise(no_normals[0], slow[0], "positions without normals")
+
+
+def test_skinning_threads_change_nothing(monkeypatch):
+    from aether3d.animation.rig import skin_linear
+
+    args = _skin_inputs(9, n=70_000)
+    one = skin_linear(*args)
+    monkeypatch.setenv("AETHER3D_NATIVE_THREADS", "8")
+    many = skin_linear(*args)
+    assert_bitwise(one[0], many[0], "positions")
+    assert_bitwise(one[1], many[1], "normals")
+
+
+def test_skinning_rejects_joints_outside_the_palette():
+    pos, nrm, idx, w, pal = _skin_inputs(1, n=10)
+    idx[3, 0] = pal.shape[0]
+    out = np.empty((10, 3), np.float32)
+    with pytest.raises(ValueError, match="not a joint of the palette"):
+        native.skin_linear(pos, None, idx, w, np.ascontiguousarray(pal), out, None, 1)
+    with pytest.raises(ValueError):
+        native.skin_linear(
+            pos, nrm, idx[:, :0], w[:, :0], np.ascontiguousarray(pal), out, out.copy(), 1
+        )

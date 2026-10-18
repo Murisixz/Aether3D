@@ -59,14 +59,13 @@ Contents:
 | Bakes | `scene.bake(..., apply=True)` and `transfer_textures`: the new textures, bindings and factors, one step (0.14.0) |
 | Procedural geometry | parameters and rules (scene and geometry), geometry nodes, sources (and `edit_source()` commits), modifiers (add, set, move, remove), assigning nodes to objects, `bake()`, `procedural.undo()` |
 | CAD | every change of the CAD document -- adding, changing (definitions, a sketch dimension, a feature), renaming or removing an item, units and display tolerance, showing an item, `convert_to_mesh` -- with the regeneration it causes, one step; `doc.batch(label)` makes one step of several; an import (STEP, IFC, DXF) is one step ([CAD.md](CAD.md); 0.15.0) |
-| Scripts | a scene, edit, procedural, sculpt, texture or CAD script is one step |
+| Animation | every authoring call of `scene.animation` -- timeline, markers, sections, clips and their keys, curves and modifiers, bindings, layers, strips, rigs, attachments, skins, morph targets, constraints, paths, shots, camera moves, generated motions, planting, retargeting, baking, `apply_pose` -- one step each; a generated motion with its clip, one step ([ANIMATION.md](ANIMATION.md); 0.17.0) |
+| Scripts | a scene, edit, procedural, sculpt, texture, CAD or animation script is one step |
 | Command line | every command that changes a project, when the project keeps a history (see [Command line](#command-line)) |
 
-These are the properties a future animation system would animate (transforms,
-visibility, colors, camera and light parameters, material parameters, procedural
-parameters). The history records them under stable, id-based paths:
-`objects[<id>].transform`, `objects[<id>].camera`, `materials[<id>]`, `world`,
-`procedural`, ... (`HistoryEntry.paths`).
+The history records these under stable, id-based paths: `objects[<id>].transform`,
+`objects[<id>].camera`, `materials[<id>]`, `world`, `procedural`,
+`animation.items[<id>]`, `animation.settings`, ... (`HistoryEntry.paths`).
 
 **Not recorded:**
 - Effects outside the scene: saved projects, exported files, an image written by
@@ -77,6 +76,11 @@ parameters). The history records them under stable, id-based paths:
 - Caches and counters: evaluation caches, the spatial-query index, `materials.version`,
   `procedural.revision`, `scene.revision` (they increase with undo and redo as
   with any change).
+- Playing animation: evaluating, rendering or measuring at a time records nothing, and
+  `scene.animation.time` (the playhead) is runtime state. Caches of the authored state
+  (rest values, authored world matrices) are keyed by `scene.revision` and are computed
+  afresh, and not kept, while an operation or transaction is open, so evaluation inside
+  a transaction sees the changes made in it (0.17.0).
 - Spatial queries ([SPATIAL.md](SPATIAL.md)): they only read the scene; they make
   no step and leave `scene.revision` unchanged.
 - The edits inside an open edit or sculpt session. They have their own undo (see

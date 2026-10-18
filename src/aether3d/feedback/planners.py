@@ -885,7 +885,69 @@ def _vision(diagnosis, finding, policy):
     ], None
 
 
+# --------------------------------------------------------------------------- #
+# Animation
+# --------------------------------------------------------------------------- #
+
+
+def _plant_feet(diagnosis, finding, fix, context):
+    subject = _subject(finding, "subject")
+    foot = finding.evidence.get("foot")
+    scene = diagnosis.scene
+    arm = scene._objects.get(subject["id"]) if subject else None
+    rig = scene.animation.rig(arm) if arm is not None else None
+    k = rig.index(foot) if rig is not None and foot else None
+    if k is None or rig.joints[k].parent < 0 or rig.joints[rig.joints[k].parent].parent < 0:
+        return [], "the foot needs two parent joints (hip and knee) for a leg IK chain"
+    knee = rig.joints[k].parent
+    hip = rig.joints[knee].parent
+    legs = {foot: [rig.joints[hip].name, rig.joints[knee].name, foot]}
+    return [
+        Draft(
+            f"Plant {subject['name']!r} {foot}",
+            [finding],
+            [{"action": "plant_feet", "armature": subject["id"], "legs": legs}],
+            "verify",
+            f"check {finding.check!r}: {foot} "
+            + ("slides" if finding.code == "FOOT_SLIDING" else "sinks")
+            + f" {finding.magnitude:.4g} m (sampled). Keyed IK pins each contact where it "
+            "touched down; the rest of the motion is unchanged.",
+            expected=_expected(finding, None),
+            validation=[f"re-check {finding.check!r}: sliding and sinking within the limits"],
+            group=f"plant:{subject['id']}",
+        )
+    ], None
+
+
+def _smooth_keys(diagnosis, finding, fix, context):
+    subject = _subject(finding, "subject")
+    ev = finding.evidence
+    return [
+        Draft(
+            f"Smooth {subject['name']!r} {ev['path']} at {ev['time']:.3g} s",
+            [finding],
+            [
+                {
+                    "action": "smooth_keys",
+                    "object": subject["id"],
+                    "path": ev["path"],
+                    "keys": [ev["key"]],
+                }
+            ],  # fmt: skip
+            "approval",
+            f"the curve's {('value', 'velocity', 'acceleration')[ev['order']]} jumps at key "
+            f"{ev['key']} (exact one-sided limits); automatic clamped handles make it smooth "
+            "without overshoot. A corner may be intended (an impact): approve it if not.",
+            expected=_expected(finding),
+            validation=[f"re-check {finding.check!r}"],
+        )
+    ], None
+
+
 PLANNERS = {
+    "FOOT_SLIDING": _plant_feet,
+    "FOOT_PENETRATION": _plant_feet,
+    "MOTION_DISCONTINUITY": _smooth_keys,
     "FLOATING": _rests_on,
     "SUNKEN": _rests_on,
     "NOT_ON_SUPPORT": _not_on_support,

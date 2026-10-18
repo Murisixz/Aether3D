@@ -1,0 +1,58 @@
+{
+  "format": "aether3d.animation-script",
+  "version": 1,
+  "label": "Repair the crane's curves",
+  "operations": [
+    {
+      "op": "edit_keys",
+      "target": "Crate",
+      "path": "transform.position.z",
+      "edit": "handle_type",
+      "keys": "all",
+      "side": "both",
+      "type": "auto_clamped"
+    },
+    {
+      "op": "edit_keys",
+      "target": "Crate",
+      "path": "transform.position.z",
+      "edit": "interpolation",
+      "keys": [
+        2
+      ],
+      "interpolation": "bezier"
+    },
+    {
+      "op": "edit_keys",
+      "target": "Crate",
+      "path": "transform.position.x",
+      "edit": "handle_type",
+      "keys": "all",
+      "side": "both",
+      "type": "auto_clamped"
+    },
+    {
+      "op": "set_modifiers",
+      "target": "Crate",
+      "path": "transform.rotation_euler.y",
+      "modifiers": [
+        {
+          "type": "smooth",
+          "sigma": 0.06
+        }
+      ]
+    },
+    {
+      "op": "resample",
+      "target": "Crate",
+      "path": "transform.rotation_euler.y",
+      "fps": 48
+    },
+    {
+      "op": "simplify",
+      "target": "Crate",
+      "path": "transform.rotation_euler.y",
+      "tolerance": 0.05
+    }
+  ]
+}

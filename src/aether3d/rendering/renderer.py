@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import os
 import time
+import time as _time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -18,10 +19,12 @@ from . import cpu
 from .backends import PATH_BACKENDS, Antialiasing, antialiasing_plan, check_backend
 from .camera import Camera, CameraFrame, frame_from_matrix
 from .framing import AUTO_VIEW_DIRECTION, compute_framing, orientation_frame, target_points
+from .overlay import animation_overlay
 from .png import encode_png
 from .scene_data import (
     RenderCamera,
     RenderScene,
+    _with_fields,
     extract_render_scene,
     resolve_camera,
     world_matrices,
@@ -296,8 +299,13 @@ def render(
     tonemap: str = "none",
     progress: Any = None,
     outputs: Any = None,
+    time: float | None = None,
 ) -> RenderResult:
     """Render ``scene`` and return a :class:`RenderResult`.
+
+    * ``time`` -- for an animated scene, the time in seconds to render (default: the
+      animation's current time, ``scene.animation.time``); the animation's evaluation
+      there poses the objects for this render only. Scenes without animation ignore it.
 
     * ``camera`` -- camera object, id or name; default: ``scene.active_camera``. A
       :class:`~aether3d.rendering.scene_data.RenderCamera` without an object id (a
@@ -354,7 +362,10 @@ def render(
     evaluated geometry. Errors raise :class:`~aether3d.errors.RenderError`
     with a stable ``code``.
     """
-    t_start = time.perf_counter()
+    t_start = _time.perf_counter()
+    overlay = animation_overlay(scene, time)
+    if camera is None and overlay is not None and overlay.camera is not None:
+        camera = overlay.camera  # the shot camera of the animation's sequence
     limits = limits or RenderLimits()
     if not isinstance(limits, RenderLimits):
         raise RenderError("INVALID_SETTINGS", "limits must be a RenderLimits instance")
@@ -483,7 +494,10 @@ def render(
             cam_id, cam_name = None, virtual.name
         elif camera_obj is not None:
             cam = camera_obj.camera.copy()
-            world = world_matrices(scene)[camera_obj.id]
+            values = None if overlay is None else overlay.field_values(camera_obj.id, "camera")
+            if values:
+                cam = _with_fields(cam, values)
+            world = world_matrices(scene, overlay)[camera_obj.id]
             base_frame, cam_diags = frame_from_matrix(world, f"objects[{camera_obj.name}]")
             diagnostics += cam_diags
             cam_id, cam_name = camera_obj.id, camera_obj.name
@@ -492,7 +506,12 @@ def render(
             base_frame = orientation_frame(AUTO_VIEW_DIRECTION)
             cam_id, cam_name = None, "temporary camera"
         framing = compute_framing(
-            cam, base_frame, target_points(scene), aspect, margin=margin, fit_clipping=True
+            cam,
+            base_frame,
+            target_points(scene, overlay=overlay),
+            aspect,
+            margin=margin,
+            fit_clipping=True,
         )
         cam.configure(**framing.camera_changes)
         framed = CameraFrame(framing.position, base_frame.forward, base_frame.up, base_frame.right)
@@ -512,7 +531,7 @@ def render(
         render_camera = camera_obj
 
     rs = extract_render_scene(
-        scene, render_camera, default_lights=settings.default_lights, aspect=aspect
+        scene, render_camera, default_lights=settings.default_lights, aspect=aspect, overlay=overlay
     )
     diagnostics += list(rs.diagnostics)
     plan = None if shadow_settings is None else plan_shadows(rs, shadow_settings, aspect)

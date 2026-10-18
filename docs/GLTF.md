@@ -44,6 +44,10 @@ $ aether3d geometry world.glb --json
 | Painted textures (0.14.0) | their composite, as an 8-bit PNG (layers stay in the project) | as image textures |
 | CAD items shown in the scene (0.15.0) | their display tessellations, as meshes with their materials (exact geometry: export STEP or IFC, [CAD.md](CAD.md)) | as plain meshes |
 | Object colors | as materials | restored exactly from `extras` |
+| Skeletons (0.17.0) | rig joints as nodes under the armature's node; rigidly attached parts under their joints | skin joints (and nodes between them) become a rig on an armature object; nodes below joints become attached parts |
+| Skins (0.17.0) | `JOINTS_n`/`WEIGHTS_n` (up to 8 influences), exact inverse bind matrices | bound with the file's inverse bind matrices, up to 8 influences |
+| Morph targets (0.17.0) | `POSITION`/`NORMAL` targets, default `weights`, `extras.targetNames` | merged across primitives, named from `targetNames` |
+| Animations (0.17.0) | clips, actions or baked motion: exact `STEP`/`LINEAR`/`CUBICSPLINE` where glTF can say the same thing, fitted within stated tolerances otherwise | clips with the same curves (the first animation plays as actions) |
 | Interleaved buffer views (`byteStride`), sparse accessors, accessors without buffer views | n/a | yes |
 | Embedded (`data:` URI), GLB-binary, and external `.bin` buffers | GLB binary; `.gltf` with an embedded buffer | yes |
 | Object ids | stored in `node.extras.aether3d.id` | restored from `extras` when present and unique; generated otherwise |
@@ -58,6 +62,8 @@ Export writes:
 - **Nodes.** One node per object, in depth-first order.
 - **Materials.** A material for every object that has one, or a color other
   than the default gray, with its images and samplers.
+- **Skeletons, skins, morph targets and animations** (0.17.0): see
+  [below](#skeletons-skins-morph-targets-and-animations-0170).
 - **One buffer.**
 
 Output is deterministic and atomic (written to a temporary file and renamed).
@@ -108,7 +114,8 @@ glTF features that Aether3D does not model fall into two groups.
 | material features Aether3D does not draw or model (see [Materials and textures](#materials-and-textures)) | `ALPHA_BLEND_UNSUPPORTED`, `MATERIAL_EXTENSION_IGNORED`, `TEXCOORD_UNSUPPORTED`, ... | warning or info |
 | materials no imported mesh uses | `MATERIALS_UNUSED` | info |
 | cameras | `CAMERAS_IGNORED`, `NODE_CAMERA_IGNORED` | info |
-| animations (nodes keep their rest transforms) | `ANIMATIONS_IGNORED` | warning |
+| animation channels on content Aether3D does not import (`KHR_animation_pointer` paths, nodes outside the scene, skinned mesh nodes, weights without targets) | `ANIMATION_CHANNELS_IGNORED` | info |
+| animated rotations that are not unit length (normalized) | `ROTATION_NOT_UNIT` | info |
 | optional extensions (`extensionsUsed`) | `EXTENSION_IGNORED` | info |
 | other vertex attributes (`COLOR_0`, `TANGENT`, `TEXCOORD_1`, ...) | `ATTRIBUTES_IGNORED` | info |
 | scenes other than the default scene, and nodes outside it | `OTHER_SCENES_IGNORED`, `NODES_NOT_IN_SCENE` | warning |
@@ -125,13 +132,17 @@ have `"lossy": true`.
 
 | Content | Diagnostic code | With `allow_lossy=True` |
 | --- | --- | --- |
-| skinned meshes | `SKIN_IGNORED` | imported unskinned (bind pose) |
-| morph targets | `MORPH_TARGETS_IGNORED` | base geometry only |
+| a skin whose joints belong to more than one skeleton | `SKIN_SPANS_RIGS` | imported unskinned (bind pose) |
+| a skinned mesh without `JOINTS_0`/`WEIGHTS_0` | `SKIN_WITHOUT_WEIGHTS` | imported unskinned |
+| vertices with more than 8 influences | `INFLUENCES_TRIMMED` | the 8 strongest, renormalized |
+| vertices with no weight | `UNWEIGHTED_VERTICES` | they follow the skin's first joint |
 | `POINTS` / `LINES` / `LINE_LOOP` / `LINE_STRIP` primitives | `PRIMITIVE_MODE_UNSUPPORTED` | skipped |
 | node `matrix` with shear (not representable as TRS) | `NODE_MATRIX_NOT_TRS` | closest TRS transform |
 
 **Always refused**: assets that list anything in `extensionsRequired`
-(for example Draco or meshopt compression), and glTF versions other than 2.x.
+(for example Draco or meshopt compression), glTF versions other than 2.x, and
+malformed skins and animations (`INVALID_SKIN`, `ANIMATION_INPUT_NON_INCREASING`,
+`ANIMATION_OUTPUT_COUNT`, `ANIMATION_DUPLICATE_TARGET`, `INVALID_REFERENCE`).
 
 Export has the same policy. Content glTF cannot store raises
 `UnsupportedFeatureError` and writes nothing, unless `allow_lossy=True`:
@@ -141,6 +152,11 @@ Export has the same policy. Content glTF cannot store raises
 | a mesh with no triangles | `EMPTY_MESH_NOT_EXPORTED` (lossy) | objects exported without geometry |
 | zero-length normals (glTF requires unit normals) | `ZERO_NORMALS_NOT_EXPORTED` (lossy) | the mesh's normals are omitted |
 | non-unit normals | `NORMALS_RENORMALIZED` (warning, not lossy) | always renormalized; direction is kept |
+| animated properties glTF cannot carry (visibility, camera, light, material, constraint channels) | `ANIMATED_PROPERTY_NOT_EXPORTED` (lossy) | the channels are left out |
+| animation before time 0 (glTF times start at 0) | `NEGATIVE_TIMES_CLIPPED` (lossy) | the timeline before 0 is left out |
+| layers, constraints, IK or paths shape the motion but clips are exported alone | `ANIMATION_NOT_BAKED` (warning) | -- (`animation="bake"` or `"auto"` bakes them) |
+| a channel needing more keys than the budget to meet its tolerance | `KEY_BUDGET_SPENT` (warning) | the reported error exceeds the tolerance |
+| an instantaneous jump | `JUMP_APPROXIMATED` (info) | held as a 1e-4 s transition |
 
 Material content glTF cannot express is reported as a warning and left out.
 It is not lossy geometry, so the export does not fail. See [Materials and
@@ -221,6 +237,30 @@ What glTF cannot express is left out with a warning:
 output. It renders UV-mapped procedural textures into SIZE × SIZE PNG images
 over the unit uv square. A metallic and a roughness texture are baked
 together into glTF's packed texture. Each bake is reported (`TEXTURE_BAKED`).
+
+## Skeletons, skins, morph targets and animations (0.17.0)
+
+The full model is in [ANIMATION.md](ANIMATION.md#gltf-interchange). In short:
+
+- **Export** (`scene.export(path, animation="auto", fps=None, position_tolerance=1e-4,
+  rotation_tolerance=0.01, weight_tolerance=1e-4)`, `aether3d export --animation`): rig
+  joints become nodes under the armature's node (rest TRS, converted like every node);
+  attached parts become their joints' children; a skinned mesh rides its own root node
+  with no transform (glTF ignores a skinned mesh node's transform, and the Khronos
+  validator warns about one), marked `extras.aether3d.skinned_mesh_of`; inverse bind
+  matrices are exact (`C M C^T`). Animation modes: `clips` (each clip with a target as
+  its own glTF animation), `actions`, `bake` (what the scene shows on the timeline's
+  frames as `LINEAR` keys reduced within the tolerances), `auto` (bake when layers,
+  constraints, IK or paths shape the motion, else clips), `none`. `STEP`, `LINEAR`
+  (rotations: shortest-path slerp; a deliberately long arc is split at its middle) and
+  `CUBICSPLINE` (one-sided slopes as tangents of unweighted Bezier keys) are exact;
+  everything else is fitted, with the largest error reported per animation
+  (`ExportResult.animations`). Extras record each animation's actions and each channel's
+  extrapolation, so a round trip keeps them.
+- **Import**: skins, their joints and the nodes between them make a rig; `STEP` becomes
+  constant keys, `LINEAR` linear keys or slerped rotations, `CUBICSPLINE` Bezier keys
+  with the tangents as slopes (rotations: `cubic` tracks) -- the same curves. Morph
+  weights animate `morph["NAME"]`.
 
 ## Identifiers and names
 
@@ -304,11 +344,23 @@ together into glTF's packed texture. Each bake is reported (`TEXTURE_BAKED`).
   - Static samples re-export and re-import without geometric change.
 - `examples/gltf_roundtrip.py` is an end-to-end demonstration: it builds a
   scene, exports it, validates it, imports it back, and verifies it.
+- `tests/test_animation_gltf.py` (0.17.0) checks skeletons, skins, morph targets and
+  animations: exports pass the Khronos glTF Validator with no errors and no warnings
+  (required in CI); `STEP`, `LINEAR` and Hermite curves export exactly (to float32),
+  slerped rotations as `LINEAR` with long arcs split, easings and Euler rotations
+  fitted within their tolerances; a rigged, skinned and morphed scene round-trips with
+  world matrices and skinned vertices within 2e-4 scene units at every sampled time,
+  its loops kept; `SimpleSkin` deforms as an independent NumPy evaluation of the file
+  says (within 2e-6) and `AnimatedMorphCube` blends its targets as the file says
+  (within 1e-6); malformed skins and animations are refused with their codes.
 
 ## Limitations
 
-- Static geometry and materials only: no cameras, lights, animation,
-  skinning or morph targets (see the tables above).
+- Animations carry node transforms and morph weights only: no
+  `KHR_animation_pointer` (camera, light, material and visibility channels are lossy);
+  values are float32; jumps become 1e-4 s transitions; easings, weighted handles, Euler
+  rotations, squad and modifiers are fitted within the stated tolerances (see the
+  tables above).
 - **Materials** are glTF's core metallic-roughness model plus three
   extensions. Other material extensions (clearcoat, transmission, sheen,
   volume, IOR...) are not imported. Procedural textures exist in glTF only

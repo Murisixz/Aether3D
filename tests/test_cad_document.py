@@ -161,7 +161,7 @@ def test_save_load_and_history_files(tmp_path):
     path = tmp_path / "bracket.aether"
     scene.save(path, history=True)
     data = json.loads(path.read_text())
-    assert data["format_version"] == 8
+    assert data["format_version"] == 9
     assert {i["kind"] for i in data["scene"]["cad"]["items"]} == {"parameter", "sketch", "part"}
     loaded = aether3d.Scene.load(path, history=True)
     ldoc = loaded.cad

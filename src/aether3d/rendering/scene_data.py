@@ -246,6 +246,16 @@ def _local_matrices(objects: list[SceneObject]) -> np.ndarray:
     position = np.fromiter(_chain(map(_POSITION, transforms)), np.float64, 3 * n).reshape(n, 3)
     rotation = np.fromiter(_chain(map(_ROTATION, transforms)), np.float64, 4 * n).reshape(n, 4)
     scale = np.fromiter(_chain(map(_SCALE, transforms)), np.float64, 3 * n).reshape(n, 3)
+    return _compose_locals(position, rotation, scale)
+
+
+def _compose_locals(position: np.ndarray, rotation: np.ndarray, scale: np.ndarray) -> np.ndarray:
+    """``(n, 4, 4)`` ``T @ R @ S`` matrices of TRS arrays with the arithmetic of
+    ``obj.local_matrix`` (rotations already unit: as transforms store them)."""
+    n = position.shape[0]
+    position = np.ascontiguousarray(position, dtype=np.float64)
+    rotation = np.ascontiguousarray(rotation, dtype=np.float64)
+    scale = np.ascontiguousarray(scale, dtype=np.float64)
     native = _native.module()
     if native is not None:  # the same arithmetic (aether3d-native)
         m = np.empty((n, 4, 4), dtype=np.float64)
@@ -269,12 +279,18 @@ def _local_matrices(objects: list[SceneObject]) -> np.ndarray:
     return m
 
 
-def world_matrices(scene: Scene) -> dict[str, np.ndarray]:
+def world_matrices(scene: Scene, overlay: Any = None) -> dict[str, np.ndarray]:
     """World matrix of every object (``parent world @ local``, in hierarchy order).
 
     Computed for all objects at once, one hierarchy level at a time, with the
-    same arithmetic as ``obj.local_matrix`` and :func:`_mat4_mul`.
+    same arithmetic as ``obj.local_matrix`` and :func:`_mat4_mul`. With an ``overlay``
+    (:class:`~aether3d.rendering.overlay.RenderOverlay`), its local matrices replace
+    the authored ones of the objects it names (an animated pose); without, these are the
+    authored world matrices.
     """
+    if overlay is not None and overlay.ids:
+        objects, world = _world_stack(scene, overlay)
+        return {obj.id: world[k] for k, obj in enumerate(objects)}
     if _features.enabled("AETHER3D_RETAINED_RENDER_WORLD"):  # a rendered scene keeps them
         from .retained import retained_world_matrices
 
@@ -285,12 +301,18 @@ def world_matrices(scene: Scene) -> dict[str, np.ndarray]:
     return {obj.id: world[k] for k, obj in enumerate(objects)}
 
 
-def _world_stack(scene: Scene) -> tuple[list[SceneObject], np.ndarray]:
-    """The objects in depth-first order and their world matrices, ``(n, 4, 4)``."""
+def _world_stack(scene: Scene, overlay: Any = None) -> tuple[list[SceneObject], np.ndarray]:
+    """The objects in depth-first order and their world matrices, ``(n, 4, 4)`` (an
+    ``overlay``'s local matrices replace the authored ones of the objects it names)."""
     objects = list(scene)  # depth-first: parents first
     if not objects:
         return objects, np.zeros((0, 4, 4))
     world = _local_matrices(objects)
+    if overlay is not None and overlay.ids:
+        index = overlay.index
+        rows = [k for k, obj in enumerate(objects) if obj._id in index]
+        if rows:
+            world[rows] = overlay.local[[index[objects[k]._id] for k in rows]]
     index = {obj.id: k for k, obj in enumerate(objects)}
     parent = np.full(len(objects), -1, dtype=np.int64)
     depth = np.zeros(len(objects), dtype=np.int64)
@@ -405,6 +427,7 @@ def extract_render_scene(
     *,
     default_lights: bool = True,
     aspect: float = 16 / 9,
+    overlay: Any = None,
 ) -> RenderScene:
     """Collect everything needed to render ``scene`` from ``camera`` (read-only).
 
@@ -413,31 +436,40 @@ def extract_render_scene(
     exactly the render scene the full walk below returns; the full walk runs when it
     cannot (inside an open operation, with ``AETHER3D_RETAINED_RENDER_WORLD=0``, ...).
     """
+    if overlay is not None and overlay.empty:
+        overlay = None
     if _features.enabled("AETHER3D_RETAINED_RENDER_WORLD"):
         from .retained import retained_render_scene
 
-        rs = retained_render_scene(scene, camera, default_lights=default_lights, aspect=aspect)
+        rs = retained_render_scene(
+            scene, camera, default_lights=default_lights, aspect=aspect, overlay=overlay
+        )
         if rs is not None:
             return rs
-    return _extract_full(scene, camera, default_lights=default_lights, aspect=aspect)
+    return _extract_full(
+        scene, camera, default_lights=default_lights, aspect=aspect, overlay=overlay
+    )
 
 
 def _render_camera(
-    camera: SceneObject, world: np.ndarray, aspect: float
+    camera: SceneObject, world: np.ndarray, aspect: float, overlay: Any = None
 ) -> tuple[RenderCamera, list[Diagnostic]]:
-    """The render camera of the camera object ``camera`` with world matrix ``world``."""
+    """The render camera of the camera object ``camera`` with world matrix ``world`` (an
+    ``overlay``'s camera fields replace its own: an animated lens)."""
     frame, frame_diags = frame_from_matrix(world, f"objects[{camera.name}]")
     diagnostics = list(frame_diags)
-    render_camera = RenderCamera(camera.id, camera.name, camera.camera, frame)
-    if camera.camera.aspect_ratio is not None and not math.isclose(
-        camera.camera.aspect_ratio, aspect, rel_tol=1e-3
-    ):
+    lens = camera.camera
+    values = None if overlay is None else overlay.field_values(camera.id, "camera")
+    if values:
+        lens = _with_fields(lens, values)
+    render_camera = RenderCamera(camera.id, camera.name, lens, frame)
+    if lens.aspect_ratio is not None and not math.isclose(lens.aspect_ratio, aspect, rel_tol=1e-3):
         diagnostics.append(
             Diagnostic(
                 "ASPECT_MISMATCH",
                 INFO,
                 f"the image aspect {aspect:.4g} differs from the camera's aspect_ratio "
-                f"{camera.camera.aspect_ratio:.4g}; the {camera.camera.fov_axis} field of "
+                f"{lens.aspect_ratio:.4g}; the {lens.fov_axis} field of "
                 "view is kept and the other extent adapts (pixels stay square)",
                 f"objects[{camera.name}].camera.aspect_ratio",
             )
@@ -451,10 +483,14 @@ def _light(
     finite: bool,
     position: int,
     ordered: list[tuple[int, Diagnostic]],
+    overlay: Any = None,
 ) -> RenderLight | None:
     """The render light of the visible light object ``obj`` (``None``: it is ignored, and
-    ``ordered`` gets the diagnostic saying why)."""
+    ``ordered`` gets the diagnostic saying why); an ``overlay`` may animate its fields."""
     light = obj.light
+    values = None if overlay is None else overlay.field_values(obj._id, "light")
+    if values:
+        light = _with_fields(light, values)
     radiance = to_linear(light.color) * light.intensity
     if not finite:
         raise RenderError(
@@ -500,8 +536,32 @@ def _light(
     )
 
 
-def _evaluated_mesh(obj: SceneObject) -> Mesh | None:
-    """``obj.mesh`` -- for procedural objects, their current evaluation (cached)."""
+def _overlay_looks(overlay: Any, candidates: list) -> dict[str, Appearance] | None:
+    """Animated appearances of the candidates (object id -> detached Appearance)."""
+    out = {}
+    for obj, *_ in candidates:
+        values = overlay.field_values(obj._id, "appearance")
+        if values:
+            out[obj._id] = _with_fields(obj.appearance, values)
+    return out or None
+
+
+def _with_fields(value: Any, values: Any) -> Any:
+    """A detached copy of a camera, light or appearance with animated ``values`` (checked
+    by its own setters; the scene's own value is untouched)."""
+    copy = value.copy()
+    copy._owner = None
+    copy.configure(**{k: (tuple(v) if isinstance(v, list) else v) for k, v in values.items()})
+    return copy
+
+
+def _evaluated_mesh(obj: SceneObject, overlay: Any = None) -> Mesh | None:
+    """``obj.mesh`` -- for procedural objects, their current evaluation (cached); an
+    ``overlay``'s deformed mesh when it has one."""
+    if overlay is not None:
+        found = overlay.meshes.get(obj._id)
+        if found is not None:
+            return found
     try:
         return obj.mesh
     except AetherError as exc:
@@ -542,17 +602,21 @@ def _extract_full(
     *,
     default_lights: bool = True,
     aspect: float = 16 / 9,
+    overlay: Any = None,
 ) -> RenderScene:
     """The full extraction: walks every object of the scene (the reference the retained
-    render world is compared with, and what runs when it cannot)."""
+    render world is compared with, and what runs when it cannot). An ``overlay``
+    (animation) replaces local transforms, visibility, fields, materials and meshes."""
     start = time.perf_counter()
     diagnostics: list[Diagnostic] = []
-    objects, stack = _world_stack(scene)
+    objects, stack = _world_stack(scene, overlay)
     finite_world = np.all(np.isfinite(stack), axis=(1, 2)).tolist()
     if isinstance(camera, RenderCamera):
         render_camera = camera
     else:
-        render_camera, camera_diags = _render_camera(camera, stack[objects.index(camera)], aspect)
+        render_camera, camera_diags = _render_camera(
+            camera, stack[objects.index(camera)], aspect, overlay
+        )
         diagnostics += camera_diags
 
     meshes: list[RenderMesh] = []
@@ -563,19 +627,20 @@ def _extract_full(
     evaluate_time = 0.0
     for position, obj in enumerate(objects):
         world = stack[position]
+        visible = obj.visible if overlay is None else overlay.is_visible(obj)
         if obj.light is not None:
-            if not obj.visible:
+            if not visible:
                 continue
-            light = _light(obj, world, finite_world[position], position, ordered)
+            light = _light(obj, world, finite_world[position], position, ordered, overlay)
             if light is not None:
                 lights.append(light)
             continue
-        if obj.camera is not None or not obj.visible:
+        if obj.camera is not None or not visible:
             continue
         if obj._mesh is None and obj._geometry is None:  # (no evaluation here)
             continue
         t0 = time.perf_counter()
-        mesh = _evaluated_mesh(obj)  # procedural objects: the current evaluation (cached)
+        mesh = _evaluated_mesh(obj, overlay)  # procedural: the current evaluation (cached)
         evaluate_time += time.perf_counter() - t0
         if mesh is None or mesh.triangle_count == 0:
             continue
@@ -594,7 +659,9 @@ def _extract_full(
             for k, (obj, mesh, _, position) in enumerate(candidates)
             if valid[k]
         ],
-        _material_cache(scene),
+        _material_cache(scene) if overlay is None or not overlay.materials else None,
+        None if overlay is None else overlay.materials,
+        None if overlay is None else _overlay_looks(overlay, candidates),
     )
     ordered += material_table.diagnostics
     material_iter = iter(object_materials)
@@ -610,6 +677,10 @@ def _extract_full(
             mesh_index[key] = len(meshes)
             meshes.append(_render_mesh(mesh))
         appearance: Appearance = obj.appearance
+        if overlay is not None:
+            values = overlay.field_values(obj._id, "appearance")
+            if values:
+                appearance = _with_fields(appearance, values)
         base = colors.get(appearance.color)
         if base is None:
             base = colors[appearance.color] = to_linear(appearance.color)

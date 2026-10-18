@@ -158,6 +158,22 @@ CHECKS: dict[str, dict[str, Any]] = {
         "body is a valid solid and every sketch solves; with fully_constrained, no sketch "
         "has degrees of freedom left (exact, from the CAD document)",
     },
+    "animation_continuity": {
+        "fields": ("objects", "order"),
+        "required": ("objects",),
+        "summary": "the selected objects' animation curves (their actions) have no unintended "
+        "jump up to order (0 value, 1 velocity -- the default, 2 acceleration) at any key, "
+        "from the curves' exact one-sided limits; constant keys and jump pairs are intended",
+    },
+    "foot_contacts": {
+        "fields": ("objects", "feet", "max_sliding", "max_penetration", "height", "speed"),
+        "required": ("objects", "feet"),
+        "summary": "the armatures' planted feet (joints named in feet) slide at most "
+        "max_sliding (default 0.005 m) and go below the ground (z = 0) at most "
+        "max_penetration (default 0.002 m) over the timeline, sampled at 120 per second "
+        "(planted: within height, default 0.03 m, of the ground and within speed, default "
+        "0.3 m/s, of the stance's steady velocity: a skating stance is measured)",
+    },
     "cad_dimension": {
         "fields": ("reference", "other", "quantity", "value", "tolerance", "min", "max"),
         "required": ("reference", "quantity"),
@@ -475,7 +491,7 @@ def _parse_field(doc: Doc, kind: str, key: str, value: Any, ptr: str, views: dic
         return BAD if r is BAD else list(r)
     if key == "region":
         return _parse_box_region(doc, value, ptr)
-    if key in ("fill", "height", "mean_luminance"):
+    if key in ("fill", "height", "mean_luminance") and kind != "foot_contacts":
         hi = None if key == "mean_luminance" else 1.0
         r = doc.range(value, ptr, lo=0.0, hi=hi)
         return BAD if r is BAD else {"min": r[0], "max": r[1]}
@@ -519,6 +535,18 @@ def _parse_field(doc: Doc, kind: str, key: str, value: Any, ptr: str, views: dic
         return doc.enum(value, ptr, CAD_QUANTITIES)
     if key == "value":
         return doc.number(value, ptr)
+    if key == "order":
+        return doc.integer(value, ptr, lo=0, hi=2)
+    if key == "feet":
+        if not isinstance(value, list) or not 1 <= len(value) <= 16:
+            doc.issues.add("INVALID_VALUE", "feet is a list of 1 to 16 joint names", ptr)
+            return BAD
+        names = [doc.string(v, join(ptr, k), max_length=128) for k, v in enumerate(value)]
+        return BAD if any(n is BAD for n in names) else names
+    if key in ("max_sliding", "max_penetration", "speed"):
+        return doc.number(value, ptr, lo=0.0)
+    if key == "height" and kind == "foot_contacts":
+        return doc.number(value, ptr, lo=0.0, hi=10.0)
     doc.issues.add("UNKNOWN_KEY", f"unknown key {key!r}", ptr)  # pragma: no cover
     return BAD
 

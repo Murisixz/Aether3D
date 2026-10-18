@@ -59,6 +59,8 @@ class ExportResult:
     mesh_count: int
     nodes: list[dict[str, Any]]
     diagnostics: list[Diagnostic] = field(default_factory=list)
+    animations: list[dict[str, Any]] = field(default_factory=list)
+    skins: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -68,6 +70,8 @@ class ExportResult:
             "node_count": self.node_count,
             "mesh_count": self.mesh_count,
             "nodes": [dict(n) for n in self.nodes],
+            "animations": [dict(a) for a in self.animations],
+            "skins": self.skins,
             "diagnostics": [d.to_dict() for d in self.diagnostics],
         }
 
@@ -97,15 +101,20 @@ class _BufferBuilder:
         self.data += raw
         return len(self.views) - 1
 
-    def add(self, array: np.ndarray, component: int, kind: str, target: int, minmax: bool) -> int:
+    def add(
+        self, array: np.ndarray, component: int, kind: str, target: int | None, minmax: bool
+    ) -> int:
+        """An accessor over a new buffer view (``target`` ``None`` for data that is neither
+        vertices nor indices: animation keys, inverse bind matrices)."""
         while len(self.data) % 4:
             self.data.append(0)
         raw = (
             np.ascontiguousarray(array).astype(array.dtype.newbyteorder("<"), copy=False).tobytes()
         )
-        self.views.append(
-            {"buffer": 0, "byteOffset": len(self.data), "byteLength": len(raw), "target": target}
-        )
+        view: dict[str, Any] = {"buffer": 0, "byteOffset": len(self.data), "byteLength": len(raw)}
+        if target is not None:
+            view["target"] = target
+        self.views.append(view)
         self.data += raw
         accessor: dict[str, Any] = {
             "bufferView": len(self.views) - 1,
@@ -142,11 +151,12 @@ def _export_mesh(
         )
         return None
     tangent = None
+    source = None  # (when vertices are split: each new vertex's original)
     if tangents and mesh.normals is not None and mesh.uvs is not None:
-        from .materials import split_for_tangents
+        from .materials import split_for_tangents_mapped
 
         before = mesh.vertex_count
-        mesh, tangent = split_for_tangents(mesh)
+        mesh, tangent, source = split_for_tangents_mapped(mesh)
         if mesh.vertex_count > before:
             diagnostics.append(
                 Diagnostic(
@@ -217,18 +227,29 @@ def _export_mesh(
         groups[group] = buffers.add(
             part.reshape(-1, 1), component, "SCALAR", ELEMENT_ARRAY_BUFFER, False
         )
-    return {"attributes": attributes, "groups": groups, "grouped": mesh.groups is not None}
+    return {
+        "attributes": attributes,
+        "groups": groups,
+        "grouped": mesh.groups is not None,
+        "source": source,
+    }
 
 
 def build_gltf(
-    scene: Scene, *, bake_textures: int | None = None
+    scene: Scene,
+    *,
+    bake_textures: int | None = None,
+    animation: str = "auto",
+    animation_options: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], bytes, list[Diagnostic], list[dict[str, Any]]]:
     """Build the glTF JSON document and binary buffer for ``scene`` (no I/O).
 
     Returns ``(document, buffer_bytes, diagnostics, node_map)``. The buffer is
     referenced as buffer 0 without a ``uri``; callers add one for ``.gltf``.
-    ``bake_textures`` (a size in pixels) bakes procedural textures to PNG.
+    ``bake_textures`` (a size in pixels) bakes procedural textures to PNG;
+    ``animation`` and ``animation_options`` see :mod:`aether3d.gltf.anim_export`.
     """
+    from . import anim_export
     from .materials import MaterialExporter
 
     objects = list(scene)  # depth-first: node index == position in this list
@@ -252,6 +273,46 @@ def build_gltf(
                 normal_mapped.add(id(obj.mesh))
     nodes: list[dict[str, Any]] = []
     node_map: list[dict[str, Any]] = []
+    rigging = anim_export.collect(scene)
+    carried: list[tuple[Any, int]] = []  # skinned objects: (object, glTF mesh)
+
+    def gltf_mesh(obj: Any, encoded: dict[str, Any], own: bool) -> int:
+        """The glTF mesh of ``obj`` (shared unless it carries a skin or morph targets)."""
+        groups = encoded["groups"]
+        materials = tuple(exporter.for_object(obj, g) for g in groups)
+        key = (id(obj.mesh), materials, obj.id if own else None)
+        if key not in mesh_index:
+            attributes = dict(encoded["attributes"])
+            skin = rigging.skins.get(obj.id) if own else None
+            if skin is not None:
+                attributes.update(anim_export.skin_attributes(skin, encoded["source"], buffers))
+            morph = rigging.morphs.get(obj.id) if own else None
+            targets = None
+            if morph is not None:
+                targets = anim_export.morph_targets(
+                    morph, encoded["source"], buffers, "NORMAL" in attributes
+                )
+            primitives = []
+            for (group, indices), material in zip(groups.items(), materials, strict=True):
+                primitive: dict[str, Any] = {
+                    "attributes": attributes,
+                    "indices": indices,
+                    "mode": TRIANGLES,
+                }
+                if material is not None:
+                    primitive["material"] = material
+                if targets is not None:
+                    primitive["targets"] = targets
+                if encoded["grouped"]:
+                    primitive["extras"] = {EXTRAS_KEY: {"group": group}}
+                primitives.append(primitive)
+            entry: dict[str, Any] = {"primitives": primitives}
+            if morph is not None:
+                entry["weights"] = [float(w) for w in morph.defaults]
+                entry["extras"] = {"targetNames": list(morph.names)}
+            mesh_index[key] = len(meshes)
+            meshes.append(entry)
+        return mesh_index[key]
 
     for obj in objects:
         node: dict[str, Any] = {"name": obj.name}
@@ -275,26 +336,14 @@ def build_gltf(
                 )
             encoded = encoded_meshes[id(mesh)]
             if encoded is not None:
-                groups = encoded["groups"]
-                materials = tuple(exporter.for_object(obj, g) for g in groups)
-                key = (id(mesh), materials)
-                if key not in mesh_index:
-                    primitives = []
-                    for (group, indices), material in zip(groups.items(), materials, strict=True):
-                        primitive: dict[str, Any] = {
-                            "attributes": encoded["attributes"],
-                            "indices": indices,
-                            "mode": TRIANGLES,
-                        }
-                        if material is not None:
-                            primitive["material"] = material
-                        if encoded["grouped"]:
-                            primitive["extras"] = {EXTRAS_KEY: {"group": group}}
-                        primitives.append(primitive)
-                    mesh_index[key] = len(meshes)
-                    meshes.append({"primitives": primitives})
-                mesh_ref = mesh_index[key]
-                node["mesh"] = mesh_ref
+                skinned = obj.id in rigging.skins
+                own = skinned or obj.id in rigging.morphs
+                mesh_ref = gltf_mesh(obj, encoded, own)
+                if skinned:  # carried by a root node of its own (see anim_export)
+                    carried.append((obj, mesh_ref))
+                else:
+                    node["mesh"] = mesh_ref
+                    rigging.mesh_node[obj.id] = len(nodes)
         if obj.children:
             node["children"] = [node_of[child.id] for child in obj.children]
         stored: dict[str, Any] = {"id": obj.id}
@@ -304,12 +353,33 @@ def build_gltf(
         if metadata:
             stored["metadata"] = metadata
         node["extras"] = {EXTRAS_KEY: stored}
+        rigging.object_node[obj.id] = len(nodes)
         nodes.append(node)
         node_map.append({"node": len(nodes) - 1, "id": obj.id, "name": obj.name, "mesh": mesh_ref})
 
+    roots = [node_of[root.id] for root in scene.roots]
+    for obj, mesh_ref in carried:
+        rigging.carriers[obj.id] = len(nodes)
+        rigging.mesh_node[obj.id] = len(nodes)
+        roots.append(len(nodes))
+        nodes.append(
+            {
+                "name": f"{obj.name} (skinned mesh)",
+                "mesh": mesh_ref,
+                "extras": {EXTRAS_KEY: {"skinned_mesh_of": obj.id}},
+            }
+        )
+    anim_export.add_skeletons(scene, rigging, nodes, node_of, roots, EXTRAS_KEY)
+    skins = anim_export.add_skins(scene, rigging, nodes, node_of, buffers)
+    node_parent = {c: p for p, n in enumerate(nodes) for c in n.get("children", [])}
+    options = dict(animation_options or {})
+    animations = anim_export.build_animations(
+        scene, rigging, node_parent, buffers, diagnostics, mode=animation, **options
+    )
+
     gltf_scene: dict[str, Any] = {"name": scene.name}
-    if scene.roots:
-        gltf_scene["nodes"] = [node_of[root.id] for root in scene.roots]
+    if roots:
+        gltf_scene["nodes"] = roots
     document: dict[str, Any] = {
         "asset": {"version": "2.0", "generator": f"Aether3D {__version__}"},
         "scene": 0,
@@ -320,6 +390,11 @@ def build_gltf(
     if meshes:
         document["meshes"] = meshes
         document.update(exporter.document_parts())
+    if skins:
+        document["skins"] = skins
+    if animations:
+        document["animations"] = animations
+    if buffers.accessors:
         document["accessors"] = buffers.accessors
         document["bufferViews"] = buffers.views
         while len(buffers.data) % 4:
@@ -359,6 +434,11 @@ def export_gltf(
     *,
     allow_lossy: bool = False,
     bake_textures: int | None = None,
+    animation: str = "auto",
+    fps: Any = None,
+    position_tolerance: float = 1e-4,
+    rotation_tolerance: float = 0.01,
+    weight_tolerance: float = 1e-4,
 ) -> ExportResult:
     """Export ``scene`` to a ``.glb`` or ``.gltf`` file (chosen by extension).
 
@@ -377,8 +457,23 @@ def export_gltf(
     or world coordinates -- is left out with a warning, unless
     ``bake_textures`` (a size in pixels, 16-8192) asks to bake procedural
     textures into PNG images. The file is written atomically.
+
+    Rigs, skins, morph targets and animations are exported too (see
+    :mod:`aether3d.gltf.anim_export`): ``animation`` is ``"auto"``, ``"clips"``,
+    ``"actions"``, ``"bake"`` (sampled at ``fps``, default the timeline's) or
+    ``"none"``; fitted channels stay within ``position_tolerance`` (scene units),
+    ``rotation_tolerance`` (degrees) and ``weight_tolerance``.
     """
+    from . import anim_export
+
     fmt = output_format(path)
+    anim_export.check_mode(animation)
+    options = {
+        "fps": fps,
+        "position_tolerance": anim_export.tolerance_check("position_tolerance", position_tolerance),
+        "rotation_tolerance": anim_export.tolerance_check("rotation_tolerance", rotation_tolerance),
+        "weight_tolerance": anim_export.tolerance_check("weight_tolerance", weight_tolerance),
+    }
     if bake_textures is not None and (
         isinstance(bake_textures, bool)
         or not isinstance(bake_textures, int)
@@ -387,7 +482,9 @@ def export_gltf(
         raise ValidationError(
             f"bake_textures must be an image size in [16, 8192] pixels, got {bake_textures!r}"
         )
-    document, binary, diagnostics, node_map = build_gltf(scene, bake_textures=bake_textures)
+    document, binary, diagnostics, node_map = build_gltf(
+        scene, bake_textures=bake_textures, animation=animation, animation_options=options
+    )
     lossy = [d for d in diagnostics if d.lossy]
     if lossy and not allow_lossy:
         raise UnsupportedFeatureError(
@@ -406,4 +503,13 @@ def export_gltf(
         mesh_count=len(document.get("meshes", [])),
         nodes=node_map,
         diagnostics=diagnostics,
+        animations=[
+            {
+                "name": a["name"],
+                "channels": len(a["channels"]),
+                **a.get("extras", {}).get("aether3d", {}),
+            }
+            for a in document.get("animations", [])
+        ],
+        skins=len(document.get("skins", [])),
     )

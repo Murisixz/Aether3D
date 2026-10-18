@@ -1,0 +1,98 @@
+{
+  "backend": "gpu",
+  "walk": {
+    "clip": {
+      "keys": 544,
+      "channels": 48,
+      "max_error": {
+        "degrees": 0.04971329314266981,
+        "units": 0.0007761586442199438
+      },
+      "period": 1.1111111111111112,
+      "speed": 0.9945
+    },
+    "feet": {
+      "Foot.L": {
+        "sliding_m": 0.0036,
+        "penetration_m": 0.00072
+      },
+      "Foot.R": {
+        "sliding_m": 0.00394,
+        "penetration_m": 0.00038
+      }
+    },
+    "vertices": 13152,
+    "gltf": {
+      "bytes": 773504,
+      "validator": {
+        "ran": true,
+        "errors": 0,
+        "warnings": 0,
+        "infos": 1,
+        "version": "2.0.0-dev.3.10"
+      }
+    }
+  },
+  "step": {
+    "step_top_m": 0.24,
+    "ankle_height_m": 0.08,
+    "samples": [
+      {
+        "time": 0.0,
+        "ankle_above_floor_m": 0.08,
+        "residual_m": 0.0
+      },
+      {
+        "time": 0.9,
+        "ankle_above_floor_m": 0.15059,
+        "residual_m": 0.0
+      },
+      {
+        "time": 1.6,
+        "ankle_above_floor_m": 0.32,
+        "residual_m": 0.0
+      },
+      {
+        "time": 2.0,
+        "ankle_above_floor_m": 0.32,
+        "residual_m": 0.0
+      }
+    ]
+  },
+  "layers": {
+    "strips": 3,
+    "layers": [
+      "upper (masked: Chest and below)",
+      "look (additive)"
+    ],
+    "hands": [
+      {
+        "time": 1.2,
+        "right_hand_z": 1.631,
+        "left_hand_z": 0.8905
+      },
+      {
+        "time": 2.9,
+        "right_hand_z": 0.8838,
+        "left_hand_z": 1.6295
+      }
+    ],
+    "mirrored_clip": "Wave mirrored"
+  },
+  "twist": {
+    "linear": {
+      "zone_radius_rest_m": 0.0386,
+      "zone_radius_twisted_m": 0.02162,
+      "kept": 0.56,
+      "min_kept": 0.2385,
+      "vertices": 140
+    },
+    "dual_quaternion": {
+      "zone_radius_rest_m": 0.0386,
+      "zone_radius_twisted_m": 0.0386,
+      "kept": 1.0,
+      "min_kept": 1.0,
+      "vertices": 140
+    }
+  }
+}

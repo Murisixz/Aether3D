@@ -603,7 +603,7 @@ def test_plan_built_scenes_save_and_load(tmp_path):
     scene.save(path)
     loaded = Scene.load(path)
     assert loaded.to_dict() == scene.to_dict()
-    assert loaded.to_dict()["format_version"] == 8
+    assert loaded.to_dict()["format_version"] == 9
 
 
 def test_gpu_draws_instances_of_a_shared_mesh_in_one_call(gpu):

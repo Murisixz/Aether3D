@@ -53,6 +53,7 @@ from .editing import (
 from .editing.script import ScriptError, run_edit_script
 from .errors import (
     AetherError,
+    AnimationError,
     AssetFormatError,
     DetachedObjectError,
     EditError,
@@ -124,6 +125,7 @@ __all__ = [
     "FORMAT_VERSION",
     "AOSettings",
     "AetherError",
+    "AnimationError",
     "Appearance",
     "AssetFormatError",
     "Camera",

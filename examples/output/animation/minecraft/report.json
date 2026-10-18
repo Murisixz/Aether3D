@@ -1,0 +1,312 @@
+{
+  "backend": "gpu",
+  "fps": 24,
+  "size": [
+    640,
+    360
+  ],
+  "clips": {
+    "Idle": {
+      "clip": "Idle",
+      "keys": 61,
+      "channels": 12,
+      "max_error": {
+        "degrees": 0.039279059827813434,
+        "units": 0.0
+      },
+      "duration": 8.0,
+      "cyclic": true,
+      "travel": 0.0,
+      "seconds": 0.39,
+      "quaternion_joints": []
+    },
+    "Walk": {
+      "clip": "Walk",
+      "keys": 109,
+      "channels": 20,
+      "max_error": {
+        "degrees": 0.03921102406729382,
+        "units": 0.00031373493689335064
+      },
+      "duration": 1.1111111111111112,
+      "cyclic": true,
+      "travel": 0.9750000000000001,
+      "seconds": 0.105,
+      "quaternion_joints": []
+    },
+    "Run": {
+      "clip": "Run",
+      "keys": 150,
+      "channels": 20,
+      "max_error": {
+        "degrees": 0.04989062298713698,
+        "units": 0.0006643073302911029
+      },
+      "duration": 0.7142857142857143,
+      "cyclic": true,
+      "travel": 2.25,
+      "seconds": 0.076,
+      "quaternion_joints": []
+    },
+    "Jump": {
+      "clip": "Jump",
+      "keys": 328,
+      "channels": 22,
+      "max_error": {
+        "degrees": 0.04984634009533995,
+        "units": 0.0006886850311614845
+      },
+      "duration": 1.989992618322741,
+      "cyclic": false,
+      "travel": 0.0,
+      "seconds": 0.156,
+      "quaternion_joints": []
+    },
+    "Land": {
+      "clip": "Land",
+      "keys": 398,
+      "channels": 23,
+      "max_error": {
+        "degrees": 0.04985173490251782,
+        "units": 0.0007320135979698161
+      },
+      "duration": 3.8584353655456325,
+      "cyclic": false,
+      "travel": 0.0,
+      "seconds": 0.299,
+      "quaternion_joints": []
+    }
+  },
+  "shots": [
+    {
+      "camera": "2b29b3f1-811a-446a-8b50-b5fd552994b9",
+      "start": 0.0,
+      "end": 1.1096375546923045,
+      "name": "fall"
+    },
+    {
+      "camera": "7114c8a0-8f5d-46a1-9416-6995c580273f",
+      "start": 0.8096375546923045,
+      "end": 2.509637554692304,
+      "name": "impact",
+      "transition": {
+        "type": "blend",
+        "duration": 0.3
+      }
+    },
+    {
+      "camera": "2005ae3c-e21f-469b-8529-8007de6d70be",
+      "start": 2.509637554692304,
+      "end": 3.8584353655456325,
+      "name": "rise"
+    }
+  ],
+  "impact_s": 1.0096,
+  "contacts": {
+    "Idle": {
+      "Leg.L": {
+        "sliding_m": 0.0,
+        "penetration_m": 0.0,
+        "contacts": 1
+      },
+      "Leg.R": {
+        "sliding_m": 0.0,
+        "penetration_m": 0.0,
+        "contacts": 1
+      }
+    },
+    "Walk": {
+      "Leg.L": {
+        "sliding_m": 0.00209,
+        "penetration_m": 0.00024,
+        "contacts": 2
+      },
+      "Leg.R": {
+        "sliding_m": 0.00211,
+        "penetration_m": 0.00023,
+        "contacts": 2
+      }
+    },
+    "Run": {
+      "Leg.L": {
+        "sliding_m": 0.00131,
+        "penetration_m": 0.00108,
+        "contacts": 2
+      },
+      "Leg.R": {
+        "sliding_m": 0.00099,
+        "penetration_m": 0.00044,
+        "contacts": 2
+      }
+    },
+    "Jump": {
+      "Leg.L": {
+        "sliding_m": 0.00082,
+        "penetration_m": 0.0,
+        "contacts": 2
+      },
+      "Leg.R": {
+        "sliding_m": 0.00082,
+        "penetration_m": 0.0,
+        "contacts": 2
+      }
+    },
+    "Land": {
+      "Leg.L": {
+        "sliding_m": 0.00046,
+        "penetration_m": 0.00072,
+        "contacts": 1
+      },
+      "Leg.R": {
+        "sliding_m": 0.00846,
+        "penetration_m": 0.00074,
+        "contacts": 2
+      }
+    }
+  },
+  "sequences": {
+    "Idle": {
+      "frames": 97,
+      "seconds": 1.52,
+      "ms_per_frame": 15.6,
+      "backend": "gpu"
+    },
+    "Walk": {
+      "frames": 54,
+      "seconds": 1.01,
+      "ms_per_frame": 18.8,
+      "backend": "gpu"
+    },
+    "Run": {
+      "frames": 35,
+      "seconds": 0.78,
+      "ms_per_frame": 22.3,
+      "backend": "gpu"
+    },
+    "Jump": {
+      "frames": 48,
+      "seconds": 1.06,
+      "ms_per_frame": 22.1,
+      "backend": "gpu"
+    },
+    "Land": {
+      "frames": 93,
+      "seconds": 9.87,
+      "ms_per_frame": 106.2,
+      "backend": "gpu"
+    }
+  },
+  "gltf": {
+    "bytes": 119952,
+    "animations": [
+      {
+        "name": "Idle",
+        "channels": 4,
+        "clip": "Idle",
+        "actions": [
+          "e8c83b60-97e9-4d21-8e7b-8c8eafaf4374"
+        ],
+        "fitted_channels": 4,
+        "max_error": {
+          "rotation": 0.0027307450579818616
+        }
+      },
+      {
+        "name": "Walk",
+        "channels": 8,
+        "clip": "Walk",
+        "actions": [],
+        "fitted_channels": 6,
+        "max_error": {
+          "translation": 3.9668268669856843e-13,
+          "rotation": 0.0028563545693137088
+        }
+      },
+      {
+        "name": "Run",
+        "channels": 8,
+        "clip": "Run",
+        "actions": [],
+        "fitted_channels": 6,
+        "max_error": {
+          "translation": 3.134159598516817e-13,
+          "rotation": 0.008864262853491239
+        }
+      },
+      {
+        "name": "Jump",
+        "channels": 8,
+        "clip": "Jump",
+        "actions": [],
+        "fitted_channels": 7,
+        "max_error": {
+          "rotation": 0.009708118638681196,
+          "translation": 3.959166328115771e-12
+        }
+      },
+      {
+        "name": "Land",
+        "channels": 8,
+        "clip": "Land",
+        "actions": [],
+        "fitted_channels": 7,
+        "max_error": {
+          "rotation": 0.0096350531460603,
+          "translation": 1.2177703290205955e-11
+        }
+      },
+      {
+        "name": "Follow Action",
+        "channels": 1,
+        "clip": "Follow Action",
+        "actions": [
+          "e619599f-33bd-4395-ba2a-2b3bd7404ca2"
+        ],
+        "fitted_channels": 0,
+        "max_error": {
+          "translation": 1.021405182655144e-14
+        }
+      },
+      {
+        "name": "Wide Action",
+        "channels": 1,
+        "clip": "Wide Action",
+        "actions": [
+          "2b29b3f1-811a-446a-8b50-b5fd552994b9"
+        ],
+        "fitted_channels": 1,
+        "max_error": {
+          "translation": 9.912859613514513e-05
+        }
+      }
+    ],
+    "validator": {
+      "ran": true,
+      "errors": 0,
+      "warnings": 0,
+      "infos": 23,
+      "version": "2.0.0-dev.3.10"
+    }
+  },
+  "video": {
+    "command": [
+      "ffmpeg",
+      "-y",
+      "-framerate",
+      "24/1",
+      "-i",
+      "examples/output/animation/minecraft/frames/all/frame_%05d.png",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-crf",
+      "26",
+      "-vf",
+      "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+      "examples/output/animation/minecraft/nova.mp4"
+    ],
+    "output": "examples/output/animation/minecraft/nova.mp4",
+    "bytes": 617427
+  }
+}

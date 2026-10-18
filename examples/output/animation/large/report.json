@@ -1,0 +1,139 @@
+{
+  "backend": "gpu",
+  "fps": 24,
+  "size": [
+    960,
+    540
+  ],
+  "pool_radius_m": 28.242,
+  "pool_build_s": 0.517,
+  "crowd_build_s": 0.34,
+  "walk": {
+    "period_s": 1.1111,
+    "speed_m_s": 0.8775,
+    "keys": 107
+  },
+  "objects": 10341,
+  "triangles": 123470,
+  "strips": 10048,
+  "walkers": 48,
+  "build_s": 1.556,
+  "per_frame": {
+    "evaluate_ms": 5.4,
+    "overlay_with_rigging_ms": 34.05,
+    "world_matrices_ms": 8.33
+  },
+  "foot_sliding_m": {
+    "Walker 0": {
+      "contacts": 8,
+      "sliding_max_m": 0.00432,
+      "penetration_m": 0.00026
+    },
+    "Walker 13": {
+      "contacts": 8,
+      "sliding_max_m": 0.00416,
+      "penetration_m": 0.00026
+    },
+    "Walker 26": {
+      "contacts": 9,
+      "sliding_max_m": 0.00524,
+      "penetration_m": 0.0003
+    },
+    "Walker 39": {
+      "contacts": 8,
+      "sliding_max_m": 0.00402,
+      "penetration_m": 0.0003
+    }
+  },
+  "save_s": 0.785,
+  "file_bytes": 12542203,
+  "sequence": {
+    "backend": "gpu",
+    "frames": 193,
+    "seconds": 28.26,
+    "frame_ms_median": 142.6,
+    "frame_ms_max": 214.8
+  },
+  "gpu_frame_ms_no_shadows": [
+    117.7,
+    127.3,
+    86.7
+  ],
+  "cpu_frame_ms_no_shadows": [
+    1432.0,
+    1315.8,
+    1063.4
+  ],
+  "gpu": {
+    "available": true,
+    "selected": {
+      "adapter": {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "vendor": "NVIDIA",
+        "vendor_id": 4318,
+        "device_id": 10400,
+        "type": "discrete",
+        "backend": "vulkan",
+        "driver": "615.78.08",
+        "software": false
+      },
+      "features": [
+        "texture-adapter-specific-format-features",
+        "timestamp-query"
+      ],
+      "limits": {
+        "max-texture-dimension-2d": 32768,
+        "max-texture-array-layers": 2048,
+        "max-buffer-size": 1099511627776,
+        "max-storage-buffer-binding-size": 2147483644,
+        "max-uniform-buffer-binding-size": 65536,
+        "max-storage-buffers-per-shader-stage": 524288,
+        "max-bind-groups": 8,
+        "max-color-attachments": 8,
+        "max-compute-invocations-per-workgroup": 1024
+      },
+      "msaa": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "timestamps": true,
+      "device_init_seconds": 0.3514027939818334,
+      "renders": 200,
+      "cache": {
+        "meshes": 8,
+        "bytes": 6536,
+        "budget": 1073741824,
+        "uploads": 8,
+        "upload_bytes": 6536,
+        "hits": 1592,
+        "evictions": 0
+      }
+    },
+    "reason": null
+  },
+  "video": {
+    "command": [
+      "ffmpeg",
+      "-y",
+      "-framerate",
+      "24/1",
+      "-i",
+      "examples/output/animation/large/frames/frame_%05d.png",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-crf",
+      "26",
+      "-vf",
+      "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+      "examples/output/animation/large/large.mp4"
+    ],
+    "output": "examples/output/animation/large/large.mp4",
+    "bytes": 1144231
+  },
+  "peak_rss_mib": 1455.5
+}

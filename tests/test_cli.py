@@ -201,12 +201,13 @@ def test_export_refuses_overwrite_and_bad_extension(project, tmp_path, capsys):
 
 
 def test_import_reports_lossy_content_and_writes_nothing(tmp_path, capsys):
-    source = KHRONOS / "SimpleSkin/glTF-Embedded/SimpleSkin.gltf"
-    dest = tmp_path / "skin.aether"
+    # (Stage 17: SimpleSkin imports faithfully now; point and line primitives stay lossy.)
+    source = KHRONOS / "MeshPrimitiveModes/glTF/MeshPrimitiveModes.gltf"
+    dest = tmp_path / "modes.aether"
     code, data = run_json(capsys, "import", str(source), str(dest))
     assert code == 1 and not dest.exists()
     assert data["error"]["type"] == "UnsupportedFeatureError"
-    assert [d["code"] for d in data["error"]["diagnostics"]] == ["SKIN_IGNORED"]
+    assert {d["code"] for d in data["error"]["diagnostics"]} == {"PRIMITIVE_MODE_UNSUPPORTED"}
     code, data = run_json(capsys, "import", str(source), str(dest), "--allow-lossy")
     assert code == 0 and data["lossy"] is True and dest.exists()
 

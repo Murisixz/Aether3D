@@ -36,7 +36,7 @@ from .transform import Transform
 FORMAT_ID = "aether3d.project"
 """Value of the top-level ``format`` field identifying an Aether3D project."""
 
-FORMAT_VERSION = 8
+FORMAT_VERSION = 9
 """Version written by this release. Files with a higher version are rejected.
 
 * Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
@@ -54,6 +54,8 @@ FORMAT_VERSION = 8
 * Version 8 (Aether3D 0.15.0) adds the CAD document: ``scene.cad`` with its settings
   and items (parameters, frames, sketches, parts, assemblies, building elements,
   drawings) and their links to the objects that show them.
+* Version 9 (Aether3D 0.17.0) adds the animation document: ``scene.animation`` with the
+  timeline settings and its items (clips, bindings).
 
 Older files are upgraded on load by the functions in :data:`MIGRATIONS`.
 """
@@ -173,6 +175,21 @@ def _migrate_v7_to_v8(document: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _migrate_v8_to_v9(document: dict[str, Any]) -> dict[str, Any]:
+    """v8 -> v9: an empty animation document (default timeline)."""
+    from .animation.system import DEFAULT_SETTINGS
+
+    out = dict(document)
+    scene = out.get("scene")
+    if isinstance(scene, dict):
+        scene = dict(scene)
+        scene.setdefault(
+            "animation", {"settings": json.loads(json.dumps(DEFAULT_SETTINGS)), "items": []}
+        )
+        out["scene"] = scene
+    return out
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -181,6 +198,7 @@ MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     5: _migrate_v5_to_v6,
     6: _migrate_v6_to_v7,
     7: _migrate_v7_to_v8,
+    8: _migrate_v8_to_v9,
 }
 """``MIGRATIONS[n]`` upgrades a version-``n`` document to version ``n + 1``."""
 
@@ -297,6 +315,7 @@ def scene_to_dict(
             "textures": library["textures"],
             "objects": objects,
             "cad": _cad_to_dict(scene),
+            "animation": _animation_to_dict(scene),
         },
         "meshes": meshes,
     }
@@ -308,6 +327,14 @@ def _cad_to_dict(scene: Scene) -> dict[str, Any]:
 
         return {"settings": json.loads(json.dumps(DEFAULT_SETTINGS)), "items": []}
     return scene._cad.to_json()
+
+
+def _animation_to_dict(scene: Scene) -> dict[str, Any]:
+    if scene._animation is None:
+        from .animation.system import DEFAULT_SETTINGS
+
+        return {"settings": json.loads(json.dumps(DEFAULT_SETTINGS)), "items": []}
+    return scene._animation.to_json()
 
 
 def _is_scalar(value: Any) -> bool:
@@ -494,6 +521,7 @@ def scene_from_dict(
             "textures",
             "objects",
             "cad",
+            "animation",
         ),
     )
     scene = Scene(_string(scene_data["name"], "scene.name"))
@@ -703,6 +731,22 @@ def _read_scene(
     if project_dir is not None:
         library.base_dir = base.absolute()
     _read_cad(scene, scene_data["cad"])
+    _read_animation(scene, scene_data["animation"])
+
+
+def _read_animation(scene: Scene, data: Any) -> None:
+    from .animation.system import DEFAULT_SETTINGS
+
+    if not isinstance(data, dict):
+        raise ProjectFormatError(f"expected an object, got {_type_name(data)}", "scene.animation")
+    if not data.get("items") and data.get("settings") in (None, DEFAULT_SETTINGS):
+        return
+    try:
+        scene.animation._load(data, "scene.animation")
+    except AetherError as exc:
+        raise ProjectFormatError(
+            getattr(exc, "message", str(exc)), getattr(exc, "location", None) or "scene.animation"
+        ) from None
 
 
 def _read_cad(scene: Scene, data: Any) -> None:

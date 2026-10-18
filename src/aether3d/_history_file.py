@@ -81,6 +81,8 @@ ASPECTS: dict[str, h.Aspect] = {
     "procedural": h.PROCEDURAL,
     "cad.item": h.CAD_ITEM,
     "cad.settings": h.CAD_SETTINGS,
+    "animation.item": h.ANIMATION_ITEM,
+    "animation.settings": h.ANIMATION_SETTINGS,
 }
 KEYS = {aspect: key for key, aspect in ASPECTS.items()}
 
@@ -120,6 +122,7 @@ class _Writer:
         self.detached_materials: dict[str, Any] = {}
         self.detached_textures: dict[str, Any] = {}
         self.cad_items: dict[str, Any] = {}
+        self.animation_items: dict[str, Any] = {}
 
     # -- references -------------------------------------------------------------------
 
@@ -163,6 +166,9 @@ class _Writer:
     def target(self, key: str, target: Any) -> Any:
         if key == "cad.item":
             self.cad_items.setdefault(target.id, target)
+            return target.id
+        if key == "animation.item":
+            self.animation_items.setdefault(target.id, target)
             return target.id
         if key.startswith("object."):
             return self.obj(target)
@@ -209,6 +215,11 @@ class _Writer:
             alive, name, definition, links = s
             return {"alive": alive, "name": name, "definition": definition, "links": list(links)}
         if key == "cad.settings":
+            return s
+        if key == "animation.item":
+            alive, name, definition = s
+            return {"alive": alive, "name": name, "definition": definition.to_json()}
+        if key == "animation.settings":
             return s
         raise AssertionError(key)  # pragma: no cover
 
@@ -398,6 +409,10 @@ def history_document(scene: Scene, project_dir: Path) -> dict[str, Any]:
             {"id": i.id, "kind": i.kind}
             for i in sorted(writer.cad_items.values(), key=lambda i: i._serial)
         ],
+        "animation_items": [
+            {"id": i.id, "kind": i.kind}
+            for i in sorted(writer.animation_items.values(), key=lambda i: i._serial)
+        ],
     }
 
 
@@ -551,6 +566,37 @@ class _Reader:
         self._detached(doc)
         self.cad_items: dict[str, Any] = {}
         self._cad_items(doc.get("cad_items", []))
+        self.animation_items: dict[str, Any] = {}
+        self._animation_items(doc.get("animation_items", []))
+
+    def _animation_items(self, records: Any) -> None:
+        """Animation items the history refers to (removed ones come back through undo)."""
+        import uuid
+
+        from .animation.system import KINDS, AnimItem
+
+        records = _list(records, "animation_items")
+        if not records:
+            return
+        system = self.scene.animation
+        for i, raw in enumerate(records):
+            loc = f"animation_items[{i}]"
+            raw = _record(raw, loc, ("id", "kind"))
+            try:
+                iid = str(uuid.UUID(_string(raw["id"], f"{loc}.id")))
+            except ValueError:
+                raise _bad("not a UUID", f"{loc}.id") from None
+            kind = _string(raw["kind"], f"{loc}.kind")
+            if kind not in KINDS:
+                raise _bad(f"unknown animation item kind {kind!r}", f"{loc}.kind")
+            item = system._items.get(iid)
+            if item is None:
+                item = AnimItem(system, iid, kind, f"(removed {iid[:8]})", None)
+                item._alive = False
+                system._items[iid] = item
+            elif item.kind != kind:
+                raise _bad("the item's kind differs from the project's", loc)
+            self.animation_items[iid] = item
 
     def _cad_items(self, records: Any) -> None:
         """CAD items the history refers to: those of the project, or recreated (removed
@@ -793,6 +839,14 @@ class _Reader:
             if ref is not None:
                 raise _bad("a change of cad.settings has no target", loc)
             return self.scene.cad
+        if key == "animation.item":
+            if ref not in self.animation_items:
+                raise _bad(f"unknown animation item {ref!r}", loc)
+            return self.animation_items[ref]
+        if key == "animation.settings":
+            if ref is not None:
+                raise _bad("a change of animation.settings has no target", loc)
+            return self.scene.animation
         if key.startswith("object."):
             return self.obj(ref, loc)
         if key == "material":
@@ -921,7 +975,39 @@ class _Reader:
                 return check_json(data, loc)
             except AetherError as exc:
                 raise _bad(str(exc), loc) from None
+        if key == "animation.settings":
+            from .animation.system import _check_settings
+
+            try:
+                return _check_settings(data, loc)
+            except AetherError as exc:
+                raise _bad(str(exc), loc) from None
         raise _bad(f"unknown aspect {key!r}", loc)  # pragma: no cover - checked before
+
+    def animation_state(self, item: Any, data: Any, loc: str) -> tuple:
+        """``(alive, name, definition)`` of an animation item (its kind decides how the
+        definition reads; clips are referenced by id, alive or not)."""
+        from .animation.system import definition_from_json
+
+        data = _record(data, loc, ("alive", "name", "definition"))
+        if not isinstance(data["alive"], bool):
+            raise _bad("expected true or false", f"{loc}.alive")
+        name = _string(data["name"], f"{loc}.name")
+        system = self.scene.animation
+
+        def any_clip(ref: str, where: str) -> str:
+            found = system._items.get(ref)
+            if found is None or found.kind != "clip":
+                raise _bad(f"unknown clip {ref!r}", where)
+            return ref
+
+        try:
+            definition = definition_from_json(
+                item.kind, data["definition"], system, f"{loc}.definition", any_clip
+            )
+        except AetherError as exc:
+            raise _bad(str(exc), f"{loc}.definition") from None
+        return (data["alive"], name, definition)
 
     def procedural_state(self, data: Any, loc: str) -> dict:
         from .scene import Scene
@@ -948,14 +1034,14 @@ class _Reader:
             key = raw["aspect"]
             if key not in ASPECTS:
                 raise _bad(f"unknown aspect {key!r}", f"{cloc}.aspect")
-            changes.append(
-                h._Change(
-                    ASPECTS[key],
-                    self.target(key, raw["target"], f"{cloc}.target"),
-                    self.state(key, raw["before"], f"{cloc}.before"),
-                    self.state(key, raw["after"], f"{cloc}.after"),
-                )
-            )
+            target = self.target(key, raw["target"], f"{cloc}.target")
+            if key == "animation.item":
+                before = self.animation_state(target, raw["before"], f"{cloc}.before")
+                after = self.animation_state(target, raw["after"], f"{cloc}.after")
+            else:
+                before = self.state(key, raw["before"], f"{cloc}.before")
+                after = self.state(key, raw["after"], f"{cloc}.after")
+            changes.append(h._Change(ASPECTS[key], target, before, after))
         if not changes:
             raise _bad("a step changes something", f"{loc}.changes")
         return h._Step(
@@ -1020,7 +1106,7 @@ _TOP_KEYS = (
 
 
 def _check_header(doc: Any) -> dict[str, Any]:
-    doc = _record(doc, "", _TOP_KEYS, ("cad_items",))
+    doc = _record(doc, "", _TOP_KEYS, ("cad_items", "animation_items"))
     if doc["format"] != FORMAT_ID:
         raise _bad(f"format must be {FORMAT_ID!r}", "format")
     if doc["format_version"] != FORMAT_VERSION:
