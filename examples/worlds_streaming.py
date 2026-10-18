@@ -34,6 +34,7 @@ from worlds_common import (  # noqa: E402
     machine,
     preview,
     sheet,
+    software,
     write_report,
 )
 
@@ -132,7 +133,7 @@ def main(argv: list[str]) -> int:
         out / "flight_sheet.png",
         labels=[f"{k / fps:.1f} s" for k in range(0, len(paths), step)][:12],
     )
-    (out / "memory.png").write_bytes(encode_png(chart(rows)))
+    (out / "memory.png").write_bytes(encode_png(chart(rows), text=software()))
     secs = sorted(r["seconds"] for r in rows)
     report = {
         "machine": machine(),

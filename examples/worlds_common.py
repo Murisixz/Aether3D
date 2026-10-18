@@ -356,7 +356,8 @@ def sheet(
         pixels = decode_png(Path(p).read_bytes()).pixels[..., :3]
         images.append(downscale(pixels, width))
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(encode_png(contact_sheet(images, columns=columns, labels=labels)))
+    sheet_png = encode_png(contact_sheet(images, columns=columns, labels=labels), text=software())
+    out.write_bytes(sheet_png)
     return str(out)
 
 
@@ -374,8 +375,15 @@ def preview(png: Path, out: Path, width: int = 960) -> str:
 
     pixels = decode_png(png.read_bytes()).pixels[..., :3]
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(encode_png(downscale(pixels, width)))
+    out.write_bytes(encode_png(downscale(pixels, width), text=software()))
     return str(out)
+
+
+def software() -> dict[str, str]:
+    """The PNG text chunk that names Aether3D (composites carry it like its renders)."""
+    import aether3d
+
+    return {"Software": f"Aether3D {aether3d.__version__}"}
 
 
 def write_report(path: Path, data: dict) -> None:
