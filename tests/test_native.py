@@ -720,3 +720,92 @@ def test_skinning_rejects_joints_outside_the_palette():
         native.skin_linear(
             pos, nrm, idx[:, :0], w[:, :0], np.ascontiguousarray(pal), out, out.copy(), 1
         )
+
+
+# ---------------------------------------------------------------------------------------
+# Hydrology (procedural worlds): priority flood, drainage, stream power, sediment, thermal
+
+
+def _terrain(seed: int, nx: int = 61, ny: int = 47) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(seed)
+    x, y = np.meshgrid(np.linspace(0, 6, nx), np.linspace(0, 5, ny))
+    h = 40 * np.sin(x) * np.cos(y) + 15 * rng.normal(size=(ny, nx)) + 20 * x
+    h[10:20, 10:25] = 12.0  # a flat plateau: ties everywhere
+    h[30:34, 40:44] = -5.0  # a pit
+    h = h.reshape(-1)
+    border = np.zeros((ny, nx), dtype=bool)
+    border[0], border[-1], border[:, 0], border[:, -1] = True, True, True, True
+    return h, border.reshape(-1) | (h < -2.0)
+
+
+def _drainage(h, outlet, nx, ny, cell):
+    from aether3d.worlds import hydrology as hy
+
+    filled = hy.priority_flood(h, outlet, nx, ny)
+    recv, dist = hy.receivers(filled, outlet, nx, ny, cell)
+    order = np.argsort(filled, kind="stable")
+    rng = np.random.default_rng(1)
+    rain = rng.integers(1, 1000, h.size).astype(np.int64)
+    area = hy.accumulate(order, recv, rain).astype(np.float64) * cell * cell / 1000.0
+    after = hy.stream_power(order, recv, dist, area, h, filled, 0.05, np.zeros(h.size))
+    catchment = hy.accumulate(order, recv, np.ones(h.size, dtype=np.int64)).astype(np.float64)
+    deposited = hy.sediment(
+        order, recv, dist, catchment * cell * cell, h, after, filled, 0.0, cell, 0.3
+    )
+    relaxed = hy.thermal(deposited, nx, ny, cell, 0.8, 1.0, 6)
+    return filled, recv, area, after, deposited, relaxed
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_hydrology_kernels_are_numpys(seed, monkeypatch):
+    nx, ny, cell = 61, 47, 16.0
+    h, outlet = _terrain(seed, nx, ny)
+    got = _drainage(h, outlet, nx, ny, cell)
+    want = without_native(monkeypatch, _drainage, h, outlet, nx, ny, cell)
+    for name, a, b in zip(("filled", "recv", "area", "after", "deposited", "relaxed"), got, want,
+                          strict=True):  # fmt: skip
+        assert_bitwise(a, b, name)
+
+
+def test_priority_flood_drains_every_node_and_never_lowers(monkeypatch):
+    from aether3d.worlds import hydrology as hy
+
+    nx, ny = 61, 47
+    h, outlet = _terrain(4, nx, ny)
+    filled = hy.priority_flood(h, outlet, nx, ny)
+    assert np.all(filled >= h)
+    recv, _ = hy.receivers(filled, outlet, nx, ny, 16.0)
+    # Following receivers from any node reaches an outlet, strictly downhill in the
+    # filled surface (the epsilon slope of filled flats), within n steps.
+    node = np.arange(h.size)
+    for _ in range(h.size):
+        nxt = recv[node]
+        assert np.all((nxt == node) | (filled[nxt] < filled[node]))
+        node = nxt
+    assert np.all(outlet[node] | (recv[node] == node))
+
+
+def test_thermal_threads_change_nothing(monkeypatch):
+    from aether3d.worlds import hydrology as hy
+
+    nx, ny = 61, 47
+    h, _ = _terrain(5, nx, ny)
+    monkeypatch.setenv("AETHER3D_NATIVE_THREADS", "1")
+    one = hy.thermal(h, nx, ny, 8.0, 0.7, 1.0, 8)
+    monkeypatch.setenv("AETHER3D_NATIVE_THREADS", "4")
+    four = hy.thermal(h, nx, ny, 8.0, 0.7, 1.0, 8)
+    assert_bitwise(one, four, "thermal")
+
+
+def test_hydrology_kernels_reject_bad_arrays():
+    h = np.zeros(12)
+    outlet = np.zeros(12, dtype=bool)
+    out = np.zeros(12)
+    with pytest.raises(ValueError):
+        native.priority_flood(h, outlet, 5, 3, out)  # 12 != 15
+    order = np.arange(12, dtype=np.int64)
+    recv = np.full(12, 99, dtype=np.int64)  # receivers out of range
+    with pytest.raises(ValueError):
+        native.accumulate(order, recv, np.ones(12, dtype=np.int64))
+    with pytest.raises(ValueError):
+        native.thermal(np.zeros(10), 4, 3, 1.0, 0.5, 1.0, 2, np.zeros(10), 1)

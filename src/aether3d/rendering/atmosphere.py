@@ -152,7 +152,7 @@ def glow(model: AtmosphereModel, d: np.ndarray) -> np.ndarray:
     """``(N, 3)`` the sun glow and horizon glow added to the sky in directions ``d``."""
     base = np.zeros(d.shape)
     if model.sun is not None:
-        g = np.maximum(d @ model.sun, 0.0)
+        g = np.maximum(_dot(d, model.sun), 0.0)
         halo = np.power(g, model.glow_size) + 0.15 * np.power(g, max(model.glow_size / 8.0, 1.0))
         base = base + halo[:, None] * model.glow
         if model.horizon_glow > 0.0:
@@ -160,7 +160,8 @@ def glow(model: AtmosphereModel, d: np.ndarray) -> np.ndarray:
             sl = float(np.hypot(sh[0], sh[1]))
             dh = d[:, :2]
             dl = np.hypot(dh[:, 0], dh[:, 1])
-            a = np.where((dl > 1e-9) & (sl > 1e-9), (dh @ sh) / np.maximum(dl * sl, 1e-30), 0.0)
+            dot = dh[:, 0] * sh[0] + dh[:, 1] * sh[1]
+            a = np.where((dl > 1e-9) & (sl > 1e-9), dot / np.maximum(dl * sl, 1e-30), 0.0)
             a = np.maximum(a, 0.0)
             t = 1.0 - np.minimum(2.5 * np.abs(d[:, 2]), 1.0)
             band = t * t * t * t * (0.25 + 0.75 * a * a)
@@ -177,7 +178,7 @@ def fog(model: AtmosphereModel, color: np.ndarray, d: np.ndarray, t: np.ndarray)
     trans = transmittance(model, d, t)
     f = np.broadcast_to(model.fog_color, color.shape)
     if model.sun is not None and float(np.max(model.fog_sun)) > 0.0:
-        g = np.maximum(d @ model.sun, 0.0)
+        g = np.maximum(_dot(d, model.sun), 0.0)
         f = f + np.power(g, model.fog_power)[:, None] * model.fog_sun
     return color * trans[:, None] + f * (1.0 - trans)[:, None]
 
@@ -211,3 +212,8 @@ def ambient_at(model: AtmosphereModel | None, ambient: np.ndarray, nz: np.ndarra
         return None
     w = (0.5 + 0.5 * np.clip(nz, -1.0, 1.0))[:, None]
     return model.ground_ambient + w * (np.asarray(ambient) - model.ground_ambient)
+
+
+def _dot(d: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Per-row dot products, explicit (no BLAS: the same bits for any batch)."""
+    return d[:, 0] * v[0] + d[:, 1] * v[1] + d[:, 2] * v[2]

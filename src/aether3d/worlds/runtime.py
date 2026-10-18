@@ -282,6 +282,7 @@ class WorldRuntime:
         if self.definition["mode"] == "blocks":
             from .voxels import column_ground
 
+            self._check_points(x, y)
             return column_ground(self, x, y)
         return self.heights(x, y)
 
@@ -296,6 +297,18 @@ class WorldRuntime:
             raise WorldError(
                 "OUTSIDE_WORLD", f"coordinates are within +-{D.MAX_COORDINATE:g} m", "points"
             )
+        e = self.world.extent
+        if e is not None:
+            eps = 1e-6
+            out = (x < e[0] - eps) | (x > e[2] + eps) | (y < e[1] - eps) | (y > e[3] + eps)
+            if np.any(out):
+                k = int(np.flatnonzero(out)[0])
+                raise WorldError(
+                    "OUTSIDE_WORLD",
+                    f"point {k} ({x[k]:g}, {y[k]:g}) is outside the world",
+                    f"points[{k}]",
+                    hint=f"the world's extent is [{e[0]:g}, {e[1]:g}] .. [{e[2]:g}, {e[3]:g}]",
+                )
 
     def sample(self, points: Any, fields: Any = None) -> dict[str, Any]:
         pts = np.asarray(points, dtype=np.float64)
@@ -383,8 +396,13 @@ class WorldRuntime:
     def block_at(self, x: float, y: float, z: float) -> str:
         from .blocks import BLOCK_LIST
 
+        p = np.array([[x, y, z]], dtype=np.float64)
+        if not np.all(np.isfinite(p)):
+            raise WorldError("INVALID_ARGUMENT", "the position must be finite", "at")
+        if self.definition["mode"] == "blocks":
+            self._check_points(p[:, 0], p[:, 1])
         size = self.definition["blocks"]["size"]
-        cell = np.floor(np.array([[x, y, z]], dtype=np.float64) / size).astype(np.int64)
+        cell = np.floor(p / size).astype(np.int64)
         return BLOCK_LIST[int(self.blocks_at(cell)[0])].name
 
     def blocks_at(self, cells: np.ndarray) -> np.ndarray:

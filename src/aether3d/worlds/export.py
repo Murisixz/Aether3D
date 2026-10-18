@@ -91,7 +91,8 @@ def export_region(
     d = world._definition
     src = world._system.scene
     out = Scene(f"{world.name} region")
-    ids = out.materials._copy_from(src.materials)
+    with out.transaction("Materials"):
+        ids = out.materials._copy_from(src.materials)
     layer_mats = {layer: ids.get(ref) for layer, ref in d["materials"].items()}
     parts: list[tuple[str, Any, np.ndarray, dict]] = []  # (name, mesh, matrix, {group: layer})
     bounds = [float(r[0]), float(r[1]), float(r[2]), float(r[3])]

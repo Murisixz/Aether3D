@@ -395,7 +395,7 @@ class Vegetation:
         rows = np.arange(n)
         f = self._lattice(x, y)
         w = f["weights"]
-        dens = w @ tab["density"].T  # (n, S): every species' density here
+        dens = nz.blend(w, tab["density"].T)  # (n, S): every species' density here
         member = np.zeros(n, dtype=np.int64)
         dmax = np.zeros(n)
         total = np.zeros(n)
@@ -415,11 +415,11 @@ class Vegetation:
                 member[sel] = np.array(members)[np.argmax(cum > u[:, None], axis=1)]
         p = total / np.maximum(dmax, 1e-12)
         # Clustering: groves and clearings at 40-80 m.
-        cl_w = (w @ tab["cluster"].T)[rows, member] / np.maximum(w.sum(axis=1), 1e-12)
+        cl_w = nz.blend(w, tab["cluster"].T)[rows, member] / np.maximum(w.sum(axis=1), 1e-12)
         cl = nz.fbm2(seeds["cluster-" + cls], x, y, octaves=2, frequency=1.0 / 55.0)
         p = p * np.clip(1.0 + cl_w * 2.2 * cl, 0.0, 2.0)
         # Slope, water, temperature, roads, clearing.
-        tan_max = (w @ tab["tan"].T)[rows, member] / np.maximum(w.sum(axis=1), 1e-12)
+        tan_max = nz.blend(w, tab["tan"].T)[rows, member] / np.maximum(w.sum(axis=1), 1e-12)
         p = np.where(f["slope"] > tan_max, 0.0, p)
         names = np.array(tab["names"])[member]
         reeds = names == "reeds"
@@ -460,7 +460,7 @@ class Vegetation:
         variants = d["vegetation"]["variants"]
         variant = (nz.hash2(seeds["variant"], hxi, hyi) % np.uint64(variants)).astype(np.int16)
         yaw = 2.0 * math.pi * nz.random2(seeds["yaw"], hxi, hyi)
-        scale_k = (w[idx] @ tab["scale"].T)[np.arange(idx.size), member[idx]]
+        scale_k = nz.blend(w[idx], tab["scale"].T)[np.arange(idx.size), member[idx]]
         scale_k = scale_k / np.maximum(w[idx].sum(axis=1), 1e-12)
         size = (0.75 + 0.5 * nz.random2(seeds["size"], hxi, hyi)) * scale_k
         pos = np.stack([x[idx], y[idx], hz - SINK], axis=1)
@@ -545,7 +545,8 @@ class Vegetation:
         if view.frustum is not None:
             radius = 30.0 * scale
             for pl in view.frustum:
-                show &= cat["pos"] @ pl[:3] + pl[3] > -radius
+                p = cat["pos"]
+                show &= p[:, 0] * pl[0] + p[:, 1] * pl[1] + p[:, 2] * pl[2] + pl[3] > -radius
         idx = np.flatnonzero(show)
         if idx.size > MAX_PLANTS:
             idx = idx[np.argsort(dist[idx], kind="stable")[:MAX_PLANTS]]

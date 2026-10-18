@@ -598,7 +598,7 @@ class WorldModel:
         S = t["scale"]
         HS = t["height_scale"]
         # Biome terrain modifiers: dunes, swamp flattening, roughness of the detail.
-        dunes = weights @ self.b_dunes
+        dunes = nz.blend(weights, self.b_dunes)
         dn = t["dunes"]
         if dn["height"] > 0.0 and np.any(dunes > 1e-3):
             ux, uy = nz.cos_sin_deg(dn["direction"])
@@ -611,12 +611,12 @@ class WorldModel:
             ridge = ridge * ridge * (3.0 - 2.0 * ridge)
             land = aux["land"]
             h = h + dn["height"] * HS * dunes * ridge * land
-        flat = weights @ self.b_flatten
+        flat = nz.blend(weights, self.b_flatten)
         if np.any(flat > 1e-3):
             target = self.sea + 0.35
             near = 1.0 - nz.smoothstep(4.0, 30.0, np.abs(h - target))
             h = h + flat * near * (target - h) * 0.85
-        rough = weights @ self.b_rough
+        rough = nz.blend(weights, self.b_rough)
         dt = t["detail"]
         detail = None
         if dt["height"] > 0.0:

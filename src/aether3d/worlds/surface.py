@@ -66,9 +66,9 @@ def colors(model, sample: dict, x: np.ndarray, y: np.ndarray, normals: np.ndarra
     s = model.d["surface"]
     seed = model.seed
     # 1. Biome grounds, with dryness and tone noise.
-    ground = w @ _ground_table(model)
-    grass_like = w @ np.array(
-        [1.0 if b["ground"] == "grass" else 0.0 for b in model.biomes.values()]
+    ground = nz.blend(w, _ground_table(model))
+    grass_like = nz.blend(
+        w, np.array([1.0 if b["ground"] == "grass" else 0.0 for b in model.biomes.values()])
     )
     dry = np.clip(1.0 - sample["moisture"] * 1.6, 0.0, 1.0) * grass_like
     straw = np.array([0.36, 0.3, 0.12])
@@ -78,9 +78,9 @@ def colors(model, sample: dict, x: np.ndarray, y: np.ndarray, normals: np.ndarra
     )
     tone += 0.06 * nz.gradient2(nz.derive(seed, "surface", "patch"), x / 7.0, y / 7.0)
     ground = ground * tone[:, None]
-    soil = w @ model.colors["soil"]
-    rock = w @ model.colors["rock"]
-    sand = w @ model.colors["sand"]
+    soil = nz.blend(w, model.colors["soil"])
+    rock = nz.blend(w, model.colors["rock"])
+    sand = nz.blend(w, model.colors["sand"])
     # 2. Soil and rock by slope (cos of the slope angle = n_z), with a noisy band; above the
     # tree line (cold) bare rock starts 12 degrees earlier, in warm lowlands 8 later.
     temp = sample["temperature"]
@@ -137,7 +137,7 @@ def water_colors(model, sample: dict, depth: np.ndarray) -> np.ndarray:
     """``(N, 3)`` linear colours of water surfaces by depth: clear shallows over the bed,
     darker deep water, tinted by the biomes' water colours."""
     w = sample["weights"]
-    deep = (w @ model.colors["water"]) * 0.55
+    deep = nz.blend(w, model.colors["water"]) * 0.55
     shallow = deep * 0.4 + np.array([0.18, 0.25, 0.22])
     t = nz.smoothstep(0.0, 6.0, depth)
     return np.clip(shallow + t[:, None] * (deep - shallow), 0.0, 1.0)

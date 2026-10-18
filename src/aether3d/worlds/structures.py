@@ -1042,8 +1042,18 @@ def plan_road(
     bx, by = b
     margin = max(200.0, 0.35 * math.hypot(bx - ax, by - ay))
     x0, y0 = min(ax, bx) - margin, min(ay, by) - margin
-    nx = int(math.ceil((max(ax, bx) + margin - x0) / cell)) + 1
-    ny = int(math.ceil((max(ay, by) + margin - y0) / cell)) + 1
+    x1, y1 = max(ax, bx) + margin, max(ay, by) + margin
+    e = model.extent()
+    if e is not None:  # roads stay inside the world
+        x0, y0, x1, y1 = max(x0, e[0]), max(y0, e[1]), min(x1, e[2]), min(y1, e[3])
+        if not (
+            e[0] <= ax <= e[2] and e[1] <= ay <= e[3] and e[0] <= bx <= e[2] and e[1] <= by <= e[3]
+        ):
+            raise WorldError(
+                "OUTSIDE_WORLD", "a road's ends must be inside the world", "structures"
+            )
+    nx = int(math.ceil((x1 - x0) / cell)) + 1
+    ny = int(math.ceil((y1 - y0) / cell)) + 1
     if nx * ny > max_cells:
         raise WorldError(
             "TOO_LARGE",
@@ -1091,40 +1101,61 @@ def plan_road(
     while path[-1] != start:
         path.append(prev[path[-1]])
     path.reverse()
-    pts = [(x0 + i * cell, y0 + j * cell, bool(water[j, i])) for j, i in path]
-    pts[0] = (ax, ay, pts[0][2])
-    pts[-1] = (bx, by, pts[-1][2])
-    # Runs on land become roads (simplified); runs over water become bridges.
+    nodes = np.array([(x0 + i * cell, y0 + j * cell) for j, i in path], dtype=np.float64)
+    nodes[0], nodes[-1] = (ax, ay), (bx, by)
+    # Water along the path, sampled every 2 m (rivers narrower than the grid included).
+    seg = np.linalg.norm(np.diff(nodes, axis=0), axis=1)
+    dist = np.concatenate([[0.0], np.cumsum(seg)])
+    t = np.linspace(0.0, float(dist[-1]), max(2, int(dist[-1] / 2.0) + 1))
+    sx, sy = np.interp(t, dist, nodes[:, 0]), np.interp(t, dist, nodes[:, 1])
+    wet = ~np.isnan(model.evaluate(sx, sy)["water"])
+    wet[0] = wet[-1] = False  # (the ends are on land by construction or are kept)
+    # Runs on land become roads (simplified); runs over water become bridges from bank to
+    # bank, two metres onto each.
     roads, bridges = [], []
-    run: list[tuple[float, float]] = []
     k = 0
-    idx = 0
-    while idx < len(pts):
-        x, y, wet = pts[idx]
-        if not wet:
-            run.append((x, y))
-            idx += 1
+    while k < len(t):
+        if not wet[k]:
+            k += 1
             continue
-        end = idx
-        while end < len(pts) and pts[end][2]:
+        end = k
+        while end < len(t) and wet[end]:
             end += 1
-        if run:
-            roads.append(_simplify(run))
-        if idx > 0 and end < len(pts):
-            p, q = pts[idx - 1], pts[end]
-            bridges.append(
+        lo, hi = max(0.0, t[k - 1] - 2.0), min(float(dist[-1]), t[min(end, len(t) - 1)] + 2.0)
+        bridges.append((lo, hi))
+        k = end
+    cuts = [0.0]
+    for lo, hi in bridges:
+        cuts += [lo, hi]
+    cuts.append(float(dist[-1]))
+    for n in range(0, len(cuts), 2):
+        a0, a1 = cuts[n], cuts[n + 1]
+        if a1 - a0 < 1.0:
+            continue
+        inner = [
+            (float(x), float(y))
+            for x, y, d in zip(nodes[:, 0], nodes[:, 1], dist, strict=True)
+            if a0 < d < a1
+        ]
+        line = [
+            (float(np.interp(a0, dist, nodes[:, 0])), float(np.interp(a0, dist, nodes[:, 1]))),
+            *inner,
+            (float(np.interp(a1, dist, nodes[:, 0])), float(np.interp(a1, dist, nodes[:, 1]))),
+        ]
+        roads.append(_simplify(line))
+    items = []
+    for lo, hi in bridges:
+        p = (float(np.interp(lo, dist, nodes[:, 0])), float(np.interp(lo, dist, nodes[:, 1])))
+        q = (float(np.interp(hi, dist, nodes[:, 0])), float(np.interp(hi, dist, nodes[:, 1])))
+        if 2.0 <= math.dist(p, q) <= 400.0:
+            items.append(
                 {
-                    "id": f"{prefix}-bridge-{len(bridges)}",
+                    "id": f"{prefix}-bridge-{len(items)}",
                     "kind": "bridge",
                     "line": [[round(p[0], 2), round(p[1], 2)], [round(q[0], 2), round(q[1], 2)]],
                     "width": 4.0,
                 }
             )
-        run = []
-        idx = end
-        k += 1
-    if run:
-        roads.append(_simplify(run))
     features = [
         {
             "type": "road",
@@ -1136,12 +1167,7 @@ def plan_road(
         for n, line in enumerate(roads)
         if len(line) >= 2
     ]
-    length = float(sum(math.dist(p[:2], q[:2]) for p, q in zip(pts[:-1], pts[1:], strict=True)))
-    return {
-        "roads": features,
-        "items": [b for b in bridges if 2.0 <= math.dist(*b["line"]) <= 400.0],
-        "length": round(length, 1),
-    }
+    return {"roads": features, "items": items, "length": round(float(dist[-1]), 1)}
 
 
 def _simplify(run: list[tuple[float, float]], tol: float = 6.0) -> list[tuple[float, float]]:

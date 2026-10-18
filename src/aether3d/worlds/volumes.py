@@ -473,7 +473,7 @@ class Volumes:
         smp = model.evaluate(wx_, wy_)
         depth = smp["height"] - pos[:, 2]
         surf = surface_colors(model, smp, wx_, wy_, nrm)
-        rock = smp["weights"] @ model.colors["rock"]
+        rock = nz.blend(smp["weights"], model.colors["rock"])
         tone = 0.75 + 0.25 * nz.fbm2(
             nz.derive(int(d["seed"]), "caves", "tone"),
             wx_ * 0.3,
@@ -592,9 +592,10 @@ def _polyline_distance(p: np.ndarray, pts: np.ndarray) -> tuple[np.ndarray, np.n
     best = np.full(p.shape[0], np.inf)
     where = np.zeros(p.shape[0])
     for k in range(seg.shape[0]):
-        ll = float(seg[k] @ seg[k])
+        ll = float(seg[k, 0] * seg[k, 0] + seg[k, 1] * seg[k, 1] + seg[k, 2] * seg[k, 2])
         r = p - pts[k]
-        t = np.clip((r @ seg[k]) / ll, 0.0, 1.0) if ll > 0.0 else np.zeros(p.shape[0])
+        rs = r[:, 0] * seg[k, 0] + r[:, 1] * seg[k, 1] + r[:, 2] * seg[k, 2]
+        t = np.clip(rs / ll, 0.0, 1.0) if ll > 0.0 else np.zeros(p.shape[0])
         q = r - t[:, None] * seg[k]
         dist = np.sqrt(np.sum(q * q, axis=1))
         closer = dist < best

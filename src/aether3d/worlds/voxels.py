@@ -386,9 +386,9 @@ class BlockWorld:
         # Tints per column.
         tint = np.stack(
             [
-                w @ np.stack([_hex_lin(x["colors"]["grass"]) for x in biomes]),
-                w @ np.stack([_hex_lin(x["colors"]["foliage"]) for x in biomes]),
-                w @ np.stack([_hex_lin(x["colors"]["water"]) for x in biomes]),
+                nz.blend(w, np.stack([_hex_lin(x["colors"]["grass"]) for x in biomes])),
+                nz.blend(w, np.stack([_hex_lin(x["colors"]["foliage"]) for x in biomes])),
+                nz.blend(w, np.stack([_hex_lin(x["colors"]["water"]) for x in biomes])),
             ],
             axis=2,
         )
@@ -564,7 +564,9 @@ class BlockWorld:
         u = nz.random2(nz.derive(seed, "tree-grow"), ci, cj)
         self.rt.regional()
         smp = self.rt.model().evaluate((sx + 0.5) * size, (sy + 0.5) * size)
-        per = np.stack([smp["weights"] @ trees[sp] for sp in species], axis=1)  # per hectare
+        per = np.stack(
+            [nz.blend(smp["weights"], trees[sp]) for sp in species], axis=1
+        )  # per hectare
         dens = per.sum(axis=1)
         grow = u < dens * (cell * size) ** 2 / 10000.0 * d["vegetation"]["density"]
         top = np.clip(
@@ -628,7 +630,7 @@ class BlockWorld:
             acc = np.zeros((CHUNK, CHUNK))
             area = size * size / 10000.0 * d["vegetation"]["clutter"] * 0.35
             for sp, dens in covers.items():
-                p = (w @ dens) * area
+                p = nz.blend(w, dens) * area
                 pick = (u >= acc) & (u < acc + p) & grassy
                 acc = acc + p
                 if not np.any(pick):
@@ -1123,7 +1125,7 @@ def _emit(q, arr_axis, sign, size, z0, aoc, texi, cell, tint):
     e1 = pts[:, 1] - pts[:, 0]
     e2 = pts[:, 3] - pts[:, 0]
     cr = np.cross(e1, e2)
-    flip = (cr @ normal) < 0
+    flip = (cr[:, 0] * normal[0] + cr[:, 1] * normal[1] + cr[:, 2] * normal[2]) < 0
     pts = np.where(flip[:, None, None], pts[:, [0, 3, 2, 1]], pts)
     # UVs: v along world z for side faces, else along the row axis.
     du = (c1 - c0).astype(np.float64)
@@ -1350,8 +1352,8 @@ def coarse_chunk(
     top_id = np.where(
         wet, np.array([BLOCKS[x["blocks"]["underwater"]] for x in biomes])[dom], top_id
     )
-    grass_tint = w @ np.stack([_hex_lin(x["colors"]["grass"]) for x in biomes])
-    foliage_tint = w @ np.stack([_hex_lin(x["colors"]["foliage"]) for x in biomes])
+    grass_tint = nz.blend(w, np.stack([_hex_lin(x["colors"]["grass"]) for x in biomes]))
+    foliage_tint = nz.blend(w, np.stack([_hex_lin(x["colors"]["foliage"]) for x in biomes]))
     quads: list[
         tuple
     ] = []  # (corners (m, 4, 3), normal, uv (m, 4, 2), colour (m, 3), texture (m,))
@@ -1487,8 +1489,8 @@ def coarse_chunk(
             [np.stack([base, base + 1, base + 2], 1), np.stack([base, base + 2, base + 3], 1)]
         )
         depth = zt - top[1:-1, 1:-1][wj, wi] * cs
-        biome_water = w[1:-1, 1:-1][wj, wi] @ np.stack(
-            [_hex_lin(x["colors"]["water"]) for x in biomes]
+        biome_water = nz.blend(
+            w[1:-1, 1:-1][wj, wi], np.stack([_hex_lin(x["colors"]["water"]) for x in biomes])
         )
         c = _water_color(biome_water, depth / size)
         wmesh = Mesh(

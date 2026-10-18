@@ -617,3 +617,21 @@ def terrace(h: np.ndarray, step: float, sharpness: float) -> np.ndarray:
     t = np.clip((f - (1.0 - w)) / w, 0.0, 1.0)
     s = t * t * (3.0 - 2.0 * t)
     return (base + s) * step
+
+
+def blend(weights: np.ndarray, table: Any) -> np.ndarray:
+    """``weights @ table`` without BLAS: per point, the products summed in the order of
+    the last axis of ``weights`` (biomes), so results never depend on how many points are
+    evaluated together or on the BLAS library (``weights`` (..., B); ``table`` (B,) or
+    (B, C))."""
+    weights = np.asarray(weights, dtype=np.float64)
+    table = np.asarray(table, dtype=np.float64)
+    if table.ndim == 1:
+        out = weights[..., 0] * table[0]
+        for k in range(1, weights.shape[-1]):
+            out = out + weights[..., k] * table[k]
+        return out
+    out = weights[..., 0, None] * table[0]
+    for k in range(1, weights.shape[-1]):
+        out = out + weights[..., k, None] * table[k]
+    return out

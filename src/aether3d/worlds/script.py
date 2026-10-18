@@ -124,7 +124,7 @@ def _check_step(step: Any, loc: str, key: str, table: dict) -> None:
     if not isinstance(step, dict):
         raise _bad("expected an object", loc)
     name = step.get(key)
-    if name not in table:
+    if not isinstance(name, str) or name not in table:
         raise _bad(f"unknown {key} {name!r}", f"{loc}.{key}", hint=", ".join(table))
     required, optional = table[name]
     keys = set(step) - {key, "world"}
