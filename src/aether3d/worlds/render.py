@@ -238,3 +238,19 @@ def _terrain_parts(world: Any, rt: Any, view: Any, ctx: Any) -> list:
                 )
             )
     return out
+
+
+def frame_points(scene: Any) -> list[np.ndarray]:
+    """Points to frame the scene's worlds by: the ground (or the water over it) on a 9 x 9
+    grid over each world's extent (2 km around the origin for unbounded worlds)."""
+    out = []
+    for world in scene._worlds:
+        e = world.extent or (-1000.0, -1000.0, 1000.0, 1000.0)
+        x, y = np.meshgrid(np.linspace(e[0], e[2], 9), np.linspace(e[1], e[3], 9))
+        x, y = x.reshape(-1), y.reshape(-1)
+        z = np.asarray(world.ground(x, y), dtype=np.float64)
+        if world.mode == "terrain":
+            water = world.runtime.model().evaluate(x, y)["water"]
+            z = np.where(np.isnan(water), z, np.fmax(z, water))
+        out.append(np.stack([x, y, z], axis=1))
+    return out

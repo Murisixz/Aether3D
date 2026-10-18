@@ -99,6 +99,10 @@ def target_points(scene: Scene, targets: Any = None, overlay: Any = None) -> np.
         m = worlds[obj.id]
         p = mesh.positions.astype(np.float64)
         chunks.append(p @ m[:3, :3].T + m[:3, 3])
+    if targets is None and scene._worlds is not None and len(scene._worlds):
+        from ..worlds.render import frame_points
+
+        chunks += frame_points(scene)
     if not chunks:
         raise RenderError(
             "NOTHING_TO_FRAME",

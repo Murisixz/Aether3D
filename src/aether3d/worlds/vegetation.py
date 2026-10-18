@@ -442,7 +442,11 @@ class Vegetation:
         s = model.evaluate(x[idx], y[idx])
         hz = s["height"]
         water = s["water"]
-        ok = (np.isnan(water) | (water <= hz - 0.2) | reeds[idx]) & (s["road"] < 0.3)
+        depth = water - hz  # (nan: no water)
+        dry = np.isnan(water) | (depth <= -0.2)
+        shore = ~np.isnan(depth) & (depth > -0.8) & (depth < 0.7)  # reeds: shallows and banks
+        marsh = np.isnan(water) & (s["moisture"] > 0.8)
+        ok = np.where(reeds[idx], shore | marsh, dry) & (s["road"] < 0.3)
         from .volumes import volumes_of
 
         vol = volumes_of(self.rt)

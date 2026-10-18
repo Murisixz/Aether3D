@@ -272,6 +272,18 @@ class World:
         new = D.check_definition(new, f"{self.location}.definition")
         self._system._set(self, label, definition=new)
 
+    # -- export -------------------------------------------------------------------------
+
+    def export_region(self, path: Any, region: Any, **options: Any) -> dict[str, Any]:
+        """Export the generated geometry of ``region`` [x0, y0, x1, y1] to a ``.glb`` or
+        ``.gltf`` file (terrain or blocks, water, caves, plants, structures); see
+        :func:`.export.export_region` for ``level``, ``include``, ``plant_lod``,
+        ``allow_lossy``, ``bake_textures`` and ``max_triangles``. Read-only."""
+        self._check()
+        from .export import export_region
+
+        return export_region(self, path, region, **options)
+
     # -- structures ----------------------------------------------------------------------
 
     def structures(self, kind: str | None = None) -> list[dict]:

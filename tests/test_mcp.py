@@ -73,7 +73,7 @@ def test_tools_are_discoverable_with_strict_schemas(tmp_path):
         "render_image", "history", "export_scene", "run_script", "inspect_mesh", "inspect_uvs",
         "inspect_texture", "diagnostics", "capabilities", "observe_scene", "diagnose_scene",
         "propose_corrections", "apply_corrections", "feedback_loop", "inspect_cad", "import_cad",
-        "inspect_animation",
+        "inspect_animation", "inspect_world",
     ]  # fmt: skip
     for tool in tools:
         schema = tool.input_schema
@@ -167,7 +167,7 @@ def test_stdout_carries_only_protocol_messages(tmp_path):
             proc.kill()
     assert proc.stdout.read() == b""
     assert replies[1]["result"]["serverInfo"]["name"] == "aether3d"
-    assert len(replies[2]["result"]["tools"]) == 26
+    assert len(replies[2]["result"]["tools"]) == 27  # (Stage 16: was 26; + inspect_world)
     assert replies[4]["result"]["structuredContent"]["counts"]["objects"] == 44
     image = replies[5]["result"]["content"][0]
     assert image["type"] == "image" and image["mimeType"] == "image/png"
