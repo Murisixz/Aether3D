@@ -59,6 +59,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 KINDS = ("clip", "binding", "rig", "skin", "constraints", "morph", "path", "sequence")
+_EDIT_POLICIES = ("skins", "animation", "channels", "tolerance", "dry_run")
 
 
 def _err(code: str, message: str, location: str | None = None, **kw: Any) -> AnimationError:
@@ -880,6 +881,51 @@ class AnimationSystem:
             else:
                 self._set(item, definition=rig)
             self._check_cycles()
+
+    def edit_rig(self, armature: Any, operations: list[Any], **policies: Any) -> dict[str, Any]:
+        """Structural rig edits as one undo step (see :mod:`.rig_edit`): ``add_joint``,
+        ``remove_joint``, ``move_joint``, ``orient_joint``, ``rename_joint``,
+        ``reparent_joint``, ``insert_joint``, ``split_bone``, ``mirror_joints``,
+        ``align_bone``, ``set_joint``; policies ``skins`` (``rebind`` | ``keep_bind``),
+        ``animation`` (``keep`` | ``convert``), ``channels`` (``keep`` | ``remove``),
+        ``tolerance`` (degrees), ``dry_run``. Returns a report of every dependent change."""
+        from .rig_edit import edit_rig
+
+        return edit_rig(self, armature, operations, **policies)
+
+    def _edit_one(self, armature: Any, op: dict[str, Any], options: dict[str, Any]) -> dict:
+        policies = {k: options.pop(k) for k in list(options) if k in _EDIT_POLICIES}
+        return self.edit_rig(armature, [{**op, **options}], **policies)
+
+    def add_joint(self, armature: Any, name: str, **options: Any) -> dict[str, Any]:
+        """Add a joint (``parent``, ``position``, ``space``, ``rotation``, ``tail``,
+        ``role``, ``deform``, ``limits``); see :meth:`edit_rig`."""
+        return self._edit_one(armature, {"op": "add_joint", "name": name}, options)
+
+    def remove_joint(self, armature: Any, joint: str, **options: Any) -> dict[str, Any]:
+        return self._edit_one(armature, {"op": "remove_joint", "joint": joint}, options)
+
+    def move_joint(self, armature: Any, joint: str, position: Any, **options: Any) -> dict:
+        return self._edit_one(
+            armature, {"op": "move_joint", "joint": joint, "position": position}, options
+        )
+
+    def orient_joints(self, armature: Any, joints: Any = "all", **options: Any) -> dict:
+        return self._edit_one(armature, {"op": "orient_joint", "joints": joints}, options)
+
+    def rename_joint(self, armature: Any, joint: str, name: str, **options: Any) -> dict:
+        return self._edit_one(
+            armature, {"op": "rename_joint", "joint": joint, "name": name}, options
+        )
+
+    def reparent_joint(self, armature: Any, joint: str, parent: str | None, **options: Any):
+        return self._edit_one(
+            armature, {"op": "reparent_joint", "joint": joint, "parent": parent}, options
+        )
+
+    def mirror_joint_chain(self, armature: Any, side: str = "L", **options: Any) -> dict:
+        """Create or update the other side's joints as the mirror image of ``side``'s."""
+        return self._edit_one(armature, {"op": "mirror_joints", "side": side}, options)
 
     def _canonical_constraint(self, raw: Any, location: str) -> Any:
         """Object references of a constraint's targets as ids (renames keep them)."""
