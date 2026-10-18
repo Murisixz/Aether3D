@@ -693,7 +693,10 @@ def compute_regional(model: Any, ctx: Any) -> Regional:
     atten = _attenuation(area.reshape(ny, nx), (filled - h).reshape(ny, nx), rv["threshold"])
     dilated = _dilate_labels(label.reshape(ny, nx))
     timings["fields"] = time.perf_counter() - t0
-    delta = (h - base).reshape(ny, nx)
+    # The eroded relief, without the grid-scale steps of the per-node sweeps (a binomial
+    # [1 2 1] / 4 filter on each axis; edges replicated): bicubic interpolation of those
+    # would print the grid on slopes.
+    delta = _smooth((h - base).reshape(ny, nx))
     for grid in (delta, atten, dilated, dist_grid):
         grid.flags.writeable = False
     stats = {
@@ -949,3 +952,10 @@ def _attenuation(area, depth, threshold):
     flow = np.sqrt(np.maximum(area, 0.0) / threshold)
     a = 1.0 - 0.6 * nz.smoothstep(0.15, 1.0, flow)
     return np.where(depth > 0.5, 0.0, a)
+
+
+def _smooth(grid: np.ndarray) -> np.ndarray:
+    """A binomial [1 2 1] / 4 filter along both axes (edges replicated)."""
+    p = np.pad(grid, 1, mode="edge")
+    rows = 0.25 * p[:, :-2] + 0.5 * p[:, 1:-1] + 0.25 * p[:, 2:]
+    return 0.25 * rows[:-2] + 0.5 * rows[1:-1] + 0.25 * rows[2:]

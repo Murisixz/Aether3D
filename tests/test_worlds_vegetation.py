@@ -171,21 +171,35 @@ def test_settlements_are_valid_and_undo_as_one_step():
     assert w.structures() == [] and w.features("road") == []
 
 
-def test_roads_bridge_rivers():
+def river_world(**structures):
+    """A temperate world with an authored river along x = 0 from y = -1000 to 1000."""
     scene = Scene("Roads")
-    w = scene.worlds.create("W", "alpine_valley", seed=7, size=4096.0, overrides=SMALL)
-    reg = w.runtime.regional()
-    inside = [s for s in reg.segments if max(abs(s[0]), abs(s[1]), abs(s[2]), abs(s[3])) < 1500]
-    seg = max(inside, key=lambda s: max(s[6], s[7]))  # the widest river segment inside
-    mx, my = (seg[0] + seg[2]) / 2, (seg[1] + seg[3]) / 2
-    dx, dy = seg[2] - seg[0], seg[3] - seg[1]
-    n = math.hypot(dx, dy)
-    nx, ny = -dy / n, dx / n
-    a = [mx - 80 * nx, my - 80 * ny]
-    b = [mx + 80 * nx, my + 80 * ny]
-    plan = w.route(a, b, cell=8.0)
-    assert plan["length"] > 150
-    assert any(i["kind"] == "bridge" for i in plan["items"])
+    w = scene.worlds.create(
+        "W", "temperate", seed=7, size=4096.0, overrides={**SMALL, "structures": structures}
+    )
+    level = w.height(0.0, 0.0)
+    w.add_feature(
+        {
+            "type": "river",
+            "id": "r",
+            "depth": 2.0,
+            "shape": {"line": [[0.0, -1000.0, level], [0.0, 1000.0, level]], "width": 14.0},
+        }
+    )
+    return w
+
+
+def test_roads_bridge_rivers():
+    w = river_world()
+    plan = w.route([-150.0, 0.0], [150.0, 0.0], cell=8.0)
+    assert plan["length"] >= 300
+    bridges = [i for i in plan["items"] if i["kind"] == "bridge"]
+    assert len(bridges) == 1
+    (ax, ay), (bx, by) = bridges[0]["line"]
+    assert ax < -7.0 < 7.0 < bx  # from bank to bank
+    for road in plan["roads"]:  # roads stop at the banks
+        xs = [p[0] for p in road["shape"]["line"]]
+        assert max(xs) <= -6.0 or min(xs) >= 6.0
 
 
 def test_landmarks_and_the_bridges_setting():
@@ -200,28 +214,11 @@ def test_landmarks_and_the_bridges_setting():
     summary = w.build_settlements(1, houses=[4, 6])
     kinds = {i["kind"] for i in w.structures()}
     assert {"castle", "tower", "ruin"} <= kinds and summary["towers"] and summary["ruins"]
-    alps = Scene("Alps").worlds.create(
-        "A",
-        "alpine_valley",
-        seed=7,
-        size=4096.0,
-        overrides={**SMALL, "structures": {"bridges": False}},
-    )
-    reg = alps.runtime.regional()
-    inside = [s for s in reg.segments if max(abs(s[0]), abs(s[1]), abs(s[2]), abs(s[3])) < 1500]
-    seg = max(inside, key=lambda s: max(s[6], s[7]))
-    mx, my = (seg[0] + seg[2]) / 2, (seg[1] + seg[3]) / 2
-    n = math.hypot(seg[2] - seg[0], seg[3] - seg[1])
-    nx, ny = -(seg[3] - seg[1]) / n, (seg[2] - seg[0]) / n
+    w = river_world(bridges=False)
     from aether3d.worlds.structures import plan_road
 
     with pytest.raises(WorldError) as info:
         plan_road(
-            alps.runtime.model(),
-            [mx - 80 * nx, my - 80 * ny],
-            [mx + 80 * nx, my + 80 * ny],
-            prefix="r",
-            cell=8.0,
-            bridges=False,
+            w.runtime.model(), [-150.0, 0.0], [150.0, 0.0], prefix="r", cell=8.0, bridges=False
         )
     assert info.value.code == "NO_ROUTE"

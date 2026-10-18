@@ -7,7 +7,8 @@ multiplied by the terrain material's detail texture) blends, in order:
    in its own colours, weighted by the biome weights; grass dries toward straw where the
    moisture is low, with two octaves of tone noise so meadows are not flat paint;
 2. **soil** on moderate slopes and **rock** on steep ones (the ``surface.cliff_slope``
-   angle, with a noisy band), in the biomes' rock colours;
+   angle, with a noisy band), in the biomes' rock colours, varied over a few hundred
+   metres and darker in gullies (the regional drainage area) than on ridges;
 3. **sand** on beaches (near the sea, on gentle slopes);
 4. **snow** where the temperature at the vertex's own height is below
    ``surface.snow_temperature`` (a noisy margin; not on slopes too steep to hold it);
@@ -81,6 +82,16 @@ def colors(model, sample: dict, x: np.ndarray, y: np.ndarray, normals: np.ndarra
     soil = nz.blend(w, model.colors["soil"])
     rock = nz.blend(w, model.colors["rock"])
     sand = nz.blend(w, model.colors["sand"])
+    # Rock varies over a few hundred metres (warmer and cooler outcrops); gullies, where
+    # water collects (the regional drainage area, the same at every level of detail), are
+    # darker and ridges lighter.
+    broad = nz.fbm2(nz.derive(seed, "surface", "outcrop"), x, y, octaves=2, frequency=1.0 / 220.0)
+    rock = rock * (0.9 + 0.22 * broad)[:, None] * np.array([1.0, 0.985, 0.96])
+    reg = model.regional_if_ready()
+    if reg is not None:
+        wetness = np.clip((np.log10(np.maximum(reg.flow(x, y), 1.0)) - 3.6) / 2.4, 0.0, 1.0)
+        rock = rock * (1.06 - 0.3 * wetness)[:, None]
+        soil = soil * (1.04 - 0.2 * wetness)[:, None]
     # 2. Soil and rock by slope (cos of the slope angle = n_z), with a noisy band; above the
     # tree line (cold) bare rock starts 12 degrees earlier, in warm lowlands 8 later.
     temp = sample["temperature"]

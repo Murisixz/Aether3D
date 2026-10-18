@@ -227,10 +227,40 @@ SPECIES_SPEC = {
     "slope": F(0.0, 90.0),  # steepest slope it grows on (degrees)
 }
 SPECIES_DEFAULT = {"species": "oak", "density": 10.0, "cluster": 0.4, "scale": 1.0, "slope": 30.0}
+SPECIES_SLOPES = {
+    # The steepest slope (degrees) a species grows on when an entry does not say.
+    **dict.fromkeys(("spruce", "fir", "pine", "larch"), 42.0),
+    **dict.fromkeys(
+        (
+            "oak",
+            "beech",
+            "maple",
+            "birch",
+            "willow",
+            "jungle",
+            "palm",
+            "acacia",
+            "baobab",
+            "cactus",
+        ),
+        36.0,
+    ),  # fmt: skip
+    **dict.fromkeys(("dead_tree", "bush", "shrub", "tall_grass", "flowers", "mushroom"), 40.0),
+    **dict.fromkeys(("grass", "fern", "dead_bush"), 45.0),
+    "heather": 48.0,
+    "reeds": 15.0,
+    "rock": 60.0,
+    "boulder": 50.0,
+    "pebbles": 50.0,
+    "log": 25.0,
+}
 
 
 def _species(v: Any, loc: str) -> dict:
-    return _normalize(v, SPECIES_SPEC, SPECIES_DEFAULT, loc)
+    default = SPECIES_DEFAULT
+    if isinstance(v, dict) and v.get("species") in SPECIES_SLOPES:
+        default = {**SPECIES_DEFAULT, "slope": SPECIES_SLOPES[v["species"]]}
+    return _normalize(v, SPECIES_SPEC, default, loc)
 
 
 GROUNDS = ("grass", "dirt", "sand", "red_sand", "snow", "gravel", "mud", "rock", "ice")
@@ -282,7 +312,7 @@ def _biome(name: str, temperature, moisture, ground, colors, vegetation, *, terr
         "colors": colors,
         "terrain": {"dunes": 0.0, "flatten": 0.0, "roughness": 1.0, **(terrain or {})},
         "vegetation": [
-            {**SPECIES_DEFAULT, **({"species": s, "density": d} if isinstance(s, str) else s)}
+            _species({"species": s, "density": d} if isinstance(s, str) else s, name)
             for s, d in vegetation
         ],
         "blocks": {
@@ -1013,25 +1043,25 @@ PRESETS: dict[str, dict[str, Any]] = {
             "mountains": {
                 "height": 3200.0,
                 "scale": 4200.0,
-                "ridged": 0.45,
+                "ridged": 0.8,
                 "octaves": 9,
-                "roughness": 0.45,
-            },  # fmt: skip
+                "roughness": 0.55,
+            },
             "hills": {"height": 90.0, "scale": 900.0},
             "valleys": {"depth": 220.0, "scale": 3200.0, "width": 0.09},
             "detail": {"height": 2.0, "scale": 40.0},
             "warp": {"amplitude": 420.0, "scale": 2400.0},
         },
-        "climate": {"temperature": 11.0, "moisture": 0.62, "variation": 3.0},
+        "climate": {"temperature": 8.5, "moisture": 0.62, "variation": 3.0},
         "hydrology": {
             "cell": 16.0,
             "erosion": {
                 "iterations": 60,
                 "strength": 3.0,
                 "deposition": 0.3,
-                "talus": 36.0,
-                "thermal": 0.5,
-            },  # fmt: skip
+                "talus": 45.0,
+                "thermal": 0.15,
+            },
             "rivers": {"threshold": 3.0e6, "width": 0.01, "max_width": 45.0},
             "lakes": {"max": 3},
         },
