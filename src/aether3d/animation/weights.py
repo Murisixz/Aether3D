@@ -11,7 +11,7 @@
   Because paths cannot cross air, an arm resting near the torso does not pull the torso,
   and the left leg never weighs on the right.
 * ``envelope`` and ``nearest`` -- Stage 17's Euclidean distances to the bone segments.
-* **Policies**: ``organic`` (``p = 2``, wide smooth blends), ``stylized`` (``p = 4``,
+* **Policies**: ``organic`` (``p = 3``, smooth blends), ``stylized`` (``p = 4``,
   tighter blends), ``rigid`` (each disconnected part follows the one bone nearest to it
   as a whole -- blocky and armoured characters -- else each vertex its nearest bone).
   ``rigid_parts`` (``auto``, ``all``, ``none``) makes small separate parts (buttons,
@@ -53,7 +53,9 @@ if TYPE_CHECKING:
 
 METHODS = ("geodesic", "envelope", "nearest")
 POLICIES = {
-    "organic": {"power": 2.0, "ratio": 3.0, "smooth": 6, "influences": 4},
+    # (p 3: a knee bent 140 degrees keeps 0.76 of its size, 0.69 at p 2 -- measured; p 4
+    # keeps more but creases hips and twists harder)
+    "organic": {"power": 3.0, "ratio": 3.0, "smooth": 6, "influences": 4},
     "stylized": {"power": 4.0, "ratio": 2.0, "smooth": 3, "influences": 4},
     "rigid": {"power": 0.0, "ratio": 1.0, "smooth": 0, "influences": 1},
 }

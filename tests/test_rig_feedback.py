@@ -20,10 +20,13 @@ def body_mesh():
     return implicit_surface(humanoid_shapes(), 0.018)
 
 
-def rigged(mesh):
+def rigged(mesh, *, soft_knee=False):
     s = Scene("Feedback")
     body = s.add_object("Body", mesh=mesh)
     s.animation.autorig(body, name="Rig")
+    if soft_knee:  # (weights smoothed by hand far too wide: the knee collapses when bent)
+        smooth = {"op": "smooth", "iterations": 200, "joints": ["Thigh.L", "Shin.L"]}
+        s.animation.edit_weights(body, [smooth, smooth])
     return s
 
 
@@ -37,7 +40,7 @@ RIG = {"check": "rig", "id": "rig", "objects": "Rig", "poses": ["knee_bend_120.L
 
 
 def test_the_rig_check_finds_corrects_and_verifies(body_mesh):
-    s = rigged(body_mesh)
+    s = rigged(body_mesh, soft_knee=True)
     fs = FeedbackSession(s, expectations(RIG), width=48, height=48)
     findings = fs.diagnose().findings
     collapse = next(f for f in findings if f.code == "JOINT_COLLAPSE")
