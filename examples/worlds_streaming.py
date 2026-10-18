@@ -29,10 +29,12 @@ sys.path.insert(0, str(HERE))
 from worlds_common import (  # noqa: E402
     OUT,
     encode,
-    exposure,
+    frame_size,
     light,
     machine,
     preview,
+    render_options,
+    set_backend,
     sheet,
     software,
     write_report,
@@ -49,15 +51,20 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("output", nargs="?", default=str(OUT / "c_streaming"))
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--backend", choices=("gpu", "cpu"), default="gpu",
+                        help="cpu: the CPU rasterizer for every image (tests)")  # fmt: skip
     parser.add_argument("--no-video", action="store_true")
     args = parser.parse_args(argv)
+    set_backend(args.backend)
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
-    w, h = (480, 270) if args.quick else (1920, 1080)
+    w, h = frame_size(args.quick)
     seconds, fps = (4.0, 15) if args.quick else (20.0, 30)
+    if args.quick and args.backend == "cpu":
+        seconds, fps = 2.0, 5  # (the test mode: ten frames)
     scene = Scene("Streaming")
     world = scene.worlds.create(
-        "Highlands", "infinite_highlands", seed=21, overrides={"streaming": {"memory_mb": 768.0}}
+        "Highlands", "infinite_highlands", seed=21, overrides={"streaming": {"memory_mb": 128.0}}
     )
     x0, y0 = ORIGIN
     g0 = world.height(x0, y0)
@@ -86,14 +93,7 @@ def main(argv: list[str]) -> int:
         cam.transform.position = (x, y, ground + 140.0)
         cam.look_at((x + 1000.0, y + 300.0, ground - 20.0))
         t0 = time.perf_counter()
-        r = scene.render(
-            backend="gpu",
-            width=w,
-            height=h,
-            tonemap="neutral",
-            exposure=exposure("morning"),
-            shadows={"cascades": 4, "distance": 4000.0, "map_size": 4096},
-        )
+        r = scene.render(width=w, height=h, **render_options("morning", distance=4000.0))
         dt = time.perf_counter() - t0
         r.save(frames_dir / f"frame_{k:05d}.png")
         stats = rt.stats()
@@ -106,6 +106,7 @@ def main(argv: list[str]) -> int:
                 "y": round(y, 2),
                 "seconds": round(dt, 3),
                 "tiles_new": now["tiles_generated"] - previous["tiles_generated"],
+                "tiles_evicted": now["tiles_evicted"] - previous["tiles_evicted"],
                 "tiles_cached": stats["tiles_cached"],
                 "tile_bytes": stats["tile_bytes"],
                 "cached_total": stats["memory"]["cached_total"],
@@ -137,11 +138,12 @@ def main(argv: list[str]) -> int:
     secs = sorted(r["seconds"] for r in rows)
     report = {
         "machine": machine(),
+        "backend": args.backend,
         "world": {
             "preset": "infinite_highlands",
             "origin": ORIGIN,
             "flown_m": DISTANCE,
-            "memory_mb": 768.0,
+            "memory_mb": 128.0,
         },
         "frames": len(rows),
         "fps": fps,
@@ -150,6 +152,8 @@ def main(argv: list[str]) -> int:
         "seconds_per_frame_median": secs[len(secs) // 2],
         "seconds_per_frame_p95": secs[int(0.95 * (len(secs) - 1))],
         "tiles_generated": rt.counters["tiles_generated"],
+        "tiles_evicted": rt.counters["tiles_evicted"],
+        "plant_tiles_evicted": (rt.stats().get("vegetation") or {}).get("tiles_evicted", 0),
         "peak_cached_mib": round(max(r["cached_total"] for r in rows) / 2**20, 1),
         "peak_rss_mib": round(max(r["rss_bytes"] or 0 for r in rows) / 2**20, 1),
         "peak_gpu_mesh_cache_mib": round(
@@ -161,34 +165,39 @@ def main(argv: list[str]) -> int:
     if not args.no_video and not args.quick:
         report["encode"] = encode(frames_dir, out, "flight", fps)
     write_report(out / "report.json", report)
-    print(f"done in {total:.0f} s: {out}")
+    print(f"{out}: {total:.0f} s, done")
     return 0
 
 
 def chart(rows: list[dict]) -> np.ndarray:
-    """Three stacked line charts (cached MiB, resident MiB, frame seconds), white on dark."""
-    w, h, pad = 960, 540, 30
-    img = np.full((h, w, 3), 22, np.uint8)
+    """Three labelled line charts, frame by frame: the worlds' cached data (MiB), the
+    process's resident memory (MiB) and seconds per frame -- lines drawn with NumPy, the
+    labels by Aether3D's contact sheet."""
+    from aether3d.animation.frames import contact_sheet
+
+    w, h, pad = 960, 150, 12
     series = [
-        ([r["cached_total"] / 2**20 for r in rows], (120, 200, 255)),
-        ([(r["rss_bytes"] or 0) / 2**20 for r in rows], (255, 190, 90)),
-        ([r["seconds"] for r in rows], (140, 230, 140)),
+        ("cached data", "MiB", [r["cached_total"] / 2**20 for r in rows], (120, 200, 255)),
+        ("resident memory", "MiB", [(r["rss_bytes"] or 0) / 2**20 for r in rows], (255, 190, 90)),
+        ("frame time", "s", [r["seconds"] for r in rows], (140, 230, 140)),
     ]
-    band = (h - 4 * pad) // 3
-    for k, (values, color) in enumerate(series):
-        top = pad + k * (band + pad)
+    panels, labels = [], []
+    for name, unit, values, color in series:
+        img = np.full((h, w, 3), 22, np.uint8)
         v = np.asarray(values, dtype=np.float64)
-        lo, hi = 0.0, max(float(v.max()), 1e-9)
-        img[top + band, pad : w - pad] = 70
+        hi = max(float(v.max()), 1e-9)
+        img[h - pad, pad : w - pad] = 70  # (the zero line)
         xs = np.linspace(pad, w - pad - 1, len(v))
-        ys = top + band - (v - lo) / (hi - lo) * band
+        ys = (h - pad) - v / hi * (h - 2 * pad)
         for i in range(len(v) - 1):
             n = int(max(abs(xs[i + 1] - xs[i]), abs(ys[i + 1] - ys[i]))) + 1
-            for s in np.linspace(0.0, 1.0, n):
-                x = int(round(xs[i] + s * (xs[i + 1] - xs[i])))
-                y = int(round(ys[i] + s * (ys[i + 1] - ys[i])))
+            for t in np.linspace(0.0, 1.0, n):
+                x = int(round(xs[i] + t * (xs[i + 1] - xs[i])))
+                y = int(round(ys[i] + t * (ys[i + 1] - ys[i])))
                 img[max(y - 1, 0) : y + 1, x] = color
-    return img
+        panels.append(img)
+        labels.append(f"{name} ({unit}): {v.min():.3g} to {hi:.3g}, {len(v)} frames")
+    return contact_sheet(panels, columns=1, labels=labels)
 
 
 if __name__ == "__main__":

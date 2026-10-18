@@ -665,3 +665,75 @@ def test_committed_animation_outputs():
         Scene.load(path)
     for path in sorted(ANIMATION.glob("*/*.glb")):
         assert import_gltf(path).animation["animations"], path
+
+
+# --------------------------------------------------------------------------- #
+# Procedural worlds (0.18.0)
+# --------------------------------------------------------------------------- #
+
+WORLDS = EXAMPLES / "output" / "worlds"
+
+
+def _needs_native():
+    """Showcases whose worlds need a regional stage or long views: minutes on NumPy alone;
+    the native CI jobs run them."""
+    from aether3d import _native
+
+    return pytest.mark.skipif(
+        _native.module() is None, reason="slow without the native kernels (the native jobs run it)"
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "args", "checks"),
+    [
+        ("worlds_character.py", ("--no-video",),
+         lambda r: all(f["contacts"] > 0 and f["sliding_m"] < 0.01
+                       for f in r["contacts"].values())),
+        ("worlds_block_world.py", ("--no-video",),
+         lambda r: r["build"]["village"]["settlements"] and r["build"]["road"] > 0),
+        pytest.param("worlds_streaming.py", ("--no-video",),
+                     lambda r: r["frames"] >= 10 and r["peak_cached_mib"] <= r["world"]["memory_mb"]
+                     and r["world"]["origin"] == [1_000_000.0, 2_000_000.0],
+                     marks=_needs_native()),
+        pytest.param("worlds_caves.py", (),
+                     lambda r: set(r["stills"]) == {"entrance", "cavern", "overhang"}
+                     and r["volumes"]["cubes_meshed"] > 0, marks=_needs_native()),
+        pytest.param("worlds_alpine_valley.py", ("--no-video",),
+                     lambda r: r["build"]["regional"]["rivers"] > 0
+                     and r["build"]["settlements"]["settlements"], marks=_needs_native()),
+        pytest.param("worlds_biomes.py", (), lambda r: len(r["places"]) >= 8,
+                     marks=_needs_native()),
+    ],
+)  # fmt: skip
+def test_world_showcases_run(tmp_path, name, args, checks):
+    _run_example(name, str(tmp_path), "--quick", "--backend", "cpu", *args)
+    report = json.loads((tmp_path / "report.json").read_text())
+    assert report["backend"] == "cpu" and checks(report)
+
+
+def test_committed_world_outputs():
+    """The Stage 16 showcases' committed results: Aether3D images (renders, and previews,
+    sheets and charts composed from them, all tagged), scenes that load, and reports of
+    GPU renders whose encodes were checked against their frames."""
+    image = pytest.importorskip("PIL.Image")
+
+    pngs = sorted(WORLDS.glob("*/*.png"))
+    assert len(pngs) >= 30
+    for path in pngs:
+        with image.open(path) as png:
+            assert png.info["Software"].startswith("Aether3D "), path
+    reports = {d.name: json.loads((d / "report.json").read_text())
+               for d in WORLDS.iterdir() if d.is_dir()}  # fmt: skip
+    assert set(reports) == {"a_alpine_valley", "b_block_world", "c_streaming", "d_biomes",
+                            "e_caves", "f_character"}  # fmt: skip
+    for report in reports.values():
+        assert re.fullmatch(r"\d+\.\d+\.\d+", report["machine"]["aether3d"])
+    for name in ("a_alpine_valley", "b_block_world", "c_streaming", "f_character"):
+        verify = reports[name]["encode"]["verify"]
+        psnr = float(verify["psnr"].split("average:")[1].split()[0])
+        assert psnr > 35.0, (name, verify)
+    assert len(reports["d_biomes"]["places"]) >= 8
+    for path in sorted(WORLDS.glob("*/*.aether")):
+        scene = Scene.load(path)
+        assert len(scene.worlds) >= 1, path

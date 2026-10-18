@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shutil
 import subprocess
 import time
@@ -65,6 +66,37 @@ def exposure(preset: str) -> float:
     return LIGHTING[preset][6]
 
 
+BACKEND = "gpu"
+"""``"gpu"``: the GPU rasterizer with cascaded shadows and the GPU path tracer (the
+showcases); ``"cpu"``: the CPU rasterizer for every image, without shadows or path tracing
+(how the tests run the scripts on machines without a GPU)."""
+
+
+def set_backend(name: str) -> None:
+    global BACKEND
+    if name not in ("gpu", "cpu"):
+        raise ValueError(f"backend is gpu or cpu, not {name!r}")
+    BACKEND = name
+
+
+def frame_size(quick: bool) -> tuple[int, int]:
+    """1920x1080; with ``--quick`` 480x270, or 192x108 in the CPU test mode."""
+    if not quick:
+        return 1920, 1080
+    return (192, 108) if BACKEND == "cpu" else (480, 270)
+
+
+def render_options(preset: str, *, cascades: int = 4, distance: float = 6000.0) -> dict:
+    """Options of ``scene.render`` for the current backend."""
+    options: dict[str, Any] = {"tonemap": "neutral", "exposure": exposure(preset)}
+    if BACKEND == "cpu":
+        options["backend"] = "cpu"
+    else:
+        options["backend"] = "gpu"
+        options["shadows"] = {"cascades": cascades, "distance": distance, "map_size": 4096}
+    return options
+
+
 def flight(
     scene,
     name: str,
@@ -104,27 +136,22 @@ def render_still(
 ) -> dict:
     """One still (GPU rasterizer with cascaded shadows, or the GPU path tracer with
     ``path_tracing`` samples per pixel); returns timings and the backend report."""
-    options: dict[str, Any] = {
-        "width": width,
-        "height": height,
-        "tonemap": "neutral",
-        "exposure": exposure(preset),
-    }
+    options: dict[str, Any] = {"width": width, "height": height}
     if camera is not None:
         options["camera"] = camera
     if time is not None:
         options["time"] = time
     t0 = _now()
-    if path_tracing:
+    if path_tracing and BACKEND == "gpu":
         r = scene.render(
-            backend="gpu_path", path={"samples": path_tracing, "bounces": 3}, **options
-        )
-    else:
-        r = scene.render(
-            backend="gpu",
-            shadows={"cascades": cascades, "distance": distance, "map_size": 4096},
+            backend="gpu_path",
+            path={"samples": path_tracing, "bounces": 3},
+            tonemap="neutral",
+            exposure=exposure(preset),
             **options,
         )
+    else:
+        r = scene.render(**render_options(preset, cascades=cascades, distance=distance), **options)
     seconds = _now() - t0
     path.parent.mkdir(parents=True, exist_ok=True)
     r.save(path)
@@ -162,10 +189,7 @@ def render_video_frames(
     options: dict[str, Any] = {
         "width": width,
         "height": height,
-        "tonemap": "neutral",
-        "exposure": exposure(preset),
-        "backend": "gpu",
-        "shadows": {"cascades": cascades, "distance": distance, "map_size": 4096},
+        **render_options(preset, cascades=cascades, distance=distance),
     }
     if camera is not None:
         options["camera"] = camera
@@ -206,7 +230,7 @@ def render_video_frames(
 def encode(frames_dir: Path, out_dir: Path, name: str, fps: float, *, master: bool = True) -> dict:
     """``<name>_1080p.mp4`` (libx264, preset slow, CRF 14, yuv420p, BT.709, faststart),
     ``<name>_master.mkv`` (FFV1, lossless RGB) and ``<name>_preview.mp4`` (960x540,
-    CRF 23); then PSNR and SSIM of the 1080p encode against the frames."""
+    CRF 28: small enough to commit); then PSNR and SSIM of the 1080p encode against the frames."""
     exe = shutil.which("ffmpeg")
     if exe is None:
         return {"skipped": "ffmpeg is not installed"}
@@ -258,7 +282,7 @@ def encode(frames_dir: Path, out_dir: Path, name: str, fps: float, *, master: bo
             "-preset",
             "slow",
             "-crf",
-            "23",
+            "28",
             "-pix_fmt",
             "yuv420p",
             "-vf",
@@ -312,11 +336,13 @@ def encode(frames_dir: Path, out_dir: Path, name: str, fps: float, *, master: bo
 
 def verify(video: Path, pattern: str, rate: str) -> dict:
     """PSNR (dB) and SSIM of a video's decoded frames against the PNG frames (both in
-    RGB, at the frames' size)."""
+    RGB, at the frames' size), paired by frame number (not by timestamps, which a
+    container may round)."""
     exe = shutil.which("ffmpeg")
+    by_index = f"settb=1/{rate},setpts=N"
     graph = (
-        "[0:v]scale=flags=lanczos:in_color_matrix=bt709:in_range=tv,format=rgb24[a];"
-        "[1:v]format=rgb24[b];[a][b]{}"
+        f"[0:v]{by_index},scale=flags=lanczos:in_color_matrix=bt709:in_range=tv,format=rgb24[a];"
+        f"[1:v]{by_index},format=rgb24[b];[a][b]{{}}"
     )
     result: dict[str, Any] = {}
     for metric in ("psnr", "ssim"):
@@ -397,8 +423,8 @@ def _portable(value: Any) -> Any:
         return {k: _portable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_portable(v) for v in value]
-    if isinstance(value, str) and value.startswith(root):
-        return value[len(root) + 1 :]
+    if isinstance(value, str) and root in value:  # (paths, and paths inside commands)
+        return value.replace(root + os.sep, "").replace(root, ".")
     if isinstance(value, float) and not math.isfinite(value):
         return None
     if isinstance(value, np.generic):

@@ -25,7 +25,17 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from worlds_common import OUT, light, machine, preview, render_still, sheet, write_report  # noqa: E402
+from worlds_common import (  # noqa: E402
+    OUT,
+    frame_size,
+    light,
+    machine,
+    preview,
+    render_still,
+    set_backend,
+    sheet,
+    write_report,
+)
 
 from aether3d import Scene  # noqa: E402
 from aether3d.worlds.volumes import CHUNK, volumes_of  # noqa: E402
@@ -97,21 +107,25 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("output", nargs="?", default=str(OUT / "e_caves"))
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--backend", choices=("gpu", "cpu"), default="gpu",
+                        help="cpu: the CPU rasterizer for every image (tests)")  # fmt: skip
     parser.add_argument("--spp", type=int, default=384)
     args = parser.parse_args(argv)
+    set_backend(args.backend)
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
-    w, h = (480, 270) if args.quick else (1920, 1080)
+    w, h = frame_size(args.quick)
     spp = 8 if args.quick else args.spp
     t0 = time.perf_counter()
     scene = Scene("Caves")
-    world = scene.worlds.create(
-        "Highlands", "cavernous_highlands", seed=SEED, overrides={"vegetation": {"density": 0.4}}
-    )
+    overrides: dict = {"vegetation": {"density": 0.4}}
+    if args.backend == "cpu":
+        overrides["streaming"] = {"volume_distance": 150.0}  # (the test mode: fewer cubes)
+    world = scene.worlds.create("Highlands", "cavernous_highlands", seed=SEED, overrides=overrides)
     world.runtime.regional()
     vol = volumes_of(world.runtime)
     light(scene, "morning", fog=0.0002, fog_height=world.height(0.0, 0.0), falloff=0.002)
-    report: dict = {"machine": machine(), "size": [w, h]}
+    report: dict = {"machine": machine(), "backend": args.backend, "size": [w, h]}
     stills = {}
     # 1. A cave entrance from outside: aim at the widest opening.
     ex, ey, opening = entrance(world, vol)
@@ -239,7 +253,7 @@ def main(argv: list[str]) -> int:
     report["seconds"] = round(time.perf_counter() - t0, 1)
     scene.save(out / "caves.aether")
     write_report(out / "report.json", report)
-    print(f"done in {report['seconds']:.0f} s: {out}")
+    print(f"{out}: {report['seconds']:.0f} s, done")
     return 0
 
 

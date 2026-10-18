@@ -38,6 +38,9 @@ from .tiles import Grid, TileKey, View, select, stitch_masks
 LOCAL_MARGIN = 128.0
 """Metres around a tile within which final-stage features (and the regional data) count as
 touching it: the climate lattice spacing, normals and feature fall-offs fit inside."""
+TILE_SHARE = 0.6
+"""Shares of ``streaming.memory_mb`` in a terrain world: tiles 60 %, plants 25 %
+(:data:`.vegetation.PLANT_SHARE`), cave volumes 15 % (:data:`.volumes.VOLUME_SHARE`)."""
 
 
 def _global_key(d: dict) -> str:
@@ -199,7 +202,7 @@ class WorldRuntime:
         return data
 
     def _evict(self, keep: set[str] | None = None) -> None:
-        budget = self.definition["streaming"]["memory_mb"] * 2**20
+        budget = TILE_SHARE * self.definition["streaming"]["memory_mb"] * 2**20
         while self._tile_bytes > budget and len(self._tiles) > 1:
             ck, data = next(iter(self._tiles.items()))
             if keep is not None and ck in keep:

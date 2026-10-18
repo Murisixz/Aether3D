@@ -75,6 +75,8 @@ OVERHANG_AMPLITUDE = 6.0
 TAPER = 8.0
 """Metres over which overhang warps fade toward footprint edges bordering the heightfield."""
 MAX_CUBES = 4000
+VOLUME_SHARE = 0.15
+"""Cave volumes' share of ``streaming.memory_mb`` (see :data:`.runtime.TILE_SHARE`)."""
 """Cube meshes kept in memory (least recently used dropped first)."""
 _N = int(round(CHUNK / VOXEL))  # voxels per cube side
 
@@ -92,7 +94,14 @@ class Volumes:
         self._cubes: OrderedDict[tuple, Mesh | None] = OrderedDict()
         self._anchors: dict[tuple, float] = {}
         self._lock = threading.Lock()
-        self.counters = {"columns": 0, "cubes_meshed": 0, "triangles": 0, "seconds": 0.0}
+        self.counters = {
+            "columns": 0,
+            "cubes_meshed": 0,
+            "cubes_evicted": 0,
+            "triangles": 0,
+            "seconds": 0.0,
+        }
+        self._bytes = 0
 
     # -- settings --------------------------------------------------------------------
 
@@ -398,8 +407,12 @@ class Volumes:
         mesh = self._mesh(ci, cj, ck, open_sides)
         with self._lock:
             self._cubes[key] = mesh
-            while len(self._cubes) > MAX_CUBES:
-                self._cubes.popitem(last=False)
+            self._bytes += _cube_bytes(mesh)
+            budget = VOLUME_SHARE * self.rt.definition["streaming"]["memory_mb"] * 2**20
+            while len(self._cubes) > 1 and (len(self._cubes) > MAX_CUBES or self._bytes > budget):
+                _, old = self._cubes.popitem(last=False)
+                self._bytes -= _cube_bytes(old)
+                self.counters["cubes_evicted"] += 1
             self.counters["cubes_meshed"] += 1
             self.counters["triangles"] += 0 if mesh is None else mesh.triangle_count
             self.counters["seconds"] += time.perf_counter() - t0
@@ -511,15 +524,7 @@ class Volumes:
 
     def stats(self) -> dict[str, Any]:
         with self._lock:
-            mesh_bytes = sum(
-                sum(
-                    a.nbytes
-                    for a in (m.positions, m.triangles, m.normals, m.colors)
-                    if a is not None
-                )
-                for m in self._cubes.values()
-                if m is not None
-            )
+            mesh_bytes = self._bytes
             return {
                 **self.counters,
                 "seconds": round(self.counters["seconds"], 4),
@@ -533,6 +538,17 @@ class Volumes:
             self._columns.clear()
             self._cubes.clear()
             self._anchors.clear()
+            self._bytes = 0
+
+
+def _cube_bytes(mesh: Mesh | None) -> int:
+    if mesh is None:
+        return 0
+    return sum(
+        int(a.nbytes)
+        for a in (mesh.positions, mesh.triangles, mesh.normals, mesh.colors)
+        if a is not None
+    )
 
 
 def _marching_cubes(phi: np.ndarray, origin: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

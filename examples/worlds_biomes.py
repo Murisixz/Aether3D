@@ -27,7 +27,17 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from worlds_common import OUT, light, machine, preview, render_still, sheet, write_report  # noqa: E402
+from worlds_common import (  # noqa: E402
+    OUT,
+    frame_size,
+    light,
+    machine,
+    preview,
+    render_still,
+    set_backend,
+    sheet,
+    write_report,
+)
 
 from aether3d import Scene  # noqa: E402
 
@@ -68,16 +78,20 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("output", nargs="?", default=str(OUT / "d_biomes"))
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--backend", choices=("gpu", "cpu"), default="gpu",
+                        help="cpu: the CPU rasterizer for every image (tests)")  # fmt: skip
     args = parser.parse_args(argv)
+    set_backend(args.backend)
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
-    w, h = (480, 270) if args.quick else (1920, 1080)
+    w, h = frame_size(args.quick)
     t0 = time.perf_counter()
     scene = Scene("Biomes")
     world = scene.worlds.create("Continent", "biome_continent", seed=SEED)
     world.runtime.regional()
     report: dict = {
         "machine": machine(),
+        "backend": args.backend,
         "size": [w, h],
         "regional": world.runtime.regional().summary(),
     }
@@ -121,6 +135,15 @@ def main(argv: list[str]) -> int:
         a = best * math.pi / 4
         eye = (x - 220 * math.cos(a), y - 220 * math.sin(a), g + 60.0)
         target = (x + 500 * math.cos(a), y + 500 * math.sin(a), g + 10.0)
+        weights = world.sample([[x, y]], fields=["biome_weights", "temperature", "moisture"])
+        places[biome] = {
+            "at": [round(x, 1), round(y, 1)],
+            "weights": weights["biome_weights"][0],
+            "temperature": round(weights["temperature"][0], 2),
+            "moisture": round(weights["moisture"][0], 3),
+        }
+        if args.backend == "cpu" and len(places) > 2:
+            continue  # (the test mode renders the first two)
         cam = scene.add_camera(f"Biome {biome}", position=eye, look_at=target, fov=58, far=40000)
         stills[f"biome_{biome}"] = render_still(
             scene,
@@ -131,13 +154,6 @@ def main(argv: list[str]) -> int:
             preset="midday",
             distance=5000.0,
         )
-        weights = world.sample([[x, y]], fields=["biome_weights", "temperature", "moisture"])
-        places[biome] = {
-            "at": [round(x, 1), round(y, 1)],
-            "weights": weights["biome_weights"][0],
-            "temperature": round(weights["temperature"][0], 2),
-            "moisture": round(weights["moisture"][0], 3),
-        }
         print(
             f"{biome}: {stills[f'biome_{biome}']['seconds']} s at {places[biome]['at']}", flush=True
         )
@@ -174,7 +190,7 @@ def main(argv: list[str]) -> int:
     report["seconds"] = round(time.perf_counter() - t0, 1)
     scene.save(out / "continent.aether")
     write_report(out / "report.json", report)
-    print(f"done in {report['seconds']:.0f} s: {out}")
+    print(f"{out}: {report['seconds']:.0f} s, done")
     return 0
 
 

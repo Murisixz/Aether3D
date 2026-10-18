@@ -20,6 +20,8 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
@@ -27,11 +29,14 @@ from animation_common import blocky_character, pixel_skin  # noqa: E402
 from worlds_common import (  # noqa: E402
     OUT,
     encode,
+    frame_size,
     light,
     machine,
     preview,
     progress_printer,
+    render_options,
     render_video_frames,
+    set_backend,
     sheet,
     write_report,
 )
@@ -44,13 +49,19 @@ FEET = ["Leg.L", "Leg.R"]
 
 def run_line(world, village, castle, length: float) -> tuple[float, float, float]:
     """The start and heading of a straight run toward the castle whose corridor (the
-    camera's too) misses every structure: from the village outward, turning up to 40
-    degrees off the castle's bearing if the houses are in the way."""
+    camera's too) keeps clear of every structure -- castles and towers by 16 m, whose
+    foundations reach beyond their walls -- from the village outward, turning off the
+    castle's bearing if something is in the way."""
     from aether3d.worlds.structures import footprint
 
-    polys = [footprint(it, grow=1.0) for it in world.structures() if it["kind"] != "bridge"]
+    polys = [
+        footprint(it, grow=16.0 if it["kind"] in ("castle", "tower") else 2.0)
+        for it in world.structures()
+        if it["kind"] != "bridge"
+    ]
     bearing = math.atan2(castle[1] - village[1], castle[0] - village[0])
-    for turn in (0, 10, -10, 20, -20, 30, -30, 40, -40):
+    clear = []
+    for turn in (0, 10, -10, 20, -20, 30, -30, 40, -40, 60, -60, 90, -90, 120, -120, 180):
         ang = bearing + math.radians(turn)
         dx, dy = math.cos(ang), math.sin(ang)
         for start in range(0, 120, 2):
@@ -61,7 +72,14 @@ def run_line(world, village, castle, length: float) -> tuple[float, float, float
                 )
                 for p in polys
             ):
-                return x0, y0, ang
+                # Prefer ground that stays level along the run (no deep cuts for the road).
+                t = np.arange(-10.0, length + 1.0, 2.0)
+                ground = np.asarray(world.ground(x0 + t * dx, y0 + t * dy), dtype=np.float64)
+                if np.abs(ground - ground[5]).max() <= 2.5:
+                    return x0, y0, ang
+                clear.append((x0, y0, ang))
+    if clear:
+        return clear[0]
     raise RuntimeError("no clear run toward the castle")
 
 
@@ -92,11 +110,14 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("output", nargs="?", default=str(OUT / "f_character"))
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--backend", choices=("gpu", "cpu"), default="gpu",
+                        help="cpu: the CPU rasterizer for every image (tests)")  # fmt: skip
     parser.add_argument("--no-video", action="store_true")
     args = parser.parse_args(argv)
+    set_backend(args.backend)
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
-    w, h = (480, 270) if args.quick else (1920, 1080)
+    w, h = frame_size(args.quick)
     fps = 30
     seconds = 3.0 if args.quick else 10.0
     t0 = time.perf_counter()
@@ -191,6 +212,7 @@ def main(argv: list[str]) -> int:
     contacts = a.foot_contacts(nova, FEET, start=0.0, end=seconds, rate=120, ground=ground)
     report: dict = {
         "machine": machine(),
+        "backend": args.backend,
         "size": [w, h],
         "clip": {
             k: clip[k] for k in ("keys", "duration", "travel", "speed", "period") if k in clip
@@ -215,9 +237,7 @@ def main(argv: list[str]) -> int:
         time=seconds * 0.55,
         width=w,
         height=h,
-        backend="gpu",
-        shadows={"cascades": 4, "distance": 600.0, "map_size": 4096},
-        tonemap="neutral",
+        **render_options("morning", distance=600.0),
     )
     hero.save(out / "hero.png")
     preview(out / "hero.png", out / "hero_preview.png")
@@ -252,7 +272,7 @@ def main(argv: list[str]) -> int:
     report["seconds"] = round(time.perf_counter() - t0, 1)
     scene.save(out / "run.aether")
     write_report(out / "report.json", report)
-    print(f"done in {report['seconds']:.0f} s: {out}")
+    print(f"{out}: {report['seconds']:.0f} s, done")
     return 0
 
 

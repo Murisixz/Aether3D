@@ -288,3 +288,34 @@ def test_cave_surface_columns_draw_every_cube_the_ground_crosses():
             assert set(need) <= {k for k, f in col if f}, (ci, cj)
             checked += 1
     assert checked > 0
+
+
+def test_caches_keep_their_budgets_and_regenerate_the_same_bits():
+    """``streaming.memory_mb`` bounds what stays cached between views (tiles 60 %, plants
+    25 %, cave volumes 15 %); least recently used entries go first, and an evicted tile
+    comes back bit for bit."""
+    from aether3d.worlds.runtime import TILE_SHARE
+    from aether3d.worlds.vegetation import PLANT_SHARE, vegetation_of
+
+    scene = Scene("Budget")
+    w = scene.worlds.create(
+        "B", "temperate", seed=5, size=4096.0,
+        overrides={**SMALL, "streaming": {"memory_mb": 16.0, "view_distance": 1500.0}},
+    )  # fmt: skip
+    rt = w.runtime
+    veg = vegetation_of(rt)
+    first = None
+    for x in np.linspace(-1600.0, 1600.0, 9):
+        eye = np.array([x, -1200.0, w.height(x, -1200.0) + 60.0])
+        view = View(eye, np.array([0.0, 0.96, -0.28]), 900.0, 1500.0, None)
+        tiles = rt.select(view)
+        if first is None:
+            first_key, _, data = tiles[0]
+            first = data.heights.copy()
+        veg.visible(view)
+        budget = 16 * 2**20
+        assert rt.stats()["tile_bytes"] <= max(TILE_SHARE * budget, sum(t[2].nbytes for t in tiles))
+        stats = veg.stats()
+        assert stats["bytes"] <= PLANT_SHARE * budget or stats["tiles_cached"] == 1
+    assert rt.counters["tiles_evicted"] > 0 and veg.stats()["tiles_evicted"] > 0
+    assert np.array_equal(rt.tile(first_key).heights, first)

@@ -73,6 +73,8 @@ SINK = 0.15
 MAX_PLANTS = 300_000
 """Plants drawn per frame at most (the nearest kept)."""
 MAX_TILES = 30_000
+PLANT_SHARE = 0.25
+"""The plants' share of ``streaming.memory_mb`` (see :data:`.runtime.TILE_SHARE`)."""
 """Placement tiles kept in memory (least recently used dropped first)."""
 CLASSES = ("trees", "shrubs", "rocks", "cover")
 SPECIES_ORDER = tuple(LAYERS)
@@ -179,6 +181,7 @@ class Vegetation:
             "candidates": 0,
             "seconds": 0.0,
             "bytes": 0,
+            "tiles_evicted": 0,
         }
 
     # -- species tables ------------------------------------------------------------------
@@ -280,9 +283,13 @@ class Vegetation:
                     self.counters["bytes"] += plants.nbytes
                     self.counters["plants_placed"] += plants.count
                     out[k] = plants
-                while len(self._tiles) > MAX_TILES:
+                budget = PLANT_SHARE * self.rt.definition["streaming"]["memory_mb"] * 2**20
+                while len(self._tiles) > 1 and (
+                    len(self._tiles) > MAX_TILES or self.counters["bytes"] > budget
+                ):  # least recently used first (this call's tiles are already returned)
                     _, old = self._tiles.popitem(last=False)
                     self.counters["bytes"] -= old.nbytes
+                    self.counters["tiles_evicted"] += 1
                 self.counters["tiles_placed"] += len(ks)
                 self.counters["seconds"] += time.perf_counter() - t0
         return out  # type: ignore[return-value]

@@ -30,12 +30,14 @@ from worlds_common import (  # noqa: E402
     OUT,
     encode,
     flight,
+    frame_size,
     light,
     machine,
     preview,
     progress_printer,
     render_still,
     render_video_frames,
+    set_backend,
     sheet,
     write_report,
 )
@@ -115,14 +117,17 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("output", nargs="?", default=str(OUT / "a_alpine_valley"))
     parser.add_argument("--quick", action="store_true", help="small, few samples, short")
+    parser.add_argument("--backend", choices=("gpu", "cpu"), default="gpu",
+                        help="cpu: the CPU rasterizer for every image (tests)")  # fmt: skip
     parser.add_argument("--no-video", action="store_true")
     parser.add_argument("--spp", type=int, default=256)
     args = parser.parse_args(argv)
+    set_backend(args.backend)
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
-    w, h = (480, 270) if args.quick else (1920, 1080)
+    w, h = frame_size(args.quick)
     spp = 8 if args.quick else args.spp
-    report: dict = {"machine": machine(), "size": [w, h]}
+    report: dict = {"machine": machine(), "backend": args.backend, "size": [w, h]}
     t0 = time.perf_counter()
     scene, valley, info = build()
     report["build"] = {**info, "seconds": round(time.perf_counter() - t0, 2)}
@@ -199,7 +204,7 @@ def main(argv: list[str]) -> int:
     scene.save(out / "valley.aether")
     report["project_bytes"] = (out / "valley.aether").stat().st_size
     write_report(out / "report.json", report)
-    print(f"done in {time.perf_counter() - t0:.0f} s: {out}")
+    print(f"{out}: {time.perf_counter() - t0:.0f} s, done")
     return 0
 
 
