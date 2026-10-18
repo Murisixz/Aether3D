@@ -43,6 +43,7 @@ lossy diagnostics.
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -121,6 +122,46 @@ def collect(scene: Scene) -> Rigging:
     return out
 
 
+def rig_diagnostics(scene: Scene, rigging: Rigging, diagnostics: list[Diagnostic]) -> None:
+    """What glTF cannot carry of the rigs: skinning other than linear blend (lossy), and
+    the authoring data kept only as Aether3D extras or not exported (information)."""
+    if not rigging.rigs:
+        return
+    for oid, skin in sorted(rigging.skins.items(), key=lambda kv: scene._objects[kv[0]].name):
+        if skin.method != "linear":
+            name = scene._objects[oid].name
+            diagnostics.append(_diag(
+                "SKINNING_METHOD_LOSSY", WARNING,
+                f"{name!r} deforms with {skin.method.replace('_', ' ')} skinning; glTF skins "
+                "are linear blend skinning: exported with the same weights, it bends with "
+                "less volume at twisting and bending joints",
+                f"/skins/{skin_name(scene, oid)}", lossy=True,
+            ))  # fmt: skip
+    kept, dropped = set(), set()
+    for rig in rigging.rigs.values():
+        if any(j.role for j in rig.joints):
+            kept.add("joint roles")
+        if any(j.limits != "null" for j in rig.joints):
+            kept.add("joint limits")
+        if any(not j.deform for j in rig.joints):
+            kept.add("helper joints")
+        if rig.controls:
+            dropped.add("control definitions (their objects are exported as nodes)")
+        if rig.correctives:
+            dropped.add("corrective drivers (their shapes' weights are baked)")
+        if rig.landmarks or rig.template:
+            dropped.add("landmarks and template")
+        if rig.constraints:
+            dropped.add("constraints (their effect is baked)")
+    if kept or dropped:
+        parts = []
+        if kept:
+            parts.append("kept as Aether3D extras on the joint nodes: " + ", ".join(sorted(kept)))
+        if dropped:
+            parts.append("not exported: " + ", ".join(sorted(dropped)))
+        diagnostics.append(_diag("RIG_AUTHORING_DATA", INFO, "; ".join(parts), "/nodes"))
+
+
 def trs_to_gltf(pos: Any, rot: Any, scl: Any) -> dict[str, list[float]]:
     node: dict[str, list[float]] = {}
     pos, rot, scl = tuple(map(float, pos)), tuple(map(float, rot)), tuple(map(float, scl))
@@ -158,7 +199,17 @@ def add_skeletons(
             children = [base + c for c, j in enumerate(rig.joints) if j.parent == k]
             if children:
                 node["children"] = children
-            node["extras"] = {extras_key: {"joint": joint.name, "armature": arm}}
+            stored: dict[str, Any] = {"joint": joint.name, "armature": arm}
+            # Stage 18 joint semantics (Aether3D's own: other tools ignore extras).
+            if joint.tail is not None:
+                stored["tail"] = [float(v) for v in joint.tail]
+            if joint.role is not None:
+                stored["role"] = joint.role
+            if not joint.deform:
+                stored["deform"] = False
+            if joint.limits != "null":
+                stored["limits"] = json.loads(joint.limits)
+            node["extras"] = {extras_key: stored}
             nodes.append(node)
         arm_node = nodes[node_of[arm]]
         arm_node["children"] = arm_node.get("children", []) + [
@@ -637,6 +688,8 @@ def _needs_bake(system: Any) -> list[str]:
             reasons.append("constraints")
         elif kind == "rig" and item._definition.constraints:
             reasons.append("rig constraints (IK)")
+        if kind == "rig" and item._definition.correctives:
+            reasons.append("corrective shapes")
     return sorted(set(reasons))
 
 
@@ -792,9 +845,14 @@ def bake_sources(
         pose = system.evaluate(t)
         for oid, morph in rigging.morphs.items():
             got = pose.morphs.get(oid, {})
+            # (corrective shapes add to the animated weights: what the scene shows)
+            add = rig_eval.morph_extra.get(oid, {}) if rig_eval is not None else {}
             morph_w.setdefault(oid, []).append(
                 np.array(
-                    [got.get(nm, d) for nm, d in zip(morph.names, morph.defaults, strict=True)]
+                    [
+                        got.get(nm, d) + add.get(nm, 0.0)
+                        for nm, d in zip(morph.names, morph.defaults, strict=True)
+                    ]
                 )
             )
     out: dict[tuple[int, str], tuple[np.ndarray, np.ndarray]] = {}

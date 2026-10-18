@@ -46,6 +46,8 @@ class RiggingResult:
     diagnostics: list[Diagnostic] = field(default_factory=list)
     # "Armature/corrective" -> (driver angle in degrees, weight added to the morph target)
     correctives: dict[str, tuple[float, float]] = field(default_factory=dict)
+    # mesh object id -> {morph target: weight the correctives add} (what glTF bakes)
+    morph_extra: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 def _diag(code: str, message: str, location: str) -> Diagnostic:
@@ -140,6 +142,7 @@ def evaluate_rigging(system: AnimationSystem, pose: AnimationPose) -> RiggingRes
             _run_object_constraints(system, pose, oid, object_constraints[oid][1], worlds, result)
     result.local = worlds.local
     extra = _corrective_weights(system, rigs, morphs, result)
+    result.morph_extra = extra
     # Deformation: morph targets then skins, with the final matrices.
     for oid, skin in skins.items():
         _run_skin(system, pose, oid, skin, worlds, result, extra.get(oid))

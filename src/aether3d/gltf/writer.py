@@ -375,6 +375,7 @@ def build_gltf(
         )
     anim_export.add_skeletons(scene, rigging, nodes, node_of, roots, EXTRAS_KEY)
     skins = anim_export.add_skins(scene, rigging, nodes, node_of, buffers)
+    anim_export.rig_diagnostics(scene, rigging, diagnostics)
     node_parent = {c: p for p, n in enumerate(nodes) for c in n.get("children", [])}
     options = dict(animation_options or {})
     animations = anim_export.build_animations(
