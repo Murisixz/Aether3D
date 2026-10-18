@@ -295,3 +295,61 @@ def _water_mesh(model, sample, x, y, h, r, ox, oy) -> Mesh | None:
     normals = np.zeros_like(positions)
     normals[:, 2] = 1.0
     return Mesh._from_arrays(positions, tris, normals, None, None, col.astype(np.float32))
+
+
+def cut_holes(
+    mesh: Mesh, origin: tuple[float, float], footprints: list, depth: float = 1.5
+) -> Mesh:
+    """``mesh`` (a tile, in tile-local metres) without its triangles inside the footprints
+    ``(x0, y0, x1, y1)`` (world metres, drawn by volumes instead), with skirts hanging
+    ``depth`` metres down from the edges of the holes (both windings), hiding cracks
+    between the two surfaces."""
+    p = mesh.positions.astype(np.float64)
+    t = mesh.triangles
+    cen = p[t].mean(axis=1)
+    cx, cy = cen[:, 0] + origin[0], cen[:, 1] + origin[1]
+    flat = np.abs(np.cross(p[t[:, 1]] - p[t[:, 0]], p[t[:, 2]] - p[t[:, 0]])[:, 2]) > 1e-9
+    drop = np.zeros(len(t), dtype=bool)
+    eps = 1e-6
+    for x0, y0, x1, y1 in footprints:
+        inside = (cx > x0 - eps) & (cx < x1 + eps) & (cy > y0 - eps) & (cy < y1 + eps)
+        strict = (cx > x0 + eps) & (cx < x1 - eps) & (cy > y0 + eps) & (cy < y1 - eps)
+        drop |= np.where(flat, strict, inside)  # surface strictly inside; skirts on edges too
+    if not np.any(drop):
+        return mesh
+    kept = t[~drop]
+    gone = t[drop & flat]
+
+    # Hole edges: edges of dropped surface triangles that kept surface triangles share.
+    def edges(tris: np.ndarray) -> np.ndarray:
+        e = np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]])
+        return np.sort(e, axis=1)
+
+    kept_flat = t[(~drop) & flat]
+    ke = {tuple(e) for e in edges(kept_flat).tolist()} if len(kept_flat) else set()
+    rim = [e for e in {tuple(e) for e in edges(gone).tolist()} if e in ke]
+    positions, normals, colors = p, mesh.normals, mesh.colors
+    tris = [kept]
+    if rim:
+        rim = np.array(sorted(rim), dtype=np.int64)
+        base = p.shape[0]
+        low = p[rim.reshape(-1)].copy()
+        low[:, 2] -= depth
+        positions = np.concatenate([p, low])
+        if normals is not None:
+            normals = np.concatenate([normals, normals[rim.reshape(-1)]])
+        if colors is not None:
+            colors = np.concatenate([colors, colors[rim.reshape(-1)]])
+        a, b = rim[:, 0], rim[:, 1]
+        la = base + 2 * np.arange(len(rim))
+        lb = la + 1
+        quads = np.concatenate([np.stack([a, b, lb], 1), np.stack([a, lb, la], 1)])
+        tris += [quads, quads[:, [0, 2, 1]]]
+    return Mesh._from_arrays(
+        positions.astype(np.float32),
+        np.concatenate(tris),
+        None if normals is None else np.asarray(normals, dtype=np.float32),
+        None,
+        None,
+        None if colors is None else np.asarray(colors, dtype=np.float32),
+    )

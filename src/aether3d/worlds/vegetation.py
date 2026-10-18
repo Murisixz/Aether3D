@@ -443,6 +443,12 @@ class Vegetation:
         hz = s["height"]
         water = s["water"]
         ok = (np.isnan(water) | (water <= hz - 0.2) | reeds[idx]) & (s["road"] < 0.3)
+        from .volumes import volumes_of
+
+        vol = volumes_of(self.rt)
+        if vol.enabled():  # never over cave openings
+            under = vol.cave_field(x[idx], y[idx], hz - 0.5, hz, ~np.isnan(water))
+            ok &= ~(under < 0.5)
         idx, hz = idx[ok], hz[ok]
         if idx.size == 0:
             return [_empty() for _ in tiles]

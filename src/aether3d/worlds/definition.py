@@ -754,6 +754,7 @@ SPEC: dict[str, Any] = {
         "volume_distance": F(0.0, 1e5),
         "memory_mb": F(16.0, 1e6),
         "max_tiles": I(16, 1_000_000),
+        "threads": I(0, 256),
     },
     "features": _features,
 }
@@ -899,6 +900,7 @@ DEFAULTS: dict[str, Any] = {
         "volume_distance": 400.0,
         "memory_mb": 1024.0,
         "max_tiles": 20000,
+        "threads": 1,
     },
     "features": [],
 }
@@ -1129,8 +1131,9 @@ PRESETS: dict[str, dict[str, Any]] = {
             "tunnels": 0.6,
             "caverns": 0.4,
             "overhangs": 0.6,
-            "depth": [-60.0, 30.0],
-        },  # fmt: skip
+            "depth": [-70.0, -3.0],
+            "entrances": 0.3,
+        },
     },
     "infinite_highlands": {
         "extent": None,

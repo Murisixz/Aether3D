@@ -70,7 +70,7 @@ def contribute(
             "triangles": int(sum(m.triangle_count for _, _, m, _, _ in got)),
             "seconds": round(time.perf_counter() - t1, 4),
         }
-        parts += got
+        parts += [p for p in got if p[2].triangle_count > 0]
     if not parts:
         return rs
     # Materials: the world layers, resolved like library materials (cached per library
@@ -211,8 +211,10 @@ _WHITE.flags.writeable = False
 
 
 def _terrain_parts(world: Any, rt: Any, view: Any, ctx: Any) -> list:
-    out = []
-    for key, _mask, td in rt.select(view, ctx):
+    from .volumes import render_parts as volume_parts
+
+    out, holes = volume_parts(rt, view, ctx)
+    for key, _mask, td in rt.select(view, ctx, holes):
         origin = np.array([td.origin[0], td.origin[1], 0.0])
         out.append(
             (

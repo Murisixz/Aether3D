@@ -69,6 +69,10 @@ class WorldRuntime:
         self._regionals: OrderedDict[str, Any] = OrderedDict()
         self._tiles: OrderedDict[str, TileData] = OrderedDict()
         self._stitched: OrderedDict[tuple, tuple[TileData, TileData]] = OrderedDict()
+        self._holes: OrderedDict[tuple, TileData] = OrderedDict()
+        self._vegetation: Any = None  # vegetation.Vegetation, made on first use
+        self._volumes: Any = None  # volumes.Volumes
+        self._blocks: Any = None  # voxels.BlockWorld
         self._tile_bytes = 0
         self.counters = {
             "tiles_generated": 0,
@@ -206,14 +210,25 @@ class WorldRuntime:
             for sk in [k for k, v in self._stitched.items() if v[0] is data]:
                 del self._stitched[sk]
 
-    def select(self, view: View, ctx: Context | None = None) -> list[tuple[TileKey, int, TileData]]:
+    def select(
+        self, view: View, ctx: Context | None = None, holes: set | None = None
+    ) -> list[tuple[TileKey, int, TileData]]:
         """The tiles to draw from a view: LOD selection (generating tiles to measure
         their error), restriction, stitching; then each drawn tile (with its stitch mask).
-        Bounded by ``streaming.max_tiles``."""
+        Tiles over ``holes`` (volume footprints ``(ci, cj)``, drawn by volumes) are refined
+        to level 0 and drawn without those footprints. Bounded by ``streaming.max_tiles``."""
         d = self.definition
         s = d["streaming"]
         grid = self.grid()
         e = self.world.extent
+        boxes = [] if not holes else [_footprint(h) for h in sorted(holes)]
+
+        def force(key: TileKey) -> bool:
+            if not boxes or key.level == 0:
+                return False
+            x0, y0, x1, y1 = grid.bounds(key)
+            return any(b[0] < x1 and b[2] > x0 and b[1] < y1 and b[3] > y0 for b in boxes)
+
         keys = select(
             grid,
             view,
@@ -223,9 +238,38 @@ class WorldRuntime:
             e,
             self.max_level(),
             s["max_tiles"],
+            force if boxes else None,
         )
         masks = stitch_masks(keys)
-        return [(k, masks[k], self.tile(k, masks[k], ctx)) for k in keys]
+        out = []
+        for k in keys:
+            td = self.tile(k, masks[k], ctx)
+            if boxes:
+                x0, y0, x1, y1 = grid.bounds(k)
+                mine = [b for b in boxes if b[0] < x1 and b[2] > x0 and b[1] < y1 and b[3] > y0]
+                if mine:
+                    td = self._holed(k, masks[k], td, mine)
+            out.append((k, masks[k], td))
+        return out
+
+    def _holed(self, key: TileKey, mask: int, td: TileData, boxes: list) -> TileData:
+        """A drawn tile without the volume footprints ``boxes`` (cached)."""
+        from dataclasses import replace
+
+        from .terrain_mesh import cut_holes
+
+        ck = (self.tile_content_key(key, mask), tuple(boxes))
+        with self._lock:
+            found = self._holes.get(ck)
+            if found is not None:
+                self._holes.move_to_end(ck)
+                return found
+        out = replace(td, mesh=cut_holes(td.mesh, td.origin, boxes))
+        with self._lock:
+            self._holes[ck] = out
+            while len(self._holes) > 1024:
+                self._holes.popitem(last=False)
+        return out
 
     # -- queries -----------------------------------------------------------------------
 
@@ -371,7 +415,12 @@ class WorldRuntime:
             self._regionals.clear()
             self._tiles.clear()
             self._stitched.clear()
+            self._holes.clear()
             self._tile_bytes = 0
+        for part in ("_vegetation", "_volumes", "_blocks"):
+            cache = getattr(self, part, None)
+            if cache is not None:
+                setattr(self, part, None)
 
 
 MAX_QUERY_POINTS = 1_000_000
@@ -415,3 +464,10 @@ def _regional_window(reg: Any, box: tuple[float, float, float, float]) -> bytes:
     if near.size:
         h.update(np.ascontiguousarray(reg.segments[near]).tobytes())
     return h.digest()
+
+
+def _footprint(cell: tuple[int, int]) -> tuple[float, float, float, float]:
+    from .volumes import CHUNK
+
+    ci, cj = cell
+    return (ci * CHUNK, cj * CHUNK, (ci + 1) * CHUNK, (cj + 1) * CHUNK)
