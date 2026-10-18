@@ -380,6 +380,7 @@ The five skips in the main configuration are environment-specific tests of earli
 ezdxf; a GPU path-tracer fallback test that needs an adapter unable to run it; a CLI test
 for machines without the MCP SDK); no animation test skips.
 
-The nine animation test files hold 261 tests; `test_native.py`, `test_docs_examples.py` and
+The nine animation test files hold 262 tests (c1bec02 added the last one, a regression
+test for the motion-blur range, after the matrix ran; it passes); `test_native.py`, `test_docs_examples.py` and
 `test_examples.py` gained eight more test functions (the skinning kernel, the quick
 starts and the guide's script, the six showcases and their committed outputs).
