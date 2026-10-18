@@ -7,7 +7,7 @@ what was inspected, the research behind each decision, the language chosen for e
 subsystem, and the test, benchmark and showcase plans. The user guide
 ([docs/WORLDS.md](../../docs/WORLDS.md)) describes what was finally built; where they
 differ, this file is the plan as decided and the guide is the truth about the code.
-Section 10, written after the implementation, records the outcome.
+Section 9, written after the implementation, records the outcome.
 
 ## 1. Starting point (inspected)
 
@@ -256,3 +256,125 @@ B. Minecraft-inspired block world (original textures, blocky trees, mountain/can
    overhangs (volumetric terrain). F. Stage 16 + 17: the blocky character runs through the
    block world with a tracking camera. Stills, contact sheets, 1080p H.264 (CRF 14, slow)
    and lossless masters; scripts, projects and reports committed, frames and masters not.
+
+## 9. Outcome
+
+Written after the implementation (branch `stage-16-procedural-worlds`, version 0.18.0),
+against the plan above. [docs/WORLDS.md](../../docs/WORLDS.md) describes the code as it
+is; this section records where it differs from the plan, what the showcases found and what
+was measured.
+
+### 9.1 What was built, against section 4
+
+* **4.1 Package and API** -- as planned: `scene.worlds`, world items with immutable
+  definitions and edits, one history aspect (`world.item`), project format 10. Edits are
+  block edits only: frozen terrain tiles were not needed (features cover local terrain
+  authoring) and were not built. The settlement call is `build_settlements(count, ...)`;
+  statistics are `world.runtime.stats()` and the `stats` query.
+* **4.2 Determinism** -- as planned, golden hashes checked on Linux, macOS and Windows by
+  CI and without the native kernels. Two holes were found and closed: matrix products
+  (BLAS) gave results that depended on the batch size (a plant's scale differed between
+  batched and single-tile placement), so generation uses explicit ordered sums
+  (`noise.blend`); and structure layouts and wetness colours still called the platform's
+  `atan2`, `cos`, `sin`, `tan`, `log10` and `hypot`, now replaced by exact `atan2_deg`,
+  `log10`, `cos_sin_deg` and square roots (found while checking the documentation's
+  claim against the code). The template meshes of plant species and buildings still use
+  the platform's trigonometry for their shapes -- documented as outside the guarantee.
+* **4.3 Stages and caches** -- as planned, without the optional disk cache: the presets'
+  regional stages take seconds and stay cached in memory.
+* **4.4 Height function** -- as planned; the erosion delta is smoothed by a binomial
+  filter before its bicubic interpolation (the raw delta showed cell-sized quilting).
+* **4.5 Tiles** -- as planned: no hysteresis and no morphing, popping bounded by
+  `lod_error` pixels.
+* **4.6 Caves and overhangs** -- 32 m cubes of 1 m voxels near the camera, surface and
+  closed cubes, holes cut in the tiles; see 9.4 for two seam problems the showcases found.
+* **4.7 Block worlds** -- as planned; greedy meshing stayed in NumPy (9.2).
+* **4.8 Rendering** -- as planned; synthetic ids are `world:<world id>:<part>`.
+* **4.9 Authoring surfaces** -- world scripts, the plan operation `world`, `aether3d
+  world`, MCP `inspect_world` (`summary`, `info`, `sample`, `profile`, `sites`, `route`,
+  `block`, `stats`; no map image -- `render_preview` renders worlds) and region export
+  (`COLOR_0`). `scene.export` reports worlds it leaves out (`WORLDS_NOT_EXPORTED`).
+* **4.10 Animation integration** -- `ground_path(clearance=)`, `place_on_ground`,
+  `worlds.prepare(times, camera=)`; frames render identically in any order (tested).
+
+### 9.2 Languages, as decided and as measured
+
+| Subsystem | Decided (section 3) | Built and measured |
+| --- | --- | --- |
+| Hydrology sweeps | Rust kernels with NumPy twins | `native/src/hydro.rs` (ABI 5): priority flood, accumulation in integers, stream power, sediment; bitwise equal to the twins. `alpine_valley`'s regional stage: 53.7 s NumPy, 6.5 s native (erosion 51.6 -> 5.4 s) |
+| Thermal relaxation | NumPy stencils | the NumPy stencil stays the reference; a threaded kernel runs the same Jacobi sweeps natively (threads cannot change the result) |
+| D8 receivers, distance and attenuation fields | NumPy | NumPy, vectorized over the grid |
+| Noise, fields, climate, biomes, placement, structures | NumPy, Rust only if profiling demanded | NumPy: profiles showed many calls on mid-sized arrays; batching across tiles and chunks gave the large wins (plant placement 48 s -> 1.0-1.6 s for a 2.5 km view) |
+| Greedy block meshing | Rust kernel after profiling the twin | NumPy with vectorized run merging: 8.6 ms to mesh a chunk (5.9 ms to generate one); no kernel was written |
+| Cave volumes | NumPy + the existing marching cubes | as decided: 41 ms a 32 m cube |
+| GPU generation | not used | not used |
+| Rendering additions | NumPy and WGSL, same semantics | as decided; CPU/WGSL parity tests for the atmosphere and vertex colours |
+| Threads | -- | `streaming.threads` (pure functions of addresses, identical results): 2 threads about 17 % faster than 1 on block chunks, more slower (the GIL), so the default is 1 |
+
+### 9.3 Deviations and limitations
+
+* Not built: frozen terrain tiles as edits, the disk cache of the regional stage, a map
+  image in `inspect_world`, a native greedy mesher and native noise (9.2).
+* The tree line is a global temperature; forests end where their biomes end. Its
+  default became -7 C after the showcases (9.4); alpine presets set their own.
+* Unbounded worlds have no regional stage (`contour` rivers); caves are meshed only within
+  `volume_distance`; water is flat; level changes are not morphed; threads gain little
+  under the GIL. All are documented in WORLDS.md's limitations.
+
+### 9.4 Found by the showcases and fixed
+
+* Vegetation placement for a 2.5 km view took 48 s; batching per plant class across
+  tiles and an 8 m field lattice brought it to about 1 s, bit for bit the same plants as
+  tile-by-tile placement.
+* Erosion quilting (above), soil drawn as bands along contours (now patches just below
+  the rock), smooth cone-like mountains (sharper ridged alpine presets).
+* Snowy taiga had no trees: its whole temperature window lay above the default tree line.
+* Desert could never dominate: its window lay inside badlands'; the windows were split.
+* Swamps were drawn as beaches (any low flat ground was sand): beaches now need water
+  nearby.
+* Coasts ran straight along a bounded world's border: the falloff is bent by noise.
+* A crack opened between neighbouring overhang cubes: each faded its warp by its own
+  closed sides, so neighbours with different corner neighbours computed different fields
+  on their shared face. The fade is now a function of the distance to every undrawn
+  footprint around (tested by comparing shared-face vertices). Ground crossing into a cube
+  above an entrance was not drawn; every cube the ground crosses is drawn now.
+* Roads crossed narrow rivers without bridges and could leave the world: water is sampled
+  every 2 m along routes and the search grid is clamped to the extent.
+* Showcase F: parenting Stage 17's armature alone left its attached parts behind -- by
+  design, attachments follow joints relative to where they were authored -- so the
+  showcase parents the parts too; Stage 17 is unchanged.
+
+### 9.5 Measurements
+
+`benchmarks/bench_worlds.py` at 70e4738 (`benchmarks/results/stage16-worlds.json`; tables in
+[docs/PERFORMANCE.md](../../docs/PERFORMANCE.md#procedural-worlds-018)): a terrain view's
+contribution 11.2 s first and 0.19 s cached, a median 0.61 s per frame along a 1.5 km
+flight; a block-world view 6.4 s first, 34 ms per frame of a moving camera; 1920x1080 GPU
+frames along a path a median 1.1 s (`alpine_valley`, 2.35M triangles) and 0.54 s
+(`blocky_adventure`); 64,000 heights per second. The engine's other benchmarks, run
+interleaved with `main` (903f010) on the same machine state, agree within -5 % to +5 %
+(`stage16-engine-interleaved.json`); the plain comparison with `stage16-baseline.json`
+reads 5-10 % slower on core operations because the laptop was warmer, and `main`
+measured then reads the same. The showcases' reports hold every render's timing (A-F in
+[docs/WORLDS.md](../../docs/WORLDS.md#showcases)).
+
+### 9.6 Verification
+
+Run locally on the final code (the matrix of the CI workflow, plus the native kernels):
+
+| Configuration | Result |
+| --- | --- |
+| whole suite, Python 3.14, native kernels | 3,346 passed, 5 skipped |
+| whole suite without the native kernels (`AETHER3D_NATIVE=0`) | 3,342 passed, 9 skipped (four heavy showcase runs need the native kernels) |
+| GPU test files on the RTX 4060 / on lavapipe (`AETHER3D_REQUIRE_GPU=1`) | 215 passed / 214 passed |
+| Khronos glTF Validator required (exports, world regions, vertex colours) | passed: 0 errors, 0 warnings |
+| portable CI (GPU tests off, adapter enumeration refused and logged) | 3,209 passed; only the three tests that probe the GPU on purpose reached it |
+| Python 3.11 without manifold3d, wgpu, MCP or jsonschema / with manifold3d 3.4.1 | 2,945 / 3,090 passed |
+| Python 3.10 without optional packages | 2,945 passed |
+
+New tests cover definitions and their errors, determinism (golden hashes with and without
+the native kernels, batches, orders, threads), seams of tiles, stitching and volume cubes,
+hydrology (twins, drainage), blocks (greedy meshes equal the exposed faces, edits, borders),
+vegetation (exclusions, ids, nesting), structures and roads, budgets and eviction,
+rendering on every backend, atmosphere parity, vertex colours, files and migrations, world
+scripts (fuzzed), MCP, the documentation's examples and the six showcases.
