@@ -1,0 +1,973 @@
+{
+  "format": "aether3d.project",
+  "format_version": 10,
+  "generator": "aether3d 0.18.0",
+  "scene": {
+    "name": "Caves",
+    "active_camera": "a75387bd-85e2-49d2-bc6a-95fb3b6ea316",
+    "world": {
+      "background": [0.2, 0.2, 0.2],
+      "ambient_color": [1.0, 1.0, 1.0],
+      "ambient_intensity": 0.4,
+      "environment": {
+        "type": "sky",
+        "color": [1.0, 1.0, 1.0],
+        "intensity": 1.0,
+        "zenith_color": [0.22, 0.42, 0.78],
+        "horizon_color": [0.78, 0.85, 0.93],
+        "ground_color": [0.32, 0.3, 0.27]
+      },
+      "atmosphere": {
+        "enabled": true,
+        "sun": "Sun",
+        "sky": true,
+        "sun_glow": 0.7,
+        "sun_glow_color": [1.0, 0.86, 0.66],
+        "sun_glow_size": 32.0,
+        "horizon_glow": 0.35,
+        "fog_density": 0.0002,
+        "fog_height": 425.82107066185944,
+        "fog_falloff": 0.002,
+        "fog_color": [0.78, 0.82, 0.88],
+        "fog_sun": 0.25,
+        "fog_sun_power": 8.0,
+        "ambient": "hemisphere",
+        "ground_ambient": [0.36, 0.33, 0.29]
+      }
+    },
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "samples": 2,
+      "exposure": 0.0,
+      "cull": "none",
+      "default_lights": true
+    },
+    "parameters": [],
+    "rules": [],
+    "geometry": [],
+    "materials": [
+      {
+        "id": "b0acf56d-223e-44c8-9950-d860855c6d86",
+        "name": "Highlands terrain",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.93,
+        "specular": 0.3,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "f15dd3e1-a118-4cff-a79c-3acce9229170",
+            "coordinates": "world"
+          },
+          "normal": {
+            "texture": "bb674b35-cb89-4e2d-97b1-e67443c864e5",
+            "coordinates": "world"
+          }
+        }
+      },
+      {
+        "id": "4573c463-809e-40c8-851f-4c0e898013b7",
+        "name": "Highlands water",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.04,
+        "specular": 0.7,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "255b6463-df99-4d00-a62a-4caee230c077",
+        "name": "Highlands rock",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "7836403f-bc5b-457c-9db6-87c85bab2a02",
+        "name": "Highlands bark",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.95,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "1737a571-657e-4344-b68d-43ab004a819e",
+        "name": "Highlands birch_bark",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "711fad58-562d-4a88-8946-93e110c8ac46",
+        "name": "Highlands wood",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.85,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "8c581119-4b52-4ccb-89d3-2c1737212b12",
+        "name": "Highlands leaves",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "d8820121-b840-4bc9-9134-8385be68cc30",
+        "name": "Highlands needles",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.85,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "77ae749e-fbd3-448e-b787-c2724de6c0a7",
+        "name": "Highlands palm",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.75,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "1bdaf350-9850-4037-9d97-ef50ead4c7d1",
+        "name": "Highlands grass",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "c4342614-3dc9-49ab-93be-a06916c156cd",
+        "name": "Highlands flowers",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.7,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "d86052a7-bb91-427d-9d4e-e9b7215ec16a",
+        "name": "Highlands cactus",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.7,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "73e258ab-34db-4d62-87cd-6b8f8b0c8a90",
+        "name": "Highlands mushroom",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.6,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "0d7e269d-6ef1-483e-a67c-9fdee755fc89",
+        "name": "Highlands road",
+        "model": "standard",
+        "base_color": [0.42, 0.38, 0.32],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.95,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "5a1d806e-2332-412c-ab68-c93e1e2df27e",
+        "name": "Highlands stone",
+        "model": "standard",
+        "base_color": [0.6, 0.58, 0.54],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.88,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "52a60a20-6786-43b5-91df-c95c711d5a3d",
+        "name": "Highlands plaster",
+        "model": "standard",
+        "base_color": [0.86, 0.82, 0.74],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "7a7dea77-023b-4425-893c-cae6c030aafe",
+        "name": "Highlands roof",
+        "model": "standard",
+        "base_color": [0.45, 0.2, 0.14],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "2a90e6d8-c3f8-45d9-a84e-70e8920bc268",
+        "name": "Highlands timber",
+        "model": "standard",
+        "base_color": [0.3, 0.2, 0.12],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.85,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      }
+    ],
+    "textures": [
+      {
+        "id": "f15dd3e1-a118-4cff-a79c-3acce9229170",
+        "name": "Highlands ground detail",
+        "type": "procedural",
+        "graph": {
+          "nodes": {
+            "coarse": {
+              "type": "fbm",
+              "scale": 0.35,
+              "offset": 0.0,
+              "kind": "perlin",
+              "seed": 11,
+              "octaves": 4,
+              "lacunarity": 2.0,
+              "gain": 0.5
+            },
+            "fine": {
+              "type": "fbm",
+              "scale": 2.2,
+              "offset": 0.0,
+              "kind": "perlin",
+              "seed": 12,
+              "octaves": 3,
+              "lacunarity": 2.0,
+              "gain": 0.5
+            },
+            "mixed": {
+              "type": "mix",
+              "a": {
+                "node": "coarse"
+              },
+              "b": {
+                "node": "fine"
+              },
+              "factor": 0.45,
+              "mode": "mix"
+            },
+            "tone": {
+              "type": "ramp",
+              "factor": {
+                "node": "mixed"
+              },
+              "stops": [
+                [0.2, 0.74],
+                [0.5, 0.95],
+                [0.8, 1.08]
+              ],
+              "interpolation": "linear"
+            }
+          },
+          "output": "tone"
+        }
+      },
+      {
+        "id": "bb674b35-cb89-4e2d-97b1-e67443c864e5",
+        "name": "Highlands ground bump",
+        "type": "procedural",
+        "graph": {
+          "nodes": {
+            "h": {
+              "type": "fbm",
+              "scale": 1.6,
+              "offset": 0.0,
+              "kind": "perlin",
+              "seed": 13,
+              "octaves": 4,
+              "lacunarity": 2.0,
+              "gain": 0.5
+            },
+            "bump": {
+              "type": "bump",
+              "height": {
+                "node": "h"
+              },
+              "depth": 0.035,
+              "step": 0.001
+            }
+          },
+          "output": "bump"
+        }
+      }
+    ],
+    "objects": [
+      {
+        "id": "8b279ff8-78a5-40dc-9ac5-f33da72cdea1",
+        "name": "Sun",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.10026318942054399, 0.17708388051931728, 0.8519913009966613, 0.4823892775896421],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "directional",
+          "color": [1.0, 0.965, 0.915],
+          "intensity": 2.0,
+          "range": null,
+          "falloff": "inverse_square",
+          "radius": 0.0,
+          "angle": 0.6
+        },
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "a75387bd-85e2-49d2-bc6a-95fb3b6ea316",
+        "name": "Entrance",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [27.0, 249.0, 409.4469436295205],
+          "rotation": [0.08815704032733203, 0.24900999494260173, 0.9091845015025434, 0.32187870524000556],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 60.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 8000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "b8428877-a1f1-44dc-94a4-fc79ff7d1576",
+        "name": "Lantern 0",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-130.5, 383.0, 345.7649704063353],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "point",
+          "color": [1.0, 0.84, 0.62],
+          "intensity": 260.0,
+          "range": 70.0,
+          "falloff": "inverse_square",
+          "radius": 0.25,
+          "angle": 0.0
+        },
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "4536450c-cdd2-43e9-a37d-feb8c05cea28",
+        "name": "Lantern 1",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-118.5, 374.0, 345.7649704063353],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "point",
+          "color": [1.0, 0.84, 0.62],
+          "intensity": 260.0,
+          "range": 70.0,
+          "falloff": "inverse_square",
+          "radius": 0.25,
+          "angle": 0.0
+        },
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "50b19af5-9dab-4ad1-a5f2-dc209d3b4551",
+        "name": "Lantern 2",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-111.0, 387.5, 347.7649704063353],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "point",
+          "color": [1.0, 0.84, 0.62],
+          "intensity": 260.0,
+          "range": 70.0,
+          "falloff": "inverse_square",
+          "radius": 0.25,
+          "angle": 0.0
+        },
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "c0a0aede-e840-474c-99da-4802a3f943a8",
+        "name": "Lantern 3",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-124.5, 393.5, 347.7649704063353],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "point",
+          "color": [1.0, 0.84, 0.62],
+          "intensity": 260.0,
+          "range": 70.0,
+          "falloff": "inverse_square",
+          "radius": 0.25,
+          "angle": 0.0
+        },
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "cb02df70-5fc4-421c-b06c-4c7cdb050523",
+        "name": "Cavern",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-142.5, 374.0, 349.5649704063353],
+          "rotation": [-0.06063517601326145, -0.08412681284679192, 0.806868367435891, 0.5815578152010528],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 74.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 4000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "176c3dd8-ae3e-4ca3-9be7-174be0d571d9",
+        "name": "Overhang",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [134.0, 112.0, 396.0808327718767],
+          "rotation": [-0.03685600179131733, -0.0405126461514462, 0.7385905491962482, 0.6719258599516398],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 58.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 8000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      }
+    ],
+    "cad": {
+      "settings": {
+        "length_unit": "mm",
+        "angle_unit": "deg",
+        "precision": 3,
+        "display": {
+          "chord": 0.0005,
+          "angle_deg": 12.0,
+          "relative": 0.002
+        }
+      },
+      "items": []
+    },
+    "animation": {
+      "settings": {
+        "fps": 24,
+        "start": 0.0,
+        "end": 10.0,
+        "markers": [],
+        "sections": [],
+        "enabled": true
+      },
+      "items": []
+    },
+    "worlds": [
+      {
+        "id": "93ae892b-03dd-409b-bbfc-8a81adb307de",
+        "name": "Highlands",
+        "definition": {
+          "seed": 3,
+          "generator": 1,
+          "mode": "terrain",
+          "extent": {
+            "min": [-2048.0, -2048.0],
+            "max": [2048.0, 2048.0]
+          },
+          "sea_level": 0.0,
+          "terrain": {
+            "scale": 1.0,
+            "height_scale": 1.0,
+            "continents": {
+              "scale": 14000.0,
+              "octaves": 4,
+              "land": 0.95,
+              "warp": 0.35,
+              "edge": 0.0,
+              "curve": [
+                [-1.0, 60.0],
+                [0.0, 150.0],
+                [1.0, 260.0]
+              ]
+            },
+            "ranges": {
+              "scale": 9000.0,
+              "coverage": 0.45,
+              "warp": 0.5,
+              "sharpness": 0.5
+            },
+            "mountains": {
+              "height": 700.0,
+              "scale": 3000.0,
+              "octaves": 7,
+              "ridged": 0.7,
+              "sharpness": 2.0,
+              "roughness": 0.47,
+              "warp": 0.25
+            },
+            "hills": {
+              "height": 55.0,
+              "scale": 1100.0,
+              "octaves": 6
+            },
+            "valleys": {
+              "depth": 0.0,
+              "scale": 4000.0,
+              "width": 0.06
+            },
+            "plateaus": {
+              "coverage": 0.3,
+              "scale": 6000.0,
+              "height": 60.0,
+              "step": 12.0,
+              "sharpness": 0.8
+            },
+            "canyons": {
+              "coverage": 0.0,
+              "scale": 3200.0,
+              "depth": 70.0,
+              "width": 0.05
+            },
+            "dunes": {
+              "height": 5.0,
+              "scale": 80.0,
+              "direction": 30.0
+            },
+            "detail": {
+              "height": 2.5,
+              "scale": 45.0,
+              "octaves": 4
+            },
+            "warp": {
+              "amplitude": 320.0,
+              "scale": 2600.0
+            },
+            "curve": null
+          },
+          "climate": {
+            "temperature": 13.0,
+            "variation": 5.0,
+            "gradient": [0.0, 0.0],
+            "lapse_rate": 6.5,
+            "moisture": 0.55,
+            "moisture_variation": 0.22,
+            "moisture_gradient": [0.0, 0.0],
+            "scale": 7000.0,
+            "water_influence": 0.2,
+            "water_distance": 1200.0,
+            "rain_shadow": 0.3,
+            "wind": 180.0,
+            "boundary_noise": 0.12
+          },
+          "biomes": {
+            "preset": "earth",
+            "blend": 0.12,
+            "table": {},
+            "disabled": []
+          },
+          "surface": {
+            "beach_height": 2.0,
+            "cliff_slope": 40.0,
+            "snow_temperature": -2.5,
+            "treeline_temperature": -7.0
+          },
+          "hydrology": {
+            "mode": "drainage",
+            "extent": null,
+            "cell": 16.0,
+            "max_cells": 4194304,
+            "erosion": {
+              "iterations": 40,
+              "strength": 2.0,
+              "deposition": 0.3,
+              "thermal": 0.3,
+              "talus": 42.0,
+              "uplift": 0.0
+            },
+            "rivers": {
+              "threshold": 1500000.0,
+              "width": 0.008,
+              "max_width": 60.0,
+              "depth": 1.5,
+              "contour_width": 0.012
+            },
+            "lakes": {
+              "enabled": true,
+              "max": 6,
+              "min_area": 40000.0,
+              "min_depth": 2.0
+            }
+          },
+          "caves": {
+            "enabled": true,
+            "tunnels": 0.6,
+            "caverns": 0.4,
+            "overhangs": 0.6,
+            "radius": 3.5,
+            "depth": [-70.0, -3.0],
+            "entrances": 0.3,
+            "scale": 120.0
+          },
+          "vegetation": {
+            "density": 0.4,
+            "clutter": 1.0,
+            "rocks": 1.0,
+            "distance": 2500.0,
+            "detail_distance": 90.0,
+            "variants": 6
+          },
+          "structures": {
+            "settlements": 0,
+            "size": [6, 16],
+            "spacing": 1500.0,
+            "castles": 0,
+            "towers": 0,
+            "ruins": 0,
+            "roads": true,
+            "bridges": true,
+            "biomes": ["plains", "meadow", "temperate_forest", "birch_forest", "savanna", "taiga"],
+            "max_slope": 14.0,
+            "items": []
+          },
+          "blocks": {
+            "size": 1.0,
+            "min_height": -64,
+            "max_height": 192,
+            "trees": true,
+            "ores": true,
+            "plants": true
+          },
+          "materials": {
+            "terrain": "b0acf56d-223e-44c8-9950-d860855c6d86",
+            "water": "4573c463-809e-40c8-851f-4c0e898013b7",
+            "rock": "255b6463-df99-4d00-a62a-4caee230c077",
+            "bark": "7836403f-bc5b-457c-9db6-87c85bab2a02",
+            "birch_bark": "1737a571-657e-4344-b68d-43ab004a819e",
+            "wood": "711fad58-562d-4a88-8946-93e110c8ac46",
+            "leaves": "8c581119-4b52-4ccb-89d3-2c1737212b12",
+            "needles": "d8820121-b840-4bc9-9134-8385be68cc30",
+            "palm": "77ae749e-fbd3-448e-b787-c2724de6c0a7",
+            "grass": "1bdaf350-9850-4037-9d97-ef50ead4c7d1",
+            "flowers": "c4342614-3dc9-49ab-93be-a06916c156cd",
+            "cactus": "d86052a7-bb91-427d-9d4e-e9b7215ec16a",
+            "mushroom": "73e258ab-34db-4d62-87cd-6b8f8b0c8a90",
+            "road": "0d7e269d-6ef1-483e-a67c-9fdee755fc89",
+            "stone": "5a1d806e-2332-412c-ab68-c93e1e2df27e",
+            "plaster": "52a60a20-6786-43b5-91df-c95c711d5a3d",
+            "roof": "7a7dea77-023b-4425-893c-cae6c030aafe",
+            "timber": "2a90e6d8-c3f8-45d9-a84e-70e8920bc268"
+          },
+          "streaming": {
+            "chunk": 64.0,
+            "resolution": 64,
+            "lod_error": 3.0,
+            "view_distance": 12000.0,
+            "volume_distance": 400.0,
+            "memory_mb": 1024.0,
+            "max_tiles": 20000,
+            "threads": 1
+          },
+          "features": [
+            {
+              "type": "clear",
+              "id": "entrance",
+              "shape": {
+                "circle": [44.0, 270.0, 30.0]
+              },
+              "enabled": true,
+              "what": ["trees"],
+              "falloff": 12.0
+            },
+            {
+              "type": "cave",
+              "id": "hall",
+              "shape": {
+                "circle": [-126.0, 380.0, 30.0]
+              },
+              "enabled": true,
+              "kind": "cavern",
+              "radius": 30.0,
+              "radius_end": null,
+              "noise": 0.35
+            },
+            {
+              "type": "pad",
+              "id": "mesa",
+              "shape": {
+                "rect": [164.0, 122.0, 244.0, 178.0]
+              },
+              "enabled": true,
+              "height": 413.19,
+              "falloff": 5.0,
+              "structure": null
+            },
+            {
+              "type": "clear",
+              "id": "mesa-foot",
+              "shape": {
+                "circle": [204.0, 150.0, 90.0]
+              },
+              "enabled": true,
+              "what": ["trees"],
+              "falloff": 20.0
+            }
+          ]
+        },
+        "edits": []
+      }
+    ]
+  },
+  "meshes": []
+}

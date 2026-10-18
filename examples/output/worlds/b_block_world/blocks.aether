@@ -1,0 +1,3084 @@
+{
+  "format": "aether3d.project",
+  "format_version": 10,
+  "generator": "aether3d 0.18.0",
+  "scene": {
+    "name": "Block world",
+    "active_camera": "4174fe1a-1753-4964-94eb-8fc364a0f7f2",
+    "world": {
+      "background": [0.2, 0.2, 0.2],
+      "ambient_color": [1.0, 1.0, 1.0],
+      "ambient_intensity": 0.4,
+      "environment": {
+        "type": "sky",
+        "color": [1.0, 1.0, 1.0],
+        "intensity": 1.0,
+        "zenith_color": [0.22, 0.42, 0.78],
+        "horizon_color": [0.78, 0.85, 0.93],
+        "ground_color": [0.32, 0.3, 0.27]
+      },
+      "atmosphere": {
+        "enabled": true,
+        "sun": "Sun",
+        "sky": true,
+        "sun_glow": 0.7,
+        "sun_glow_color": [1.0, 0.86, 0.66],
+        "sun_glow_size": 32.0,
+        "horizon_glow": 0.35,
+        "fog_density": 0.0006,
+        "fog_height": 70.0,
+        "fog_falloff": 0.01,
+        "fog_color": [0.78, 0.82, 0.88],
+        "fog_sun": 0.25,
+        "fog_sun_power": 8.0,
+        "ambient": "hemisphere",
+        "ground_ambient": [0.36, 0.33, 0.29]
+      }
+    },
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "samples": 2,
+      "exposure": 0.0,
+      "cull": "none",
+      "default_lights": true
+    },
+    "parameters": [],
+    "rules": [],
+    "geometry": [],
+    "materials": [
+      {
+        "id": "0c7f15c6-c84a-4e57-af48-c8d61f5b959d",
+        "name": "Blocks stone",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "379bf8de-85fd-42cc-9c1f-e099b9e6c37e"
+          }
+        }
+      },
+      {
+        "id": "ea5c8a11-e18e-4090-9404-6063e892661d",
+        "name": "Blocks cobblestone",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "92c150f0-e654-4f94-a4a7-e488e6526154"
+          }
+        }
+      },
+      {
+        "id": "22be42a2-2b57-455a-9040-be970163cb71",
+        "name": "Blocks dark_stone",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "3a7d63b4-fdc8-453c-96fa-fe98e61ed631"
+          }
+        }
+      },
+      {
+        "id": "65f99569-9397-4a18-b185-32d4fecce268",
+        "name": "Blocks bedrock",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "fa69886f-033b-4488-b476-90b796af1793"
+          }
+        }
+      },
+      {
+        "id": "1d6e85dd-85b3-4198-8739-82e7ea967926",
+        "name": "Blocks dirt",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "ff527380-8c1c-4baa-bb02-c8a770c70932"
+          }
+        }
+      },
+      {
+        "id": "f9706a01-33cd-4910-9ab1-bc6f34c49ce2",
+        "name": "Blocks grass_top",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "ae72204e-d728-42a0-b2d5-ebb6a7b4d8a8"
+          }
+        }
+      },
+      {
+        "id": "ea187f6e-13a2-4656-9f14-06e41dad1bc8",
+        "name": "Blocks grass_side",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "1dcdf24f-2fb8-4187-ad61-59d569781e89"
+          }
+        }
+      },
+      {
+        "id": "db9f474f-3657-4782-9c65-93273fce1fc8",
+        "name": "Blocks snow",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "9efab35b-cf3a-458d-8293-188edf4f973d"
+          }
+        }
+      },
+      {
+        "id": "0e1d9d6c-bcf3-4949-86d2-b042a4ab5ff2",
+        "name": "Blocks snowy_grass_side",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "c13cca1e-e682-400b-8a82-4d3df4f21cd8"
+          }
+        }
+      },
+      {
+        "id": "6531d90e-be81-499b-9503-c4aa13962181",
+        "name": "Blocks dry_grass_top",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "64e61c93-97a3-46f6-82d0-43789ddf8ba4"
+          }
+        }
+      },
+      {
+        "id": "de300a9a-da76-4c31-82d3-3c7c15c7a2ec",
+        "name": "Blocks dry_grass_side",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "817ba7b5-5198-445c-a721-57d1881e71a0"
+          }
+        }
+      },
+      {
+        "id": "e329411c-6c07-4f2a-af06-1db6f2e36732",
+        "name": "Blocks sand",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "6bff9e7b-2bfc-459f-b6a8-50c59acc24be"
+          }
+        }
+      },
+      {
+        "id": "641efddd-1f8e-4ec7-ae73-0ce9ef574708",
+        "name": "Blocks red_sand",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "1d321882-6917-4a3c-bb35-1c5fa736e978"
+          }
+        }
+      },
+      {
+        "id": "9e2a8be8-efac-40ea-bfc1-4854330acb1d",
+        "name": "Blocks sandstone_top",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "a9631850-05d6-4e4a-a42a-9fb4782f56bf"
+          }
+        }
+      },
+      {
+        "id": "5eac8b39-5a98-4e9f-8ee7-ab5c24c9d077",
+        "name": "Blocks sandstone",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "e8bc601f-7363-41f7-8d0a-bd15b9cfe491"
+          }
+        }
+      },
+      {
+        "id": "cd84f286-27c5-48a9-9683-93f15a5be010",
+        "name": "Blocks gravel",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "6cfb0d33-b208-4bdf-ac7d-31796b5cec5f"
+          }
+        }
+      },
+      {
+        "id": "6b39d28e-7d30-434b-b2a9-bea973a82797",
+        "name": "Blocks clay",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "07b5d298-5876-45c5-9479-6844bda15034"
+          }
+        }
+      },
+      {
+        "id": "05326099-896f-4722-a394-22cc8560dffc",
+        "name": "Blocks mud",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "ebbad32e-2931-4e25-bad7-0c13ee25263d"
+          }
+        }
+      },
+      {
+        "id": "55a8212a-9736-486b-93eb-0b8d032ca8e7",
+        "name": "Blocks ice",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.15,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "ccd97755-aa15-45e0-8748-1ec8155e1e02"
+          }
+        }
+      },
+      {
+        "id": "421be75d-de19-402e-a4a5-d206a746d391",
+        "name": "Blocks packed_ice",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.3,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "8a4c6549-1ea5-44fa-b31d-94f1d195b929"
+          }
+        }
+      },
+      {
+        "id": "25739850-01af-4abc-9476-12089604ce3f",
+        "name": "Blocks water",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.08,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "1159534d-3904-490f-b16d-43071d57702c"
+          }
+        }
+      },
+      {
+        "id": "68268b3c-5de4-423f-8ed4-b2d5e22bfb83",
+        "name": "Blocks lava",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.6,
+        "specular": 0.25,
+        "emissive": [1.0, 0.8, 0.5],
+        "emissive_strength": 3.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "191574c3-a8db-45fd-8e93-ba8806772bd4"
+          },
+          "emissive": {
+            "texture": "191574c3-a8db-45fd-8e93-ba8806772bd4"
+          }
+        }
+      },
+      {
+        "id": "e3d136f2-94bf-4fe1-a120-6dc38252a764",
+        "name": "Blocks coal_ore",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "15fccf36-40f0-43b1-b67f-cb7f86bde03f"
+          }
+        }
+      },
+      {
+        "id": "7d49457e-fb84-4460-9f03-cb26acf1dbbe",
+        "name": "Blocks iron_ore",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "852c8f02-d763-4c31-ac0a-a346972f9d4e"
+          }
+        }
+      },
+      {
+        "id": "0d1cce32-4b98-49e4-ad76-747ab8c7f59b",
+        "name": "Blocks gold_ore",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "b31c0a14-65b2-4d46-87f9-ca44e6e0b193"
+          }
+        }
+      },
+      {
+        "id": "d6b0e993-2e95-427e-b673-ecc1c57b33f7",
+        "name": "Blocks terracotta",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "c3a35160-382a-4a70-9959-f0ee92481c35"
+          }
+        }
+      },
+      {
+        "id": "03c87bc9-1b07-41b8-b4f0-f1c0311995ae",
+        "name": "Blocks terracotta_red",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "0d19204d-5175-4017-ac8c-fa2cf06d4529"
+          }
+        }
+      },
+      {
+        "id": "5c0f7ca7-7193-4f2d-b1d5-2bc4af19d93d",
+        "name": "Blocks terracotta_yellow",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "df3620cf-3b7c-49cb-a6a4-0bbd4ccee76a"
+          }
+        }
+      },
+      {
+        "id": "ba39e46a-a3aa-4941-b126-cf169d7df369",
+        "name": "Blocks terracotta_white",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "7d94cdba-2223-45bc-8ddb-2796c08efd8a"
+          }
+        }
+      },
+      {
+        "id": "ae3de8cc-c619-47aa-a03c-1f9fbc67a79b",
+        "name": "Blocks terracotta_brown",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "00580754-5bda-47ec-b1df-1fa6e6ad3f48"
+          }
+        }
+      },
+      {
+        "id": "2427ca31-cee2-459a-bc07-bd06fb0ee4b9",
+        "name": "Blocks oak_log_top",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "264ae9a6-daad-4f12-b79e-0f56b0ef8701"
+          }
+        }
+      },
+      {
+        "id": "352d7e5f-2086-4c98-aa89-72e6732222f2",
+        "name": "Blocks oak_log",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "d960ad9f-1393-40a2-98cb-919b6212425f"
+          }
+        }
+      },
+      {
+        "id": "b8b6aa53-a379-485d-ab1b-7dae29979299",
+        "name": "Blocks birch_log_top",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "c9dfe47f-4ed8-455f-9f90-45b9be16d120"
+          }
+        }
+      },
+      {
+        "id": "ec00706c-b4b9-4452-871f-cf5200d6edcc",
+        "name": "Blocks birch_log",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "e2e341f3-7d9c-4f45-b715-9537efa45a98"
+          }
+        }
+      },
+      {
+        "id": "31700673-2c73-45e4-990a-ef633cabf3b7",
+        "name": "Blocks spruce_log_top",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "54b9291a-37c7-47f2-b863-9ca7ec583a37"
+          }
+        }
+      },
+      {
+        "id": "82b930d3-d95e-4071-a707-eb609dae306c",
+        "name": "Blocks spruce_log",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "b40f8384-9a68-4fd7-b8b5-c9551bb38043"
+          }
+        }
+      },
+      {
+        "id": "2867c577-0d3b-4989-a17d-6ed0ec64175f",
+        "name": "Blocks jungle_log_top",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "50edb30f-f44e-4922-b02d-4f51694f6062"
+          }
+        }
+      },
+      {
+        "id": "7c4cf012-5cd8-49ba-b353-75f4c26e0d77",
+        "name": "Blocks jungle_log",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "e814d957-ee70-4c4f-b86f-c38fcd2be007"
+          }
+        }
+      },
+      {
+        "id": "6d4be6d0-1d40-4977-be89-41e37fa5a4f4",
+        "name": "Blocks acacia_log_top",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "077e7fc3-f154-45f2-849c-8069c4dd4dac"
+          }
+        }
+      },
+      {
+        "id": "b08c7ef2-8967-4948-a82f-7aac6c1d0da1",
+        "name": "Blocks acacia_log",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "55f95a7f-a0d0-4007-b8d9-e9355041b28d"
+          }
+        }
+      },
+      {
+        "id": "c628ba6c-d94b-4413-a2dd-d612c37b2b36",
+        "name": "Blocks oak_leaves",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "5b5baa2e-b18c-475a-9097-afa179e30c87"
+          }
+        }
+      },
+      {
+        "id": "0242e649-12ac-4d6f-8dd3-278beab29f47",
+        "name": "Blocks birch_leaves",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "e7b1ed83-cced-4dfd-ae1d-73a16c3730a0"
+          }
+        }
+      },
+      {
+        "id": "1a3ac5e8-f48e-4804-a0aa-4617c5775004",
+        "name": "Blocks spruce_leaves",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "3484f577-8ad5-403d-9d29-9339f483b778"
+          }
+        }
+      },
+      {
+        "id": "f1eb65f4-ba8c-46fd-8116-e6c0db15fa41",
+        "name": "Blocks jungle_leaves",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "d63f964f-d1c3-4c50-8399-4c7267b4b50e"
+          }
+        }
+      },
+      {
+        "id": "8a6a5674-0e5d-4190-b399-6d7b868fe810",
+        "name": "Blocks acacia_leaves",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "5cf1f31d-0ce2-4b55-b902-2be27438cc2b"
+          }
+        }
+      },
+      {
+        "id": "106dff63-107f-4ef5-bd8b-65d016bb1004",
+        "name": "Blocks cactus_top",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "4dd85176-7de5-44a7-b55a-d5c043cdae96"
+          }
+        }
+      },
+      {
+        "id": "09865d91-2bd6-4e20-a511-e12c522c4153",
+        "name": "Blocks cactus_side",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "645becc4-5ed7-4f32-95d7-ad64a194637b"
+          }
+        }
+      },
+      {
+        "id": "397da034-b15a-4684-a81d-43ba045e0429",
+        "name": "Blocks oak_planks",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "532e2896-82e8-4013-8632-4a46875b632b"
+          }
+        }
+      },
+      {
+        "id": "00eb452d-a9cb-47c8-a386-f450edea2508",
+        "name": "Blocks spruce_planks",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "07117dbe-c40f-492e-bc5c-84646e7176df"
+          }
+        }
+      },
+      {
+        "id": "bf4328c3-e4d9-426a-ac85-120afef280f2",
+        "name": "Blocks stone_bricks",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "f6355caf-73dd-48aa-9259-fff6ff624324"
+          }
+        }
+      },
+      {
+        "id": "b689f401-42d9-4fc0-80c1-30feca988099",
+        "name": "Blocks mossy_stone_bricks",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "69924c32-9dfe-4154-b02c-9f7bf5f8f01c"
+          }
+        }
+      },
+      {
+        "id": "e772789d-0285-484d-9a63-a0eb46a0c71b",
+        "name": "Blocks bricks",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "32337867-145f-4d5f-aaa5-7db5c68a18f2"
+          }
+        }
+      },
+      {
+        "id": "dd204eb7-743a-4965-9a37-1c868df74d8f",
+        "name": "Blocks glass",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.1,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "e35b1d65-d413-4dde-946d-776205976610"
+          }
+        }
+      },
+      {
+        "id": "9401928f-b2e7-4c4c-af97-362a758740fa",
+        "name": "Blocks white_wool",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "f5e9d714-4886-4bdc-b8cb-794649aee0ab"
+          }
+        }
+      },
+      {
+        "id": "240a4766-d90b-4b9d-8421-540df2003b44",
+        "name": "Blocks red_wool",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "bcca14c8-beef-42d5-9078-76fa98934def"
+          }
+        }
+      },
+      {
+        "id": "7a3bd2ef-16a0-4841-9b20-31ed7dbe5eee",
+        "name": "Blocks hay_top",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "1689187a-06ff-4fac-b009-60c3e128c6b3"
+          }
+        }
+      },
+      {
+        "id": "b01fb629-a36b-40c7-be7e-27fa89b1c566",
+        "name": "Blocks hay_side",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "dec3a347-b748-4f97-854a-9cb42e6564b4"
+          }
+        }
+      },
+      {
+        "id": "39cb6789-8989-42b2-bcc2-d1aee14c0425",
+        "name": "Blocks dirt_path_top",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "e905c14c-1546-4537-ab2a-c5de4604cb05"
+          }
+        }
+      },
+      {
+        "id": "f2227af5-a0f3-46a8-a912-0fb9bfda2408",
+        "name": "Blocks glowstone",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [1.0, 0.8, 0.5],
+        "emissive_strength": 2.5,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "7d4fcfb2-f4a6-405f-9b4e-00e7720bb9c0"
+          },
+          "emissive": {
+            "texture": "7d4fcfb2-f4a6-405f-9b4e-00e7720bb9c0"
+          }
+        }
+      },
+      {
+        "id": "d87c5228-088d-4af5-af15-9337f5cc0885",
+        "name": "Blocks lantern_block",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [1.0, 0.8, 0.5],
+        "emissive_strength": 2.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "ca267541-8b05-4d78-aea6-164ca1e88701"
+          },
+          "emissive": {
+            "texture": "ca267541-8b05-4d78-aea6-164ca1e88701"
+          }
+        }
+      },
+      {
+        "id": "a10c9ca3-0455-4f09-a3ae-06854c50630d",
+        "name": "Blocks tall_grass",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "mask",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "94459193-a5d5-48e5-b0b0-677d6f2febee"
+          }
+        }
+      },
+      {
+        "id": "130d8ac7-ab07-436c-9b71-f128a3f99545",
+        "name": "Blocks fern",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "mask",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "62bd0662-98ee-4728-bc59-37ef9229d24f"
+          }
+        }
+      },
+      {
+        "id": "4bf64a04-ea1a-4e26-a624-4bd3e87a00a4",
+        "name": "Blocks poppy",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "mask",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "79d1dee3-6fd0-4a15-b315-2ae5219c526a"
+          }
+        }
+      },
+      {
+        "id": "c7d5711d-651d-4a06-b0ce-5aa651a9d30f",
+        "name": "Blocks dandelion",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "mask",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "ea61ee33-e6b8-4c35-99c1-2a62407ae490"
+          }
+        }
+      },
+      {
+        "id": "e96e33ef-30d3-44d9-b2cb-3e386b13d999",
+        "name": "Blocks cornflower",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "mask",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "f60c242f-60ae-41fd-b504-efaf9aa3ff7f"
+          }
+        }
+      },
+      {
+        "id": "81a02938-d984-43a9-ba96-83cab3292ce5",
+        "name": "Blocks dead_bush",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "mask",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "acde3bc1-1556-46e5-a2f1-7dbbffbac262"
+          }
+        }
+      },
+      {
+        "id": "dff69766-deae-4c60-8bc3-6c8e7744b662",
+        "name": "Blocks red_mushroom",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "mask",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "9a0da758-1f97-4361-89a5-c99b5a479631"
+          }
+        }
+      },
+      {
+        "id": "2d98e0a2-1582-47a6-874f-5350c43f794c",
+        "name": "Blocks brown_mushroom",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "mask",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.25,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "7bc0ee74-59b9-4f85-bfc8-516063979609"
+          }
+        }
+      },
+      {
+        "id": "601e5ae6-9528-4db4-9d7a-020a3e64941d",
+        "name": "Blocks water 2",
+        "model": "standard",
+        "base_color": [0.8, 0.8, 0.8],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.05,
+        "specular": 0.7,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      }
+    ],
+    "textures": [
+      {
+        "id": "379bf8de-85fd-42cc-9c1f-e099b9e6c37e",
+        "name": "Blocks stone",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAANtJREFUeJx1k8EKhDAMRLulN9Gz/rF/qmfB8+6O8EI61IA0aTuTZFI/+75/y9+O4yjLssgt13UNfdk0TeW+74gbQQa8mYNl1S+JKGcEKGKB5bP3EOSMbLqfK8SopI6y6ZMmAOWTSMCctHkFMG/b1vWbY5GCiwq05h7JqtjPWLXfTMPuoreWz6ioMmcHjQTVOs9zdy9ayP3K93kTn+fZxd07GJWeyfIa74CxueXpICa2rmuQhYiIBNDHhi9wrjYIfP78XBAiNBqQsL6JJSKAfpbbeURUNtfBn6wbZD8nQ7Qtj/uZoQAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "92c150f0-e654-4f94-a4a7-e488e6526154",
+        "name": "Blocks cobblestone",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAVNJREFUeJyVU7uugkAQHXCRTzB0xkoMHQUWBKz9E75TKJQEGgttDLGAb+Ch3Jy5GcK9IT5OsjAMu2ceZ1aLoqjXNI2A5/NJ9/udbcdxSNd16vue/Y/Hgy6XCwksy6LZbEaqaRoSgrIshw3iv16vNIWqqmixWJC23+/7yR0fQtm2zakgGtI9n8/fEczncyaQer+FbhgGmabJC2QC13U/I1BKEUiwxgQg3G6370vAQ1SQdxiGbEO6twTQuOs67gPsKcKXBKfTiQ3P8+h4PLKNyIfDYfLAbrejtm0pSZLfIK/mYLVacVZFUZDv+4R+SYC6rgnB1Waz4fQhIUoZjyuAw0AcxxQEwUAgmSuwYgaA/3Nwu93+fCMqIL1ar9ekvxoe1IslQI9wR9I0HXxKpALRWDbMAJoFoMGwsyyjPM/Zt1wueb/CDxhybQWIJL2BX8gEOAOZfwB7JbyrwuWRiwAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "3a7d63b4-fdc8-453c-96fa-fe98e61ed631",
+        "name": "Blocks dark_stone",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAPVJREFUeJxtk80OgjAQhLHpjcYrxiuJb8TN5zdyJeWsDuSr48omZNvt7Owvp2m6v9a1dkittSultHvff8+I45MuAjlQJNwBS/NBrC9F1mG4dON4+4vqIkfwCeejiDGzeBbmJwMZh+H6KWHZbKWcN7s0znqnlK0EogCY50cD6uyZef1Ijhl8G7m0NN1RdrDS2UfiD94oJ46YxKNGF5uILZbgJK2JLM+eZm02gE7mgZKXwIOTzfPzJwBC5glm1x6NLDSVGEj2DLM0/0Hs/k687wZEGvE2hVhbnIJPAyLu8s3afQeoZmxyZhsjEcuXfdY00Md1JL6db7kL8WePLVYvAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "fa69886f-033b-4488-b476-90b796af1793",
+        "name": "Blocks bedrock",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAATVJREFUeJxdk+sNgzAMhEPa37AAjwWYAMQgbNPdkNiAAXgsAAtQztKHrFiqEhvfxfa5WV3X9ziOYZqmIDuOw86yLF9fd51d1wVs2zY7o4LrulrCQ2ZJAugOEffUhPnkef47zzO0bWusRVGEZVnCvu8Wkz/PswHu+37967qMPPKygsMwvK+qLUpVVZQvn/aUn2kGCsjxc/Az8K2IwM/lS6KMXgEBxKcVj8me0m4P8KXyIuQiAMxjXz9VfQQAKYmAfXsmI0BeZqhY0zRGqqESpzKRfvq+Nxn1kz2ymlSSTImKS1bFqUIxfauqKkR69XPwpSMjVWDyVV1MB+UTkEwvpwqxM6YCIPYdIKr4weLzcExV8Imo4peJjVVcZ6ScdAYsDWS+PW0smxt10b/Ra+uXxe8GPhiR/wHA5AGLXYC2mAAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "ff527380-8c1c-4baa-bb02-c8a770c70932",
+        "name": "Blocks dirt",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAONJREFUeJx9ksEKAjEMRGvZgyioiBdB3F/wQ/wW/1kRvIiooHhTZuGts9lqoLtNmplMmg522817Ohml/emSsHo5T7f7s/U5n42H6fp4NX+s0kfJArEnGbBi+A5uCJQAMJqqRYMQXGYDAIm/wBgF2xb8EKkiiXH5qNDKgGEEoD/9kuyVweUozwljv06AkhyrO0hrvVr02vDLrKK0qMbJ2R+O568CBVRFK8qMowXUUQBjSV7s3VWgrnLJkYBk3ob83lP2Sv/uA/PRytoxlvolXnqVWC71GwldMmSdKfjllFREclf0AQ7VwrP3F2QIAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "ae72204e-d728-42a0-b2d5-ebb6a7b4d8a8",
+        "name": "Blocks grass_top",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAANBJREFUeJx9k9ENgzAMRFMr30yQ/UdglEzABCzQ9iI9dD1BLUUGc7bP5/Da9/3dvnae5zqybduaG/ExRjuO4yfWHZSJmOI6SlaROeeFLb3wITu6p7O8N7oYeNVkhPcYxUsBdcffze76pCaFMCRn19QCFuA71SjyRNtZuC9X2deIaJ4Ajtgagcp0IvFuFJ8dbCXIO7hw/o1VLgYO8B2nBgL7s7A6PS9QCpWWzMrFclCOxZZcB52eqiYDtuM/EuMuBn7Pn2g7A4zn8pd/v3PGaPoB1gfZ+4+zRbYAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "1dcdf24f-2fb8-4187-ad61-59d569781e89",
+        "name": "Blocks grass_side",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAS5JREFUeJx1UltqwlAUPLlcRCIkIfRHKtZvP0pXIF1A6Ra6AxfkqoorUFH8KRKFlHwUbKdhwuSg83Ufc2bmnHuTj9XieticbFQMra4aAx5npVXVtymKIjXweAcuaqIScQkoAYU8w55iFAwsJBGHgCYCsOYeHBrH58+B5dnAdvsvO79nvYjzdTRbX2y7iO36D/nmx+y17EST5dvLVXut6saKURs1z1I7X/qz4DnvAhY81GJgezx1ZHIAFCIxENQBxVqAPe6Vw7vp5KFNAFfGuRcZHDoTSAB+oAsUb4HF2pbOp5sBe/JOXuhpXPZmEhhd2yCBc9D5ePHgXRGRQnRRV88PVGVEOGFNghfzQv8JMEBG9UOjgb49a4Do39h/Jv/EmqxrgUQdlv46NYEB/w7wC0zF4pxyzUbMAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "9efab35b-cf3a-458d-8293-188edf4f973d",
+        "name": "Blocks snow",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAOlJREFUeJx9U0EKgzAQjBIRwYMXb/3/y3rzYsESgm0tszAyLokLbcxmZ2dmjc3+/R3rlgJj6DtbU97P51LgHNHib0u5WqgAgojBL5bY+ewB49BbjoSPeQoNLGDDRmyyrJutAAEwT6PlsNfmzfJ6H9M4hLx/Lt58UIGPluwEehulGSEP0lOB9+v3NUWmgMXKTDBZVAFzCMzFFHjmml8Fc+iteqUSTpogVfBcVgPz/KLAK8Gqr67vYvD35hyi969Fmqe9WwUKLDVl2FUuSa8poQW9eJGdWOSZ1QKbAsyzyFej7KXPWAfLOij6A+YKzJ6AHODcAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "c13cca1e-e682-400b-8a82-4d3df4f21cd8",
+        "name": "Blocks snowy_grass_side",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAASlJREFUeJxtUT1qAmEU/PywCCqriAQU0Talpa1iF0gZUqWytPAAIRcwJ8gNPFZEFETELLrYKfPILJPnDsj3/mbec7aUZpfrMT2F9JSFXucxMAaSWsVifRtJLaw2O+tjPiIhWRsA63xBpjCA+YiEBZIICmnfL4lQBenjdZgPL6ZjG5g9D6z2NZ1YH+Tv+YvlmDEBEutJJSw/3yz+TbN8E/vH88XIjDGDvPQ+ero2qg8mgGKv2wqr9d7yn+0hoEcSoDniyAKvAJlXsId6ERlvDA7cpKIqprALmGAIP93I18d6yd0F/XYzF+KrsV4IoXLRubpNRbhAzb0ToAjAQQpSvP83j/4/Ae8Dnabr+MR6kf0F3ejNUsP8AiI30QsVfRHvT6EHnkgS/VADgRu8E9ACoCqMcQAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "64e61c93-97a3-46f6-82d0-43789ddf8ba4",
+        "name": "Blocks dry_grass_top",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAANJJREFUeJx9k9ENhDAMQyHimwmYvIN0lE7ABCzAyZWMniyOSKhpartJGtbW2n0cx3Ke57Lv+/zkKyYbY8zV++u65iqc/GJQJjLNosSQUw7ohgRZTGcSSVP8ycBgA3NPcZcjTKWygQIxK5diov0igTcI5DOvbLRiWsvqbB5fIY2lyN8YpHLG2A9aMX0DSLKgY9nMtfd+M/1887cZYGx7LfTDTHbWW6p/keyznHKN/yxrdrnPKLPzvJGD45RN5pRWDgs7bQGS055ndFPyt80XYaY6+wG+ZsBnzbCwtQAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "817ba7b5-5198-445c-a721-57d1881e71a0",
+        "name": "Blocks dry_grass_side",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAUZJREFUeJx1U0tOAkEQLToTMpHfxLjREOQCJByAhQfwAl7Cg3AQD8DGC3gAFyxZgJrAgpBhQELYqK8yb6iuYCVNV1fVq1efoTYeP/zIBcmyVPL8KP3ujb7nX2u1Zc1mpUMSAhCY7/caAIF+KSH8BOOdVE4HsAJGxlldK5i+rqLg0VNf7+lkJZ32lcxlHfl37ye1fxaFtIZ1SbJGqobFciPQUeLbyywCbIuDxuzkpLaPsopB905qz4/DaIj59/HcdyON2Ht/cwIYyZAUEvADA4A497fX6sANO/04ZLZEOkRkIxt0JiGYbBS0ixjYE2YjCEYPIBtBIGNM9R3QwLL921aECjijwMw+EWdiq6Gu2ypbDpbhvw0wma8MJ1gDQGTFzTduW6VNFHrln8WW58G2f7taHaLdrR8Yp+5XGX1IBPkevU52C4b+C3nfzl+RlFEuAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "6bff9e7b-2bfc-459f-b6a8-50c59acc24be",
+        "name": "Blocks sand",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAQdJREFUeJx1U0EKwjAQjEsuVfAgpXjxIPhSP+Uj/ILgwYuU4kHQHtWJmTBZ60JJutnZ2d1JZsfD/tV2XWgWyzA+7mEcn6Fp5oFGv98PfR+AMwbyYNWuCxjJ6GcMgLDNdpdWwyaxInsGYE2MuRKc4YP5aiMZlAlAAvwZk7PVqExTAexV+1dMJIBOHeK3ir6qQmNSC55d/9mzWkXwWYsKYFMFyFpViGFmMNUwOPlTgmSA2o7eB6gHnMFJTRlwOZ+qJLDbcK0qY3vmp4s9Drx0Ki0xWMsMyKAyeqtkzEnsJ2oC7JXRZOb7TaXm759pJcZ+eTFYXikzvxM/VFhSYepAmXA3MB9VQR/WG9bExV8FYKKnAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "1d321882-6917-4a3c-bb35-1c5fa736e978",
+        "name": "Blocks red_sand",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAANxJREFUeJx1U7sKwkAQPJcrY2NjMGAl+Cd+l59oK1gJSmxsTK/MwRzj5LKwZHdvHzN7l9XlfPpOnyl16y7hSxuicZV+19dY0GAyDr2YDXk+PsfqZ+2sk3yyo6JfEXiBw8b54/Uuqufh3NnZp0KG7aYoBVQyE6HX2z0NVqy20/ijgG7Hw34GXacRKZR+aEftvCR+K6G8fTp83rkW6dUHIXkhkwHVixRlaKEm+uJa1GYUGORrbBV7o2htXeGqrTGirQiWHpL6/moLBV+MLk2nglaLUtbuTNS/rfVPKNofCG/X+7Nm1iQAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "a9631850-05d6-4e4a-a42a-9fb4782f56bf",
+        "name": "Blocks sandstone_top",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAMtJREFUeJx1UzkOwkAQW0ZbICUdBbyZV/EIHgFFukSiAxlkyTjekVZ7zGF7Mjncb9f3cZrbyJbno53Ol93bNM8NeaWO17b+7akYFmxbfzFd0RMToJOFMwFQ7TKkuqM7i68EXhxVE3lPTIoUR4gM9qL0lzq1ea53xLBUmzdRmbkU7pWQkqQkDas8ATLS4KQ3WGc11Z8GCW+Q6IXiJLIXGFcCeGGeu6MxWRtK9DTqBYcmwakB/DpahDk4d0d2I31nROtJuwb7ROI/0UZ+APwsoaDHrMKDAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "e8bc601f-7363-41f7-8d0a-bd15b9cfe491",
+        "name": "Blocks sandstone",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAASNJREFUeJx9UrtuwkAQXIylgO2CCCxSILlLkQ/OT+UXaCIlUixeKc4Gy0XCnL2X8cYwzd7te2d3sn17/blUTirnBFiun7yETjFLM/+HVJu+Y/2o4lB+DRLZZACKhQS3AjWIkyvUBzHx+8dOvvc7WaxyL1079Ua8FbCpTv06eZQJOBADZOYR7uki/ijSbNjyLU6gi9iJ5x5LbO2eA64AB2YcbHNlXidk6ICrsLOd2d4G0G/hGNgHmrpGWjnXlcyTVB6SZNSGTcTrx7kUm5dBldkm76st/7UvV3/mKBprjU9VD8lerMaELVgC7fkikLnSpHF5OvdziZ+1+Tx0stdhXv679u9yPYngADN712uF4rkY8mFaBsBZGCGQI90tjK2U52dugF8pE9ZqHtjC6gAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "6cfb0d33-b208-4bdf-ac7d-31796b5cec5f",
+        "name": "Blocks gravel",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAWVJREFUeJxdkj1KBEEQhWvbQQMDcdgNNFYXQQwVMfMwYuQZPMAewbOYiWgogqwaazDLiIGBgqhfwwe1WzB0T3X9vPeqBudnp7/xb+Pxdqz8fMbV3UMM2xZXzPo+Tg724mtpNfr+PbSum9V4fGU0GgYfPwTujndq4v7WZr3fv7zGdPoc2YjH17brUajGBTMQBCRurC3XYLo9Tp/qmyd+rNDp+uZ2zsmJX4MaRU2mKcXJa94+vusjKDLUrou5O7SOjw7nYqBYqErHjEIkoBCJwvLPO3qBouCkO9VMlDtBaEF3hQaxVKoGcqQI3PhI5J8EBGSUGslQATHFBpeTi7oHzF9eJntS1F3B8ltDN4Shqg+LBm+6KSCFuEOrCNNNM8gOmLyJUwv1anInoaIJ4mVzhCRmSo1d5aeIdhCJaHjPRYocCRBmFi4jc5yM2YYlBwET+BZy3ovLhCYuXtGRhXTOmKfLZVGn9ge5Sg3V1k5GtwAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "07b5d298-5876-45c5-9479-6844bda15034",
+        "name": "Blocks clay",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAALtJREFUeJyFkzsOAyEMRIlFRc/9m3S5QO5EDW0Sr2T0MjJaSys+M2MPZnk8X+9P+cVay4fSWisR3DvhVQFd60iOhynIOckUOSe+qmAWjp8cViWrg8w293aCaNSdG3VSKb5zELw4v8+N4JwzFbIHWuDvFnrvGxhjbMHJ1XUE2gqRJlNHTGxsmosozBqqjiwjRxI2lxw6tVNzWDHE3mQX06WlKlTMnBE3PaevvYru86Z4Q+mvrC9Pn3U48fkXEvKZzSHrrP8AAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "ebbad32e-2931-4e25-bad7-0c13ee25263d",
+        "name": "Blocks mud",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAO1JREFUeJx1ks0KAjEMhGspiD8nBREPvoJ3H8D3fwYPIoKLoK54Umdhlm9DDew2bSaTTtLRYb/7pJ/Np7P0aJ/Jvkx7+Zdrk6aTcbIZqzUT3NzuvW+A1tVy0Sf6zNjCqiTjDbiPNywGOBhN5+3r3UmoScv6kZXmM+uvSctmFpETYqUaqeOZVf5pjd23L2mdhKhfAfaGRPRVNMf5umEiNhHteDoPiIv1k7U2UidvN+vBrfp34ESzc3TeO5nERQHrZqMoLTaZ+EKgD2Ozohw+6cIkksXJMIlWqJN6a32hRFt2NQaUqE9EnJAwmgRlfQHI1u2SLs8VIAAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "ccd97755-aa15-45e0-8748-1ec8155e1e02",
+        "name": "Blocks ice",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAShJREFUeJxtU7tuwkAQ3ItOCItXSRMpfRq6VPxBfpEf4AP4AUSFREETpUVKg0SBk0AsGsPYmvN442nAt7OzO3t74fNUlvbA/vBnP5ebjQY9fNrsJat+Nx+5EYiBo4ggIFAnZClhf7CKPH+dmBagEIDvsNxdy6/jt02GfRGqK2tFFWIyUAnwQJV9AsECPI8aVH+r7dGep+NWAjr1QkGH6DsBaM/PgpzIg4ZQi+S/Rat1dvD+Nk3DBics1ucSal2VFIjDEv/XQmZPJCAIRSTCPzzSp4oAKIQOwI3qFyKs5K0paA+5UZdD2yRxtS1at8HbIdI1Mlmvyg8RoHcuWhKgqqp3ibEDWgv+MaFtFfEd+o11e5A9hHr/SAAmz1kpkgW+wkao2YOuZ8zzO49z9PXckRuHAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "8a4c6549-1ea5-44fa-b31d-94f1d195b929",
+        "name": "Blocks packed_ice",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAQ5JREFUeJx1k71uwkAQhM/IlREdluhSU9JTR6LnvXgBHoGCLlLSuqckZegioEN2azQH32lvMSNZtvdnbma9Ljb7vz48MRlXYbmo4/NXcwpt14VZPQ23tovPgt4FxYTi99r3NECi5Gr5Ed+bwyU1kNOdWCIANFBgif4v11cFWKBwiEjAmlWUESCLQiBrSNcc1p/zjKjY/px7kpKHzHdEPp8psAPy0sHu+5jmkCkQUCH4gb2bUVTgT1XzuKqSKhQqzgzAyE4U+E/lLejKCOxi6BTs2BxxyEWiwZZepp20hSyJlJzuqi1ts7XAHMhZO6iJFjjVF3gFEPt4+heGdt3vhs2jsOR7PhamThs3BHs69u6Tz+djPhYh3QAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "1159534d-3904-490f-b16d-43071d57702c",
+        "name": "Blocks water",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAANVJREFUeJyNU9ENhSAMFOKvDsAE7P/NAixgHMAwgAzAy73kTLkX8DUxrbW93kF1Oee2iG3b9vW11p88cvSw1Ra/NTJvv3stsu8E1Bzz8F4LLBMrh76U8rBAvDIRQuj06XRr6EF9J2E2jbEdhnjf98Vd19Xu++5QdcqIxcMASNpMnTS9GZo/z3PBAxA2xhg7KYwtSHcGaAAI2SBmgV6tMnEppW4TrZS35cIwT7potJT/0Q+mjwTotxR1E0d74Ymk1FX7yNxxHG2kkfnZOfhZo/37CKTn9AEaxrJEyX5chQAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "191574c3-a8db-45fd-8e93-ba8806772bd4",
+        "name": "Blocks lava",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAN9JREFUeJyNUrsNwjAUdCwkEBU0KDOkyBDUDMAsTMQUDOEioqREFNAhqBKd0VnPFyfiJMtO/O5jP1fPU907wSN83K5dZf/Wbe3e4R5nAGvA/0MmQclJACQOkDHTVRMoKj0CyaUUdj8JXA+b3rpOEVWEdVkCFbFHKMUHRpeoANFeYFFAN5mErraFWuuVpN+WbAU5L+bi6+MptdJvj/u4sLePNYY6qxiQEsQf4Za5zyVZNs0vwbfrRs50A1io8cnzLJrq8+t8yeJbYYh4W0RoR6w4j5ES2E19iaUHBGcmxhgArSGhlpia0PwAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "15fccf36-40f0-43b1-b67f-cb7f86bde03f",
+        "name": "Blocks coal_ore",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAR1JREFUeJx9kz2uhDAMhEO0HYIaOm7ECei5BD0SF6DnBJyKHomafd9bTTREq7UUxfnxzNhxinme7/Bn67qGYRhww3meoa7r5O/7ns7KsgzXdQVZZMHw4Ny+BW/b9gHIL8MMoy7gEwgwwdofx/EDIEYOuMgMoy70fZ+APFBKimmabrEDIDuO41EHqctr9K+AATOFVE3atk1gsEuB1oqJOkA2QzmigEuo8iJ6GikFl6R6KEi+XsDTZB0V7Ad5PeQDVlXVg+hRxG+mYLH7jL2EJJN0l5mn5SARR0VhFph3ZN6dTdMk4MjTORuNQ4A/IzUSO8HLsqSmK7quuyWdDVQApE+EAapCizml4G3rOfsPzM/8hVIfINm/qXKH+deXfgMGUvc33VSXwgAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "852c8f02-d763-4c31-ac0a-a346972f9d4e",
+        "name": "Blocks iron_ore",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAATtJREFUeJx1kzFKxVAQRZPHB4uQNCIknb0rsHYD9q7ARaSzyA5cgWDpLlyBYGn3AxZCIIUgRM+DEyef/wfCm0ze3LlzZ1IOw7AUf7bf74umaXCLaZqO+ndXZ/l8evvOPudunuccjAmn7OVjV3hfkBQvEABIMK2qqgxMMr4xQJK0rBCTogHqXU6ZJFAOq/GgCXZ/fVHcXv6srZH4+Pq5gpXvzw8LAazruhUZEH2S47eo1coAilSSOgy4xDvfYv9WJ74RETBBDsWUESda0Vpm4JxFl1EU0YrE6rreCJ5UN/aH7zuMjOHfnH+t7+SVfd8vVomL4qadMltKOF62GuZk+KaYttK27f8e2E9U2LFpToEiJMtgs8peMMFFgokzJ2kcx/woeIriRdVh4L/hyOKSaZkB1eIYeVzZY+AR7Bd+htuQipjuxgAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "b31c0a14-65b2-4d46-87f9-ca44e6e0b193",
+        "name": "Blocks gold_ore",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAATJJREFUeJx9kj1KxFAUhV8edoHUk1W4AsFyenEB7mA6C0kpxG42IK7APr3Y6yoydSBgF/0efOFOGDzweL/n3HvPfVXf90v6w2E/pOf3G5Zpmqb08vBd9qybpklPdx9lX9d1muc5iarruiUFQACQtmJbMqI5bQDRiOI47IsQZESAczZiPJQURcxIIEZWOV7gAySExnFciawVgxiDVj9ft8vj23WpE2ik9ULkvm3bs/oVKSbqdCT6IBK9M0M4V1zosinqBdGPQ3vmhf4onGN/JTkrKokR/VpLSP9AYQmIRvF86XFMmTRt2aW3mUXsv+TYKta8UeT18341NkdFDmkZwCSB2xJ2u936nrEK2HOIRPLzEN1s2J9OpzLk5Pg5ILq3tdsvHOsvJaBKtK2Buq2YZzFj8AtsHOcFnUVKPwAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "c3a35160-382a-4a70-9959-f0ee92481c35",
+        "name": "Blocks terracotta",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAdZJREFUeJxFkwl22zAMRMFFsh2/3CkX6dl6xzaJLXHrfNBMqSeRIgHMDACG378+xrM2C2Z2yclK68YYw2zP0boWrNlnjc33WS3HYFhGNm/aZJy1WwzBnqVZTsENex9We/f3vmc/e9OM821Llg+hbyl6gIWIAYhJKKaAWe8ukO4s42QpVkFPXIjXbbJgTZA9JTvE6NA/A6enGD30f5HteD2xiiLRaxv251ncmACPUu39kiHg9IuCNe0L0YPC8kEu9jRpPyQFyqxrHZbk+XlUp0ziWhqen8+jWJVNObq9XzeXZ1FacoyOFkMUm661FA6X6shU4mhTXsJWJ55sPhziLDVeHkb4KaX06oBkkyfmN80A/JXkjBHlwDm9nNG8gqIXFqxn/aOdbZ6TTK9fkcNli55VmgqtlLYp6izx8JKxJjhBACNPHgBNRPfaa/Oss3S3Pf2g4cC8pf/dOfTJ6MoeLTlNAhw12NdZHPWuUqKbXBEE7YzoPprZBOVUhoM7z56PYSUzeBm9ff0uTAb55ZcP73+XaV+qMY4k7b5v8y6MWYE1uBuz0ZrRQ7mRFCFsSiI0Ab5y49SJ627chI7oybA5I/ZdCvOKSFKgjKz86kpnNKjOSmb0vSXxHyaSXK2j/cCfAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "0d19204d-5175-4017-ac8c-fa2cf06d4529",
+        "name": "Blocks terracotta_red",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAclJREFUeJw9kwt26jAMRGXZAfrbSDfwdvg2TFso/nWuYuJDiGNJo9FITv//fc6Ukr2WbN+tWdF+mFkbM85+e7dTdhs6bHPaRfuut8uv6dCzJzvpudZqZxlxOrlbEsitdf2n2M945hHMArjgykFJHlllD2QCAGTz6NNe5LlNWPYI9mX3OoeFu0ChPxcyOR59GMmy/oQRiWBLGU+2haBbG/amei0Im1Uxed9KfEMbBhVW8sV2yilAq/Qpu3O2rvddGQn8qs02ZfquPRwB4Y3YkVm+1UhazKkNsQB6ExCZAEE6gi6h0l4afoeAEpqE/qPDTR9jzqj5LlpNuqA2D0F0CoBnW33H2EVkgyPC5aC4l0MgTC76BhytHmKHHbYFUFqao4V7r299HMjUTTbqhW6PIcrBEH0Q/pcSoI84IJ61p4xHBOUIpsVQpnUMGysvHS4qyXFifUlxaIAewzP66rvH8Fxlh+dY2gDIimYzeU9lEXAfHA/RrmopWlA/9qCdLL4pPe5CXSyom1GmM7SPy8WM2JpK7OdDbA8Qfwa+rkmMSzMtRCpoEgPWI4A86IAE9zb2OxTzbukYEmpEB8QFjE5Ej/Tra8QBotSPstkfxHxAIBAeZf0AAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "df3620cf-3b7c-49cb-a6a4-0bbd4ccee76a",
+        "name": "Blocks terracotta_yellow",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAetJREFUeJw1kwl22zAMRMFFi60sbW/T4/VOvVcTx5skLsUHIvrJlMkBMBiMw98/v3uMIq2J5BQkBJF1bzLlqO/Bzj5uuwx2F+Q0Jdn0fhyiPLcqedIXAkgCOCqI36V1fRf5ehT59ToI61MTlRrkoYGlNlGIxF1feu8GuCoYBqV22UqzsxT9/N91F1BZsw7ZmcAq5uhU160pOFjgj2UQmFHpPGUNiPLzZZBR9+uzyjJnuenuzKNXfD1nDe6aNcrlvlsyVtcPyVjz6FW5sVv9imR6XzzjWWnRu9OLBiZ51bP7WslmbexaCBFzsidYMPtzr9I3MarrXryK+FQ4Qy9w6PTUhG/nQXJTAamCjjAgatTKVOLsci/KyCcFE1ol8cspGyYSvGggWRGN+cfo1JkzirMOj1D581bMN+YDLpnnu9JBMOYO3XmMpj6gYj0HY+QG8nHzZASbv8206wiXOVn1XZ8vpf+mlNMUpFafBriU0K1Y4fxYnTbiJB0TgqILhhmVPn1jJCrDwHA6VeZPwkwFsnFRFcFvqkCf7pkM/dMWxXDtISCJo6ucTLjDPMeOK5k587Yp9G5m4/xDrY34BiWTidl8EqyioMOBgGiLeyydv71wgYHb1ddkCjcD35QuvqelrXb7l7JwJOKdVC+e/9kuRjNn8Z2JAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "7d94cdba-2223-45bc-8ddb-2796c08efd8a",
+        "name": "Blocks terracotta_white",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAh5JREFUeJxNkwly2zAMRUGKlrV4SdLT9ww9SU+TxNa+sf/B0041ozFNgvgLvsLvXz9zjMHykW0/DitPJwsh2DBNlorC9v2weV3s1ra27btlM1vXzQrdKcvS0jQvtm6bncuT1eezCrLN82pnNaIhl666TNOUCjsAqSv7enY6zxbZOKVkjTYtmI3TLBbJvrveiiLapamFme05DEItjKLPx9OiGu5qHkshX9vaqX49OjEp/11e1130V8s5u4Rn33tz2L3drlaJcTR/gutFRs6H1tGS0A6tYXSIKqj48y3qbVNJ9qoGpcVlWf0QKalI3u52ad0L9j7uV1vEoipf5sYQLcaodXxJubSNPCicss5t2w77/+n6UeYlnRdaDy6Ji+i/yp8IJUl0qjTxkeo/XmzyBSagb9su6rW/GMjkukHN0QWDaWGcu/tAU/TdJYWGs2T6SOfdfWCNHMyNdVXaqCy0de3FHMAEUx+izAMbxkkmAHrXBGD0Jn9SP0zWVGeXAFXoLUoaSI1YQJOceCPYaoyDavGO9EYcZbakjJencJeDG9YqYDAC/W8mMAnZ+6EgUXxoA8RObCgm77gciKanJLwCJIa81H8qdMM4wyAY3wOl6IQ+5tWSRbNHNzibZdncZP7j1/vtYqQ4YRa6+3H0IHER9Gc/+S9amTvGVfnlCV8qzGcBJ+iijbDwNZL3k+Qw71GFwzjZj7e77wMGAAllzPjxB513TODwstJcAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "00580754-5bda-47ec-b1df-1fa6e6ad3f48",
+        "name": "Blocks terracotta_brown",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAaVJREFUeJxFk4thwzAIRNHHSXfpDt2k+8+Q2BK9Bzh1q9gSv+MOtd+fbz+vbcfsxrO3W2vNXtey0Zu5u95pc638MjvXtscc1i99LPfP4bm1VxKMU4Ek4+n1xkfm/3N98W/kuNfWj4rLeWVlT1SJCCRuc3SjeMf4VDWCDh1+HSOCL5Wh0qr367yihzla+L7V4lTbk4xwwOZ1rkhCwFYrJDrGCBRL+0Jtg4+WyTtOQMPWqkeScMbJpUAIhaUoBPQimkTiqUd23xbGrOZB4M28uhLkndxQVYGo5XLpESwvCCErwfy9RSBo4IjKqAIyfJFcliSRbBhZmSSVeFTv2EEBiSNkFRpxxTlNTiqKsnAmM+zeyYAMB+ytKqKCXKz4VKstdd8xANk0FWL6SlraZF9H9TR7ipxAABxmwUsJnF5VJofLY6ggObSJOdmxehASDkkms7BqEluhIxAkILMqENLLPikzQ/fsn0MEXAWVvolD1mMWsT1nIOSOyfac+7wwLaigInjRn17Xykt2uQW6NxLKv+/P5WkfMkvfaAtumAMA3dcbxHFb9f4DkDVImBQx834AAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "264ae9a6-daad-4f12-b79e-0f56b0ef8701",
+        "name": "Blocks oak_log_top",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAjxJREFUeJxNU1mO00AQfXa3l2QyJEoyE5ZhAIk/fjkAnxyDcyIOAJdgEAgETsSQxFm88145Qdiy3N3lqnpLOXj39lXXdh2KskHkQwQB4MIQVd2iaVvuA3SMKxZy3bSdxcIw4B7wCr55/cyCRdXYB+OLGNt9iUESWcGWZ2XNWKNYgvxQIo4cPny6g1c1dX9xe42SBRRIYg+gsyKRC3FkfDxKWKCFrgnfq+UfQ+LP0JT8K7vHMPU4FDU8E4VGCETjkDtDoaTZbAzR9i7oEWgjvnqmswmYA8cCJG8oJpcp1nmB+SBCxiaXpKFmrN8j0DMaxFhRvILdf2a/EXuHumkNRb6NsDtUePl8QTq1NUhjZ+j8Ubz58e5YGRJVX1O8m8dz27uwp/flW2bJoibU0kXUvZLF7QETV2FgNOTMZlcg32ypeIVHiyl7BkhZWIKr6LlQKJgB+kvrPZFIRNklWyXUkNwHiQcHxlzyp3nRLHjZpMOztwkfddhyf3tzZdy118fO9QjX26MNm+bDF4QvxYeEJ66aAdm2XN4bx4RiZVllHXM6osRITVjMqHBerJIONHlay+fRMLbuGqiHi5R8G6Mqvc5UlaORs+oSR4G7r5npsVn3E3g5jGjjDkfqcpFGZp/0WRG10NgcqNM1D54+mWPP9SCV7yWmJ30k6tXcW9cJKZZU30RlI6+uKQ+//1iZUFJ6w7cNEX8ejXbAO1uWp7/S/ftnKrmk5PcfP5tgNRUWLHGt/rP3bJmteSsmAYX+LwI4YtxjUODQAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "d960ad9f-1393-40a2-98cb-919b6212425f",
+        "name": "Blocks oak_log",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAPlJREFUeJyFkzELwjAUhGM3Bym4KA6C4OLg4O7qv/Dnuju4CkIH0UUoDo7KF7zw8lLrLa9JL+/dXdrBfrd6z2fj0FwfgXo4XsJ2s4jrejQMp/MtrQF7gP31chqqYBCbTOqMqLUHTUHWAAVC+3wVh+x0ofKk5t5m1UPS9Vx5IpLJgWonSRWHpS5mAFEByYZ8Q+hSIivJgvWu2/gXooYWGVi5xaGvmizEX2F5olVDRSVDkgJrwx7oy4Baqas82UYQfmUAkgJ7C35KH6ICO5VGakZ3n0GXnSIDa0FfHB9WfNdhJzXQ/fu/DujH0Z694iIDybQkKQDYgsMenA/Q0pOohW7UIwAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "c9dfe47f-4ed8-455f-9f90-45b9be16d120",
+        "name": "Blocks birch_log_top",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAoJJREFUeJw9U8dy1EAUbEmjnDYAtrFdBX/DH3PlxokDBw4uKAwUBbaxd5VzoN9swR400s68fh3eGB8/vFttW8GyLJRVhU2aQCkbbdui6zr+r+C6DmylkBclkiTmXsczlq5R8zzjcPsWhmFgmmassY+y7hH6Doqqg+cqTPPC1UZRtsgdhRWA69jYvHoDFUUhnsYZZ5fniCIPNYtNb8R+G2M7TnDI7pjXZGBh9+I5qrpDFHp4+HWHIPChmqbRiFL85eYbkRWWdUV5yDAQwDINkJ5mVDW93ldqh2GYkGU536lX6I08LJvCxLYtEEPq0PcjxCP5eQQoD0cy8FETME3Tkweis2kHeJ4NhyBfP39HmgTsMmoJsieg55cXODw80quJhnfY0GhTPuZ51R2yvIFpmggDF8oP4UUJkv0eF9cXaLtRe+GzCblhtwkR+D7M7XaDke6LMcJgWRZNXxhUeYbHuwf9LQ+RNDORsmIaTKSqa5gVs5cik7vigUS18nDbDdqoWnSzIGG8UeBpOftdzBkwxUAog5RFtxycpgXblLHe/9Gdzl6ek7Kjh+bxvmUxI2YqecHkllU3Uv8oi0mC2rOr4toVBd9H3FG7HBRJFlcpXAh+Os9JHHlI6Fb1Cb0oG1y/vtJSXJkP6cRVzJOCmqvvu2hL88QgjiMs1BdzkH5nR/gseBpaHLNaA4q5NaevZaEwlTREssjp+/40BxLf5tke16+u+F4jjUnXDRDLvWDedhBpH6SJ6Jc0QrJIEl48uVkBp+rH7c//EVZHpaevKws9HyUZbJl7w1hlMiVaYSbXwLj59H4dhkEXylUty5LULY62TKaHqqo1mG3bELau61KCo4Gl7i8uD3SEfC3M/AAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "e2e341f3-7d9c-4f45-b715-9537efa45a98",
+        "name": "Blocks birch_log",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAQtJREFUeJyFU7sKwkAQTI4rBCWVYOO/CGKV0iK1n2adwjKVCP6DH2CRRrAKEeyUWZhjsiY4zd5jd2d29y5v77fPbF5kwPPRml0siqzvu7TG/fvV2VlVHbLL9Wx7IJTl3gIZDAcGK+DHYIA+ORRgs1ytLQktQQXbzW6QsGlOZqNnmnKs66NZEkAR7gYJIBGO2gNVgjMQoAwmDOrEQ01IsIEegbI0CPI0cIoA+GniWDk6Rl9WBNtYZoU2lmMkWUSwLwHd9Un9HuxAwEIZ4Kg9ICsD/Jgjg/yFqgFYv75EJM3//QUdHYj8X0gJ/PPlZODIKfjSoC6NUWWPPSh9ykD6jTykVM6egVhrEwmSfgGVvtVj4NAMIgAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "54b9291a-37c7-47f2-b863-9ca7ec583a37",
+        "name": "Blocks spruce_log_top",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAfpJREFUeJw9U12Tk0AQnP2ASyQx6pVelY/6G/wR/v93X9WyNN4lEAK7i9294CbUwrDT3dMzuK9fPi05F+PyzllZFmuiN2zmEHPe2ZwKnhfzuGcsl8XaJljOi0UGPn88KsgDXAIE2IJYCF7JCTECF7yKwYng2/eLRSYUHHx6d7TblKQiBq9Y5in8d20knt3nLKAAol/nq85FHky4+PL8PIDRKZmsD0hknIvsW4mnbi+1BIs4ag2QVDd+p0OnBN6z4ld7AKFeW2snMwmpiEpiDMGmlFUTpZLh72Ww6Mm2QmFn0vs3h/8lJhjIszGXWpPDCzJ0u8aer2ZPj69tuM/WxqCSzpdeqrhoNQkI7IP3NgMtKFBrb8RQ7DqM9uP3i5joPsHoUcIDoViGZ0JQr6vDNK2sbePa6mcSmccpG0md5gZdIIpTpaYyKJeDQ5DDfqc5EFiVa/s2yHBeVBOzhqUa0yKoHazXfpS5DWRPUMW2DeOMWLHbPWmn+igPUpXHQeog9cPbo+qjSSNi3EnC0WWcRr/01fi4DcmyVH+H290u/U0zMM557RBdryNNQvrk6QuII+sjEoOPp04dIJuJ1VsP2duH9tCuhq45UrDN+ITm15ZmGFVHmB3YRllKA9/XZKrhDEVK/flnXFtZ+8v7sM769pWG7UstdcT1rYDgH38WVhpR6xx2AAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "b40f8384-9a68-4fd7-b8b5-c9551bb38043",
+        "name": "Blocks spruce_log",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAQBJREFUeJx1U7sKwkAQTA7xgTEoBLSIjZWF3+D/f4K9NkJA0QSNhZE5mDi3nttsso/Zmd0k3e/KrmnfyXTkEjXElvOxf64fr8RaNhl67zTA4Km69YXn6/OnCfnDsQoBdFJZ5N6jCCzYSEN+MctCAEvzcq+T7brwDJiDJzvKc0pX6XOC1U12AAZDx4DVbhutkWGwRIApIHfAhcUGpZtV3oGuPaNOpXaA0/dn1ImKzvPRs0kv5AFsowLqZZQ2gKAfNtCF2CYUNu2Xge4GstHnAfAS+1wRwxJtjnKQc1xG7FT/DLX9DvQrixVaRojBU3L0Z9IGXEFZ2kHh8c1U6oyxo30AlAycXPLobI4AAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "50edb30f-f44e-4922-b02d-4f51694f6062",
+        "name": "Blocks jungle_log_top",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAjlJREFUeJw9U+1u00AQHJ/v7MRp2gjSoBaqIpVfPANPwSPwuPAUgChNUD5I0sSxfTYz65STLo7vdmdnZtfJl88fO3B19gvkIcWpjnzvUAwCylMDJIBLEnjv0LYd0jRB3bQIfPcJLz493KCqWzgHRAYIZHuoUOSBCS186gxUSYovBh4N/3/7sYBX1f2hxv3dFDVBvE8wZOI1E1RNgM4lZAAMMo/N/oTLUYafv5a8M3AmEFEUH+crqyYGB1I3OVUDYmDEmLKKBja5mBkjafM60EXJwCL3eHc7NdoKqJqI3KfU7KBCR4Iul3/RxBZZcAjcvjxFczAwUHS3zyc8Pq2ses1AMRtkKfbHGh/ez1DxTOfyo2O8zzNn7ipQh1cXORaseHf72lgEySlrytiZ0UP6oM6Ildh7GUd/+pawPY053Xdjvd4a8Gg8ogRn/shYdbySyWTu1FPHS+kSqnQ3sTNWelZNf94Y9d6rCVmOh6GfDQXRhLPj0QLHRbB+v5lNrKLYaY2H2X8wdUbD52WQtO6OlTl9Ncrxe77GE43cU7sm8rLI7dmdJ7VnFvs5UAtljLZ0q/8P9zMcywbT69Q80eQd+C76qi6PXkbfi57cVAeGnIPFnw3/RzNMWzo3rK37GMWio+mJnZvxutAS+tubV9ZvLTFSEVWUzO1zZQlyXwy0jUGfTA8Wa6xW/TBJm74H6RYLgcvUl6r7Hc6tpAcZTfn6fW4X6mtggk0ZIzSuApe5GlviUkZrn7N1gLH/AFmjbY/c+JgzAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "e814d957-ee70-4c4f-b86f-c38fcd2be007",
+        "name": "Blocks jungle_log",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAATNJREFUeJyNUstKA0EQ7B03MZq4kA0hKOplRRCCkKv/kV/wO/w6r4InEcSLCCKIyG5QCUSqsULZxmDBwDyqq6t7OjufjheXV492elwa0Ot2rG7erZnN/Twa9ozveHt6rq27nS+5CZtqvzAC5Iizyd6vO3ITFCOgHIl0pu8QzmFRM8dsuMcdghHYzOqlEJBzwx781z6RNDsAdZzvHt5+ONMSlLvx8Tm/QBNv7l9tNNhy4sHujrXzzEkn1cBF+kXLrm9frCw2rd1Kvq8O+5aNj8qFlsBMTvj+HfSJPUDTefYSQEKdCKAtQIMjtJQEAlQ5KHQBsA+rAslLtKQENlEHDKBLFUwcVVVFSQzmoCE4fumfo6xW6W7VnLiDOMqaJfYgwh0gA1b8hehMob3wEvgL66BByv0COqau9VVVbogAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "077e7fc3-f154-45f2-849c-8069c4dd4dac",
+        "name": "Blocks acacia_log_top",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAlFJREFUeJw1U0uO1DAUrCR2Ounf/BjEIBASEguugDgTS1acjhOwYouQGNCMaJr+OomdhKoXkV7YcZ7rVdWrzj59/DCO44AuJnjnwBc4rm3XofQOWZYjNA333r7leY5hGGzN8wxOm7f3nxF5WPsCPMOh7VEWGfcZYj9i4MWZy9GmASOA9cyh59mX2/dwExrw6maJU9fjcu5xHQd4AvQDywl4JOCc4G3qsao8diEihA5N28L1fQ/Vlezw4/cJp3NnXdkcs2LqWvkcm78BBekFXp4RRHe883CeOgM775tkVJ/fzHFiR3Velo6skhXP56Wx2uwaXJYF/uwHa+JUeVFzwcRiFxJ2hxaJ0u55U9QFJiavn620tYZaY0pwHd0eJ6nUjIkmtb65W+PMQpnnePb98YiG3gjorvbYHhqbWi4UUVzQ2UiEBek5cutY+HNzxj196XiehmkSqh35kz+aoMuQ2UXNeFU5c/5/YcmvBcHUteQFadZleRSHKROurqtJO01sYg8n5wko0KtVZWOVZoFIggAlV7UKmAsh2Pyv1rl5MRmU4WF7pus5Hjk+PctZgYqNJEcMV5RciIFnRGseiLrGpMIXTxbGQDI0Wk1JYdKji2KoRCryLkamitSuSU1Mvj0cTadYKKGK88NWIZqCZQHimhRxjtoYiJI6vrxdmvsLshDAoU24oLEap9IpP0wCARqOOiO4E0VR2h9boxjilPugCBNY5/pj6fnF/AuMcbEaY+CKAl+fvoOY8MWMlKzEfNR1jYZOa1wF6wp2DoGApWdNQsX1H4UEconKmzX+AAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "55f95a7f-a0d0-4007-b8d9-e9355041b28d",
+        "name": "Blocks acacia_log",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAATRJREFUeJx1kjFLxEAQhedWTXGklitEQURBQcTKQvwxVlb+Bn+bWByCIpYitkbr1SLFnfk2vGMyFweWzWTezntvdie3N9fLnLPNZtuW868Rypvmu+R1XXdrWuq+xp4oKJ5fXsv+9v6x+gfIR8yTPu4f5nZ+dmoxpKJXMl2rbywXi7uT4yPb292x+eOTfTZfdniw35Um1rZtAVVV1a2tYoG9t/lTMAlWWFhegdiiZB9gVhYAMgM1gY1Z/GeBGpjBEK8uLwZgrPiBMic17G12Q9TViTWGgJFAkXwyNmXNwFvx+IGFMQWx0eg74Cf+xhR4Zgh8zplNgfAHgJvwvv0QuSGvpDxlyaYJCuJr9M28Iu1J71+dlasxCmiKQgjWZuAZOaQcMIdREJsOGqgYA7Dk6/7Bxuv8Ax2Ur7Q/hVoYAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "5b5baa2e-b18c-475a-9097-afa179e30c87",
+        "name": "Blocks oak_leaves",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAYpJREFUeJxtkzvSAVEQhds1IUromY5EZFgGdmEbbMAGhILJR24FHjH5KGIl99fXVefW/FVOVZu+fft5bqsdj8fv5XKxsiztFwaDgXU6HTufzzadTu31ermv7OHxeLiCAQHX6zXqWZbZbrfzs4KXy6XfcQ79ft+Vw+HgAiaTSaxOAZ0pBOgYHUkwELhYLGLbalmgdYCNpPiTFHu93W5v5vO5fT6fGHC73bzNZrNpo9HIWq2Wbbdbm81mPgLf9/ttvV7Pavv9/ssIvypXeWAU+YlwOggihmA5KFAgGCKrwfhgSwgUeXoBRMQRgIgjqtIlXRFbHw6Hm263GxOg68ycAjwAOLnf784PiYIYpiV07YPsutOz8YQQLK4SzQ3YCYBNMzOKONI9nJCUMRJ+qkzLiZn1KjjzReCnujPJr2C+yHq99g60gSqmdWacRC3RdrVF9NVqFSvpNYCCSVgfj8ebRqPhm/h8Pu10OlkIwXXsJM7z3LcvTdN4B3wT+TurYlEU/5jX3xZUt1QvRPI/mKUACDMmi2AAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "e7b1ed83-cced-4dfd-ae1d-73a16c3730a0",
+        "name": "Blocks birch_leaves",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAVRJREFUeJx1U7txg1AQPJ5FpgL4FaAYqAPaIKIFTEoJdAG5OgAaIAWGmAbQLPY+nzX2zSCe7t3t7n1wmqY55duSJJH/bF1XCcPQvsdxvPwGP8uyiOd5fyYi8D2ZZH3ffwFEUWRRiUxWAO/7/stH4DiOxSAADxN5JhuTu667zlQA9jRNxSnL8sQBl0hmAAFRHlWyzGEYhDkGF3CwgZRIQyCVUZEmvIEBDiTSSYNM1Il7kNAY17atfLiu+3mepwRBIPf73TYTwEVRyOPxkHme5TgOMcbYsrZtE9/3f3qgGVgvfDizBDBTFe2mm8JZazAmUnaWZdYPM3meCx4EQDqSp2m6ZIIddXJpQIBE/CeJ83w+7Spj1iyBBiAA1nVtJ6RHfgFwAkAmiO6Hlsw9oRm931VV2QuwcpQ6+X3dHf01MpBqYJStmfXOGK4qg/Doz5o+zUowNPgFgGIADC7KuqAAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "3484f577-8ad5-403d-9d29-9339f483b778",
+        "name": "Blocks spruce_leaves",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAVRJREFUeJxtU7uthEAMXPZdCBIhgoshB3I6gC5og1cHISVcTgdATAEgESNynsbSIN/qWULe9drj8QdvHMfbOLLvu+gkSb7s8zyL3rbNNE0jZwtnBlAzWN8hn89H9LIsD5gHBrhEUfQEHcchj7C5gH3fm7qunzdLR5cuHaZpeugDOM9zUxSFnPEJAA6khDMcEIhsGgSgZVl+9eInDMPfNE3Nuq4mCAJzXZe579vEcSyszvOUmquqEiDYfd83WZaJvzDQmUiPWd/vt9QMGzrP/lBecKDAoes607atALkj5FSYAMws6nDnzI67Y2SjdYwlTc1EL5IGYQI0EoLSLAK5IKAN+qDIbNS6JNAHCKZiiYQLZ60XiAzwhkR4Q+1ssjcMw62XiDSREcF847YyEA2H7fXfzrsT0NQhYEAQq7NAM9gF1YEQ9A4+wgBUXMoEJBCB0Qf8D5Q/Uk30bttbuEIAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "d63f964f-d1c3-4c50-8399-4c7267b4b50e",
+        "name": "Blocks jungle_leaves",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAUZJREFUeJxdk02ORUAUhUu1obwYSpibYx3eTmxBb4m5HWD+YkrYhZdP51Sq6ybcUvfnnHtURdM03cuyGGwcR1NVlSmKwmRZZvI8N8dxPDHWylOMb8uLDaxtWyO7rssVYiqu69o13vfdWDbneXZB0AnQVOjEifH4AORaklkoSCHfoJBEk6ZpHIPQHgY0EZqYqBnoYhDaMwJo67q6MfyZRRMbhuEfiHSL6YJ4bFAEkrwKGUGNQ5Gjrutubb7fb5cQ/j411L4aWOhD0y/2R9GsElHiagzLwQlFDNEZAQbs81BIDfEYdE6gxFJ3PEU6dSEr1n3f/2mgYl/hcPbQYAKIZXYhheYXayxfROI/aZr+fj4fY611grE+z9Pc921er9fDpCzLxydJYrZtc5rEPm15DpWOs89EXpcJH3Gd/UsjPfw7onl9MOV+Adgy8YuD/IMWAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "5cf1f31d-0ce2-4b55-b902-2be27438cc2b",
+        "name": "Blocks acacia_leaves",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAURJREFUeJx1U8GNhDAMzGbvB+KNgBL4AXVQAq0sbfCkAwqgA6ABviB4A39WE2lyvogbCcVxbM/Y6331fX+v66riOFbjOKowDI0N8D4Mg0qSxPj4zpx3mqYf3/fVPM8m4LoutW2buu/b2PiO41BBEJhk4DxPte+7idFw4pJlmWVYlsWw8p7nubGpDCdiAI1koOs6czIRklGUSbDREuUDyNWohG+aJptIZhdUyZkg79W27U0VAJyQTGYAjLJN6dOoBjYylmX5J5k9813KtwrkgCT+Y5axP0+JMpDtuXeSainLlQ2/nD7ARWIhLYMlu4RsQfoQp+nAMMEEZ9M0VjKL4c0FVLyrqvogqCgKs8JYXc/zlNbarCqlw5YrjNWOouhXAYq4S/XUEtuhz84AwHZhD+q6thLlu3vaAvy9MeEnNtk/3uV/4gvAdwUplwFO6gAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "4dd85176-7de5-44a7-b55a-d5c043cdae96",
+        "name": "Blocks cactus_top",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAANhJREFUeJyFk7EOwjAMRFOrQ6Vm6MbKR/Rr+kl8JStbByqxAa760NVyhCUUGvsud7HTLbf5XaeheDzua7lcp30dv3vst+K5vkqfJZwEQmI8yCB1sIcpmxc5SIFOpmoAEicFVU6BUL9ZlcRqkMYp0X+sq4eqkwWY44kqXVf/mYIiOCpS6eQtK1KvrVaSs0yeevSOZP6pt3/D4kFbUwstmb7PZDJYOrF891kb1ULmexNyi5Olxa0cinYLsV0K2uQ/l0keEss6AFgfld6DvpVfG/UueM6ZBcjIfQBm1bvSxnZwLwAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "645becc4-5ed7-4f32-95d7-ad64a194637b",
+        "name": "Blocks cactus_side",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAURJREFUeJxtUzFOw0AQ3JxslMQBGSIQDRLiAVR8BR5AQQVdXoHSJVUKHsCjEKKKQAoW4MgKBWQWzWV8YS1nfXe7szN7m87l/cXP29On9Q9ye7iZ2vXs1hYvtZ2cD62uGivKrvvl4ttjuGZMsLW9z2s/uHscue8OdlrJ8M3Xyn1q4fX5w3qD3ANh8AzmHmIAStMioSg3B5OrcfxGUl2t/D063WtVJTCAMvxAHwz6ue6X+RZlymlJIGUiqoQNk21ZWLsELKAHh5CQVgB97il15mTQWM2Xdni26xIIqAlaRPfAzpu4f1xEZK0GcN1DgjIEu8A7Tm+B3f8DamKCGgAzpYxBSg1AsM76UVkoGidRD9hxVoPnd9qTeAsqQaeMNDWGxrXPATuMW0jngCCMYbMpOzLglP33h4EExqRSgqLqLaR9oWkR+F/4xu91uAQwVQAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "532e2896-82e8-4013-8632-4a46875b632b",
+        "name": "Blocks oak_planks",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAQlJREFUeJylUjsKwkAQnYQUIUlhIWolCmIlYqe9VxCP4Um8jAew9wCpRNBSJYVFDOliXvQtk7CFkAdL5rPzZt5kncN+W0iJR/KS+PKU2aQn/W5HGGva+BLwPSY1tE9bF2vb1UEbxqNBjQg+7SDyxdltFoW18k940Kw1sRs6XW93M65tP5UEBHA4KomyNDcxLa8p2WUC3aBJX0KsuWC9A6D9DtarqRxP50ofR0Zn2JDBqRDjBLQhw+UFrZNEyIEEh3ku1kxAtkpX8iVCoa0jwR3g234Hy/lQ3lluAmHgS1QeduH/16hJiH4FRFqSoRhEJEYB4iRmHr55BwhCO4rYQT8uXObCQ9W09Q4+61ajqtHpeXYAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "07117dbe-c40f-492e-bc5c-84646e7176df",
+        "name": "Blocks spruce_planks",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAQNJREFUeJytkt2qAVEYhj/TIg2lpOwkcerImdqn+y5cijt0AZzuyYEoKcUkFN5Vz/SZU96aWd//z7tWZT77fdgLp/xqy2xrw5+OddupYWumNdsdcmvUQ5Sxny/3KAcpHgokkWAVVBEgnwooNkHxTkEJvoiCy42UV/mb9B/2AcJ0PCjGowsT0UXItntTrOcmFoAgPz77Scf24rdYTT6aJiQQKIg0zwvwzTi/w8FitS7289c16rXsf3OMpyCZN/K2gpDWq/Hz16UEzvxyK94Db0d68MHsXu7iZW6GmO9w4LswJh3ghwmwE5/oVx4V0sSJH5/i+vAFGaV4hpEhscwJus6POXgCb0a1VFH57twAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "f6355caf-73dd-48aa-9259-fff6ff624324",
+        "name": "Blocks stone_bricks",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAblJREFUeJw9k8nKwlAMhdP2OtQBd1JxI92Jb+Qb+W6uXYmCG0WoC7XO2p8vP6eBS29ukpOTodFisag+n4/dbjdLksTiOLYQgjWbTVsulzaZTAw75/v9WqvVssfjYVEU2fl8trgsSzfwQDDC9/V62e/3s8vl4gGAdjod90O4kzRut9smAZ3g5/PpQTAioNvtepL7/e46fvikaWphtVp5NjLwxYE7p6oqO51OfgCTH0koycsdDod1CUVRWJ7nnh0j7K7Xq9vw2e/3lmWZ67DBHmMAtdFo1DShiNAkaMIEOwy4Aw6j9/ttgQeEQGjROJpDABlwAoQgDjoMiMMeoK3O8j0ejw5AkNjADCHocDjUwEgYj8feUR4YDffBYOAAu93ORqNR3VT1QsHYA1mgDSo1skASnNUDfKgbIADQOYG6cdIjukqCvrLpDV398JGzacxZnVa93HHebrcOis4hibaUBGE6nToSzuv12veAsgDs9/u+ypSHz2azsdls5n3q9Xr/K64xadM0Y74AkVX/B4H0QP+Irz7BmoJWFIPWFmdAeAeYEmHHxHyD5/N5hROKJqGZC0h9YUKAqNHE/QGS5XCOJLy9wgAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "69924c32-9dfe-4154-b02c-9f7bf5f8f01c",
+        "name": "Blocks mossy_stone_bricks",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAApNJREFUeJxFU9tOFEEQPTPTcx8WFlkiQoImwpMQ+QEfJPIP+Bt8mm8mJr5oDMIDwoPwoOEiLMEV1t25T09bVSvaSSU9011Vp845be3s7Ji2baGUQpZlsG0bQRCgKAr05z+j1QZlWqPMGqwHr5DnOVzXhe/7OD09he04DsqyhDFGEjn4OwxDjAcFdNNKJLO+JEdRJE24Gefa4/FYfqZpCsuyUFWVVP/qvEMw5cILFWBAew/93h6+FG8lkaNpGqhv7gfo3CB+4COa9nD7I0UUe0j7pSTbjo2pXohiVCGkInWhcT7zQUa7q1OouOsjG1YoxrVcmnkU4+6SDjwHYcdDU2o5I3DIf4/Ba3BeoTMXwnFtGmFQ0nwBHEXkJR5GN/lf2Exeg2jGk2hbg858RCh9uZtTM8u2YK8HW/KDieJl6GJC1UO6yHvdGLiBQqf3n9SpuQBr7hZW9Auoq6srWBfL0N0jxEsJwawERT4s0aVvyybIZyO0lPhw9FzUYokvvIsJib1eTzovWAu4rD+huxhjeJ0hoPkZ2S3xwSow3NXVVVGJ1UqSBIeHh1BsItaVqw3OR0JMTcTFJGWVN8JPmdVCJnuE7917h5fiZI6z6Y/oRR0U5Dpdt5LAS7xBLuTFSVykrmspJA6+XtzF6GcBpW1YB4+h6JA0gLd2JqSxlCxpq1scHx9P5mbbPz3BsJNB5eSBmqDWOZAQko2NDSFpd3AinmD909tSTGYGRnhgFO8vD+TM5kO2aTw7mY/H4Q6d+VDI5FF4P/5FEmotsHkUXRvxi3q59PofrP1mX94E71eyTew1b9hPogCjaW4a4YRjc3mSZ21vbxuWhpnlZ3r/ErmbfvYdd/0MsyStIZ85R09kvPvnzvf/AAGofD+a53gpAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "32337867-145f-4d5f-aaa5-7db5c68a18f2",
+        "name": "Blocks bricks",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAnhJREFUeJw9U8tqFFEUrNvv6Z6ZvH7Bnbhy50LwCyIKUUFwoYvon7gWFESDCjFKRNCAuPIT3PkLLiTJJPPsntsPq85Eewb6dt9z61TVqXZPb1zt2q4D/3Y5B8RBgJCLy0928fPZc9RtC21zC6rtJzEa3q883kWgl0kYoBeHBpCGIea+Rtk0qOvG3ulQLwpZ7Oxwx+eKe9PZHIEn+tw3KPkiItx06bGWJmjaDkvv7bAORtYKWBA8IkMD5N19+/iya1ncsGO/yLEoS3iC9bKUBe7/ejQ6N30h2S7ZJEtTZHwfHX94h2XTIlTxzTv49XoPwzQ2irrMD+7pd+nRQ/zef4ONXoI/pTfZgcxZ44GI6IN+YdQWlFQRVNRlluTM6xoJ9W/mqYGlUQCvGt+s9NcsLMvK1jJ1yGJdehZ1FWsOApPBK5AQ7vvhq0760yTB6HxsDssLXTJxOOgbsKd52svzDJPpnB4kmC9KuL3ta10eR9ZJdKWf3mJceWzt3MfZp33zQJ01sY0sMfCaz+t3H2g6zuYusxzX0q/giKJcLgh+SgYbmopbHTRANvNkGGmm2sio5980OCzOH1wHlosB/RDD8CILYSdGLeI4hvvx5W03pSbpk+aQScx7mRVOpjOk1Kq5y5eGDSI2qjkR6Vc+3MHt650Co4QNb93D+POBpa+5oKrfII0wo7Riewf+6NACNqlq5MqBKE5pmMitDweWdTtIP9ZoWD+JbJ2zs1goNwJXdhaKv4oT0tacy6oyzcp9EDnMlrV9nUHr7OvUuOWTQKu6JSjBv75/0SXxKjTKubQNigLn4wkKdnQX+T85PUOP3iy4v7W5juOTkWXnLzeXW72AR+tlAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "e35b1d65-d413-4dde-946d-776205976610",
+        "name": "Blocks glass",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAE1JREFUeJxjfPHlx38GCgALiHj+4QtZmiUFeBiYKLEdBDAMUBUXpMwAUg3BMOD2y/ckGYLVBaQYgjMQYYaQbQCxhlA/GkcNIB0wUpqdAXvgFscBJijpAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "f5e9d714-4886-4bdc-b8cb-794649aee0ab",
+        "name": "Blocks white_wool",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAORJREFUeJx1krEKwzAMROPgKYSOof//UZ0ydggZOpiQNeVMX7gKWxDkSNbpTnLatvd1HGVwm+dH9YrrjJ+maTjP8y83cqCIpAO1DOAcCzh7d7/jbJXPThEfmURwt7HViW9ZnvWTSb/Loiat6+vqCv0ZIBqgs1A8+RacSZTUG2yGmq+IAnVQTLnWEOsMCO77didVqE4A4l0/PpXyqTMQQKQet+Ds7iEKwKm7RVlRQn2JdGZ16PXZxJizyZGqOioGcE8CAx7j66ML5g/JQTnfWxCILivhIPon7kzw2WkBFNeGLJ8Rsr9LBOoDOTEtMAAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "bcca14c8-beef-42d5-9078-76fa98934def",
+        "name": "Blocks red_wool",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAPBJREFUeJx1k8EKwjAQRGsIRTxIP8GzJz/bz/ITSg8ivWhmyQvTEBdKstmZzc52c3o+7t913ydsmefJ/X9nWFbgtlzDea3bkLBczvGt70/4igkjSxAhK+gATHElwQJT/MTtrAfAIInLkp8c4EmQEWspnVg7qxKzgmQjic763kBwsuIJLaMyg1gbB7mXkNm0EisBcN8LfC5NrSyVXUuPM/22Tq+vVJo9s2sckfoetApGk9f7fN5c7RNaDprrmQPdYqiYRB/P3ry5YPBbE2POrWQB/Ib2PgrOY62JMUjIKKuTXZYPlw9d9sfjQ+PljprL/gckoeIPgmT9VgAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "1689187a-06ff-4fac-b009-60c3e128c6b3",
+        "name": "Blocks hay_top",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAOdJREFUeJyNU8ENgzAQCydeCPXdZwZggr47agfoGB0gA/Dsu0L9UrmVI8egCkuI5M5xfMfRPW6XdRyHtCzvRGAPIIZ1Kc+U8ymRp/zQIKFiwDSdmzj5eEIVKeJv5Ob5VWMbB4ASANgmCTm4IAc58nraRI1MEr+DQy0Bby0P60gGkrmmIA/iZnK+PfBu8yAdKXkPwSRE9HatV/uhboCu3K+rKqrVfyCv9xlQaEN1kJoSNHj0duWEbjgkFPOe+AV1EtUWbe+5gIjHwwP8fBCFGFyoE0edRP9MEM65Ffa/dDOJ3gOt28UZ/wCDsbexv/7ROQAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "dec3a347-b748-4f97-854a-9cb42e6564b4",
+        "name": "Blocks hay_side",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAO9JREFUeJyNUiEOwkAQvF4uCFJRhapA8IoKJIKn8BTewUsQBI3gBVWoigaBKcwl0wzTJjBJs3vb3dnduSuup2YIH5TlMijatgt1XWW/75/jf/jMR070QgLFTCZIxOKqWoTIIAL4FF33+rLMUxTHw2aYHeFPpP1unR0yc2+PaWeeYZPuiZ0cSug+aiNFQQC7IqidXUiC2kUdFRMgyElYDIsYLGMUNq+gnbyjXvPculETmezWyZQoa6CjEX7f1MZJkz5TdvFi7c4XyMbpfHlMkonbfUrkSNtmNbJpl18PiiImZ/RiFs75QHTFPYGgiC72GyPepxO5B/CpAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "e905c14c-1546-4537-ab2a-c5de4604cb05",
+        "name": "Blocks dirt_path_top",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAPJJREFUeJx9k00KwkAMheswuCoibpTiVvAUnseTeFJxKSIVxI3yBr72NUwNSCZJ8/Ly4+JyPn27/aaR9P2n6Oejb+S7Xe/FJs43bbssMfnTat0WQwElkiBb+nDsmppQIFFNWmBCh4VAXv17YCJNdUAKA6dJG25TDbbS8uuXhIhBdUAk+ObeCWPuQ2fEm7h0isNxRppDZEUb+BIbqAEhDA9A5qZ3rt2AD5Z9M0wSYZGpQmJtG5Ghg2U/IJAFNPrGqjXJsQrJHBV+34D7hzvw1cwNs3YnOR6QT/lf4qQFCb17UkyIQOWQ/B8Yk+h3u1tNYt7WDw/q0Trmzm18AAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "7d4fcfb2-f4a6-405f-9b4e-00e7720bb9c0",
+        "name": "Blocks glowstone",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAQNJREFUeJx9UzEOwjAMTKJKrIgFxo6dWfhGxSt4Ak9h5AWIkS+wMHfsWBgQI0xBF+mqixs4qYrtnJ2L4/p3t4+vvnPAvG6cQuO0lYdY5QookW0ifR8fx0jC59mlzeW6Tf79ds6StTBjASQkYmXy9XRIhL4fko9vtmgmihDzw6WNIOhpTAbqelW8Dq8S6FA2TwQ2253TfSTwYywpKDWJqqAEhaxCIrCSNgk2ErCqCviqFPCcAwT4ChYkA5YT4Kh02lhpQw2vYGdkbCIlW9hC2quxB1amPUk52qs0B+xBaUwtSiOe9QAVeco/FVqwyp7PnKYqyMErcEawP/kbmfjr50n7Yn8BcPLFJoDem0QAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "ca267541-8b05-4d78-aea6-164ca1e88701",
+        "name": "Blocks lantern_block",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAADRJREFUeJxjtLKy+s9AAWABEUeXBZCl2TpqAwMTJbaDwKgBDAyMlEYjxS4YTQeDwQCK0wEAXyELKchtcaoAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "94459193-a5d5-48e5-b0b0-677d6f2febee",
+        "name": "Blocks tall_grass",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAR9JREFUeJzN0LGrglAUBnAVB0N0qclB0sUthAb/a+ccBEdHFXRQsUGsDBwixcHSx/vMXpccgpZ3lp9ezv3uvYei/mX5vj982svMLd7v948Pmw04Ho/fBXAc910Aw8wuv5VlWeOsTNMkhhYEwewQX4frOM5fj+d5zx/XdfEdRRHc7XYwDENo2/bwugd31XWd3u/3WOj7nnoEwGEYs7uug4IgwCRJqGfAbzVNQ2yQZXlseMzjfD7D2+0GFUUhA9I0hW3bErIsC1VVhavVCmZZRgZMV9Q0jWicgsqyhHmeQ0mSyADDMODlcoFxHENRFImnVFUFT6cTGVDXNRGw3W7hcrmEh8MBrtdruFgsyIDr9QppmoZFURCB09N4noebzQb+AA77hp28m3QtAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "62bd0662-98ee-4728-bc59-37ef9229d24f",
+        "name": "Blocks fern",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAWVJREFUeJxjYBgFjMiclZuX/QfR4b5RjMh8dACTJxrsObIHbNCcxXMwDGTCp3HB8gVgDT9+/ADzRURFMNRgOOXirYv/9dX0GbE5X0pSluHZ88dgL+w6tOu/m50bIxOyE0Hgwb0HYBqkSEhQlOHH198MP7/9AfNtTWwZtTR1wfLfvn0D0yzoTpOSloKzHz98zKCmrsbAwckBF4N5h42NDWHAo4ePwByQs+89uA1XzM3HwfD0+SOw7TAv3bsPkReXEAfTYC/w8PLAnc3NyQdmL1+3/D+Ir6aqCeYrKqiA5X99/wsJq/MXEQY4WToxHjx1EGyDtIw0WEJSWhJM//71GyUg//+HBBcXFxfCCyDw+uVrsBdu3b4O5r989QxMf/jwAUzff3AHJWHJyMkgXAALSJATlRXVwHw5GUWUQGP6zwqWB8UICDAyMqIaAAsHFlaIoxiZIArY2dkhCpkgSuXk5SABzM0NpgHHR4NtOlm8VwAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "79d1dee3-6fd0-4a15-b315-2ae5219c526a",
+        "name": "Blocks poppy",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAIFJREFUeJxjYBje4I6x9v/nprr/8alhwifJCMSCq4MZ3pjr4TUEL7hiqPn/lRl+V+AFjnXa5HsBBNj5WPHKEzSAECBowJcXPygzgEuEnTwD/PqM/xPjArwgYJLpf4tcVfJj4cfHXwz//+K3BK8BXELsDEwsjOQb8PHpNwZmNvzhDABWcSIKk2GnIAAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "ea61ee33-e6b8-4c35-99c1-2a62407ae490",
+        "name": "Blocks dandelion",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAIpJREFUeJxjYBje4Md1/f+Pj2r/x6eGCZ/kv38MDKy3vzJ8uaKH1xC84M9tg/+/bxmQb4BFrhr5XgABFnb8Sgga8P8fftcTNICBEb80QQP+/SbTBW4NkKjjl+UiZAduEDjZ9L9HN/4oxO8FRkaGr69+4FWC14D/f/8xcAiwkW8AEzMTw/cPv/AaAAACYSmaBpcc7wAAAABJRU5ErkJggg=="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "f60c242f-60ae-41fd-b504-efaf9aa3ff7f",
+        "name": "Blocks cornflower",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAIxJREFUeJxjYBjewLfk0X+3zDP/8alhwif59/c3hk3lWxh8iu7hNIQFnwHbJmowBv2//v8/ww/8TsUH7Cq1yPcCCPz++gevPEEDuETZKTPgx4fflBnAyIhfHqcBARNNwYHHTcALeEHgFLP/Ls265McCEzMjw+/vf/FaQjgMmPAHAl4DfgHTACsXM14DAKnwJz30IBp1AAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "acde3bc1-1556-46e5-a2f1-7dbbffbac262",
+        "name": "Blocks dead_bush",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAK9JREFUeJxjYBgFwxXUx5n8h7ErIg3/41PLhE3wP1BLtr8OWOO/f3j1YxpQF2vyv2nxGUYBbjYwX5CXHa8LMQzg4WQB03xQAxiBEB0wM2GKwUF+kB7c9Cw/7f8wVyGryYF6D6sLJIW44Gx2VmYojaqMh4sVzsYw4NWH73A2KwtEGtl6UOB2LD8P9wOGAX/+/oOz2ViY0aUZONlZUPgYBgjzccDZf6FR+BrJVWwsqFoA6vAqnVbtNWcAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "9a0da758-1f97-4361-89a5-c99b5a479631",
+        "name": "Blocks red_mushroom",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAALNJREFUeJxjYBgFQwCctNL6/+HNE5zyjLgkgJr+n/RyZuBjYWb4/Ocvw9///xk8T9/CUM+Ey4CLPq4Mf/79Z2AGavkNpC237yPeBdtM1f5zMjMxcDMxMbAB8ctfvxkk2VkZ/gBdYXTkKk5XY4AbZ3f9f3j10H+iNaCD/5/u/P//4xFeA3CGARiwsTGcP30erxK8Bpw6fppBTlaafAM42NkZHjzEnQYIgu+vr/7///ku3jAAAENBQtvNin1cAAAAAElFTkSuQmCC"
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      },
+      {
+        "id": "7bc0ee74-59b9-4f85-bfc8-516063979609",
+        "name": "Blocks brown_mushroom",
+        "type": "image",
+        "embedded": {
+          "mime_type": "image/png",
+          "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAKxJREFUeJxjYBgFQwD05/r8xyfPiEtibnnwfyYmJjD77cevDML83AyJ7asx1LPgMuDn778M////AdsB0vz1+y+s6piwCfbleP///vM3AzcHGwMLCxPDG6ALGIF2Tyn0x+sdDHBy/7r/x/asxqsJqwtgwMzUgIGLi5MkS1HA+0fn/v//+QivC3AGIgg8efaC4eOnz3gtwWuAlKQYw58/f8k34OfPXwzv3n/EawAA0/E55cE5v7kAAAAASUVORK5CYII="
+        },
+        "wrap": ["repeat", "repeat"],
+        "filter": "nearest",
+        "mipmaps": true,
+        "color_space": "auto"
+      }
+    ],
+    "objects": [
+      {
+        "id": "526e7b98-7971-4462-9738-07481e1c082b",
+        "name": "Sun",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.10026318942054399, 0.17708388051931728, 0.8519913009966613, 0.4823892775896421],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "directional",
+          "color": [1.0, 0.965, 0.915],
+          "intensity": 2.0,
+          "range": null,
+          "falloff": "inverse_square",
+          "radius": 0.0,
+          "angle": 0.6
+        },
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "4174fe1a-1753-4964-94eb-8fc364a0f7f2",
+        "name": "Still castle",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [741.29, -921.34, 96.0],
+          "rotation": [0.03836073744356079, 0.112212496019407, 0.9395585184245052, 0.3211955790726727],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 55.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 6000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "745cbd8e-69a3-4e6d-9b4c-afbf6b5f4c1f",
+        "name": "Still village",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [739.05, -898.04, 71.0],
+          "rotation": [0.04048839307883788, 0.11342450109624343, 0.9349403896253112, 0.33373947987050173],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 55.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 6000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "0f110bb4-544f-4a3f-b66a-4041353893ea",
+        "name": "Still panorama",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [639.29, -1069.3400000000001, 140.0],
+          "rotation": [0.018690865219971355, 0.056393192752722456, 0.9475449134375384, 0.31405269683148873],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 55.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 6000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "6cddc233-427d-4cca-8aa3-a52cbbd4f876",
+        "name": "Orbit",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [729.29, -859.34, 100.0],
+          "rotation": [0.13371921058204456, 0.13371921058204456, 0.6943480198872285, 0.6943480198872283],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 55.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 6000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      }
+    ],
+    "cad": {
+      "settings": {
+        "length_unit": "mm",
+        "angle_unit": "deg",
+        "precision": 3,
+        "display": {
+          "chord": 0.0005,
+          "angle_deg": 12.0,
+          "relative": 0.002
+        }
+      },
+      "items": []
+    },
+    "animation": {
+      "settings": {
+        "fps": 30,
+        "start": 0.0,
+        "end": 10.0,
+        "markers": [],
+        "sections": [],
+        "enabled": true
+      },
+      "items": [
+        {
+          "id": "b183f211-a0b8-4fb5-ae48-9ade3751d182",
+          "kind": "path",
+          "name": "orbit",
+          "definition": {
+            "kind": "circle",
+            "center": [789.29, -859.34, 100.0],
+            "radius": 62.0,
+            "normal": [0.0, 0.0, 1.0],
+            "start": 200.0
+          }
+        },
+        {
+          "id": "101f82e5-4601-4d35-ab83-9f0f8d5f9056",
+          "kind": "constraints",
+          "name": "Orbit Constraints",
+          "definition": {
+            "object": "6cddc233-427d-4cca-8aa3-a52cbbd4f876",
+            "constraints": [
+              {
+                "name": "follow",
+                "type": "follow_path",
+                "axis": "+y",
+                "follow": false,
+                "loop": false,
+                "offset": 0.0,
+                "path": "b183f211-a0b8-4fb5-ae48-9ade3751d182",
+                "up": "+z"
+              },
+              {
+                "name": "look_at",
+                "type": "look_at",
+                "axis": "-y",
+                "target": {
+                  "point": [789.29, -859.34, 76.0],
+                  "space": "world"
+                },
+                "target_offset": [0.0, 0.0, 0.0],
+                "up": "+z",
+                "world_up": [0.0, 0.0, 1.0]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b9ab6d3f-dd65-435a-82f7-a6ccbe31cf3e",
+          "kind": "binding",
+          "name": "Orbit",
+          "definition": {
+            "object": "6cddc233-427d-4cca-8aa3-a52cbbd4f876",
+            "action": "3176fe69-76ea-4d6c-ad48-568a7f403217"
+          }
+        },
+        {
+          "id": "3176fe69-76ea-4d6c-ad48-568a7f403217",
+          "kind": "clip",
+          "name": "Orbit Action",
+          "definition": {
+            "target": "object",
+            "channels": {
+              "constraints[\"follow\"].offset": {
+                "keys": {
+                  "time": [0.0, 10.0],
+                  "value": [0.0, 0.25],
+                  "interpolation": "linear",
+                  "left_type": "auto_clamped",
+                  "right_type": "auto_clamped"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "worlds": [
+      {
+        "id": "f5f2edd4-9ece-49d8-90c9-8e9af491f19d",
+        "name": "Blocks",
+        "definition": {
+          "seed": 5,
+          "generator": 1,
+          "mode": "blocks",
+          "extent": {
+            "min": [-1024.0, -1024.0],
+            "max": [1024.0, 1024.0]
+          },
+          "sea_level": 0.0,
+          "terrain": {
+            "scale": 1.0,
+            "height_scale": 1.0,
+            "continents": {
+              "scale": 3000.0,
+              "octaves": 4,
+              "land": 0.8,
+              "warp": 0.35,
+              "edge": 0.0,
+              "curve": [
+                [-1.0, -30.0],
+                [-0.1, -6.0],
+                [0.0, 1.0],
+                [0.2, 8.0],
+                [1.0, 30.0]
+              ]
+            },
+            "ranges": {
+              "scale": 1400.0,
+              "coverage": 0.55,
+              "warp": 0.5,
+              "sharpness": 0.4
+            },
+            "mountains": {
+              "height": 95.0,
+              "scale": 420.0,
+              "octaves": 6,
+              "ridged": 0.7,
+              "sharpness": 2.0,
+              "roughness": 0.47,
+              "warp": 0.25
+            },
+            "hills": {
+              "height": 12.0,
+              "scale": 160.0,
+              "octaves": 6
+            },
+            "valleys": {
+              "depth": 0.0,
+              "scale": 4000.0,
+              "width": 0.06
+            },
+            "plateaus": {
+              "coverage": 0.0,
+              "scale": 6000.0,
+              "height": 110.0,
+              "step": 22.0,
+              "sharpness": 0.8
+            },
+            "canyons": {
+              "coverage": 0.0,
+              "scale": 3200.0,
+              "depth": 70.0,
+              "width": 0.05
+            },
+            "dunes": {
+              "height": 2.0,
+              "scale": 30.0,
+              "direction": 30.0
+            },
+            "detail": {
+              "height": 1.2,
+              "scale": 24.0,
+              "octaves": 4
+            },
+            "warp": {
+              "amplitude": 60.0,
+              "scale": 500.0
+            },
+            "curve": null
+          },
+          "climate": {
+            "temperature": 12.0,
+            "variation": 5.0,
+            "gradient": [0.0, 0.0],
+            "lapse_rate": 30.0,
+            "moisture": 0.58,
+            "moisture_variation": 0.22,
+            "moisture_gradient": [0.0, 0.0],
+            "scale": 1800.0,
+            "water_influence": 0.2,
+            "water_distance": 1200.0,
+            "rain_shadow": 0.3,
+            "wind": 180.0,
+            "boundary_noise": 0.12
+          },
+          "biomes": {
+            "preset": "earth",
+            "blend": 0.12,
+            "table": {},
+            "disabled": []
+          },
+          "surface": {
+            "beach_height": 2.0,
+            "cliff_slope": 40.0,
+            "snow_temperature": -2.5,
+            "treeline_temperature": -7.0
+          },
+          "hydrology": {
+            "mode": "drainage",
+            "extent": null,
+            "cell": 4.0,
+            "max_cells": 4194304,
+            "erosion": {
+              "iterations": 25,
+              "strength": 0.7,
+              "deposition": 0.3,
+              "thermal": 0.3,
+              "talus": 42.0,
+              "uplift": 0.0
+            },
+            "rivers": {
+              "threshold": 300000.0,
+              "width": 0.006,
+              "max_width": 9.0,
+              "depth": 1.5,
+              "contour_width": 0.012
+            },
+            "lakes": {
+              "enabled": true,
+              "max": 6,
+              "min_area": 40000.0,
+              "min_depth": 2.0
+            }
+          },
+          "caves": {
+            "enabled": true,
+            "tunnels": 0.4,
+            "caverns": 0.2,
+            "overhangs": 0.0,
+            "radius": 3.5,
+            "depth": [-60.0, 10.0],
+            "entrances": 0.35,
+            "scale": 40.0
+          },
+          "vegetation": {
+            "density": 1.0,
+            "clutter": 1.0,
+            "rocks": 1.0,
+            "distance": 2000.0,
+            "detail_distance": 90.0,
+            "variants": 6
+          },
+          "structures": {
+            "settlements": 0,
+            "size": [6, 16],
+            "spacing": 1500.0,
+            "castles": 0,
+            "towers": 0,
+            "ruins": 0,
+            "roads": true,
+            "bridges": true,
+            "biomes": ["plains", "meadow", "temperate_forest", "birch_forest", "savanna", "taiga"],
+            "max_slope": 14.0,
+            "items": [
+              {
+                "id": "keep",
+                "kind": "castle",
+                "at": [789.29, -859.34],
+                "rotation": 0.0,
+                "size": [34.0, 30.0],
+                "floors": 1,
+                "style": "stone",
+                "seed": 0
+              },
+              {
+                "id": "village-0-well",
+                "kind": "well",
+                "at": [769.05, -860.04],
+                "rotation": 0.0,
+                "size": [2.4, 2.4],
+                "floors": 1,
+                "style": "stone",
+                "seed": 0
+              },
+              {
+                "id": "village-0-house-1",
+                "kind": "house",
+                "at": [789.92, -853.54],
+                "rotation": 178.75,
+                "size": [6.3, 5.5],
+                "floors": 2,
+                "style": "timber",
+                "seed": 1042425071
+              },
+              {
+                "id": "village-0-house-2",
+                "kind": "house",
+                "at": [789.58, -867.65],
+                "rotation": -1.25,
+                "size": [8.5, 5.9],
+                "floors": 1,
+                "style": "timber",
+                "seed": 1877079519
+              },
+              {
+                "id": "village-0-house-3",
+                "kind": "house",
+                "at": [777.84, -852.85],
+                "rotation": 178.75,
+                "size": [6.0, 6.3],
+                "floors": 2,
+                "style": "timber",
+                "seed": 792625929
+              },
+              {
+                "id": "village-0-house-7",
+                "kind": "house",
+                "at": [750.22, -852.88],
+                "rotation": 178.75,
+                "size": [7.2, 5.1],
+                "floors": 1,
+                "style": "timber",
+                "seed": 1122743349
+              },
+              {
+                "id": "village-0-house-8",
+                "kind": "house",
+                "at": [752.56, -866.78],
+                "rotation": -1.25,
+                "size": [7.7, 5.8],
+                "floors": 1,
+                "style": "timber",
+                "seed": 768887858
+              }
+            ]
+          },
+          "blocks": {
+            "size": 1.0,
+            "min_height": -64,
+            "max_height": 192,
+            "trees": true,
+            "ores": true,
+            "plants": true
+          },
+          "materials": {
+            "block_stone": "0c7f15c6-c84a-4e57-af48-c8d61f5b959d",
+            "block_cobblestone": "ea5c8a11-e18e-4090-9404-6063e892661d",
+            "block_dark_stone": "22be42a2-2b57-455a-9040-be970163cb71",
+            "block_bedrock": "65f99569-9397-4a18-b185-32d4fecce268",
+            "block_dirt": "1d6e85dd-85b3-4198-8739-82e7ea967926",
+            "block_grass_top": "f9706a01-33cd-4910-9ab1-bc6f34c49ce2",
+            "block_grass_side": "ea187f6e-13a2-4656-9f14-06e41dad1bc8",
+            "block_snow": "db9f474f-3657-4782-9c65-93273fce1fc8",
+            "block_snowy_grass_side": "0e1d9d6c-bcf3-4949-86d2-b042a4ab5ff2",
+            "block_dry_grass_top": "6531d90e-be81-499b-9503-c4aa13962181",
+            "block_dry_grass_side": "de300a9a-da76-4c31-82d3-3c7c15c7a2ec",
+            "block_sand": "e329411c-6c07-4f2a-af06-1db6f2e36732",
+            "block_red_sand": "641efddd-1f8e-4ec7-ae73-0ce9ef574708",
+            "block_sandstone_top": "9e2a8be8-efac-40ea-bfc1-4854330acb1d",
+            "block_sandstone": "5eac8b39-5a98-4e9f-8ee7-ab5c24c9d077",
+            "block_gravel": "cd84f286-27c5-48a9-9683-93f15a5be010",
+            "block_clay": "6b39d28e-7d30-434b-b2a9-bea973a82797",
+            "block_mud": "05326099-896f-4722-a394-22cc8560dffc",
+            "block_ice": "55a8212a-9736-486b-93eb-0b8d032ca8e7",
+            "block_packed_ice": "421be75d-de19-402e-a4a5-d206a746d391",
+            "block_water": "25739850-01af-4abc-9476-12089604ce3f",
+            "block_lava": "68268b3c-5de4-423f-8ed4-b2d5e22bfb83",
+            "block_coal_ore": "e3d136f2-94bf-4fe1-a120-6dc38252a764",
+            "block_iron_ore": "7d49457e-fb84-4460-9f03-cb26acf1dbbe",
+            "block_gold_ore": "0d1cce32-4b98-49e4-ad76-747ab8c7f59b",
+            "block_terracotta": "d6b0e993-2e95-427e-b673-ecc1c57b33f7",
+            "block_terracotta_red": "03c87bc9-1b07-41b8-b4f0-f1c0311995ae",
+            "block_terracotta_yellow": "5c0f7ca7-7193-4f2d-b1d5-2bc4af19d93d",
+            "block_terracotta_white": "ba39e46a-a3aa-4941-b126-cf169d7df369",
+            "block_terracotta_brown": "ae3de8cc-c619-47aa-a03c-1f9fbc67a79b",
+            "block_oak_log_top": "2427ca31-cee2-459a-bc07-bd06fb0ee4b9",
+            "block_oak_log": "352d7e5f-2086-4c98-aa89-72e6732222f2",
+            "block_birch_log_top": "b8b6aa53-a379-485d-ab1b-7dae29979299",
+            "block_birch_log": "ec00706c-b4b9-4452-871f-cf5200d6edcc",
+            "block_spruce_log_top": "31700673-2c73-45e4-990a-ef633cabf3b7",
+            "block_spruce_log": "82b930d3-d95e-4071-a707-eb609dae306c",
+            "block_jungle_log_top": "2867c577-0d3b-4989-a17d-6ed0ec64175f",
+            "block_jungle_log": "7c4cf012-5cd8-49ba-b353-75f4c26e0d77",
+            "block_acacia_log_top": "6d4be6d0-1d40-4977-be89-41e37fa5a4f4",
+            "block_acacia_log": "b08c7ef2-8967-4948-a82f-7aac6c1d0da1",
+            "block_oak_leaves": "c628ba6c-d94b-4413-a2dd-d612c37b2b36",
+            "block_birch_leaves": "0242e649-12ac-4d6f-8dd3-278beab29f47",
+            "block_spruce_leaves": "1a3ac5e8-f48e-4804-a0aa-4617c5775004",
+            "block_jungle_leaves": "f1eb65f4-ba8c-46fd-8116-e6c0db15fa41",
+            "block_acacia_leaves": "8a6a5674-0e5d-4190-b399-6d7b868fe810",
+            "block_cactus_top": "106dff63-107f-4ef5-bd8b-65d016bb1004",
+            "block_cactus_side": "09865d91-2bd6-4e20-a511-e12c522c4153",
+            "block_oak_planks": "397da034-b15a-4684-a81d-43ba045e0429",
+            "block_spruce_planks": "00eb452d-a9cb-47c8-a386-f450edea2508",
+            "block_stone_bricks": "bf4328c3-e4d9-426a-ac85-120afef280f2",
+            "block_mossy_stone_bricks": "b689f401-42d9-4fc0-80c1-30feca988099",
+            "block_bricks": "e772789d-0285-484d-9a63-a0eb46a0c71b",
+            "block_glass": "dd204eb7-743a-4965-9a37-1c868df74d8f",
+            "block_white_wool": "9401928f-b2e7-4c4c-af97-362a758740fa",
+            "block_red_wool": "240a4766-d90b-4b9d-8421-540df2003b44",
+            "block_hay_top": "7a3bd2ef-16a0-4841-9b20-31ed7dbe5eee",
+            "block_hay_side": "b01fb629-a36b-40c7-be7e-27fa89b1c566",
+            "block_dirt_path_top": "39cb6789-8989-42b2-bcc2-d1aee14c0425",
+            "block_glowstone": "f2227af5-a0f3-46a8-a912-0fb9bfda2408",
+            "block_lantern_block": "d87c5228-088d-4af5-af15-9337f5cc0885",
+            "block_tall_grass": "a10c9ca3-0455-4f09-a3ae-06854c50630d",
+            "block_fern": "130d8ac7-ab07-436c-9b71-f128a3f99545",
+            "block_poppy": "4bf64a04-ea1a-4e26-a624-4bd3e87a00a4",
+            "block_dandelion": "c7d5711d-651d-4a06-b0ce-5aa651a9d30f",
+            "block_cornflower": "e96e33ef-30d3-44d9-b2cb-3e386b13d999",
+            "block_dead_bush": "81a02938-d984-43a9-ba96-83cab3292ce5",
+            "block_red_mushroom": "dff69766-deae-4c60-8bc3-6c8e7744b662",
+            "block_brown_mushroom": "2d98e0a2-1582-47a6-874f-5350c43f794c",
+            "water": "601e5ae6-9528-4db4-9d7a-020a3e64941d"
+          },
+          "streaming": {
+            "chunk": 16.0,
+            "resolution": 16,
+            "lod_error": 3.0,
+            "view_distance": 2000.0,
+            "volume_distance": 0.0,
+            "memory_mb": 1024.0,
+            "max_tiles": 20000,
+            "threads": 1
+          },
+          "features": [
+            {
+              "type": "clear",
+              "id": "keep-clearing",
+              "shape": {
+                "circle": [789.29, -859.34, 34.0]
+              },
+              "enabled": true,
+              "what": ["trees"],
+              "falloff": 8.0
+            },
+            {
+              "type": "road",
+              "id": "village-0-street-0",
+              "shape": {
+                "line": [
+                  [794.77, -860.6],
+                  [743.33, -859.48]
+                ],
+                "width": 4.0
+              },
+              "enabled": true,
+              "falloff": 3.0,
+              "material": "dirt"
+            },
+            {
+              "type": "clear",
+              "id": "village-0-clearing",
+              "shape": {
+                "circle": [769.05, -860.04, 53.4]
+              },
+              "enabled": true,
+              "what": ["trees"],
+              "falloff": 25.0
+            },
+            {
+              "type": "road",
+              "id": "castle-road-road-0",
+              "shape": {
+                "line": [
+                  [769.05, -860.04],
+                  [789.29, -859.34]
+                ],
+                "width": 4.0
+              },
+              "enabled": true,
+              "falloff": 4.0,
+              "material": "gravel"
+            }
+          ]
+        },
+        "edits": []
+      }
+    ]
+  },
+  "meshes": []
+}

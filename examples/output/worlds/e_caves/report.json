@@ -1,0 +1,76 @@
+{
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "aether3d": "0.18.0",
+    "native": true,
+    "python": "3.14.8"
+  },
+  "size": [
+    1920,
+    1080
+  ],
+  "stills": {
+    "entrance": {
+      "path": "examples/output/worlds/e_caves/entrance.png",
+      "seconds": 288.92,
+      "backend": "gpu_path",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [],
+      "at": [
+        44.0,
+        270.0
+      ],
+      "world": {
+        "parts": 10787,
+        "meshes": 567,
+        "triangles": 2763700,
+        "seconds": 21.0522
+      }
+    },
+    "cavern": {
+      "path": "examples/output/worlds/e_caves/cavern.png",
+      "seconds": 1005.46,
+      "backend": "gpu_path",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [],
+      "at": [
+        -142.5,
+        374.0,
+        349.56
+      ],
+      "world": {
+        "parts": 8541,
+        "meshes": 556,
+        "triangles": 2484827,
+        "seconds": 21.791
+      }
+    },
+    "overhang": {
+      "path": "examples/output/worlds/e_caves/overhang.png",
+      "seconds": 236.61,
+      "backend": "gpu_path",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [],
+      "at": [
+        204.0,
+        150.0
+      ],
+      "world": {
+        "parts": 9783,
+        "meshes": 523,
+        "triangles": 2327734,
+        "seconds": 19.9895
+      }
+    }
+  },
+  "volumes": {
+    "columns": 2195,
+    "cubes_meshed": 816,
+    "triangles": 1911458,
+    "seconds": 36.116,
+    "cubes_cached": 816,
+    "columns_cached": 2195,
+    "bytes": 63508496
+  },
+  "seconds": 1539.2
+}
