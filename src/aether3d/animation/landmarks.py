@@ -193,21 +193,31 @@ def _symmetry(points: np.ndarray, occupied, h: float, height: float) -> tuple[fl
     c = points.mean(axis=0)
     best = (0.0, 0.0, -1.0)
 
-    def score(theta: float, off: float) -> float:
+    def score(theta: float, off: float, pts: np.ndarray) -> float:
         n = np.array([math.cos(theta), math.sin(theta), 0.0])
-        q = points - 2.0 * (((points - c) @ n) - off)[:, None] * n[None]
+        q = pts - 2.0 * (((pts - c) @ n) - off)[:, None] * n[None]
         return float(occupied(q).mean())
 
+    # The coarse sweep on a fixed sample of the voxels (an eighth: the score is a
+    # fraction), the refinement on half of them, the final choice on all.
+    coarse, fine = points[::8], points[::2]
     for theta in np.radians(np.arange(0.0, 180.0, 3.0)):
-        s = score(theta, 0.0)
+        s = score(theta, 0.0, coarse)
         if s > best[2]:
             best = (float(theta), 0.0, s)
     theta0 = best[0]
+    ranked = []
     for theta in theta0 + np.radians(np.arange(-3.0, 3.01, 0.5)):
         for off in np.linspace(-0.04, 0.04, 9) * height:
-            s = score(float(theta), float(off))
-            if s > best[2] + 1e-12:
-                best = (float(theta), float(off), s)
+            ranked.append((score(float(theta), float(off), fine), float(theta), float(off)))
+    ranked.sort(key=lambda r: -r[0])
+    # The coarse winner first: a candidate replaces it only by scoring better on all the
+    # voxels (ties keep the plane the sweep found).
+    best = (theta0, 0.0, score(theta0, 0.0, points))
+    for _, theta, off in ranked[:6]:
+        s = score(theta, off, points)
+        if s > best[2] + 1e-12:
+            best = (theta, off, s)
     return best
 
 

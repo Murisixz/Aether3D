@@ -412,6 +412,8 @@ def _joint_constraint(
     armature_world: np.ndarray, worlds: _Worlds, result: RiggingResult, scene: Any, arm: Any,
 ) -> tuple[np.ndarray, np.ndarray]:  # fmt: skip
     p = c.p
+    if c.type == "twist":  # (local rotations only: no targets, no armature space)
+        return _twist(p, w, rig, local)
     inv_a = np.linalg.inv(armature_world)
     rig_model = (rig, model, armature_world)
     target = _target_world(p.get("target"), worlds, result, scene, rig_model)
@@ -484,19 +486,6 @@ def _joint_constraint(
             reached = forward_kinematics(new_local, rig.parents, rig.depth)[chain[-1]][:3, 3]
             residual = float(np.linalg.norm(reached - goal))
         result.residuals[f"{arm.name}/{c.name}"] = float(residual)
-    elif c.type == "twist":
-        from . import limits as L
-        from .constraints import compose
-
-        src = rig.index(p["target"]["joint"])
-        k = rig.index(p["joint"])
-        _, q_src, _ = decompose(local[src])
-        axis = L.AXES[p["axis"]]
-        angle = L.twist_angle(L.relative(q_src, rig.rest_trs()[1][src]), axis) * p["factor"]
-        pl, ql, sl = decompose(local[k])
-        h = np.radians(angle) / 2.0
-        turn = np.array([*(axis * np.sin(h)), np.cos(h)])
-        new_local[k] = compose(pl, R.multiply(ql[None], turn[None])[0], sl)
     else:
         k = rig.index(p["joint"])
         parent_m = np.eye(4) if parents[k] < 0 else model[parents[k]]
@@ -509,6 +498,62 @@ def _joint_constraint(
                 new_local[k] = blend_matrices(local[k], new_local[k], w)
     new_model = forward_kinematics(new_local, rig.parents, rig.depth)
     return new_local, new_model
+
+
+def _twist(p: dict[str, Any], w: float, rig: Rig, local: np.ndarray):
+    """A twist constraint: the joint turns about its ``axis`` by ``factor`` times the source
+    joint's twist about it (relative to rest; :func:`.limits.twist_angle`); the influence
+    scales the angle (the same rotation as blending toward it, along the shortest arc).
+    Scalar arithmetic: two of these run per character and frame."""
+    from . import limits as L
+
+    src = rig.index(p["target"]["joint"])
+    k = rig.index(p["joint"])
+    m = local[src][:3, :3]
+    qx, qy, qz, qw = _quat_of((m / np.linalg.norm(m, axis=0)).tolist())
+    rx, ry, rz, rw = rig.rest_trs()[1][src].tolist()
+    # q_rest^-1 q (Hamilton), then w >= 0
+    x = rw * qx - rx * qw - ry * qz + rz * qy
+    y = rw * qy + rx * qz - ry * qw - rz * qx
+    z = rw * qz - rx * qy + ry * qx - rz * qw
+    v = rw * qw + rx * qx + ry * qy + rz * qz
+    n = math.sqrt(x * x + y * y + z * z + v * v)
+    if v < 0.0:
+        n = -n
+    axis = L.AXES[p["axis"]]
+    ax, ay, az = axis.tolist()
+    proj = (x * ax + y * ay + z * az) / n
+    w_rel = v / n
+    if abs(proj) < 1e-15 and abs(w_rel) < 1e-15:
+        return local, forward_kinematics(local, rig.parents, rig.depth)
+    angle = 2.0 * math.atan2(proj, w_rel) * p["factor"] * w
+    new_local = local.copy()
+    if angle != 0.0:
+        # The joint's own rotation turned about its axis: T R S -> T (R turn) S.
+        mk = local[k][:3, :3]
+        scale = np.linalg.norm(mk, axis=0)
+        c, s_ = math.cos(angle), math.sin(angle)
+        kx = np.array([[0.0, -az, ay], [az, 0.0, -ax], [-ay, ax, 0.0]])
+        turn = np.eye(3) + s_ * kx + (1.0 - c) * (kx @ kx)
+        new_local[k][:3, :3] = ((mk / scale) @ turn) * scale
+    return new_local, forward_kinematics(new_local, rig.parents, rig.depth)
+
+
+def _quat_of(m: list) -> tuple[float, float, float, float]:
+    """``(x, y, z, w)`` of a 3x3 rotation (rows; Shepperd's method, as math3d)."""
+    (a, b, c), (d, e, f), (g, h, i) = m
+    tr = a + e + i
+    if tr > 0.0:
+        s = math.sqrt(tr + 1.0) * 2.0
+        return (h - f) / s, (c - g) / s, (d - b) / s, 0.25 * s
+    if a > e and a > i:
+        s = math.sqrt(1.0 + a - e - i) * 2.0
+        return 0.25 * s, (b + d) / s, (c + g) / s, (h - f) / s
+    if e > i:
+        s = math.sqrt(1.0 + e - a - i) * 2.0
+        return (b + d) / s, 0.25 * s, (f + h) / s, (c - g) / s
+    s = math.sqrt(1.0 + i - a - e) * 2.0
+    return (c + g) / s, (f + h) / s, 0.25 * s, (d - b) / s
 
 
 def _align_bend(model: np.ndarray, chain: list, pos: np.ndarray, axis: str) -> None:

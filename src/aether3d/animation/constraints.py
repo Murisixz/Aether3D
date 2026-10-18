@@ -48,6 +48,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Any
 
 import numpy as np
@@ -160,8 +161,10 @@ class Constraint:
     influence: float = 1.0
     mute: bool = False
 
-    @property
+    @cached_property
     def p(self) -> dict[str, Any]:
+        """The parameters, parsed once per constraint (read them; never change them: the
+        constraint is immutable and shares this dict between evaluations)."""
         return json.loads(self.params)
 
     def to_json(self) -> dict[str, Any]:
