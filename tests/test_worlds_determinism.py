@@ -27,13 +27,13 @@ CASES = {
     "archipelago": ("archipelago", {"size": 2048.0}, {"hydrology": {"cell": 32.0}}),
 }
 GOLDEN = {
-    "temperate": "978008d45a922bffab846242",
-    "alpine": "186afc3984af4515e74748f8",
-    "contour": "8a35dd1172ea4386a48e9936",
-    "archipelago": "102d53658cd26932e6dd1936",
+    "temperate": "a7bc19f83be3c79e64b58440",
+    "alpine": "3db112a0b7638883d1102607",
+    "contour": "29690e4cca1b9c469c57085f",
+    "archipelago": "2cf4059adf72633ca8be28f1",
     "blocks": "c58da7a65b36898e6f8839e7",
     "block_mesh": "f745cbe7913a602db946f605",
-    "plants": "00ade4c7f787384506fc49bb",
+    "plants": "c68078dd077764e60b058f4b",
 }
 
 

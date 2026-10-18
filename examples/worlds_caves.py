@@ -150,7 +150,7 @@ def main(argv: list[str]) -> int:
     for k, off in enumerate((8.0, 20.0, 34.0)):
         q = p + off * d + np.array([2.0 * (-1) ** k, 0.0, 1.0])
         lamp = scene.add_point_light(f"Lantern {k}", position=tuple(q), intensity=260.0, range=60.0)
-        lamp.light.configure(color=(1.0, 0.72, 0.42), radius=0.25)
+        lamp.light.configure(color=(1.0, 0.84, 0.62), radius=0.25)
     scene.add_point_light(
         "Headlamp", position=tuple(eye + np.array([0.0, 0.0, 0.6])), intensity=60.0, range=40.0
     )
@@ -163,7 +163,8 @@ def main(argv: list[str]) -> int:
     stills["cavern"]["at"] = [round(float(v), 2) for v in eye]
     stills["cavern"]["world"] = dict(world.runtime.last_frame)
     print("cavern", stills["cavern"]["seconds"], flush=True)
-    # 3. Overhangs: a mesa (a raised pad with near-vertical sides) whose cliffs lean out.
+    # 3. Overhangs: a mesa (a raised pad with near-vertical sides) whose cliffs lean out
+    # and are undercut, seen along its south face so the profile stands against the sky.
     mx, my = ex + 160.0, ey - 120.0
     top = world.height(mx, my) + 28.0
     world.add_feature(
@@ -175,13 +176,23 @@ def main(argv: list[str]) -> int:
             "falloff": 5.0,
         }
     )
-    foot = (mx, my - 28.0 - 46.0)
-    gz = world.height(*foot)
+    world.add_feature(
+        {
+            "type": "clear",
+            "id": "mesa-foot",
+            "shape": {"circle": [mx, my, 90.0]},
+            "what": ["trees"],
+            "falloff": 20.0,
+        }
+    )
+    face = my - 28.0
+    corner = (mx - 40.0 - 30.0, face - 10.0)  # (the morning sun is behind the camera)
+    gz = world.height(*corner)
     cam = scene.add_camera(
         "Overhang",
-        position=(foot[0] - 12.0, foot[1], gz + 7.0),
-        look_at=(mx, my - 26.0, gz + 15.0),
-        fov=64,
+        position=(corner[0], corner[1], gz + 2.5),
+        look_at=(mx + 25.0, face - 1.0, gz + 13.0),
+        fov=58,
         far=8000,
     )
     stills["overhang"] = render_still(

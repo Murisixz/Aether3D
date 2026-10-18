@@ -220,3 +220,71 @@ def test_cave_features_carve_tunnels():
     assert not vol.solid([[0.0, 0.0, g - 20.0]])[0]  # inside the tunnel
     assert vol.solid([[0.0, 0.0, g - 30.0]])[0]  # below it
     assert vol.solid([[0.0, 30.0, g - 20.0]])[0]  # beside it
+
+
+def test_neighbouring_overhang_cubes_meet_on_their_shared_faces():
+    """Overhang warps fade by the distance to the footprints left to the tiles, so two
+    drawn neighbours compute the same field on their shared face: the same vertices there
+    (no crack), whatever their other neighbours are."""
+    from aether3d.worlds.volumes import NEIGHBOURS
+
+    scene = Scene("Mesa")
+    w = scene.worlds.create("M", "cavernous_highlands", seed=3, size=1024.0, overrides=SMALL)
+    top = w.height(100.0, 60.0) + 28.0
+    w.add_feature(
+        {"type": "pad", "id": "mesa", "shape": {"rect": [60.0, 32.0, 140.0, 88.0]},
+         "height": round(top, 2), "falloff": 5.0}
+    )  # fmt: skip
+    vol = volumes_of(w.runtime)
+    cut = {
+        (ci, cj)
+        for ci in range(-2, 8)
+        for cj in range(-2, 6)
+        if any(flags for _, flags in vol.column(ci, cj))
+    }
+
+    def mask(ci, cj):
+        return sum(1 << b for b, (a, c) in enumerate(NEIGHBOURS) if (ci + a, cj + c) in cut)
+
+    def face(mesh, axis, value):
+        p = mesh.positions.astype(np.float64)
+        on = np.abs(p[:, axis] - value) < 1e-9
+        return {tuple(np.round(q, 9)) for q in np.delete(p[on], axis, axis=1)}
+
+    compared = 0
+    for ci, cj in sorted(cut):
+        for a, b, axis in ((1, 0, 0), (0, 1, 1)):
+            if (ci + a, cj + b) not in cut:
+                continue
+            ks = {k for k, f in vol.column(ci, cj) if f & 2} & {
+                k for k, f in vol.column(ci + a, cj + b) if f & 2
+            }
+            for ck in sorted(ks):
+                m1 = vol.cube(ci, cj, ck, mask(ci, cj))
+                m2 = vol.cube(ci + a, cj + b, ck, mask(ci + a, cj + b))
+                if m1 is None or m2 is None:
+                    continue
+                f1, f2 = face(m1, axis, VCHUNK), face(m2, axis, 0.0)
+                assert f1 == f2, (ci, cj, ck, axis, len(f1 ^ f2))
+                compared += len(f1)
+    assert compared > 50  # the mesa's walls cross footprint borders
+
+
+def test_cave_surface_columns_draw_every_cube_the_ground_crosses():
+    scene = Scene("Caves")
+    w = scene.worlds.create("C", "cavernous_highlands", seed=3, size=1024.0, overrides=SMALL)
+    vol = volumes_of(w.runtime)
+    m = w.runtime.model()
+    checked = 0
+    for ci in range(-8, 8):
+        for cj in range(-8, 8):
+            col = vol.column(ci, cj)
+            if not any(f & 1 for _, f in col):
+                continue
+            g = np.arange(0.0, VCHUNK + 1.0)
+            X, Y = np.meshgrid(ci * VCHUNK + g, cj * VCHUNK + g)
+            h = m.evaluate(X.ravel(), Y.ravel())["height"]
+            need = range(math.floor(h.min() / VCHUNK), math.floor(h.max() / VCHUNK) + 1)
+            assert set(need) <= {k for k, f in col if f}, (ci, cj)
+            checked += 1
+    assert checked > 0

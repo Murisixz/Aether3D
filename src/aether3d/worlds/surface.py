@@ -125,6 +125,8 @@ def colors(model, sample: dict, x: np.ndarray, y: np.ndarray, normals: np.ndarra
     beach = (1.0 - nz.smoothstep(s["beach_height"] * 0.6, s["beach_height"], h - sea)) * (
         nz.smoothstep(0.85, 0.95, nz_)
     )
+    # Only along water: low, flat ground inland (marshes, deltas) keeps its own colours.
+    beach = beach * (1.0 - nz.smoothstep(30.0, 90.0, model.water_distance(x, y, h)))
     color = color + beach[:, None] * (sand - color)
     # 4. Snow by temperature (at the vertex's own height), held by slopes up to ~55 degrees.
     margin = 1.6 * nz.gradient2(nz.derive(seed, "surface", "snow"), x / 37.0, y / 37.0)

@@ -276,12 +276,15 @@ except around hashed **entrances** (never under water); and exact `cave` **featu
 The field is sampled every metre in 32 m cubes and meshed with **marching cubes** (the
 case table of `sculpt.voxel`: closed, manifold surfaces). Cubes where cave air reaches the
 ground, or with overhangs, are *surface* cubes: the terrain tiles over them refine to
-level 0 and leave their footprint out, hanging skirts along the hole; on vertical cube
-edges the field is linear in `z`, so the volume's ground vertices lie on the tiles'
-vertices and the surfaces meet. Ground near the surface takes the terrain's colours;
+level 0 and leave their footprint out, hanging skirts along the hole, and every cube the
+ground crosses in such a footprint is drawn; on vertical cube edges the field is linear in
+`z`, so the volume's ground vertices lie on the tiles' vertices and the surfaces meet.
+Overhang warps fade within 8 m of the footprints left to the tiles -- a function of the
+distance to them, so two drawn neighbours compute the same field on their shared face and
+nothing cracks (`tests/test_worlds_terrain.py` compares their face vertices). Ground near the surface takes the terrain's colours;
 deeper walls are the biomes' rock, darker and damper with depth. Closed caves are drawn
-within 160 m of a camera below the ground, or under and beside an entrance; overhangs
-within 160 m. Beyond, the ground is the closed heightfield (a documented level of
+within 160 m of a camera below the ground, or under and beside an entrance; overhangs by
+footprint within 160 m (horizontally). Beyond, the ground is the closed heightfield (a documented level of
 detail; `Volumes.solid` queries always use the exact field).
 
 ## Block worlds

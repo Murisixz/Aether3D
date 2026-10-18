@@ -317,6 +317,13 @@ class Volumes:
             ):
                 for ck in range(lo_k, hi_k + 1):
                     found[ck] = found.get(ck, 0) | flag
+        if any(f & CAVE_SURFACE for f in found.values()):
+            # The footprint leaves the tiles: every cube the ground passes through is drawn
+            # (the lattice heights, with a lattice step of margin for the ground between).
+            for ck in range(
+                math.floor((h.min() - LATTICE) / CHUNK), math.floor((h.max() + LATTICE) / CHUNK) + 1
+            ):
+                found[ck] = found.get(ck, 0) | CAVE_SURFACE
         return sorted(found.items())
 
     def drawn(self, view: Any) -> tuple[list[tuple[int, int, int, int]], set[tuple[int, int]]]:
@@ -351,8 +358,8 @@ class Volumes:
                 for ck, flags in self.column(ci, cj):
                     cz = min(max(eye[2], ck * CHUNK), (ck + 1) * CHUNK)
                     dist = math.hypot(flat, cz - eye[2])
-                    if flags & OVERHANG and dist > OVERHANG_DISTANCE:
-                        flags &= ~OVERHANG
+                    if flags & OVERHANG and flat > OVERHANG_DISTANCE:
+                        flags &= ~OVERHANG  # (by column: all its cubes or none)
                     if _cube_outside(view, bx, by, ck * CHUNK):
                         continue
                     if flags:
@@ -377,9 +384,9 @@ class Volumes:
     # -- meshes ----------------------------------------------------------------------
 
     def cube(self, ci: int, cj: int, ck: int, open_sides: int) -> Mesh | None:
-        """The mesh of cube ``(ci, cj, ck)`` in cube-local metres; ``open_sides`` (bits
-        -x, +x, -y, +y) are the footprint edges bordering other drawn surface cubes, where
-        overhang warps do not fade."""
+        """The mesh of cube ``(ci, cj, ck)`` in cube-local metres; ``open_sides`` has bit
+        ``k`` set when the footprint ``NEIGHBOURS[k]`` around it is drawn too (overhang
+        warps fade toward the others: see :func:`_taper`)."""
         key = (self._key(), ci, cj, ck, open_sides)
         with self._lock:
             if key in self._cubes:
@@ -621,20 +628,25 @@ def _feature_box(vol: Volumes, f: dict) -> tuple[float, float, float, float, flo
     return (cx - rr, cy - rr, cx + rr, cy + rr, ground - 2.0 * rc, ground + 2.0)
 
 
+NEIGHBOURS = ((-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1))
+"""The footprints around one, in the order of the bits of ``open_sides``."""
+
+
 def _taper(lx: np.ndarray, open_sides: int) -> np.ndarray:
-    """1 inside a footprint, fading to 0 within :data:`TAPER` metres of the edges that are
-    not open (bits -x, +x, -y, +y)."""
-    fx = np.ones(lx.size)
-    fy = np.ones(lx.size)
-    if not open_sides & 1:
-        fx = fx * nz.smoothstep(0.0, TAPER, lx)
-    if not open_sides & 2:
-        fx = fx * nz.smoothstep(0.0, TAPER, CHUNK - lx)
-    if not open_sides & 4:
-        fy = fy * nz.smoothstep(0.0, TAPER, lx)
-    if not open_sides & 8:
-        fy = fy * nz.smoothstep(0.0, TAPER, CHUNK - lx)
-    return np.clip(fy[:, None] * fx[None, :], 0.0, 1.0)
+    """``(n, n)`` over ``[y, x]``: 1 inside a footprint, fading to 0 within :data:`TAPER`
+    metres of the footprints around it that are not drawn (bit ``k`` of ``open_sides`` set:
+    ``NEIGHBOURS[k]`` is drawn). It is a function of the distance to those footprints, so
+    two drawn neighbours compute the same warp on their shared face (no crack)."""
+    X = lx[None, :]
+    Y = lx[:, None]
+    d = np.full((lx.size, lx.size), TAPER)
+    for bit, (a, b) in enumerate(NEIGHBOURS):
+        if open_sides >> bit & 1:
+            continue
+        dx = np.maximum(np.maximum(a * CHUNK - X, X - (a + 1) * CHUNK), 0.0)
+        dy = np.maximum(np.maximum(b * CHUNK - Y, Y - (b + 1) * CHUNK), 0.0)
+        d = np.minimum(d, np.sqrt(dx * dx + dy * dy))
+    return nz.smoothstep(0.0, TAPER, d)
 
 
 def _bilinear(H: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
@@ -709,9 +721,7 @@ def render_parts(rt: Any, view: Any, ctx: Any = None) -> tuple[list, set]:
         if ctx is not None:
             ctx.check("volumetric terrain")
         open_sides = sum(
-            bit
-            for bit, (a, b) in zip((1, 2, 4, 8), ((-1, 0), (1, 0), (0, -1), (0, 1)), strict=True)
-            if (ci + a, cj + b) in holes
+            1 << bit for bit, (a, b) in enumerate(NEIGHBOURS) if (ci + a, cj + b) in holes
         )
         mesh = vol.cube(ci, cj, ck, open_sides)
         if mesh is None:

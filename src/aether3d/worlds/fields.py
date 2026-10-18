@@ -105,6 +105,7 @@ class WorldModel:
                 "warp",
                 "continents",
                 "continents-warp",
+                "continents-edge",
                 "ranges",
                 "ranges-warp",
                 "mountains",
@@ -232,6 +233,12 @@ class WorldModel:
         e = self.extent()
         if e is not None and ct["edge"] > 0.0:
             inner = np.minimum(np.minimum(x - e[0], e[2] - x), np.minimum(y - e[1], e[3] - y))
+            # A ragged rim: the distance to the border is bent by noise (not at the border
+            # itself, which stays sea), so coasts near it do not run parallel to it.
+            bend = nz.fbm2(
+                sd["continents-edge"], wx, wy, octaves=3, frequency=1.0 / (2.0 * ct["edge"])
+            )
+            inner = inner + 0.6 * ct["edge"] * bend * nz.smoothstep(0.0, 0.5 * ct["edge"], inner)
             c = c - (1.0 - nz.smoothstep(0.0, ct["edge"], inner)) * 2.2
         base = self.sea + self.curve_continents(c) * HS
         hm = base.copy()  # macro

@@ -176,23 +176,32 @@ def _terrain(rt: Any, r: np.ndarray, level: int, include: tuple, parts: list) ->
     holes: list = []
     vol = volumes_of(rt)
     if "caves" in include and vol.enabled():
-        for ci in range(math.floor(i0 * size / VCHUNK), math.ceil((i1 + 1) * size / VCHUNK)):
-            for cj in range(math.floor(j0 * size / VCHUNK), math.ceil((j1 + 1) * size / VCHUNK)):
-                cubes = vol.column(ci, cj)
-                surface = any(flags for _, flags in cubes)
-                if surface:
-                    holes.append((ci * VCHUNK, cj * VCHUNK, (ci + 1) * VCHUNK, (cj + 1) * VCHUNK))
-                for ck, _flags in cubes:
-                    mesh = vol.cube(ci, cj, ck, 15)
-                    if mesh is not None:
-                        parts.append(
-                            (
-                                f"cave {ci},{cj},{ck}",
-                                mesh,
-                                _translation(ci * VCHUNK, cj * VCHUNK),
-                                {0: "terrain"},
-                            )
+        from .volumes import NEIGHBOURS
+
+        columns = {
+            (ci, cj): vol.column(ci, cj)
+            for ci in range(math.floor(i0 * size / VCHUNK), math.ceil((i1 + 1) * size / VCHUNK))
+            for cj in range(math.floor(j0 * size / VCHUNK), math.ceil((j1 + 1) * size / VCHUNK))
+        }
+        cut = {key for key, cubes in columns.items() if any(flags for _, flags in cubes)}
+        for (ci, cj), cubes in columns.items():
+            if (ci, cj) in cut:
+                holes.append((ci * VCHUNK, cj * VCHUNK, (ci + 1) * VCHUNK, (cj + 1) * VCHUNK))
+            # (overhang warps fade toward the footprints left to the tiles: no cracks)
+            open_sides = sum(
+                1 << bit for bit, (a, b) in enumerate(NEIGHBOURS) if (ci + a, cj + b) in cut
+            )
+            for ck, _flags in cubes:
+                mesh = vol.cube(ci, cj, ck, open_sides)
+                if mesh is not None:
+                    parts.append(
+                        (
+                            f"cave {ci},{cj},{ck}",
+                            mesh,
+                            _translation(ci * VCHUNK, cj * VCHUNK),
+                            {0: "terrain"},
                         )
+                    )
     from .terrain_mesh import cut_holes
 
     for i in range(i0, i1 + 1):
