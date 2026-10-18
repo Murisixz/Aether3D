@@ -405,6 +405,25 @@ times are seconds; targets are objects (or ids, names), materials as `{"material
 | `aether3d.animation.FCurve`, `.tracks.RotationTrack`, `.clip.Clip`, `.time.FrameRate`, `.rotation`, `.fitting.fit_samples` | the value types (immutable) |
 | `aether3d.animation.script.run_animation_script(scene, script, ...)`, `check_script(script)`, `aether3d.animation.schema.animation_script_schema()` | animation scripts |
 
+## Character rigging
+
+Automatic rigs, weights, deformation, controls, diagnostics and rigid-part characters
+([CHARACTER_RIGGING.md](CHARACTER_RIGGING.md)). Since 0.19.0, on `scene.animation`; every
+changing call is one undo step.
+
+| Name | Description |
+| --- | --- |
+| `anim.detect_landmarks(meshes, *, template, up, forward, resolution=128, symmetry, landmarks)` | landmarks of unrigged meshes: positions, confidences, methods, the facing, the pose, diagnostics (read-only) |
+| `anim.autorig(meshes, *, armature, name, template="humanoid", landmarks, up, forward, resolution, symmetry, orientation="bone", twist=True, controls=True, bind=True, parts, weights, skinning="linear", enforce_limits="ik", dry_run=False)` | a template rig with limits, helpers and controls, every mesh bound as its part mode says (`geodesic`, `transfer`, `rigid`, `attach`, `skip`) |
+| `anim.edit_rig(armature, operations, *, skins="rebind", animation="keep", channels="keep", tolerance, dry_run)`; `add_joint`, `remove_joint`, `move_joint`, `orient_joints`, `rename_joint`, `reparent_joint`, `mirror_joint_chain` | structural editing with dependent data kept consistent |
+| `anim.generate_weights(mesh, armature, *, method="geodesic", policy="organic", influences=4, ...)`, `anim.edit_weights(mesh, operations, *, dry_run)`, `anim.normalize_weights(mesh)`, `anim.transfer_weights(target, source, *, max_distance, influences, unmatched, smooth, skinning)`, `anim.inspect_weights(mesh, *, joint)` | skin weights: generated, edited, transferred, measured |
+| `anim.skin(mesh, armature, *, method="linear" \| "dual_quaternion" \| "blended", dq=...)`; `aether3d.animation.rig.skin_dual_quaternion(...)`, `dual_quaternion_palette(...)` | skinning methods (native kernels when installed) |
+| `anim.add_control(armature, name, kind, ...)`, `anim.ik_fk(armature, limb, "ik" \| "fk", time, *, blend=0)`, `anim.pose_character(armature, commands, *, time=0)` | controls, matched IK/FK switches, pose commands (`reach`, `plant_feet`, `look_at`, `raise_arm`, `lean`, `crouch`, `aim_hips`, `rotate`) |
+| `anim.diagnose_rig(armature, *, poses="suite", time, animation=True, max_findings=50)`, `anim.propose_rig_fix(armature, ...)`, `anim.apply_rig_fix(armature, fixes, *, dry_run, verify, poses, animation)`, `anim.rig_preview(armature, *, mode, joint, pose, time, view, width, height, backend, path)` | measuring, verified correction, pictures; `aether3d.animation.rig_report.pose_suite(rig)`, `resolve_pose(rig, spec)` |
+| `anim.rigid_parts(root, *, parts, forward)`, `anim.generate_rigid(root, motion, *, parts, name, forward, start, travel, tolerance, bind, **parameters)`, `anim.convert_character(source, "skeleton" \| "rigid", *, parts, forward, name, hide_original, start, end, tolerance)` | rigid-part characters with no bones, and optional conversions |
+| `aether3d.animation.limits` (`check_limits`, `angles`, `clamp`, `relative`, `twist_angle`), `aether3d.animation.rigging.constraint_order(rig)` | swing-twist limits; the order joint constraints run in |
+| `aether3d.sculpt.implicit.implicit_surface(shapes, voxel_size, ...)`, `humanoid_shapes(**options)`, `quadruped_shapes(...)` | smooth implicit bodies (the showcases' characters) |
+
 ## Procedural worlds
 
 Terrain and block worlds generated from validated JSON definitions ([WORLDS.md](WORLDS.md)).

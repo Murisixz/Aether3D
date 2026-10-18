@@ -1,0 +1,148 @@
+{
+  "backend": "gpu",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "aether3d": "0.19.0",
+    "python": "3.14.8",
+    "native": true,
+    "backend": "gpu"
+  },
+  "aether": {
+    "seconds": 1.56,
+    "bytes": 7891731,
+    "joints": 23,
+    "same_joints": true,
+    "same_parents": true,
+    "rest_max_m": 0.0,
+    "same_semantics": true,
+    "posed_joints_max_m": {
+      "0.0": 0.0,
+      "0.2917": 0.0,
+      "0.5": 0.0,
+      "0.7917": 0.0,
+      "1.0": 0.0,
+      "1.2917": 0.0,
+      "1.5": 0.0
+    },
+    "meshes": {
+      "Body": {
+        "vertices": [
+          18008,
+          18008
+        ],
+        "unmatched": 0,
+        "weights_max": 2.220446049250313e-16,
+        "inverse_bind_max": 0.0,
+        "rest_positions_max_m": 0.0,
+        "posed_max_m": {
+          "0.0": 0.0,
+          "0.2917": 0.0,
+          "0.5": 0.0,
+          "0.7917": 0.0,
+          "1.0": 0.0,
+          "1.2917": 0.0,
+          "1.5": 0.0
+        }
+      },
+      "Jacket": {
+        "vertices": [
+          10128,
+          10128
+        ],
+        "unmatched": 0,
+        "weights_max": 2.220446049250313e-16,
+        "inverse_bind_max": 0.0,
+        "rest_positions_max_m": 0.0,
+        "posed_max_m": {
+          "0.0": 0.0,
+          "0.2917": 0.0,
+          "0.5": 0.0,
+          "0.7917": 0.0,
+          "1.0": 0.0,
+          "1.2917": 0.0,
+          "1.5": 0.0
+        }
+      }
+    },
+    "worst_posed_m": 0.0,
+    "exact": true
+  },
+  "glb": {
+    "seconds": 0.21,
+    "bytes": 1778504,
+    "export_diagnostics": [
+      {
+        "code": "RIG_AUTHORING_DATA",
+        "message": "kept as Aether3D extras on the joint nodes: joint limits, joint roles; not exported: constraints (their effect is baked), control definitions (their objects are exported as nodes), landmarks and template"
+      }
+    ],
+    "validator": {
+      "ran": true,
+      "errors": 0,
+      "warnings": 0,
+      "infos": 0,
+      "version": "2.0.0-dev.3.10"
+    },
+    "joints": 23,
+    "same_joints": true,
+    "same_parents": true,
+    "rest_max_m": 0.0,
+    "same_semantics": true,
+    "posed_joints_max_m": {
+      "0.0": 2.349545569213518e-08,
+      "0.2917": 5.043785916507282e-05,
+      "0.5": 7.543206523297208e-08,
+      "0.7917": 1.0759399043935858e-07,
+      "1.0": 4.414194509916314e-08,
+      "1.2917": 8.839578830022177e-08,
+      "1.5": 3.6055218227692976e-08
+    },
+    "meshes": {
+      "Body": {
+        "vertices": [
+          18008,
+          18008
+        ],
+        "unmatched": 0,
+        "weights_max": 3.5548886001546265e-08,
+        "inverse_bind_max": 5.695925353599307e-08,
+        "rest_positions_max_m": 0.0,
+        "posed_max_m": {
+          "0.0": 1.2644054553268208e-07,
+          "0.2917": 6.548612107852782e-05,
+          "0.5": 1.4555472445820762e-07,
+          "0.7917": 1.3075715880680267e-07,
+          "1.0": 1.3333208984265686e-07,
+          "1.2917": 1.3580714265673e-07,
+          "1.5": 1.2936000158862966e-07
+        }
+      },
+      "Jacket": {
+        "vertices": [
+          10128,
+          10128
+        ],
+        "unmatched": 0,
+        "weights_max": 3.593923220135409e-08,
+        "inverse_bind_max": 5.695925353599307e-08,
+        "rest_positions_max_m": 0.0,
+        "posed_max_m": {
+          "0.0": 1.2644054553268208e-07,
+          "0.2917": 4.9257712163705184e-05,
+          "0.5": 1.284009809763289e-07,
+          "0.7917": 1.2644054553268208e-07,
+          "1.0": 1.2489448945403256e-07,
+          "1.2917": 1.3514129182113002e-07,
+          "1.5": 1.2489448945403256e-07
+        }
+      }
+    },
+    "worst_posed_m": 6.548612107852782e-05
+  },
+  "difference_image": {
+    "time": 0.2917,
+    "max_m": 6.602167610727527e-05,
+    "colors": "blue 0 .. red max"
+  },
+  "seconds": 6.7
+}

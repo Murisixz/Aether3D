@@ -36,7 +36,14 @@ argument): ``timeline``, ``set_time``, ``markers``, ``add_marker``, ``sections``
 ``camera_orbit``, ``follow_camera``, ``generate``, ``set_modifiers``, ``simplify``,
 ``resample``, ``bake``,
 ``mirror_clip``, ``extract_root_motion``, ``plant_feet``, ``retarget``, ``apply_pose``;
-read-only: ``report``, ``trajectory``, ``diagnose``, ``contacts``, ``sample``.
+rigging (Stage 18): ``autorig``, ``edit_rig``, ``add_joint``, ``remove_joint``,
+``move_joint``, ``orient_joints``, ``rename_joint``, ``reparent_joint``,
+``mirror_joint_chain``, ``generate_weights``, ``edit_weights``, ``normalize_weights``,
+``transfer_weights``, ``add_control``, ``ik_fk``, ``pose_character``, ``apply_rig_fix``;
+rigid-part characters (no bones): ``generate_rigid``, ``convert_character``;
+read-only: ``report``, ``trajectory``, ``diagnose``, ``contacts``, ``sample``,
+``detect_landmarks``, ``inspect_weights``, ``diagnose_rig``, ``propose_rig_fix``,
+``rigid_parts``.
 
 :func:`run_animation_script` applies everything or nothing, as one step of the scene's
 history: if an operation fails, a limit is reached or the run is cancelled, the scene is
@@ -233,6 +240,172 @@ OPERATIONS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...], bool]] = {
         False,
     ),  # fmt: skip
     "apply_pose": ("apply_pose", (), ("time",), False),
+    # Stage 18: rigging.
+    "autorig": (
+        "autorig",
+        ("meshes",),
+        (
+            "armature",
+            "name",
+            "template",
+            "landmarks",
+            "up",
+            "forward",
+            "resolution",
+            "symmetry",
+            "orientation",
+            "twist",
+            "controls",
+            "bind",
+            "parts",
+            "weights",
+            "skinning",
+            "enforce_limits",
+            "dry_run",
+        ),
+        False,
+    ),  # fmt: skip
+    "edit_rig": (
+        "edit_rig",
+        ("armature", "operations"),
+        ("skins", "animation", "channels", "tolerance", "dry_run"),
+        False,
+    ),
+    "add_joint": (
+        "add_joint",
+        ("armature", "name"),
+        (
+            "parent",
+            "position",
+            "space",
+            "rotation",
+            "euler",
+            "scale",
+            "tail",
+            "role",
+            "deform",
+            "limits",
+        ),
+        False,
+    ),  # fmt: skip
+    "remove_joint": (
+        "remove_joint",
+        ("armature", "joint"),
+        ("weights_to", "constraints", "channels"),
+        False,
+    ),  # fmt: skip
+    "move_joint": (
+        "move_joint",
+        ("armature", "joint", "position"),
+        ("space", "children", "skins"),
+        False,
+    ),  # fmt: skip
+    "orient_joints": (
+        "orient_joints",
+        ("armature",),
+        ("joints", "aim", "up", "up_vector", "roll", "animation", "tolerance"),
+        False,
+    ),
+    "rename_joint": ("rename_joint", ("armature", "joint", "name"), (), False),
+    "reparent_joint": ("reparent_joint", ("armature", "joint", "parent"), ("keep",), False),
+    "mirror_joint_chain": ("mirror_joint_chain", ("armature",), ("side",), False),
+    "generate_weights": (
+        "generate_weights",
+        ("mesh", "armature"),
+        (
+            "method",
+            "policy",
+            "influences",
+            "joints",
+            "resolution",
+            "voxel_size",
+            "smooth",
+            "hops",
+            "sides",
+            "rigid_parts",
+            "skinning",
+            "dq",
+            "max_seconds",
+            "context",
+        ),
+        False,
+    ),  # fmt: skip
+    "generate_rigid": (
+        "generate_rigid",
+        ("root", "motion"),
+        (
+            "name",
+            "start",
+            "roles",
+            "forward",
+            "travel",
+            "tolerance",
+            "bind",
+            "amplitude",
+            "period",
+            "cadence",
+            "stride",
+            "duty",
+            "lift",
+            "gravity",
+            "height",
+            "distance",
+            "style",
+            "knee",
+            "side",
+            "waves",
+            "rate",
+            "yaw",
+            "pitch",
+            "turn",
+            "hold",
+            "back",
+        ),
+        False,
+    ),
+    "convert_character": (
+        "convert_character",
+        ("source", "to"),
+        ("roles", "forward", "name", "hide_original", "start", "end", "tolerance"),
+        False,
+    ),
+    "rigid_parts": ("rigid_parts", ("root",), ("roles", "forward"), True),
+    "edit_weights": ("edit_weights", ("mesh", "operations"), ("dry_run",), False),
+    "normalize_weights": ("normalize_weights", ("mesh",), (), False),
+    "transfer_weights": (
+        "transfer_weights",
+        ("mesh", "source"),
+        ("max_distance", "influences", "unmatched", "smooth", "skinning"),
+        False,
+    ),
+    "add_control": (
+        "add_control",
+        ("armature", "name", "kind"),
+        ("chain", "joint", "constraint", "pole", "target", "group", "side", "influence", "space"),
+        False,
+    ),  # fmt: skip
+    "ik_fk": ("ik_fk", ("armature", "limb", "mode", "time"), ("blend",), False),
+    "pose_character": ("pose_character", ("armature", "commands"), ("time",), False),
+    "apply_rig_fix": (
+        "apply_rig_fix",
+        ("armature", "fixes"),
+        ("dry_run", "verify", "poses", "animation"),
+        False,
+    ),
+    "detect_landmarks": (
+        "detect_landmarks",
+        ("meshes",),
+        ("template", "up", "forward", "resolution", "symmetry", "landmarks"),
+        True,
+    ),
+    "inspect_weights": ("inspect_weights", ("mesh",), ("joint", "max_list"), True),
+    "diagnose_rig": (
+        "diagnose_rig",
+        ("armature",),
+        ("poses", "time", "animation", "max_findings"),
+        True,
+    ),  # fmt: skip
+    "propose_rig_fix": ("propose_rig_fix", ("armature",), ("poses", "time", "animation"), True),
     "report": ("curve_report", ("path",), ("target", "clip", "samples"), True),
     "trajectory": ("trajectory", ("target",), ("start", "end", "rate", "joint"), True),
     "diagnose": ("diagnose", (), ("overshoot_relative", "include_intended", "max_findings"), True),
@@ -258,9 +431,19 @@ _RENAMED = {
     "remove_clip": {"clip": "ref"},
     "mirror_clip": {},
     "add_rig": {},
+    "generate_weights": {"mesh": "mesh_object"},
+    "edit_weights": {"mesh": "mesh_object"},
+    "normalize_weights": {"mesh": "mesh_object"},
+    "inspect_weights": {"mesh": "mesh_object"},
+    "transfer_weights": {"mesh": "target"},
+    "generate_rigid": {"motion": "kind", "roles": "parts"},
+    "convert_character": {"roles": "parts"},
+    "rigid_parts": {"roles": "parts"},
 }
+# Arguments holding lists of object references.
+_REF_LISTS = ("meshes", "context")
 # Arguments naming scene objects (or materials), checked to be references.
-_REFS = ("target", "object", "armature", "camera", "owner", "mesh", "source")
+_REFS = ("target", "object", "armature", "camera", "owner", "mesh", "source", "root")
 MAX_SAMPLE_TIMES = 10_000
 
 
@@ -355,6 +538,19 @@ def check_script(script: Any) -> dict:
         for key in _REFS:
             if key in args:
                 _ref(args[key], f"{loc}.{key}")
+        for key in _REF_LISTS:
+            if key in args:
+                refs = args[key] if isinstance(args[key], list) else [args[key]]
+                if not refs or len(refs) > 256:
+                    raise AnimationScriptError(f"{key} names 1..256 objects", f"{loc}.{key}")
+                for i, r in enumerate(refs):
+                    _ref(r, f"{loc}.{key}[{i}]")
+        if "roles" in args:
+            roles = args["roles"]
+            if not isinstance(roles, dict) or not 1 <= len(roles) <= 16:
+                raise AnimationScriptError("roles is {role: object}", f"{loc}.roles")
+            for role, r in roles.items():
+                _ref(r, f"{loc}.roles.{role}")
         if op == "sample":
             times = args["times"]
             if not isinstance(times, list) or not 1 <= len(times) <= MAX_SAMPLE_TIMES:
@@ -417,6 +613,14 @@ def _call(system: Any, op: str, args: dict[str, Any], loc: str) -> Any:
     for k, v in args.items():
         if k in _REFS and isinstance(v, dict) and set(v) <= {"id", "name"}:
             v = next(iter(v.values()))  # {"id": ..} / {"name": ..}: the string itself
+        if k in _REF_LISTS:
+            v = [
+                next(iter(r.values())) if isinstance(r, dict) else r
+                for r in (v if isinstance(v, list) else [v])
+            ]
+        if k == "roles":
+            v = {role: next(iter(r.values())) if isinstance(r, dict) else r
+                 for role, r in v.items()}  # fmt: skip
         kwargs[renamed.get(k, k)] = v
     if method_name == "_set_time":
         system.time = kwargs["time"]

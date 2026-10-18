@@ -226,13 +226,13 @@ def sample_joints(
 ) -> dict[str, np.ndarray]:
     """World matrices ``(n, 4, 4)`` of several joints of an object's rig at ``times``,
     from one evaluation of the scene per time."""
-    from ..rendering.scene_data import world_matrices
 
     obj = system._object(target, "target")
     out = {j: np.empty((len(times), 4, 4)) for j in joints}
     for i, t in enumerate(times.tolist()):
-        w = world_matrices(system.scene, system.overlay(t))[obj._id]
-        found = system.rigging(t).joints.get(obj._id)
+        # (the joints' motion: no mesh needs deforming to measure it)
+        w = system._posed_worlds(t)[obj._id]
+        found = system.rigging(t, deform=False).joints.get(obj._id)
         if found is None:
             raise _missing_joint(obj.name, joints[0])
         rig, model = found

@@ -1,0 +1,157 @@
+{
+  "label": "Stage 18",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.19.0",
+    "switches": {
+      "AETHER3D_EDITING_BULK": true,
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.19.0",
+      "reason": "loaded"
+    },
+    "git": "662f319",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "autorig:20": {
+      "voxel_mm": 20.0,
+      "vertices": 6488,
+      "triangles": 12972,
+      "total_ms": 472.698,
+      "detect_ms": 289.4,
+      "bind_ms": 178.8,
+      "joints": 23,
+      "confidence": 0.6,
+      "peak_rss_mib": 96.7
+    },
+    "autorig:12": {
+      "voxel_mm": 12.0,
+      "vertices": 18008,
+      "triangles": 36012,
+      "total_ms": 670.28,
+      "detect_ms": 297.5,
+      "bind_ms": 367.5,
+      "joints": 23,
+      "confidence": 0.6,
+      "peak_rss_mib": 173.9
+    },
+    "dqs:100000": {
+      "vertices": 100000,
+      "influences": 4,
+      "joints": 64,
+      "native_available": true,
+      "numpy_ms": 44.272,
+      "numpy_blended_ms": 67.478,
+      "native_1_thread_ms": 6.664,
+      "native_threads": 20,
+      "native_all_threads_ms": 2.03,
+      "native_blended_all_threads_ms": 2.529,
+      "bitwise_equal": true,
+      "peak_rss_mib": 110.8
+    },
+    "dqs:1000000": {
+      "vertices": 1000000,
+      "influences": 4,
+      "joints": 64,
+      "native_available": true,
+      "numpy_ms": 393.424,
+      "numpy_blended_ms": 628.533,
+      "native_1_thread_ms": 66.212,
+      "native_threads": 20,
+      "native_all_threads_ms": 14.741,
+      "native_blended_all_threads_ms": 23.578,
+      "bitwise_equal": true,
+      "peak_rss_mib": 285.5
+    },
+    "eval:1": {
+      "characters": 1,
+      "vertices_each": 6488,
+      "frame_ms": 1.147,
+      "per_character_ms": 1.147,
+      "fps": 872.2,
+      "rig_json_bytes": 16581,
+      "peak_rss_mib": 89.2
+    },
+    "eval:10": {
+      "characters": 10,
+      "vertices_each": 6488,
+      "frame_ms": 4.12,
+      "per_character_ms": 0.412,
+      "fps": 242.7,
+      "memory_per_character_mib": 0.88,
+      "rig_json_bytes": 16581,
+      "peak_rss_mib": 171.3
+    },
+    "eval:50": {
+      "characters": 50,
+      "vertices_each": 6488,
+      "frame_ms": 16.927,
+      "per_character_ms": 0.3385,
+      "fps": 59.1,
+      "memory_per_character_mib": 0.89,
+      "rig_json_bytes": 16581,
+      "peak_rss_mib": 616.0
+    },
+    "landmarks": {
+      "vertices": 18008,
+      "detect_96_ms": 137.571,
+      "detect_128_ms": 295.817,
+      "peak_rss_mib": 174.2
+    },
+    "weights": {
+      "vertices": 18008,
+      "jacket_vertices": 9994,
+      "generate_ms": 206.339,
+      "smooth_4_ms": 106.109,
+      "transfer_ms": 1374.607,
+      "inspect_ms": 27.581,
+      "peak_rss_mib": 478.3
+    },
+    "workflows": {
+      "characters": 50,
+      "rigid_frame_ms": 1.448,
+      "attached_frame_ms": 6.812,
+      "skinned_frame_ms": 3.637,
+      "skinned_vertices_each": 144,
+      "peak_rss_mib": 179.9
+    },
+    "diagnose": {
+      "vertices": 6488,
+      "diagnose_ms": 1003.941,
+      "poses": 13,
+      "propose_ms": 1007.423,
+      "apply_verify_ms": 3869.815,
+      "applied": 1,
+      "reverted": 9,
+      "peak_rss_mib": 92.1
+    },
+    "controls": {
+      "ik_fk_switch_ms": 8.423,
+      "pose_4_commands_ms": 95.85,
+      "peak_rss_mib": 90.7
+    },
+    "render": {
+      "vertices": 6488,
+      "posed_frame_ms": 12.23,
+      "rest_frame_ms": 10.987,
+      "peak_rss_mib": 97.0
+    },
+    "gltf": {
+      "export_bake_ms": 884.226,
+      "bytes": 691116,
+      "import_ms": 8.745,
+      "peak_rss_mib": 162.9
+    }
+  }
+}

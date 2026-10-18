@@ -59,6 +59,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 KINDS = ("clip", "binding", "rig", "skin", "constraints", "morph", "path", "sequence")
+_EDIT_POLICIES = ("skins", "animation", "channels", "tolerance", "dry_run")
 
 
 def _err(code: str, message: str, location: str | None = None, **kw: Any) -> AnimationError:
@@ -843,7 +844,29 @@ class AnimationSystem:
             self._canonical_constraint(c, f"constraints[{i}]")
             for i, c in enumerate(raw.get("constraints", []))
         ]
+        # Controls and correctives name scene objects: stored by id (renames keep them).
+        controls = raw.get("controls")
+        if isinstance(controls, list):
+            raw["controls"] = [
+                {**c, "object": self._object(c["object"], f"controls[{i}].object")._id}
+                if isinstance(c, dict) and isinstance(c.get("object"), str)
+                else c
+                for i, c in enumerate(controls)
+            ]
+        correctives = raw.get("correctives")
+        if isinstance(correctives, list):
+            raw["correctives"] = [
+                {**c, "mesh": self._object(c["mesh"], f"correctives[{i}].mesh")._id}
+                if isinstance(c, dict) and isinstance(c.get("mesh"), str)
+                else c
+                for i, c in enumerate(correctives)
+            ]
         rig = parse_rig(raw, "rig")
+        for c in rig.controls:
+            if c.object == obj._id and c.kind != "root":
+                raise _err(
+                    "INVALID_RIG", "only a root control may be the armature itself", "controls"
+                )
         ancestors = {a._id for a in obj.iter_ancestors()}
         for oid, _ in rig.attachments:
             if oid in ancestors:
@@ -858,6 +881,51 @@ class AnimationSystem:
             else:
                 self._set(item, definition=rig)
             self._check_cycles()
+
+    def edit_rig(self, armature: Any, operations: list[Any], **policies: Any) -> dict[str, Any]:
+        """Structural rig edits as one undo step (see :mod:`.rig_edit`): ``add_joint``,
+        ``remove_joint``, ``move_joint``, ``orient_joint``, ``rename_joint``,
+        ``reparent_joint``, ``insert_joint``, ``split_bone``, ``mirror_joints``,
+        ``align_bone``, ``set_joint``; policies ``skins`` (``rebind`` | ``keep_bind``),
+        ``animation`` (``keep`` | ``convert``), ``channels`` (``keep`` | ``remove``),
+        ``tolerance`` (degrees), ``dry_run``. Returns a report of every dependent change."""
+        from .rig_edit import edit_rig
+
+        return edit_rig(self, armature, operations, **policies)
+
+    def _edit_one(self, armature: Any, op: dict[str, Any], options: dict[str, Any]) -> dict:
+        policies = {k: options.pop(k) for k in list(options) if k in _EDIT_POLICIES}
+        return self.edit_rig(armature, [{**op, **options}], **policies)
+
+    def add_joint(self, armature: Any, name: str, **options: Any) -> dict[str, Any]:
+        """Add a joint (``parent``, ``position``, ``space``, ``rotation``, ``tail``,
+        ``role``, ``deform``, ``limits``); see :meth:`edit_rig`."""
+        return self._edit_one(armature, {"op": "add_joint", "name": name}, options)
+
+    def remove_joint(self, armature: Any, joint: str, **options: Any) -> dict[str, Any]:
+        return self._edit_one(armature, {"op": "remove_joint", "joint": joint}, options)
+
+    def move_joint(self, armature: Any, joint: str, position: Any, **options: Any) -> dict:
+        return self._edit_one(
+            armature, {"op": "move_joint", "joint": joint, "position": position}, options
+        )
+
+    def orient_joints(self, armature: Any, joints: Any = "all", **options: Any) -> dict:
+        return self._edit_one(armature, {"op": "orient_joint", "joints": joints}, options)
+
+    def rename_joint(self, armature: Any, joint: str, name: str, **options: Any) -> dict:
+        return self._edit_one(
+            armature, {"op": "rename_joint", "joint": joint, "name": name}, options
+        )
+
+    def reparent_joint(self, armature: Any, joint: str, parent: str | None, **options: Any):
+        return self._edit_one(
+            armature, {"op": "reparent_joint", "joint": joint, "parent": parent}, options
+        )
+
+    def mirror_joint_chain(self, armature: Any, side: str = "L", **options: Any) -> dict:
+        """Create or update the other side's joints as the mirror image of ``side``'s."""
+        return self._edit_one(armature, {"op": "mirror_joints", "side": side}, options)
 
     def _canonical_constraint(self, raw: Any, location: str) -> Any:
         """Object references of a constraint's targets as ids (renames keep them)."""
@@ -994,6 +1062,7 @@ class AnimationSystem:
         joints: list[str] | None = None,
         influences: int = 4,
         method: str = "linear",
+        dq: Any = None,
     ) -> dict[str, Any]:
         """Bind a mesh object to a rig smoothly, in the current (rest) pose. ``weights``:
         ``{"indices": (n, k), "weights": (n, k), "joints": [names], "inverse_bind": (m, 4,
@@ -1001,7 +1070,9 @@ class AnimationSystem:
         matrices, mesh space to joint space, as glTF files carry them),
         ``"nearest"`` (each vertex follows its nearest bone fully: rigid parts) or
         ``"envelope"`` (inverse-distance weights over the ``influences`` nearest bones: an
-        automatic starting point, not production weight painting). Returns a report."""
+        automatic starting point, not production weight painting). ``method``:
+        ``"linear"``, ``"dual_quaternion"`` or ``"blended"`` (per vertex: ``dq``, the DQS
+        share 0..1 -- one number or one per vertex). Returns a report."""
         from .rig import MAX_INFLUENCES, make_skin
 
         obj = self._object(mesh_object, "mesh_object")
@@ -1067,8 +1138,10 @@ class AnimationSystem:
             raise _err(
                 "INVALID_SKIN", "weights is 'nearest', 'envelope' or {indices, weights}", "weights"
             )
+        if method == "blended" and dq is not None and np.ndim(dq) == 0:
+            dq = np.full(mesh.vertex_count, float(dq))
         skin = make_skin(
-            obj._id, "", [rig.joints[k].id for k in idx], bind_inv, vi, vw, method, "skin"
+            obj._id, "", [rig.joints[k].id for k in idx], bind_inv, vi, vw, method, "skin", dq=dq
         )
         if skin.vertex_count != mesh.vertex_count:
             raise _err(
@@ -1077,15 +1150,7 @@ class AnimationSystem:
                 "weights",
             )
         rig_item = self._owned[("rig", arm._id)]
-        skin = type(skin)(
-            obj._id,
-            rig_item.id,
-            skin.joints,
-            skin.inverse_bind,
-            skin.indices,
-            skin.weights,
-            skin.method,
-        )
+        skin = skin.replace(object=obj._id, rig=rig_item.id)
         item = self._owned.get(("skin", obj._id))
         with self._op(f"Skin {obj.name!r} to {arm.name!r}"):
             if item is None:
@@ -1101,6 +1166,109 @@ class AnimationSystem:
             "weights": how,
             "method": method,
         }
+
+    def detect_landmarks(self, meshes: Any, **options: Any) -> dict[str, Any]:
+        """Landmarks of an unrigged character (hips, knees, shoulders, wrists...) with
+        confidences, methods and diagnostics; read-only. Options: ``template``, ``up``,
+        ``forward``, ``resolution``, ``symmetry``, ``landmarks`` (overrides). See
+        :mod:`.landmarks`."""
+        from .landmarks import detect, gather
+
+        overrides = options.pop("landmarks", None)
+        pos, tris, _ = gather(self, meshes)
+        return detect(pos, tris, overrides=overrides, **options).report()
+
+    def autorig(self, meshes: Any, **options: Any) -> dict[str, Any]:
+        """Rig, control and bind an unrigged character in one undo step (see
+        :mod:`.autorig`): ``template`` (``humanoid``, ``stylized``, ``blocky``,
+        ``quadruped``), ``armature`` or ``name``, ``landmarks`` (overrides), ``parts``
+        (per mesh: ``geodesic``, ``transfer``, ``rigid``, ``attach``, ``skip``),
+        ``weights`` (generation options), ``skinning``, ``dry_run``. Returns a report."""
+        from .autorig import autorig
+
+        return autorig(self, meshes, **options)
+
+    def add_control(self, armature: Any, name: str, kind: str, **options: Any) -> dict:
+        """Add a control to a rig: an IK limb (``chain``, ``pole``), a pole, a gaze
+        (``joint``), an FK control or the root; one undo step. See :mod:`.controls`."""
+        from .controls import add_control
+
+        return add_control(self, armature, name, kind, **options)
+
+    def ik_fk(self, armature: Any, limb: str, mode: str, time: float, **options: Any) -> dict:
+        """Switch an IK limb to ``"ik"`` or ``"fk"`` at ``time`` with a matched pose (keys
+        on the controls or joints and the influence); reports the mismatch."""
+        from .controls import ik_fk
+
+        return ik_fk(self, armature, limb, mode, time, **options)
+
+    def pose_character(self, armature: Any, commands: list[Any], *, time: float = 0.0) -> dict:
+        """High-level posing as keys: ``reach``, ``plant_feet``, ``look_at``, ``raise_arm``,
+        ``lean``, ``crouch``, ``aim_hips``, ``rotate``; see :mod:`.controls`."""
+        from .controls import pose_character
+
+        return pose_character(self, armature, commands, time=time)
+
+    def diagnose_rig(self, armature: Any, **options: Any) -> dict[str, Any]:
+        """Measure a rig, its skins and their deformation under a diagnostic pose suite
+        and over the timeline (read-only); see :mod:`.rig_report`."""
+        from .rig_report import diagnose_rig
+
+        return diagnose_rig(self, armature, **options)
+
+    def propose_rig_fix(self, armature: Any, **options: Any) -> dict[str, Any]:
+        """Correction proposals (operations with a safety class) for the rig's findings."""
+        from .rig_report import propose_rig_fix
+
+        return propose_rig_fix(self, armature, **options)
+
+    def apply_rig_fix(self, armature: Any, fixes: Any, **options: Any) -> dict[str, Any]:
+        """Apply proposals as one undo step, re-measure, and undo what does not improve."""
+        from .rig_report import apply_rig_fix
+
+        return apply_rig_fix(self, armature, fixes, **options)
+
+    def rig_preview(self, armature: Any, **options: Any) -> dict[str, Any]:
+        """A picture of the rigged character: a pose, weight or stretch heatmaps, or the
+        skeleton and controls over it (also as SVG); see :mod:`.rig_preview`."""
+        from .rig_preview import rig_preview
+
+        return rig_preview(self, armature, **options)
+
+    def generate_weights(self, mesh_object: Any, armature: Any, **options: Any) -> dict:
+        """Automatic skin weights (``method``: ``geodesic`` voxel binding by default,
+        ``envelope``, ``nearest``; ``policy``: ``organic``, ``stylized``, ``rigid``) and the
+        binding, as one undo step; see :mod:`.weights`. Returns a report (technique,
+        assumptions, voxel size, fallbacks, timings)."""
+        from .weights import generate_weights
+
+        with self._op(f"Weights of {self._object(mesh_object, 'mesh_object').name!r}"):
+            return generate_weights(self, mesh_object, armature, **options)
+
+    def edit_weights(self, mesh_object: Any, operations: list[Any], **options: Any) -> dict:
+        """Numeric weight editing (selections, brushes, locks); see :mod:`.weights`."""
+        from .weights import edit_weights
+
+        return edit_weights(self, mesh_object, operations, **options)
+
+    def normalize_weights(self, mesh_object: Any) -> dict[str, Any]:
+        from .weights import normalize_weights
+
+        return normalize_weights(self, mesh_object)
+
+    def transfer_weights(self, target: Any, source: Any, **options: Any) -> dict[str, Any]:
+        """Bind ``target`` (clothing, armour) with ``source``'s weights at the closest
+        surface point; see :mod:`.weights`."""
+        from .weights import transfer_weights
+
+        with self._op(f"Transfer weights to {self._object(target, 'target').name!r}"):
+            return transfer_weights(self, target, source, **options)
+
+    def inspect_weights(self, mesh_object: Any, **options: Any) -> dict[str, Any]:
+        """A skin's weights measured (validity, coverage, leakage, cross-side weights)."""
+        from .weights import inspect_weights
+
+        return inspect_weights(self, mesh_object, **options)
 
     def unbind(self, mesh_object: Any) -> None:
         obj = self._object(mesh_object, "mesh_object")
@@ -1129,16 +1297,35 @@ class AnimationSystem:
         a = world_matrices(self.scene, overlay)[obj._id]
         return {j.name: a @ model[k] for k, j in enumerate(rig.joints)}
 
-    def rigging(self, time: float | None = None) -> Any:
+    def rigging(self, time: float | None = None, *, deform: bool = True) -> Any:
         """The rigging pass at ``time`` (:class:`~.rigging.RiggingResult`: local
-        matrices, deformed meshes, joint matrices, IK residuals, diagnostics)."""
+        matrices, deformed meshes, joint matrices, IK residuals, diagnostics);
+        ``deform=False``: without the deformed meshes (what measuring motion needs)."""
         from .rigging import evaluate_rigging
 
         pose = self.evaluate(time)
         found = pose.extra.get("rigging")
+        if found is None and not deform:
+            found = pose.extra.get("rigging_joints")
+            if found is None:
+                found = pose.extra["rigging_joints"] = evaluate_rigging(self, pose, deform=False)
+            return found
         if found is None:
             found = pose.extra["rigging"] = evaluate_rigging(self, pose)
         return found
+
+    def _posed_worlds(self, time: float) -> dict[str, np.ndarray]:
+        """Every object's world matrix at ``time`` -- as rendered, without deforming any
+        mesh (for measuring motion)."""
+        from ..rendering.overlay import RenderOverlay
+        from ..rendering.scene_data import world_matrices
+
+        if not self.active:
+            return world_matrices(self.scene)
+        rr = self.rigging(time, deform=False)
+        ids = tuple(rr.local)
+        local = np.array([rr.local[i] for i in ids]).reshape(-1, 4, 4)
+        return world_matrices(self.scene, RenderOverlay(ids=ids, local=local, time=float(time)))
 
     # ------------------------------------------------------------------ #
     # Cinematics: paths, path following, shots, camera moves
@@ -1427,8 +1614,24 @@ class AnimationSystem:
             elif kind == "rig":
                 rig = item._definition
                 kept = tuple(a for a in rig.attachments if a[0] not in gone)
-                if len(kept) != len(rig.attachments):
-                    self._set(item, definition=_replace_rig(rig, attachments=kept))
+                controls = tuple(c for c in rig.controls if c.object not in gone)
+                correctives = tuple(c for c in rig.correctives if c.mesh not in gone)
+                if (
+                    len(kept) != len(rig.attachments)
+                    or len(controls) != len(rig.controls)
+                    or len(correctives) != len(rig.correctives)
+                ):
+                    names = {c.name for c in controls}
+                    controls = tuple(
+                        c if c.mirror is None or c.mirror in names else _replace_control(c)
+                        for c in controls
+                    )
+                    self._set(
+                        item,
+                        definition=_replace_rig(
+                            rig, attachments=kept, controls=controls, correctives=correctives
+                        ),
+                    )
 
     def _dead_rigs(self, gone: set[str]) -> set[str]:
         return {i.id for (k, oid), i in self._owned.items() if k == "rig" and oid in gone}
@@ -1647,6 +1850,31 @@ class AnimationSystem:
         from .generators import generate
 
         return generate(self, armature, kind, **options)
+
+    def generate_rigid(self, root: Any, kind: str, **options: Any) -> dict[str, Any]:
+        """A motion for a rigid-part character (a hierarchy of solid parts under ``root``,
+        no armature): ordinary ``transform`` clips on its parts (see :mod:`.rigid`).
+        Options: ``parts``, ``name``, ``forward``, ``start``, ``travel``, ``tolerance``,
+        ``bind`` and the motion's parameters. One undo step."""
+        from .rigid import generate_rigid
+
+        return generate_rigid(self, root, kind, **options)
+
+    def rigid_parts(self, root: Any, **options: Any) -> dict[str, Any]:
+        """The parts, pivots and sides measured for a rigid-part character (see
+        :func:`.rigid.find_parts`; read-only)."""
+        from .rigid import describe_parts
+
+        return describe_parts(self, root, **options)
+
+    def convert_character(self, source: Any, to: str, **options: Any) -> dict[str, Any]:
+        """Convert a character between workflows, on request: a rigid hierarchy to an
+        armature with attached copies (``to="skeleton"``) or an armature's attached parts
+        to a rigid hierarchy (``to="rigid"``); motion baked and verified, the source left
+        as it was (see :func:`.rigid.convert_character`). One undo step."""
+        from .rigid import convert_character
+
+        return convert_character(self, source, to, **options)
 
     def follow_camera(self, camera: Any, target: Any, **options: Any) -> dict[str, Any]:
         """Key a camera to follow a target with lag, aimed at it (see
@@ -1884,6 +2112,22 @@ class AnimationSystem:
                                     f"rig {raw['name']!r} attaches a missing object {oid!r}",
                                     loc,
                                 )
+                        for c in item._definition.controls:
+                            if c.object is not None and c.object not in self.scene._objects:
+                                raise _err(
+                                    "INVALID_DOCUMENT",
+                                    f"control {c.name!r} of rig {raw['name']!r} names a missing "
+                                    f"object {c.object!r}",
+                                    loc,
+                                )
+                        for c in item._definition.correctives:
+                            if c.mesh not in self.scene._objects:
+                                raise _err(
+                                    "INVALID_DOCUMENT",
+                                    f"corrective {c.name!r} of rig {raw['name']!r} names a "
+                                    f"missing mesh object {c.mesh!r}",
+                                    loc,
+                                )
         for raw, loc, item in records:
             if item.kind != "binding":
                 continue
@@ -2014,13 +2258,14 @@ def _duplicate(key: tuple[str, Any]) -> AnimationError:
 
 
 def _replace_rig(rig: Any, **changes: Any) -> Any:
-    from .rig import Rig
+    return rig.replace(**changes)
 
-    fields = {
-        f: getattr(rig, f) for f in ("object", "joints", "attachments", "constraints", "mirror")
-    }
-    fields.update(changes)
-    return Rig(**fields)
+
+def _replace_control(control: Any) -> Any:
+    """A control whose mirror partner is gone."""
+    import dataclasses
+
+    return dataclasses.replace(control, mirror=None)
 
 
 class _RigRest:
@@ -2392,10 +2637,13 @@ def definition_from_json(
             "indices",
             "weights",
             "method",
+            "dq",
+            "locks",
         }:
             raise _err(
                 "INVALID_DOCUMENT",
-                "a skin is {object, rig, joints, inverse_bind, indices, weights, method}",
+                "a skin is {object, rig, joints, inverse_bind, indices, weights, method, dq, "
+                "locks}",
                 location,
             )
         try:
@@ -2408,6 +2656,8 @@ def definition_from_json(
                 data["weights"],
                 data.get("method", "linear"),
                 location,
+                dq=data.get("dq"),
+                locks=data.get("locks"),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise _err(

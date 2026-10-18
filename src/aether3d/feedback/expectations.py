@@ -174,6 +174,17 @@ CHECKS: dict[str, dict[str, Any]] = {
         "(planted: within height, default 0.03 m, of the ground and within speed, default "
         "0.3 m/s, of the stance's steady velocity: a skating stance is measured)",
     },
+    "rig": {
+        "fields": ("objects", "poses", "timeline", "ignore"),
+        "required": ("objects",),
+        "summary": "the selected armatures' rigs pass the rig diagnostics (diagnose_rig): the "
+        "skeleton, the weights and binding of every skinned mesh, and the deformation in "
+        "poses (default: the diagnostic suite -- elbows and knees bent 120 degrees, hips "
+        "flexed 90, shoulders raised, wrists and torso twisted, the head turned) and, with "
+        "timeline (default true), over the animation (IK flips, unreachable targets, "
+        "sliding feet); errors and warnings fail, codes in ignore are skipped (numeric "
+        "measurements of the mesh, not judgments of anatomy)",
+    },
     "cad_dimension": {
         "fields": ("reference", "other", "quantity", "value", "tolerance", "min", "max"),
         "required": ("reference", "quantity"),
@@ -547,6 +558,23 @@ def _parse_field(doc: Doc, kind: str, key: str, value: Any, ptr: str, views: dic
         return doc.number(value, ptr, lo=0.0)
     if key == "height" and kind == "foot_contacts":
         return doc.number(value, ptr, lo=0.0, hi=10.0)
+    if key == "poses":
+        if value == "suite":
+            return value
+        if not isinstance(value, list) or not 1 <= len(value) <= 32:
+            doc.issues.add("INVALID_VALUE", 'poses is "suite" or a list of 1 to 32 pose names',
+                           ptr)  # fmt: skip
+            return BAD
+        names = [doc.string(v, join(ptr, k), max_length=128) for k, v in enumerate(value)]
+        return BAD if any(n is BAD for n in names) else names
+    if key == "timeline":
+        return doc.boolean(value, ptr)
+    if key == "ignore":
+        if not isinstance(value, list) or not 1 <= len(value) <= 64:
+            doc.issues.add("INVALID_VALUE", "ignore is a list of 1 to 64 finding codes", ptr)
+            return BAD
+        codes = [doc.string(v, join(ptr, k), max_length=64) for k, v in enumerate(value)]
+        return BAD if any(c is BAD for c in codes) else codes
     doc.issues.add("UNKNOWN_KEY", f"unknown key {key!r}", ptr)  # pragma: no cover
     return BAD
 

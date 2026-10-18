@@ -176,6 +176,27 @@ def _check_schema(kind: str) -> dict[str, Any]:
         "max_sliding": {"type": "number", "minimum": 0, "default": 0.005},
         "max_penetration": {"type": "number", "minimum": 0, "default": 0.002},
         "speed": {"type": "number", "minimum": 0, "default": 0.3},
+        "poses": {
+            "anyOf": [
+                {"const": "suite"},
+                {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                    "maxItems": 32,
+                },
+            ],
+            "default": "suite",
+            "description": "diagnostic poses (pose_suite names: elbow_bend_120.L, ...)",
+        },  # fmt: skip
+        "timeline": {"type": "boolean", "default": True},
+        "ignore": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1,
+            "maxItems": 64,
+            "description": "finding codes not to report",
+        },
     }
     if kind == "foot_contacts":
         types["height"] = {"type": "number", "minimum": 0, "maximum": 10, "default": 0.03}
@@ -302,6 +323,22 @@ def action_schema() -> dict[str, Any]:
         },  # fmt: skip
         "keys": {"type": "array", "items": {"type": "integer"}, "minItems": 1},
         "handles": {"enum": ["auto_clamped", "auto"]},
+        "fixes": {
+            "anyOf": [
+                {"enum": ["safe", "verify"]},
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "description": "a proposal from propose_rig_fix (inspect_rig fixes)",
+                        "properties": {"operations": {"type": "array"}},
+                        "required": ["operations"],
+                    },
+                    "minItems": 1,
+                    "maxItems": 50,
+                },
+            ]
+        },
     }
     variants = []
     for name, spec in corrections.ACTIONS.items():

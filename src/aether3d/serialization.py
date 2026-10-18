@@ -36,7 +36,7 @@ from .transform import Transform
 FORMAT_ID = "aether3d.project"
 """Value of the top-level ``format`` field identifying an Aether3D project."""
 
-FORMAT_VERSION = 10
+FORMAT_VERSION = 11
 """Version written by this release. Files with a higher version are rejected.
 
 * Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
@@ -59,6 +59,9 @@ FORMAT_VERSION = 10
 * Version 10 (Aether3D 0.18.0) adds procedural worlds (``scene.worlds``: definitions and
   block edits), the outdoor atmosphere (``scene.world.atmosphere``) and vertex colours on
   meshes (``colors``).
+* Version 11 (Aether3D 0.19.0) extends rigs (joint roles, helper joints, swing-twist and
+  hinge limits, controls, correctives, landmarks, info) and skins (blended LBS/DQS
+  skinning, weight locks).
 
 Older files are upgraded on load by the functions in :data:`MIGRATIONS`.
 """
@@ -211,6 +214,13 @@ def _migrate_v9_to_v10(document: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _migrate_v10_to_v11(document: dict[str, Any]) -> dict[str, Any]:
+    """v10 -> v11: rigs may have roles, helper joints, swing-twist and hinge limits,
+    controls, correctives, landmarks and info; skins may blend LBS and DQS and keep weight
+    locks. A v10 document has none of them: nothing changes."""
+    return dict(document)
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -221,6 +231,7 @@ MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     7: _migrate_v7_to_v8,
     8: _migrate_v8_to_v9,
     9: _migrate_v9_to_v10,
+    10: _migrate_v10_to_v11,
 }
 """``MIGRATIONS[n]`` upgrades a version-``n`` document to version ``n + 1``."""
 

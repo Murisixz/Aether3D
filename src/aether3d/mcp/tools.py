@@ -1582,7 +1582,7 @@ TOOLS: tuple[ToolSpec, ...] = (
         "Run a JSON script atomically (one undo step; on error nothing changes): edit "
         "(meshes), procedural, scene (cameras, lights, materials), sculpt, texture, cad, "
         "animation, world (procedural worlds). Schemas: aether3d://schema/<name>-script; "
-        "guides: aether3d://<sculpt|texturing|cad|animation|worlds>/guide. Objects: "
+        "guides: aether3d://<sculpt|texturing|cad|animation|rigging|worlds>/guide. Objects: "
         "execute_scene_plan.",
         _schema(
             {
@@ -1729,9 +1729,10 @@ def _with_feedback(tools: tuple[ToolSpec, ...]) -> tuple[ToolSpec, ...]:
     from .animation import specs as animation_specs
     from .cad import specs as cad_specs
     from .feedback import specs
+    from .rigging import specs as rigging_specs
     from .worlds import specs as world_specs
 
-    return tools + specs() + cad_specs() + animation_specs() + world_specs()
+    return tools + specs() + cad_specs() + animation_specs() + world_specs() + rigging_specs()
 
 
 TOOLS = _with_feedback(TOOLS)

@@ -1,0 +1,936 @@
+{
+  "lighting": {
+    "lights": {
+      "key": {
+        "direction": [
+          0.45,
+          0.5,
+          -0.74
+        ],
+        "color": [
+          1.0,
+          0.92,
+          0.82
+        ],
+        "intensity": 2.6,
+        "angle_deg": 4.0
+      },
+      "fill": {
+        "direction": [
+          -0.78,
+          0.36,
+          -0.32
+        ],
+        "color": [
+          0.72,
+          0.82,
+          1.0
+        ],
+        "intensity": 0.5,
+        "angle_deg": 8.0
+      },
+      "rim": {
+        "direction": [
+          -0.22,
+          -0.72,
+          -0.66
+        ],
+        "color": [
+          0.86,
+          0.9,
+          1.0
+        ],
+        "intensity": 1.6,
+        "angle_deg": 2.0
+      }
+    },
+    "ambient": {
+      "color": [
+        0.62,
+        0.7,
+        0.85
+      ],
+      "intensity": 0.22
+    },
+    "environment": "sky (path tracer)",
+    "set": "cyclorama (a floor curving into a back wall)"
+  },
+  "unrigged": {
+    "rigs": 0,
+    "skins": 0,
+    "vertices": 18008,
+    "triangles": 36012
+  },
+  "backend": "gpu",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "aether3d": "0.19.0",
+    "python": "3.14.8",
+    "native": true,
+    "backend": "gpu"
+  },
+  "landmarks": {
+    "seconds": 0.31,
+    "confidence": 0.6,
+    "pose": "A-pose",
+    "frame": {
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "forward": [
+        -0.0,
+        -1.0,
+        -0.0
+      ],
+      "left": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "origin": [
+        0.000118,
+        -0.00579,
+        -0.005957
+      ]
+    },
+    "points": {
+      "head_top": {
+        "position": [
+          0.023713,
+          0.024251,
+          1.742811
+        ],
+        "confidence": 0.9,
+        "method": "extremity"
+      },
+      "head": {
+        "position": [
+          0.000411,
+          -0.003655,
+          1.586306
+        ],
+        "confidence": 0.7,
+        "method": "narrowest"
+      },
+      "neck": {
+        "position": [
+          0.004344,
+          0.002077,
+          1.477707
+        ],
+        "confidence": 0.7,
+        "method": "widening"
+      },
+      "toe_tip.L": {
+        "position": [
+          0.08931,
+          -0.210017,
+          0.019736
+        ],
+        "confidence": 0.9,
+        "method": "extremity"
+      },
+      "ball.L": {
+        "position": [
+          0.089804,
+          -0.127753,
+          0.017729
+        ],
+        "confidence": 0.7,
+        "method": "proportion_of_measured"
+      },
+      "heel.L": {
+        "position": [
+          0.090958,
+          0.064196,
+          -0.005957
+        ],
+        "confidence": 0.75,
+        "method": "sole"
+      },
+      "ankle.L": {
+        "position": [
+          0.090958,
+          -0.001809,
+          0.072997
+        ],
+        "confidence": 0.8,
+        "method": "turn"
+      },
+      "knee.L": {
+        "position": [
+          0.091304,
+          -0.008569,
+          0.518171
+        ],
+        "confidence": 0.7,
+        "method": "proportion_of_measured"
+      },
+      "hip.L": {
+        "position": [
+          0.094046,
+          0.000425,
+          0.925343
+        ],
+        "confidence": 0.75,
+        "method": "junction"
+      },
+      "toe_tip.R": {
+        "position": [
+          -0.089074,
+          -0.210017,
+          0.019736
+        ],
+        "confidence": 0.9,
+        "method": "extremity"
+      },
+      "ball.R": {
+        "position": [
+          -0.089568,
+          -0.127753,
+          0.017729
+        ],
+        "confidence": 0.7,
+        "method": "proportion_of_measured"
+      },
+      "heel.R": {
+        "position": [
+          -0.090722,
+          0.064196,
+          -0.005957
+        ],
+        "confidence": 0.75,
+        "method": "sole"
+      },
+      "ankle.R": {
+        "position": [
+          -0.090722,
+          -0.001809,
+          0.072997
+        ],
+        "confidence": 0.8,
+        "method": "turn"
+      },
+      "knee.R": {
+        "position": [
+          -0.091068,
+          -0.008569,
+          0.518171
+        ],
+        "confidence": 0.7,
+        "method": "proportion_of_measured"
+      },
+      "hip.R": {
+        "position": [
+          -0.093809,
+          0.000425,
+          0.925343
+        ],
+        "confidence": 0.75,
+        "method": "junction"
+      },
+      "hand_tip.L": {
+        "position": [
+          0.576161,
+          -0.060801,
+          0.743503
+        ],
+        "confidence": 0.9,
+        "method": "extremity"
+      },
+      "wrist.L": {
+        "position": [
+          0.482212,
+          -0.038311,
+          0.904398
+        ],
+        "confidence": 0.75,
+        "method": "narrowest"
+      },
+      "elbow.L": {
+        "position": [
+          0.364482,
+          -0.004641,
+          1.105892
+        ],
+        "confidence": 0.7,
+        "method": "proportion_of_measured"
+      },
+      "shoulder.L": {
+        "position": [
+          0.218517,
+          0.00385,
+          1.368228
+        ],
+        "confidence": 0.7,
+        "method": "axis_anchor"
+      },
+      "hand_tip.R": {
+        "position": [
+          -0.575925,
+          -0.060801,
+          0.743503
+        ],
+        "confidence": 0.9,
+        "method": "extremity"
+      },
+      "wrist.R": {
+        "position": [
+          -0.481976,
+          -0.038311,
+          0.904398
+        ],
+        "confidence": 0.75,
+        "method": "narrowest"
+      },
+      "elbow.R": {
+        "position": [
+          -0.364246,
+          -0.004641,
+          1.105892
+        ],
+        "confidence": 0.7,
+        "method": "proportion_of_measured"
+      },
+      "shoulder.R": {
+        "position": [
+          -0.218281,
+          0.00385,
+          1.368228
+        ],
+        "confidence": 0.7,
+        "method": "axis_anchor"
+      },
+      "pelvis": {
+        "position": [
+          0.000118,
+          -0.004385,
+          0.969235
+        ],
+        "confidence": 0.75,
+        "method": "section_centroid"
+      },
+      "spine": {
+        "position": [
+          0.000118,
+          -0.004385,
+          1.11867
+        ],
+        "confidence": 0.65,
+        "method": "section_centroid"
+      },
+      "chest": {
+        "position": [
+          0.000118,
+          -0.004385,
+          1.311998
+        ],
+        "confidence": 0.65,
+        "method": "section_centroid"
+      },
+      "clavicle.L": {
+        "position": [
+          0.035232,
+          -0.005815,
+          1.416258
+        ],
+        "confidence": 0.6,
+        "method": "between"
+      },
+      "clavicle.R": {
+        "position": [
+          -0.034996,
+          -0.005815,
+          1.416258
+        ],
+        "confidence": 0.6,
+        "method": "between"
+      }
+    },
+    "diagnostics": []
+  },
+  "autorig": {
+    "joints": [
+      {
+        "name": "Hips",
+        "parent": null,
+        "role": "hips",
+        "position": [
+          0.00013,
+          -0.004385,
+          0.969235
+        ]
+      },
+      {
+        "name": "Spine",
+        "parent": "Hips",
+        "role": "spine",
+        "position": [
+          0.00013,
+          -0.004385,
+          1.11867
+        ]
+      },
+      {
+        "name": "Chest",
+        "parent": "Spine",
+        "role": "chest",
+        "position": [
+          0.00013,
+          -0.004385,
+          1.311998
+        ]
+      },
+      {
+        "name": "Neck",
+        "parent": "Chest",
+        "role": "neck",
+        "position": [
+          0.004344,
+          0.002077,
+          1.477707
+        ]
+      },
+      {
+        "name": "Head",
+        "parent": "Neck",
+        "role": "head",
+        "position": [
+          0.00046,
+          -0.003662,
+          1.586312
+        ]
+      },
+      {
+        "name": "Shoulder.L",
+        "parent": "Chest",
+        "role": "clavicle.L",
+        "position": [
+          0.035244,
+          -0.005815,
+          1.416258
+        ]
+      },
+      {
+        "name": "UpperArm.L",
+        "parent": "Shoulder.L",
+        "role": "upper_arm.L",
+        "position": [
+          0.218529,
+          0.00385,
+          1.368228
+        ]
+      },
+      {
+        "name": "ForeArm.L",
+        "parent": "UpperArm.L",
+        "role": "lower_arm.L",
+        "position": [
+          0.364506,
+          -0.004644,
+          1.10587
+        ]
+      },
+      {
+        "name": "ForeArmTwist.L",
+        "parent": "ForeArm.L",
+        "role": "forearm_twist.L",
+        "position": [
+          0.423304,
+          -0.021531,
+          1.005081
+        ]
+      },
+      {
+        "name": "Hand.L",
+        "parent": "ForeArm.L",
+        "role": "hand.L",
+        "position": [
+          0.482103,
+          -0.038417,
+          0.904291
+        ]
+      },
+      {
+        "name": "Thigh.L",
+        "parent": "Hips",
+        "role": "thigh.L",
+        "position": [
+          0.094058,
+          0.000425,
+          0.925343
+        ]
+      },
+      {
+        "name": "Shin.L",
+        "parent": "Thigh.L",
+        "role": "shin.L",
+        "position": [
+          0.091316,
+          -0.008569,
+          0.518171
+        ]
+      },
+      {
+        "name": "Foot.L",
+        "parent": "Shin.L",
+        "role": "foot.L",
+        "position": [
+          0.09097,
+          -0.001809,
+          0.072997
+        ]
+      },
+      {
+        "name": "Toe.L",
+        "parent": "Foot.L",
+        "role": "toe.L",
+        "position": [
+          0.089816,
+          -0.127753,
+          0.017729
+        ]
+      },
+      {
+        "name": "Shoulder.R",
+        "parent": "Chest",
+        "role": "clavicle.R",
+        "position": [
+          -0.034984,
+          -0.005815,
+          1.416258
+        ]
+      },
+      {
+        "name": "UpperArm.R",
+        "parent": "Shoulder.R",
+        "role": "upper_arm.R",
+        "position": [
+          -0.218269,
+          0.00385,
+          1.368228
+        ]
+      },
+      {
+        "name": "ForeArm.R",
+        "parent": "UpperArm.R",
+        "role": "lower_arm.R",
+        "position": [
+          -0.364246,
+          -0.004644,
+          1.10587
+        ]
+      },
+      {
+        "name": "ForeArmTwist.R",
+        "parent": "ForeArm.R",
+        "role": "forearm_twist.R",
+        "position": [
+          -0.423044,
+          -0.021531,
+          1.005081
+        ]
+      },
+      {
+        "name": "Hand.R",
+        "parent": "ForeArm.R",
+        "role": "hand.R",
+        "position": [
+          -0.481842,
+          -0.038417,
+          0.904291
+        ]
+      },
+      {
+        "name": "Thigh.R",
+        "parent": "Hips",
+        "role": "thigh.R",
+        "position": [
+          -0.093797,
+          0.000425,
+          0.925343
+        ]
+      },
+      {
+        "name": "Shin.R",
+        "parent": "Thigh.R",
+        "role": "shin.R",
+        "position": [
+          -0.091056,
+          -0.008569,
+          0.518171
+        ]
+      },
+      {
+        "name": "Foot.R",
+        "parent": "Shin.R",
+        "role": "foot.R",
+        "position": [
+          -0.09071,
+          -0.001809,
+          0.072997
+        ]
+      },
+      {
+        "name": "Toe.R",
+        "parent": "Foot.R",
+        "role": "toe.R",
+        "position": [
+          -0.089556,
+          -0.127753,
+          0.017729
+        ]
+      }
+    ],
+    "confidence": 0.6,
+    "controls": [
+      "Hero Rig hand_ik.L",
+      "Hero Rig elbow_pole.L",
+      "Hero Rig foot_ik.L",
+      "Hero Rig knee_pole.L",
+      "Hero Rig hand_ik.R",
+      "Hero Rig elbow_pole.R",
+      "Hero Rig foot_ik.R",
+      "Hero Rig knee_pole.R",
+      "Hero Rig gaze"
+    ],
+    "constraints": [
+      "forearm_twist.L",
+      "forearm_twist.R",
+      "arm_ik.L",
+      "leg_ik.L",
+      "arm_ik.R",
+      "leg_ik.R",
+      "gaze"
+    ],
+    "timings": {
+      "detect_s": 0.3035,
+      "bind_s": 0.3771,
+      "total_s": 0.691
+    },
+    "weights": {
+      "Body": {
+        "mode": "geodesic",
+        "method": "geodesic",
+        "policy": "organic",
+        "technique": "geodesic voxel binding: chamfer (3-4-5) shortest paths inside the voxelized solid, inverse-distance falloff, mesh smoothing",
+        "voxel_size": 0.01371636733529158,
+        "unreached_vertices": 0,
+        "rigid_parts": 0,
+        "joints_used": 23,
+        "influences": 4,
+        "spine_smoothing": 20,
+        "timings": {
+          "voxelize_s": 0.0394,
+          "geodesic_s": 0.0347,
+          "weights_s": 0.0841,
+          "total_s": 0.2139
+        }
+      }
+    },
+    "diagnostics": []
+  },
+  "clothes_faces": {
+    "skin": 3437,
+    "top": 15320,
+    "trousers": 14185,
+    "shoes": 2474,
+    "hair": 1244
+  },
+  "clothes_cut_vertices": 325,
+  "checks": {
+    "summary": {
+      "error": 0,
+      "warning": 13,
+      "info": 10
+    },
+    "codes": [
+      "FLIPPED_TRIANGLES",
+      "INTERPENETRATION",
+      "STRETCHED_EDGES"
+    ],
+    "errors": [],
+    "joint_ring": {
+      "elbow_bend_120.L": {
+        "Body": 0.793
+      },
+      "knee_bend_120.L": {
+        "Body": 0.806
+      },
+      "hip_flex_90.L": {
+        "Body": 0.918
+      },
+      "shoulder_raise_90.L": {
+        "Body": 0.954
+      },
+      "wrist_twist_90.L": {
+        "Body": 0.994
+      },
+      "elbow_bend_120.R": {
+        "Body": 0.792
+      },
+      "knee_bend_120.R": {
+        "Body": 0.805
+      },
+      "hip_flex_90.R": {
+        "Body": 0.925
+      },
+      "shoulder_raise_90.R": {
+        "Body": 0.946
+      },
+      "wrist_twist_90.R": {
+        "Body": 0.995
+      },
+      "torso_twist_45": {
+        "Body": 0.977
+      },
+      "spine_bend_45": {
+        "Body": 0.984
+      },
+      "head_turn_60": {
+        "Body": 0.931
+      }
+    }
+  },
+  "motions": {
+    "walk": {
+      "keys": 737,
+      "duration": 1.1111111111111112,
+      "speed": 0.9974322031063739,
+      "period": 1.1111111111111112,
+      "travel": 1.1082580034515266,
+      "ik_residual": 6.206335383118183e-17
+    },
+    "run": {
+      "keys": 658,
+      "duration": 0.7142857142857143,
+      "speed": 3.5805258573049317,
+      "period": 0.7142857142857143,
+      "travel": 2.5575184695035227,
+      "ik_residual": 6.206335383118183e-17
+    },
+    "crouch": {
+      "keys": 217,
+      "duration": 8.0,
+      "period": 8.0,
+      "travel": 0.0,
+      "ik_residual": 0.0
+    },
+    "reach": {}
+  },
+  "crouch": {
+    "keys": [
+      {
+        "time": 0.5,
+        "depth": 0.0,
+        "lean_deg": 0.0
+      },
+      {
+        "time": 1.2,
+        "depth": 0.4,
+        "lean_deg": 18.0
+      },
+      {
+        "time": 1.9,
+        "depth": 0.4,
+        "lean_deg": 18.0
+      },
+      {
+        "time": 2.6,
+        "depth": 0.0,
+        "lean_deg": 0.0
+      }
+    ],
+    "foot_residual_m": 0.001091
+  },
+  "reach": {
+    "goal": [
+      -0.1837,
+      -0.5218,
+      1.55
+    ],
+    "distance_m": [
+      0.470732,
+      0.46823
+    ],
+    "reachable": true,
+    "residual_m": [
+      0.0,
+      0.0
+    ],
+    "fk_to_ik": {
+      "mismatch": 1.264594377097842e-16,
+      "rotation_mismatch": 0.0,
+      "time": 0.4
+    },
+    "ik_to_fk": {
+      "mismatch": 7.850462293418876e-17,
+      "rotation_mismatch": 0.0,
+      "time": 2.3
+    }
+  },
+  "contacts": {
+    "walk": {
+      "Foot.L": {
+        "sliding_m": 0.00202,
+        "penetration_m": 0.0,
+        "contacts": 3
+      },
+      "Foot.R": {
+        "sliding_m": 0.00212,
+        "penetration_m": 0.0,
+        "contacts": 4
+      }
+    },
+    "run": {
+      "Foot.L": {
+        "sliding_m": 0.00071,
+        "penetration_m": 0.0,
+        "contacts": 4
+      },
+      "Foot.R": {
+        "sliding_m": 0.00069,
+        "penetration_m": 0.0,
+        "contacts": 3
+      }
+    }
+  },
+  "frames": {
+    "segments": [
+      {
+        "frames": 180,
+        "first": 0,
+        "fps": 60,
+        "start": 0.0,
+        "end": 3.0,
+        "seconds": 60.9,
+        "seconds_per_frame_median": 0.338,
+        "size": [
+          1920,
+          1080
+        ],
+        "segment": "walk"
+      },
+      {
+        "frames": 144,
+        "first": 180,
+        "fps": 60,
+        "start": 0.0,
+        "end": 2.4,
+        "seconds": 49.4,
+        "seconds_per_frame_median": 0.344,
+        "size": [
+          1920,
+          1080
+        ],
+        "segment": "run"
+      },
+      {
+        "frames": 168,
+        "first": 324,
+        "fps": 60,
+        "start": 0.0,
+        "end": 2.8,
+        "seconds": 58.0,
+        "seconds_per_frame_median": 0.346,
+        "size": [
+          1920,
+          1080
+        ],
+        "segment": "crouch"
+      },
+      {
+        "frames": 204,
+        "first": 492,
+        "fps": 60,
+        "start": 0.0,
+        "end": 3.4,
+        "seconds": 70.4,
+        "seconds_per_frame_median": 0.346,
+        "size": [
+          1920,
+          1080
+        ],
+        "segment": "reach"
+      }
+    ],
+    "total": 696,
+    "fps": 60,
+    "size": [
+      1920,
+      1080
+    ],
+    "seconds": 238.7
+  },
+  "stills": [
+    {
+      "path": "examples/output/rigging/a_autorig/hero_walk.png",
+      "seconds": 69.6,
+      "backend": "gpu_path",
+      "size": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "path": "examples/output/rigging/a_autorig/hero_run.png",
+      "seconds": 69.82,
+      "backend": "gpu_path",
+      "size": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "path": "examples/output/rigging/a_autorig/hero_crouch.png",
+      "seconds": 72.45,
+      "backend": "gpu_path",
+      "size": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "path": "examples/output/rigging/a_autorig/hero_reach.png",
+      "seconds": 107.3,
+      "backend": "gpu_path",
+      "size": [
+        1920,
+        1080
+      ]
+    }
+  ],
+  "video": {
+    "commands": {
+      "mp4": "-y -loglevel error -framerate 60 -i examples/output/rigging/a_autorig/frames/frame_%05d.png -c:v libx264 -preset slow -crf 10 -pix_fmt yuv420p -vf scale=1920:1080:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/rigging/a_autorig/autorig_1080p.mp4",
+      "preview": "-y -loglevel error -framerate 60 -i examples/output/rigging/a_autorig/frames/frame_%05d.png -c:v libx264 -preset slow -crf 23 -pix_fmt yuv420p -vf scale=960:540:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/rigging/a_autorig/autorig_preview.mp4",
+      "master": "-y -loglevel error -framerate 60 -i examples/output/rigging/a_autorig/frames/frame_%05d.png -c:v ffv1 -level 3 -pix_fmt bgr0 examples/output/rigging/a_autorig/autorig_master.mkv"
+    },
+    "mp4": {
+      "path": "examples/output/rigging/a_autorig/autorig_1080p.mp4",
+      "bytes": 3866445,
+      "seconds": 4.4
+    },
+    "preview": {
+      "path": "examples/output/rigging/a_autorig/autorig_preview.mp4",
+      "bytes": 399372,
+      "seconds": 2.2
+    },
+    "master": {
+      "path": "examples/output/rigging/a_autorig/autorig_master.mkv",
+      "bytes": 103794970,
+      "seconds": 3.8
+    },
+    "verify": {
+      "psnr": "PSNR r:45.019000 g:43.612380 b:41.158030 average:42.964035 min:42.352257 max:43.435659",
+      "ssim": "SSIM R:0.995675 (23.640380) G:0.998303 (27.701938) B:0.993104 (21.613941) All:0.995694 (23.659131)"
+    },
+    "verify_master": {
+      "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+      "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+    }
+  },
+  "seconds": 640.2
+}

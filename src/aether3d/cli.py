@@ -2087,6 +2087,9 @@ def build_parser() -> argparse.ArgumentParser:
     from ._cli_worlds import add_world_parsers
 
     add_world_parsers(sub, common, writing)
+    from ._cli_rig import add_rig_parsers
+
+    add_rig_parsers(sub, common, writing)
     _add_mcp_parsers(sub)
     return parser
 

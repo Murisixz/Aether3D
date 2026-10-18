@@ -1,0 +1,227 @@
+{
+  "backend": "gpu",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "aether3d": "0.19.0",
+    "python": "3.14.8",
+    "native": true,
+    "backend": "gpu"
+  },
+  "walker": {
+    "speed": 0.9974322031063739,
+    "period": 1.1111111111111112,
+    "keys": 735
+  },
+  "kit": {
+    "speed": 3.15,
+    "keys": 176,
+    "verification": {
+      "samples": 49,
+      "objects": 6,
+      "position": 0.000229837,
+      "rotation_deg": 0.046661,
+      "worst": "Kit arm.R"
+    },
+    "bones": 0
+  },
+  "road": {
+    "start": [
+      0.0,
+      0.0
+    ],
+    "heading_deg": 330.0,
+    "length_m": 42.3,
+    "level_m": 90.21
+  },
+  "walker_lane": {
+    "speed_m_s": 0.9974,
+    "from_m": 6.0,
+    "to_m": 14.98
+  },
+  "kit_lane": {
+    "speed_m_s": 3.15,
+    "from_m": 0.0,
+    "to_m": 28.35
+  },
+  "walker_contacts": {
+    "Foot.L": {
+      "sliding_m": 0.00202,
+      "penetration_m": 0.0,
+      "contacts": 9
+    },
+    "Foot.R": {
+      "sliding_m": 0.00212,
+      "penetration_m": 0.0,
+      "contacts": 9
+    }
+  },
+  "kit_contacts": {
+    "Kit leg.L": {
+      "lowest_m": -0.0037,
+      "planted_frames": 457,
+      "max_slip_per_frame_m": 0.00322
+    },
+    "Kit leg.R": {
+      "lowest_m": -0.003,
+      "planted_frames": 433,
+      "max_slip_per_frame_m": 0.00327
+    }
+  },
+  "lighting": {
+    "key": "golden sun (worlds_common.light)",
+    "fill": 0.35,
+    "rim": 1.1
+  },
+  "crane_clearance_m": 1.414,
+  "frames": {
+    "shots": [
+      {
+        "shot": "crane",
+        "start": 0.0,
+        "end": 3.0,
+        "frames": 180,
+        "seconds": 108.4,
+        "seconds_per_frame_median": 0.562
+      },
+      {
+        "shot": "tracking",
+        "start": 3.0,
+        "end": 6.0,
+        "frames": 180,
+        "seconds": 99.3,
+        "seconds_per_frame_median": 0.538
+      },
+      {
+        "shot": "ahead",
+        "start": 6.0,
+        "end": 9.0,
+        "frames": 180,
+        "seconds": 98.3,
+        "seconds_per_frame_median": 0.533
+      }
+    ],
+    "total": 540,
+    "fps": 60,
+    "size": [
+      1920,
+      1080
+    ]
+  },
+  "stills": [
+    {
+      "path": "examples/output/rigging/f_world/hero_crane.png",
+      "seconds": 0.64,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [
+        "SHADOW_LIGHT_LIMIT"
+      ]
+    },
+    {
+      "path": "examples/output/rigging/f_world/hero_tracking.png",
+      "seconds": 0.53,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [
+        "SHADOW_LIGHT_LIMIT"
+      ]
+    },
+    {
+      "path": "examples/output/rigging/f_world/hero_ahead.png",
+      "seconds": 0.52,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [
+        "SHADOW_LIGHT_LIMIT"
+      ]
+    }
+  ],
+  "video": {
+    "commands": {
+      "mp4": "-y -loglevel error -framerate 60 -i examples/output/rigging/f_world/frames/frame_%05d.png -c:v libx264 -preset slow -crf 10 -pix_fmt yuv420p -vf scale=1920:1080:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/rigging/f_world/world_1080p.mp4",
+      "preview": "-y -loglevel error -framerate 60 -i examples/output/rigging/f_world/frames/frame_%05d.png -c:v libx264 -preset slow -crf 23 -pix_fmt yuv420p -vf scale=960:540:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/rigging/f_world/world_preview.mp4",
+      "master": "-y -loglevel error -framerate 60 -i examples/output/rigging/f_world/frames/frame_%05d.png -c:v ffv1 -level 3 -pix_fmt bgr0 examples/output/rigging/f_world/world_master.mkv"
+    },
+    "mp4": {
+      "path": "examples/output/rigging/f_world/world_1080p.mp4",
+      "bytes": 18600789,
+      "seconds": 8.9
+    },
+    "preview": {
+      "path": "examples/output/rigging/f_world/world_preview.mp4",
+      "bytes": 965459,
+      "seconds": 2.7
+    },
+    "master": {
+      "path": "examples/output/rigging/f_world/world_master.mkv",
+      "bytes": 470687891,
+      "seconds": 5.1
+    },
+    "verify": {
+      "psnr": "PSNR r:42.495833 g:43.506088 b:40.221362 average:41.850323 min:40.267792 max:43.178528",
+      "ssim": "SSIM R:0.989069 (19.613288) G:0.993485 (21.861172) B:0.978070 (16.589691) All:0.986875 (18.818960)"
+    },
+    "verify_master": {
+      "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+      "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+    }
+  },
+  "world_stats": {
+    "tiles_cached": 120,
+    "tile_bytes": 38298816,
+    "budget_bytes": 1073741824,
+    "tiles_generated": 120,
+    "tile_hits": 144209,
+    "tiles_evicted": 0,
+    "generation_seconds": 3.3776,
+    "regional_computed": 1,
+    "regional_cached": 1,
+    "last_frame": {
+      "parts": 13712,
+      "meshes": 220,
+      "triangles": 1237991,
+      "seconds": 0.0797
+    },
+    "vegetation": {
+      "tiles_placed": 1353,
+      "plants_placed": 45385,
+      "candidates": 195564,
+      "seconds": 3.8775,
+      "bytes": 3086180,
+      "tiles_evicted": 0,
+      "tiles_cached": 1353
+    },
+    "volumes": {
+      "columns": 0,
+      "cubes_meshed": 0,
+      "cubes_evicted": 0,
+      "triangles": 0,
+      "seconds": 0.0,
+      "cubes_cached": 0,
+      "columns_cached": 0,
+      "bytes": 0
+    },
+    "memory": {
+      "logical": {
+        "bounded": true,
+        "area_km2": 16.777216,
+        "tiles_level0": 4096
+      },
+      "cached_bytes": {
+        "tiles": 38298816,
+        "regional": 1951908,
+        "vegetation": 3086180,
+        "volumes": 0
+      },
+      "cached_total": 43336904,
+      "rendered": {
+        "parts": 13712,
+        "meshes": 220,
+        "triangles": 1237991,
+        "seconds": 0.0797
+      },
+      "process_rss_bytes": 668852224
+    }
+  },
+  "seconds": 533.8
+}

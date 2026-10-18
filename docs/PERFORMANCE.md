@@ -21,6 +21,7 @@ tracing as a separate decision).
 - [Precision modeling (0.15)](#precision-modeling-015)
 - [Animation (0.17)](#animation-017)
 - [Procedural worlds (0.18)](#procedural-worlds-018)
+- [Character rigging (0.19)](#character-rigging-019)
 
 ## Measuring
 
@@ -984,3 +985,64 @@ Known slow spots: a first view of a large world spends seconds generating (6-20 
 showcases), so prefetch camera paths with `scene.worlds.prepare`; path tracing a world
 takes minutes per 1080p still (millions of triangles in the BVH); the CPU rasterizer
 spends seconds per frame on dense forests (about 4 s at 480x270 in showcase C).
+
+## Character rigging (0.19)
+
+Stage 18 decided its languages before implementation
+([research/2026-10-stage18/DESIGN.md](../research/2026-10-stage18/DESIGN.md), section 3):
+Python for the rig document, structural editing, controls, diagnostics, scripts, the CLI
+and MCP; NumPy for voxelization, landmark detection and weights (generation, editing,
+smoothing, transfer); and two native kernels (`aether3d-native` 0.19.0, ABI 6), each
+performing its NumPy twin's operations in their order, so the results are bitwise
+identical (`tests/test_native.py`; the benchmark checks every run):
+
+- **Dual quaternion and blended skinning** (`native/src/dqs.rs`): 1,000,000 vertices in
+  393 ms with NumPy, 66 ms on one thread, 14.7 ms on 20 (blended LBS/DQS: 629 / 23.6 ms).
+  The NumPy reference gives v0.18.0's dual quaternion results bit for bit.
+- **Geodesic voxel distances** (`native/src/geodesic.rs`): Dial's bucket queue on the
+  integer 3-4-5 chamfer metric (integer results: the twin is exact by construction).
+
+There is no GPU skinning: every consumer (the path tracers, queries, motion blur, export,
+the CPU rasterizer) needs deformed positions on the CPU, and a posed frame of a
+6,488-vertex character costs the GPU rasterizer 12.2 ms against 11.0 ms at rest
+(skinning and upload together: about 1.2 ms).
+
+Measured with `benchmarks/bench_rigging.py` at 662f319
+(`benchmarks/results/stage18-rigging.json`; i9-12900H laptop, 20 logical CPUs, Python
+3.14.8, NumPy 2.5.4, RTX 4060 Laptop GPU through wgpu 0.32 on Vulkan). Each group runs in
+its own process; medians after a warm-up:
+
+| Workload | Size | Time | Peak RSS |
+| --- | --- | ---: | ---: |
+| auto-rig: landmarks, skeleton, controls, geodesic weights | 6,488 / 18,008 vertices | 0.47 / 0.67 s (detection 0.29 / 0.30, binding 0.18 / 0.37) | 97 / 174 MiB |
+| landmarks at 96 / 128 cells over the height | 18,008 vertices | 138 / 296 ms | 174 MiB |
+| weights: generate / smooth 4 iterations / transfer to a jacket / inspect | 18,008 vertices; jacket 9,994 | 206 / 106 / 1,375 / 28 ms | 478 MiB |
+| dual quaternion skinning: NumPy / native 1 thread / native 20 threads | 100k / 1M vertices | 44.3 / 6.7 / 2.0 ms; 393 / 66 / 14.7 ms | 111 / 286 MiB |
+| auto-rigged characters walking (IK, twist helpers, gaze, skinned), per frame | 1 / 10 / 50 characters of 6,488 vertices | 1.15 / 4.12 / 16.9 ms (0.34 ms each at 50) | 89 / 171 / 616 MiB |
+| 50 Minecraft-style characters per frame: rigid parts / bone-attached blocks / one rigidly skinned mesh each | 144 vertices each | 1.45 / 6.81 / 3.64 ms | 180 MiB |
+| `diagnose_rig` (13 poses) / `propose_rig_fix` / `apply_rig_fix` with verification | 6,488 vertices | 1.00 / 1.01 / 3.87 s (1 kept, 9 undone) | 92 MiB |
+| IK/FK switch / 4 pose commands | | 8.4 / 96 ms | 91 MiB |
+| GPU rasterizer frame: posed / at rest | 6,488 vertices | 12.2 / 11.0 ms | 97 MiB |
+| glTF: baked export / import | 691 kB | 884 / 8.7 ms | 163 MiB |
+
+Stage 17's animation benchmarks are unchanged: run interleaved with `main` (59b68a2,
+v0.18.0, its own native 0.18.0 build through a git worktree) on one machine state
+(`benchmarks/results/stage18-animation-interleaved.json`), every curve, object, instance,
+rig, NLA, generator, IK, glTF and fitting timing agrees within -5 % to +6.5 %, in both
+directions; dual quaternion skinning, now native, is 9-11 times faster (1M vertices: 703
+-> 66 ms on one thread).
+
+Optimizations made during the stage, each measured before and after on this machine and
+checked equal to the code it replaced:
+
+| Change | Before | After |
+| --- | ---: | ---: |
+| 50 walking characters per frame: twist constraints in scalar arithmetic (checked against the quaternion reference on 60,000 cases), constraint parameters parsed once | 27.9 ms | 16.7 ms |
+| auto-rig of 6,480 vertices: the landmark symmetry search on a sample of the voxels, decided on all (identical landmarks on the six test bodies) | 0.59 s | 0.45 s |
+| verified fixes re-measure only what each fix can change (16 fixes, the same decisions) | 63.7 s | 5.1 s |
+| weight smoothing by one bincount per changing column (the bits of `np.add.at`, tested): 20 iterations of three joints, 18,004 vertices | 418 ms | 51 ms |
+
+Known slow spots: weight transfer finds closest points in NumPy (1.4 s for a
+10,000-vertex jacket); `diagnose_rig` deforms every bound mesh in every pose and samples
+the timeline (1 s for 13 poses); a baked glTF export evaluates the whole rigging pass at
+every frame (0.9 s for a clothed, walking character).

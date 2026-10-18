@@ -710,6 +710,65 @@ def test_skinning_threads_change_nothing(monkeypatch):
     assert_bitwise(one[1], many[1], "normals")
 
 
+@pytest.mark.parametrize("seed", range(4))
+@pytest.mark.parametrize("blended", [False, True])
+def test_dual_quaternion_skinning_is_numpys(seed, blended, monkeypatch):
+    """Dual quaternion and blended (LBS/DQS) skinning (0.19): bitwise the NumPy reference,
+    on mirrored and collapsed joints too, with and without normals."""
+    from aether3d.animation.rig import skin_dual_quaternion
+
+    args = _skin_inputs(seed, k=1 + seed)
+    blend = None
+    if blended:
+        blend = np.random.default_rng(seed).random(args[0].shape[0])
+        blend[::3], blend[1::7] = 0.0, 1.0
+    fast = skin_dual_quaternion(*args, blend)
+    monkeypatch.setattr(_native, "module", lambda: None)
+    slow = skin_dual_quaternion(*args, blend)
+    assert_bitwise(fast[0], slow[0], "positions")
+    assert_bitwise(fast[1], slow[1], "normals")
+    monkeypatch.undo()
+    no_normals = skin_dual_quaternion(args[0], None, *args[2:], blend)
+    assert no_normals[1] is None
+    assert_bitwise(no_normals[0], slow[0], "positions without normals")
+    monkeypatch.setenv("AETHER3D_NATIVE_THREADS", "8")
+    assert_bitwise(skin_dual_quaternion(*args, blend)[0], slow[0], "8 threads")
+
+
+def test_geodesic_voxel_distances_are_numpys(monkeypatch):
+    """Geodesic voxel distances (0.19): the native kernel's integers equal the NumPy
+    bucket queue's, on any thread count, with and without a cutoff."""
+    from aether3d import create_sphere
+    from aether3d.animation import voxels as V
+
+    rng = np.random.default_rng(5)
+    s = create_sphere(0.5)
+    g = V.voxelize(s.positions, s.triangles, resolution=40)
+    solid = np.flatnonzero(g.solid_flat())
+    srcs = [rng.choice(solid, size=int(rng.integers(1, 9)), replace=False) for _ in range(5)]
+    srcs.append(np.zeros(0, np.int64))  # a bone with no voxel: unreached everywhere
+    q = np.concatenate([rng.choice(solid, 300), [0]])  # (an empty voxel too)
+    for cutoff in (1 << 30, 25):
+        fast = V.geodesic(g, srcs, q, cutoff=cutoff)
+        monkeypatch.setenv("AETHER3D_NATIVE_THREADS", "4")
+        threaded = V.geodesic(g, srcs, q, cutoff=cutoff)
+        monkeypatch.delenv("AETHER3D_NATIVE_THREADS")
+        with monkeypatch.context() as m:
+            m.setattr(_native, "module", lambda: None)
+            slow = V.geodesic(g, srcs, q, cutoff=cutoff)
+        assert np.array_equal(fast, slow) and np.array_equal(threaded, slow)
+        assert (slow[:, -1] == -1).all() and (slow[-1] == -1).all()
+    sid = g.sid().copy()
+    out = np.empty((1, 1), np.int32)
+    with pytest.raises(ValueError, match="outside the grid"):
+        native.geodesic_voxels(sid, *g.dims, np.array([0, 1]), np.array([sid.size]),
+                               np.array([0]), 10, out, 1)  # fmt: skip
+    sid[0] = 0  # a solid voxel on the border
+    with pytest.raises(ValueError):
+        native.geodesic_voxels(sid, *g.dims, np.array([0, 1]), np.array([5]), np.array([0]),
+                               10, out, 1)  # fmt: skip
+
+
 def test_skinning_rejects_joints_outside_the_palette():
     pos, nrm, idx, w, pal = _skin_inputs(1, n=10)
     idx[3, 0] = pal.shape[0]

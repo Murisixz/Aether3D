@@ -1,0 +1,356 @@
+{
+  "backend": "gpu",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "aether3d": "0.19.0",
+    "python": "3.14.8",
+    "native": true,
+    "backend": "gpu"
+  },
+  "lighting": {
+    "lights": {
+      "key": {
+        "direction": [
+          0.45,
+          0.5,
+          -0.74
+        ],
+        "color": [
+          1.0,
+          0.92,
+          0.82
+        ],
+        "intensity": 2.6,
+        "angle_deg": 4.0
+      },
+      "fill": {
+        "direction": [
+          -0.78,
+          0.36,
+          -0.32
+        ],
+        "color": [
+          0.72,
+          0.82,
+          1.0
+        ],
+        "intensity": 0.5,
+        "angle_deg": 8.0
+      },
+      "rim": {
+        "direction": [
+          -0.22,
+          -0.72,
+          -0.66
+        ],
+        "color": [
+          0.86,
+          0.9,
+          1.0
+        ],
+        "intensity": 1.6,
+        "angle_deg": 2.0
+      }
+    },
+    "ambient": {
+      "color": [
+        0.62,
+        0.7,
+        0.85
+      ],
+      "intensity": 0.22
+    },
+    "environment": "sky (path tracer)",
+    "set": "cyclorama (a floor curving into a back wall)"
+  },
+  "meshes": {
+    "Body": {
+      "vertices": 21430,
+      "triangles": 42856
+    },
+    "Jacket": {
+      "vertices": 13970,
+      "triangles": 27936
+    },
+    "Trousers": {
+      "vertices": 10868,
+      "triangles": 21732
+    },
+    "Boots": {
+      "vertices": 1982,
+      "triangles": 3956
+    },
+    "Gloves": {
+      "vertices": 1286,
+      "triangles": 2564
+    },
+    "Helmet": {
+      "vertices": 1954,
+      "triangles": 3904
+    },
+    "Shoulder plate.L": {
+      "vertices": 852,
+      "triangles": 1700
+    },
+    "Shoulder plate.R": {
+      "vertices": 852,
+      "triangles": 1700
+    },
+    "Backpack": {
+      "vertices": 3392,
+      "triangles": 6780
+    }
+  },
+  "autorig": {
+    "seconds": 5.0,
+    "joints": 23,
+    "parts": {
+      "Body": {
+        "mode": "geodesic",
+        "method": "geodesic",
+        "policy": "organic",
+        "technique": "geodesic voxel binding: chamfer (3-4-5) shortest paths inside the voxelized solid, inverse-distance falloff, mesh smoothing",
+        "voxel_size": 0.013718580197746633,
+        "unreached_vertices": 0,
+        "rigid_parts": 0,
+        "joints_used": 23,
+        "influences": 4,
+        "spine_smoothing": 20,
+        "timings": {
+          "voxelize_s": 0.0424,
+          "geodesic_s": 0.0343,
+          "weights_s": 0.0988,
+          "total_s": 0.2406
+        }
+      },
+      "Jacket": {
+        "mode": "transfer",
+        "far_vertices": 0,
+        "unmatched_parts": [],
+        "confidence": {
+          "mean": 0.937,
+          "min": 0.2706,
+          "low_vertices": 203
+        },
+        "distance": {
+          "median": 0.01628203203463014,
+          "p95": 0.02712264369593719,
+          "max": 0.07711976919485429
+        }
+      },
+      "Trousers": {
+        "mode": "transfer",
+        "far_vertices": 122,
+        "unmatched_parts": [],
+        "confidence": {
+          "mean": 0.9392,
+          "min": 0.0513,
+          "low_vertices": 319
+        },
+        "distance": {
+          "median": 0.013151721979207859,
+          "p95": 0.03273294259013945,
+          "max": 0.13360181486117875
+        }
+      },
+      "Boots": {
+        "mode": "transfer",
+        "far_vertices": 0,
+        "unmatched_parts": [],
+        "confidence": {
+          "mean": 0.9633,
+          "min": 0.476,
+          "low_vertices": 1
+        },
+        "distance": {
+          "median": 0.012343205629833352,
+          "p95": 0.012995294569932868,
+          "max": 0.03326169326429628
+        }
+      },
+      "Gloves": {
+        "mode": "transfer",
+        "far_vertices": 0,
+        "unmatched_parts": [],
+        "confidence": {
+          "mean": 0.9759,
+          "min": 0.4912,
+          "low_vertices": 1
+        },
+        "distance": {
+          "median": 0.006401976044737311,
+          "p95": 0.008374809833393929,
+          "max": 0.02709321037649025
+        }
+      },
+      "Helmet": {
+        "mode": "attach",
+        "method": "attachment",
+        "joint": "Head",
+        "parented": true
+      },
+      "Shoulder plate.L": {
+        "mode": "attach",
+        "method": "attachment",
+        "joint": "Shoulder.L",
+        "parented": true
+      },
+      "Shoulder plate.R": {
+        "mode": "attach",
+        "method": "attachment",
+        "joint": "Shoulder.R",
+        "parented": true
+      },
+      "Backpack": {
+        "mode": "attach",
+        "method": "attachment",
+        "joint": "Spine",
+        "parented": true
+      }
+    },
+    "confidence": 0.5
+  },
+  "attachments": {
+    "Helmet": "Head",
+    "Shoulder plate.L": "Shoulder.L",
+    "Shoulder plate.R": "Shoulder.R",
+    "Backpack": "Spine"
+  },
+  "motions": {
+    "walk": {
+      "speed": 0.7235483927447974,
+      "period": 1.1111111111111112,
+      "keys": 624,
+      "ik_residual": 6.938893903907228e-17
+    },
+    "run": {
+      "speed": 2.5973532047249135,
+      "period": 0.7142857142857143,
+      "keys": 647,
+      "ik_residual": 7.850462293418876e-17
+    }
+  },
+  "clearance": {
+    "Jacket": {
+      "rest_p5_m": 0.0069,
+      "rest_median_m": 0.01677,
+      "motion_p5_m": 0.00674,
+      "motion_min_m": 0.00071,
+      "motion_median_m": 0.01668
+    },
+    "Trousers": {
+      "rest_p5_m": 0.00707,
+      "rest_median_m": 0.01382,
+      "motion_p5_m": 0.00702,
+      "motion_min_m": 0.00232,
+      "motion_median_m": 0.01371
+    },
+    "Boots": {
+      "rest_p5_m": 0.00708,
+      "rest_median_m": 0.01294,
+      "motion_p5_m": 0.00704,
+      "motion_min_m": 0.0021,
+      "motion_median_m": 0.01293
+    },
+    "Gloves": {
+      "rest_p5_m": 0.00573,
+      "rest_median_m": 0.00721,
+      "motion_p5_m": 0.00573,
+      "motion_min_m": 0.00171,
+      "motion_median_m": 0.00721
+    }
+  },
+  "contacts": {
+    "Foot.L": {
+      "sliding_m": 0.00149,
+      "penetration_m": 0.0
+    },
+    "Foot.R": {
+      "sliding_m": 0.00199,
+      "penetration_m": 0.0
+    }
+  },
+  "gltf": {
+    "bytes": 3224172,
+    "skins": 5,
+    "diagnostics": [
+      "RIG_AUTHORING_DATA"
+    ],
+    "validator": {
+      "ran": true,
+      "errors": 0,
+      "warnings": 0,
+      "infos": 0,
+      "version": "2.0.0-dev.3.10"
+    }
+  },
+  "frames": {
+    "segments": [
+      {
+        "frames": 180,
+        "first": 0,
+        "fps": 60,
+        "start": 0.0,
+        "end": 3.0,
+        "seconds": 61.8,
+        "seconds_per_frame_median": 0.342,
+        "size": [
+          1920,
+          1080
+        ],
+        "segment": "walk"
+      },
+      {
+        "frames": 144,
+        "first": 180,
+        "fps": 60,
+        "start": 0.0,
+        "end": 2.4,
+        "seconds": 50.8,
+        "seconds_per_frame_median": 0.349,
+        "size": [
+          1920,
+          1080
+        ],
+        "segment": "run"
+      }
+    ],
+    "total": 324,
+    "fps": 60,
+    "size": [
+      1920,
+      1080
+    ]
+  },
+  "video": {
+    "commands": {
+      "mp4": "-y -loglevel error -framerate 60 -i examples/output/rigging/d_outfit/frames/frame_%05d.png -c:v libx264 -preset slow -crf 10 -pix_fmt yuv420p -vf scale=1920:1080:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/rigging/d_outfit/outfit_1080p.mp4",
+      "preview": "-y -loglevel error -framerate 60 -i examples/output/rigging/d_outfit/frames/frame_%05d.png -c:v libx264 -preset slow -crf 23 -pix_fmt yuv420p -vf scale=960:540:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/rigging/d_outfit/outfit_preview.mp4",
+      "master": "-y -loglevel error -framerate 60 -i examples/output/rigging/d_outfit/frames/frame_%05d.png -c:v ffv1 -level 3 -pix_fmt bgr0 examples/output/rigging/d_outfit/outfit_master.mkv"
+    },
+    "mp4": {
+      "path": "examples/output/rigging/d_outfit/outfit_1080p.mp4",
+      "bytes": 2520343,
+      "seconds": 2.5
+    },
+    "preview": {
+      "path": "examples/output/rigging/d_outfit/outfit_preview.mp4",
+      "bytes": 260362,
+      "seconds": 1.2
+    },
+    "master": {
+      "path": "examples/output/rigging/d_outfit/outfit_master.mkv",
+      "bytes": 50105415,
+      "seconds": 1.8
+    },
+    "verify": {
+      "psnr": "PSNR r:44.836171 g:43.895475 b:42.085102 average:43.452129 min:43.151882 max:43.664348",
+      "ssim": "SSIM R:0.995849 (23.818110) G:0.997819 (26.613767) B:0.993837 (22.102012) All:0.995835 (23.803753)"
+    },
+    "verify_master": {
+      "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+      "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+    }
+  },
+  "seconds": 420.1
+}

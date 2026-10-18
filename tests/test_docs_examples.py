@@ -541,3 +541,50 @@ def test_worlds_doc_script_example():
     assert out["operations"][2]["settlements"]  # a village was built
     assert any(i["kind"] == "house" for i in out["queries"][0]["items"])
     assert scene.history.entries[-1].label == "Valley with a village"
+
+
+# --------------------------------------------------------------------------- #
+# Character rigging (0.19.0)
+# --------------------------------------------------------------------------- #
+
+RIGGING_START = "from aether3d import Scene\nfrom aether3d.sculpt.implicit import humanoid_shapes"
+RIGID_START = 'from aether3d import Scene\n\nscene = Scene("Blocks")'
+
+
+def test_rigging_quick_start(capsys):
+    source = python_block(ROOT / "docs/CHARACTER_RIGGING.md", RIGGING_START)
+    exec(compile(source, "CHARACTER_RIGGING.md", "exec"), {})
+    assert_printed(source, capsys.readouterr().out)
+
+
+def test_rigid_parts_example(capsys):
+    source = python_block(ROOT / "docs/CHARACTER_RIGGING.md", RIGID_START)
+    exec(compile(source, "CHARACTER_RIGGING.md", "exec"), {})
+    assert_printed(source, capsys.readouterr().out)
+
+
+def test_rigging_doc_script_and_pose_examples():
+    from aether3d.animation.schema import animation_script_schema
+    from aether3d.animation.script import run_animation_script
+    from aether3d.sculpt.implicit import humanoid_shapes, implicit_surface
+
+    jsonschema = pytest.importorskip("jsonschema")
+    text = (ROOT / "docs/CHARACTER_RIGGING.md").read_text(encoding="utf-8")
+    script = json.loads(re.search(r'```json\n(\{"format": "aether3d.animation-script".*?)\n```',
+                                  text, re.S).group(1))  # fmt: skip
+    jsonschema.validate(script, animation_script_schema())
+    scene = Scene()
+    scene.add_object("Body", mesh=implicit_surface(humanoid_shapes(), 0.02))
+    out = run_animation_script(scene, script)
+    assert [o["op"] for o in out["operations"]][0] == "autorig"
+    assert "knee_bend_120.L" in out["operations"][-1]["result"]["poses"]
+    assert scene.history.entries[-1].label == "Rig the hero"
+    pose = json.loads(re.search(r'```json\n(\{"name": "deep_knee".*?)\n```', text,
+                                re.S).group(1))  # fmt: skip
+    rep = scene.animation.diagnose_rig("Hero", poses=[pose], animation=False)
+    assert set(rep["poses"]) == {"deep_knee"}
+    limits = re.search(r"```json\n(\{\"swing\".*?)\n```", text, re.S).group(1).splitlines()
+    from aether3d.animation.limits import check_limits
+
+    for line in limits:
+        check_limits(json.loads(line), "limits")

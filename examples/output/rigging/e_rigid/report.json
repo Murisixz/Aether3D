@@ -1,0 +1,459 @@
+{
+  "backend": "gpu",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "aether3d": "0.19.0",
+    "python": "3.14.8",
+    "native": true,
+    "backend": "gpu"
+  },
+  "lighting": {
+    "key": {
+      "direction": [
+        0.42,
+        0.55,
+        -0.72
+      ],
+      "color": [
+        1.0,
+        0.93,
+        0.8
+      ],
+      "intensity": 2.5,
+      "angle_deg": 1.5
+    },
+    "fill": {
+      "direction": [
+        -0.8,
+        0.3,
+        -0.35
+      ],
+      "color": [
+        0.7,
+        0.8,
+        1.0
+      ],
+      "intensity": 0.45,
+      "angle_deg": 10.0
+    },
+    "rim": {
+      "direction": [
+        -0.25,
+        -0.75,
+        -0.6
+      ],
+      "color": [
+        1.0,
+        0.95,
+        0.88
+      ],
+      "intensity": 1.2,
+      "angle_deg": 3.0
+    }
+  },
+  "parts": {
+    "root": "Kit",
+    "forward": "-y",
+    "parts": {
+      "head": {
+        "object": "Kit head",
+        "pivot": [
+          0.0,
+          0.0,
+          1.5
+        ],
+        "pivot_source": "origin",
+        "end": [
+          0.0,
+          0.0,
+          2.0
+        ],
+        "length": 0.5
+      },
+      "torso": {
+        "object": "Kit torso",
+        "pivot": [
+          0.0,
+          0.0,
+          0.75
+        ],
+        "pivot_source": "origin",
+        "end": [
+          0.0,
+          0.0,
+          1.5
+        ],
+        "length": 0.75
+      },
+      "arm.R": {
+        "object": "Kit arm.R",
+        "pivot": [
+          -0.375,
+          0.0,
+          1.375
+        ],
+        "pivot_source": "origin",
+        "end": [
+          -0.375,
+          0.0,
+          0.75
+        ],
+        "length": 0.75
+      },
+      "arm.L": {
+        "object": "Kit arm.L",
+        "pivot": [
+          0.375,
+          0.0,
+          1.375
+        ],
+        "pivot_source": "origin",
+        "end": [
+          0.375,
+          0.0,
+          0.75
+        ],
+        "length": 0.75
+      },
+      "leg.R": {
+        "object": "Kit leg.R",
+        "pivot": [
+          -0.125,
+          0.0,
+          0.75
+        ],
+        "pivot_source": "origin",
+        "end": [
+          -0.125,
+          0.0,
+          0.0
+        ],
+        "length": 0.75
+      },
+      "leg.L": {
+        "object": "Kit leg.L",
+        "pivot": [
+          0.125,
+          0.0,
+          0.75
+        ],
+        "pivot_source": "origin",
+        "end": [
+          0.125,
+          0.0,
+          0.0
+        ],
+        "length": 0.75
+      }
+    },
+    "hips": [
+      0.0,
+      0.0,
+      0.75
+    ],
+    "diagnostics": [],
+    "animated": [],
+    "rig": false
+  },
+  "motions": {
+    "idle": {
+      "clips": 4,
+      "keys": 60,
+      "max_error": {
+        "degrees": 0.049962483337381514,
+        "units": 0.0
+      },
+      "travel_m": 0.0,
+      "duration": 8.0,
+      "feet": null,
+      "verification": {
+        "samples": 49,
+        "objects": 6,
+        "position": 3.424e-06,
+        "rotation_deg": 0.049404,
+        "worst": "Kit head"
+      },
+      "cleared": []
+    },
+    "walk": {
+      "clips": 7,
+      "keys": 143,
+      "max_error": {
+        "degrees": 0.017820313525959364,
+        "units": 0.00012782959413948358
+      },
+      "travel_m": 0.9750000000000001,
+      "duration": 1.1111111111111112,
+      "feet": {
+        "Thigh.L": {
+          "sliding_max": 0.000934,
+          "penetration": 5.3e-05,
+          "contacts": 1
+        },
+        "Thigh.R": {
+          "sliding_max": 0.001031,
+          "penetration": 0.000192,
+          "contacts": 1
+        }
+      },
+      "verification": {
+        "samples": 49,
+        "objects": 6,
+        "position": 3.4855e-05,
+        "rotation_deg": 0.01782,
+        "worst": "Kit head"
+      },
+      "cleared": []
+    },
+    "run": {
+      "clips": 7,
+      "keys": 178,
+      "max_error": {
+        "degrees": 0.04666051416768369,
+        "units": 0.00022983686433308836
+      },
+      "travel_m": 2.25,
+      "duration": 0.7142857142857143,
+      "feet": {
+        "Thigh.L": {
+          "sliding_max": 7.1e-05,
+          "penetration": 0.000197,
+          "contacts": 1
+        },
+        "Thigh.R": {
+          "sliding_max": 0.000611,
+          "penetration": 0.000343,
+          "contacts": 1
+        }
+      },
+      "verification": {
+        "samples": 49,
+        "objects": 6,
+        "position": 0.000229837,
+        "rotation_deg": 0.046661,
+        "worst": "Kit arm.R"
+      },
+      "cleared": []
+    },
+    "jump": {
+      "clips": 6,
+      "keys": 326,
+      "max_error": {
+        "degrees": 0.04574913028399705,
+        "units": 0.0006973694916033724
+      },
+      "travel_m": 0.0,
+      "duration": 1.989992618322741,
+      "feet": {
+        "Thigh.L": {
+          "sliding_max": 0.000822,
+          "penetration": 0.0,
+          "contacts": 2
+        },
+        "Thigh.R": {
+          "sliding_max": 0.000822,
+          "penetration": 0.0,
+          "contacts": 2
+        }
+      },
+      "verification": {
+        "samples": 49,
+        "objects": 6,
+        "position": 0.000180489,
+        "rotation_deg": 0.043615,
+        "worst": "Kit head"
+      },
+      "cleared": [
+        "Kit"
+      ]
+    },
+    "wave": {
+      "clips": 4,
+      "keys": 103,
+      "max_error": {
+        "degrees": 0.04934847968705869,
+        "units": 0.0
+      },
+      "travel_m": 0.0,
+      "duration": 2.2,
+      "feet": null,
+      "verification": {
+        "samples": 49,
+        "objects": 6,
+        "position": 0.000339243,
+        "rotation_deg": 0.048443,
+        "worst": "Kit head"
+      },
+      "cleared": [
+        "Kit leg.R",
+        "Kit leg.L"
+      ]
+    }
+  },
+  "bones": {
+    "rigs": 0,
+    "skins": 0
+  },
+  "frame_cost_ms": {
+    "rigid_parts": 0.6831,
+    "bone_attached_blocks": 0.911
+  },
+  "frames": {
+    "segments": [
+      {
+        "frames": 120,
+        "first": 0,
+        "fps": 60,
+        "start": 0.0,
+        "end": 2.0,
+        "seconds": 40.7,
+        "seconds_per_frame_median": 0.335,
+        "size": [
+          1920,
+          1080
+        ],
+        "segment": "idle"
+      },
+      {
+        "frames": 180,
+        "first": 120,
+        "fps": 60,
+        "start": 0.0,
+        "end": 3.0,
+        "seconds": 59.3,
+        "seconds_per_frame_median": 0.331,
+        "size": [
+          1920,
+          1080
+        ],
+        "segment": "walk"
+      },
+      {
+        "frames": 150,
+        "first": 300,
+        "fps": 60,
+        "start": 0.0,
+        "end": 2.5,
+        "seconds": 49.7,
+        "seconds_per_frame_median": 0.333,
+        "size": [
+          1920,
+          1080
+        ],
+        "segment": "run"
+      },
+      {
+        "frames": 120,
+        "first": 450,
+        "fps": 60,
+        "start": 0.0,
+        "end": 2.0,
+        "seconds": 40.0,
+        "seconds_per_frame_median": 0.336,
+        "size": [
+          1920,
+          1080
+        ],
+        "segment": "jump"
+      },
+      {
+        "frames": 150,
+        "first": 570,
+        "fps": 60,
+        "start": 0.0,
+        "end": 2.5,
+        "seconds": 50.1,
+        "seconds_per_frame_median": 0.336,
+        "size": [
+          1920,
+          1080
+        ],
+        "segment": "wave"
+      }
+    ],
+    "total": 720,
+    "fps": 60,
+    "size": [
+      1920,
+      1080
+    ]
+  },
+  "stills": [
+    {
+      "path": "examples/output/rigging/e_rigid/hero_idle.png",
+      "seconds": 32.35,
+      "backend": "gpu_path",
+      "size": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "path": "examples/output/rigging/e_rigid/hero_walk.png",
+      "seconds": 27.45,
+      "backend": "gpu_path",
+      "size": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "path": "examples/output/rigging/e_rigid/hero_run.png",
+      "seconds": 26.18,
+      "backend": "gpu_path",
+      "size": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "path": "examples/output/rigging/e_rigid/hero_jump.png",
+      "seconds": 33.21,
+      "backend": "gpu_path",
+      "size": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "path": "examples/output/rigging/e_rigid/hero_wave.png",
+      "seconds": 32.36,
+      "backend": "gpu_path",
+      "size": [
+        1920,
+        1080
+      ]
+    }
+  ],
+  "video": {
+    "commands": {
+      "mp4": "-y -loglevel error -framerate 60 -i examples/output/rigging/e_rigid/frames/frame_%05d.png -c:v libx264 -preset slow -crf 10 -pix_fmt yuv420p -vf scale=1920:1080:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/rigging/e_rigid/kit_1080p.mp4",
+      "preview": "-y -loglevel error -framerate 60 -i examples/output/rigging/e_rigid/frames/frame_%05d.png -c:v libx264 -preset slow -crf 23 -pix_fmt yuv420p -vf scale=960:540:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/rigging/e_rigid/kit_preview.mp4",
+      "master": "-y -loglevel error -framerate 60 -i examples/output/rigging/e_rigid/frames/frame_%05d.png -c:v ffv1 -level 3 -pix_fmt bgr0 examples/output/rigging/e_rigid/kit_master.mkv"
+    },
+    "mp4": {
+      "path": "examples/output/rigging/e_rigid/kit_1080p.mp4",
+      "bytes": 22532097,
+      "seconds": 8.9
+    },
+    "preview": {
+      "path": "examples/output/rigging/e_rigid/kit_preview.mp4",
+      "bytes": 1376745,
+      "seconds": 3.0
+    },
+    "master": {
+      "path": "examples/output/rigging/e_rigid/kit_master.mkv",
+      "bytes": 351220233,
+      "seconds": 4.5
+    },
+    "verify": {
+      "psnr": "PSNR r:40.328266 g:43.620164 b:35.857049 average:38.796854 min:37.955280 max:39.676697",
+      "ssim": "SSIM R:0.989376 (19.737016) G:0.996512 (24.573757) B:0.965640 (14.639438) All:0.983842 (17.916224)"
+    },
+    "verify_master": {
+      "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+      "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+    }
+  },
+  "seconds": 472.4
+}

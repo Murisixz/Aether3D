@@ -16,7 +16,10 @@ Types:
 * ``ik`` (joint): ``chain`` (joint names root to end), ``target``, ``pole``, ``solver``
   (``two_bone`` for three joints, ``fabrik``, ``ccd``), ``iterations``, ``tolerance``,
   ``stretch``, ``soft``, ``end`` (``keep``: the end joint keeps its local rotation;
-  ``target``: it takes the target's world rotation). The residual distance is reported.
+  ``target``: it takes the target's world rotation), ``bend_axis`` (``two_bone``: the
+  joints' local axis kept perpendicular to the bend plane by twisting each bone about
+  itself -- with hinge-like limits the middle joint then bends about that axis only). The
+  residual distance (after joint limits) is reported.
 * ``look_at`` (object or joint): point ``axis`` (``-y`` by default: cameras and lights
   look along local -Y; bones point along ``+y``) at the target, keeping ``up`` (owner
   axis, ``+z``) toward ``world_up`` (``[0, 0, 1]``); ``target_offset`` (world axes) moves
@@ -29,6 +32,10 @@ Types:
 * ``limit_location`` / ``limit_rotation`` (Euler XYZ degrees) / ``limit_scale``: clamp
   local values to ``min``/``max`` (per axis, ``null`` for no bound).
 * ``limit_distance``: keep the distance to the target within ``min``..``max``.
+* ``twist`` (joint): the owner joint turns about its ``axis`` (``+y``: along the bone) by
+  ``factor`` times the twist of the target joint (``{"joint": NAME}``) from its rest
+  rotation -- twist distribution: forearm or upper-arm twist joints take part of a
+  wrist's or shoulder's twist, so skins twist along the limb instead of at one joint.
 
 Evaluation order: the units (objects with constraints, rigs) run in dependency order --
 a unit reads the transforms of its targets after their own units ran -- and a cycle is
@@ -41,6 +48,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Any
 
 import numpy as np
@@ -62,8 +70,9 @@ TYPES = (
     "limit_scale",
     "limit_distance",
     "follow_path",
+    "twist",
 )
-JOINT_ONLY = ("ik",)
+JOINT_ONLY = ("ik", "twist")
 MAX_CONSTRAINTS = 256
 MAX_CHAIN = 64
 AXES = {
@@ -86,6 +95,7 @@ _PARAMS: dict[str, dict[str, Any]] = {
             "stretch": 1.0,
             "soft": 0.0,
             "end": "keep",
+            "bend_axis": None,
         },
     },
     "look_at": {
@@ -122,6 +132,7 @@ _PARAMS: dict[str, dict[str, Any]] = {
         "required": ("path",),
         "optional": {"offset": 0.0, "follow": True, "axis": "+y", "up": "+z", "loop": False},
     },
+    "twist": {"required": ("target",), "optional": {"axis": "+y", "factor": 0.5}},
 }
 
 
@@ -150,8 +161,10 @@ class Constraint:
     influence: float = 1.0
     mute: bool = False
 
-    @property
+    @cached_property
     def p(self) -> dict[str, Any]:
+        """The parameters, parsed once per constraint (read them; never change them: the
+        constraint is immutable and shares this dict between evaluations)."""
         return json.loads(self.params)
 
     def to_json(self) -> dict[str, Any]:
@@ -277,6 +290,12 @@ def parse_constraint(raw: Any, location: str, *, joints: bool) -> Constraint:
         p["soft"] = _num(p["soft"], f"{location}.soft", "soft", 0.0, 0.5)
         if p["end"] not in ("keep", "target"):
             raise _err("INVALID_CONSTRAINT", "end is 'keep' or 'target'", f"{location}.end")
+        if p["bend_axis"] is not None and p["bend_axis"] not in AXES:
+            raise _err(
+                "INVALID_CONSTRAINT",
+                f"bend_axis is one of {', '.join(AXES)} or null",
+                f"{location}.bend_axis",
+            )
     if kind in ("look_at", "follow_path"):
         for key in ("axis", "up"):
             if p[key] not in AXES:
@@ -344,6 +363,19 @@ def parse_constraint(raw: Any, location: str, *, joints: bool) -> Constraint:
                 "INVALID_CONSTRAINT", "inverse is a 4x4 matrix (rows)", f"{location}.inverse"
             )
         p["inverse"] = inv.tolist()
+    if kind == "twist":
+        t = p["target"]
+        if set(t) != {"joint"}:
+            raise _err(
+                "INVALID_CONSTRAINT",
+                "a twist constraint's target is a joint of the same rig: {joint: NAME}",
+                f"{location}.target",
+            )
+        if p["axis"] not in AXES:
+            raise _err(
+                "INVALID_CONSTRAINT", f"axis is one of {', '.join(AXES)}", f"{location}.axis"
+            )
+        p["factor"] = _num(p["factor"], f"{location}.factor", "factor", -1.0, 1.0)
     if kind == "follow_path":
         if not isinstance(p["path"], str) or not p["path"]:
             raise _err("INVALID_CONSTRAINT", "path is a path item (id or name)", f"{location}.path")

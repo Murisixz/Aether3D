@@ -8,7 +8,8 @@ other parameters. Nothing is evaluated procedurally at playback.
 
 **Rigs and roles.** Generators drive *roles* -- ``hips``, ``spine``, ``chest``, ``neck``,
 ``head``, ``upper_arm``/``lower_arm``/``hand`` and ``thigh``/``shin``/``foot`` with sides
-``.L``/``.R`` -- found by joint name (``Hips``, ``Pelvis``, ``LeftUpLeg``, ``Leg.L``,
+``.L``/``.R`` -- taken from joints that state them (``role``, Stage 18), else found by joint
+name (``Hips``, ``Pelvis``, ``LeftUpLeg``, ``Leg.L``,
 ``mixamorig:LeftForeArm``, ``ArmR``, ...; ``mapping`` overrides) and by the hierarchy
 (``Leg`` under ``UpLeg`` is a shin). Minimal rigs work: a blocky character with one joint
 per limb (no knees, elbows or feet) walks with straight legs. The rest pose must stand
@@ -210,6 +211,10 @@ def find_roles(rig: Any, mapping: dict[str, str] | None = None) -> dict[str, str
             feet = [x for x in mine if _match(x[2], "foot") and descends(x[0], thigh[0])]
             if feet:
                 roles[f"foot.{side}"] = min(feet, key=lambda x: depth[x[0]])[1]
+    # Joints that state their role (Stage 18 rigs) are taken at their word.
+    for j in joints:
+        if j.role in ROLES:
+            roles[j.role] = j.name
     if mapping:
         if not isinstance(mapping, dict):
             raise _err("INVALID_ARGUMENT", "mapping is {role: joint name}", "mapping")

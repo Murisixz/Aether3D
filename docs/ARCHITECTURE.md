@@ -200,6 +200,7 @@ Aether3D/
 │   │   ├── server.py      The protocol (official SDK, low-level server): one tool at a time
 │   │   │                  in a worker thread, cancellation, progress, logging to stderr
 │   │   ├── tools.py       The tools: argument schemas, implementations, replies, errors
+│   │   ├── rigging.py     inspect_rig (0.19.0)
 │   │   ├── feedback.py    The visual feedback tools (observe, diagnose, propose, apply, loop)
 │   │   ├── content.py     Resources and prompts
 │   │   ├── session.py     The session: open scene, project and its disk state, configuration
@@ -223,6 +224,13 @@ Aether3D/
 │   │   ├── report.py, fitting.py, graph.py Measuring; reduction, resampling, baking; graphs
 │   │   ├── generators.py, motion.py        Motion generators; mirroring, root motion,
 │   │   │                                   contacts and planting, retargeting
+│   │   ├── limits.py                       Swing-twist and hinge joint limits (0.19.0)
+│   │   ├── voxels.py, landmarks.py         Voxels, geodesic distances; landmark detection
+│   │   ├── autorig.py, weights.py          Automatic rigs; skin weights (generate, edit,
+│   │   │                                   transfer, inspect)
+│   │   ├── rig_edit.py, controls.py        Structural rig edits; controls, IK/FK, poses
+│   │   ├── rig_report.py, rig_preview.py   Rig summaries, diagnostics, verified fixes; pictures
+│   │   ├── rigid.py                        Rigid-part characters without bones; conversions
 │   │   ├── cinematics.py, frames.py        Paths, shots, camera moves; frame rendering
 │   │   └── script.py, schema.py, guide.md  Animation scripts, their schema, the agent guide
 │   ├── worlds/            Procedural worlds (see docs/WORLDS.md)
@@ -1081,6 +1089,35 @@ Stage 17 was built before Stage 16, which is postponed. Key decisions:
 - **Same contract for agents.** Animation scripts are data, atomic, limited and
   schema-described; the CLI, the MCP tools, the scene-plan operation and the feedback
   checks reuse them.
+
+## Character rigging (v0.19.0)
+
+Stage 18 extends `aether3d.animation` into a character authoring system; see
+[CHARACTER_RIGGING.md](CHARACTER_RIGGING.md) and the design record
+[research/2026-10-stage18/DESIGN.md](../research/2026-10-stage18/DESIGN.md). Key decisions:
+
+- **Extend Stage 17, never duplicate it.** One `Rig` (now with roles, helper joints,
+  controls, correctives, landmarks and swing-twist limits), one skin representation (with
+  a dual quaternion share and weight locks), the same solvers, timelines, clips and glTF;
+  saved in project format 11 (a pure additive change). Rigid-part characters reuse the
+  generators unchanged through a private scratch scene and leave ordinary transform clips.
+- **Measure first, then act.** Landmarks report confidences and methods; weights report
+  techniques and coverage; `diagnose_rig` measures deformation numerically over a pose
+  suite (and custom poses as data) and the timeline; fixes are proposed with safety
+  classes and kept only when re-measurement shows them better and nothing worse. The
+  feedback system's `rig` check and `rig_fix` action reuse it.
+- **One evaluation order, now with dependencies inside rigs.** Channels, units (FK, joint
+  constraints in dependency order -- IK before the twist helpers that read its result --,
+  attachments), corrective shapes, morph targets, skins. The rigging pass can stop before
+  the meshes when only motion is measured.
+- **Data at every boundary.** Every rigging request is an allowlisted script operation;
+  fix proposals returning from agents are checked call by call; nothing is code.
+- **Languages decided up front.** NumPy for landmarks, voxels, weights, editing, controls
+  and diagnostics (vectorized; scalar arithmetic where per-call overhead dominates, as in
+  the twist constraints); Rust kernels (ABI 6) for the two measured hot spots -- dual
+  quaternion and blended skinning, and the geodesic chamfer distances of weighting --
+  bitwise equal to their NumPy twins; no WGSL: CPU skinning of 50 characters fits a frame
+  and GPU skinning would not change any result (measured, see PERFORMANCE.md).
 
 ## Procedural worlds and massive environments (v0.18.0)
 

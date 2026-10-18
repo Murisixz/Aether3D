@@ -53,6 +53,8 @@ def plan_finding(
     """Drafts for ``finding``, or ``([], reason)``."""
     if finding.basis in ("vision", "agent"):
         return _vision(diagnosis, finding, policy)
+    if finding.kind == "rig":
+        return _rig_fix(diagnosis, finding, policy, context)
     planner = PLANNERS.get(finding.code)
     if planner is None:
         return [], REASONS.get(finding.code, "no automatic correction for this finding")
@@ -917,6 +919,54 @@ def _plant_feet(diagnosis, finding, fix, context):
             group=f"plant:{subject['id']}",
         )
     ], None
+
+
+RIG_REASONS = {
+    "RIG_MISSING": "the armature has no rig: rig it first (autorig)",
+    "IK_UNREACHABLE": "an IK target is beyond its chain's reach: move the target or the "
+    "character (a choice of staging)",
+    "IK_FLIP": "an IK chain flips between frames: move its pole or key it (a choice)",
+    "ZERO_LENGTH_BONE": "a joint sits on its children: move it (edit_rig move_joint)",
+    "JOINT_COLLAPSE": "the skin is already dual quaternion: edit the weights or add a "
+    "corrective (a choice of shape)",
+}
+
+
+def _rig_fix(diagnosis, finding, policy, context):
+    """A rig finding's correction: the rig's own proposal (propose_rig_fix), applied by
+    apply_rig_fix, which re-measures after each change and undoes what does not help."""
+    from ..animation.rig_report import propose_rig_fix
+
+    subject = _subject(finding, "subject")
+    scene = diagnosis.scene
+    arm = scene._objects.get(subject["id"]) if subject else None
+    measured = finding.evidence.get("rig")
+    if arm is None or measured is None or scene.animation.rig(arm) is None:
+        return [], RIG_REASONS["RIG_MISSING"]
+    proposals = propose_rig_fix(scene.animation, arm, diagnosis={"findings": [measured]})
+    drafts = []
+    for p in proposals["proposals"]:
+        drafts.append(
+            Draft(
+                f"{subject['name']!r}: {p['title']}",
+                [finding],
+                [{"action": "rig_fix", "armature": subject["id"], "fixes": [p]}],
+                p["safety"],
+                f"check {finding.check!r}: {measured['message']} (measured on the mesh). "
+                "apply_rig_fix makes the change, measures the rig again and undoes it if "
+                "the finding did not improve or anything got worse.",
+                expected=_expected(finding),
+                validation=[
+                    f"re-check {finding.check!r}: the finding resolves or shrinks and no rig "
+                    "finding appears"
+                ],
+                basis="geometry",
+                group=f"rig:{subject['id']}:{p['safety']}",
+            )
+        )
+    if not drafts:
+        return [], RIG_REASONS.get(finding.code, "no automatic rig correction for this finding")
+    return drafts, None
 
 
 def _smooth_keys(diagnosis, finding, fix, context):

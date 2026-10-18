@@ -94,6 +94,53 @@ _ARGUMENTS: dict[str, Any] = {
         "type": "array",
         "description": "rig joints: {name, parent, position, rotation, euler, scale, tail, limits}",
     },
+    "meshes": {
+        "description": "mesh objects (one or a list): the character's body, clothing, parts",
+        "oneOf": [_REF, {"type": "array", "items": _REF, "minItems": 1, "maxItems": 256}],
+    },
+    "context": {"type": "array", "items": _REF, "description": "more meshes voxelized with it"},
+    "template": {"enum": ["humanoid", "stylized", "blocky", "quadruped"]},
+    "landmarks": {
+        "type": "object",
+        "description": "landmark overrides {name: [x, y, z] world}: hip.L, knee.L, ankle.L, "
+        "shoulder.L, elbow.L, wrist.L, neck, head, pelvis, ... (see detect_landmarks)",
+    },
+    "parts": {
+        "type": "object",
+        "description": "per mesh name: geodesic | transfer | rigid | attach | skip",
+    },
+    "operations": {
+        "type": "array",
+        "description": "edit_rig: {op: add_joint|remove_joint|move_joint|orient_joint|"
+        "rename_joint|reparent_joint|insert_joint|split_bone|mirror_joints|align_bone|set_joint, "
+        "...}; edit_weights: {op: assign|add|subtract|scale|replace|normalize|prune|cap|smooth|"
+        "mirror|rigid|lock|unlock, select, falloff, ...}",
+        "items": {"type": "object"},
+        "minItems": 1,
+    },
+    "commands": {
+        "type": "array",
+        "description": "{do: reach|plant_feet|look_at|raise_arm|lean|crouch|aim_hips|rotate, ...}",
+        "items": {"type": "object"},
+        "minItems": 1,
+    },
+    "fixes": {
+        "description": "proposals from propose_rig_fix, or 'safe' / 'verify'",
+        "oneOf": [{"enum": ["safe", "verify"]}, {"type": "array", "items": {"type": "object"}}],
+    },
+    "root": _REF,
+    "roles": {
+        "type": "object",
+        "description": "rigid parts by role: {head|torso|arm.L|arm.R|leg.L|leg.R: object} "
+        "(default: found by name under the root, sides measured)",
+        "additionalProperties": _REF,
+    },
+    "to": {"enum": ["skeleton", "rigid"]},
+    "hide_original": {"type": "boolean"},
+    "policy": {"enum": ["organic", "stylized", "rigid"]},
+    "skinning": {"enum": ["linear", "dual_quaternion", "blended"]},
+    "kind": {"enum": ["ik", "pole", "gaze", "fk", "root"]},
+    "skins": {"enum": ["rebind", "keep_bind"]},
     "edit": {
         "enum": [
             "set",

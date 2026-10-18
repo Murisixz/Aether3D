@@ -1,0 +1,184 @@
+{
+  "backend": "gpu",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "aether3d": "0.19.0",
+    "python": "3.14.8",
+    "native": true,
+    "backend": "gpu"
+  },
+  "lighting": {
+    "lights": {
+      "key": {
+        "direction": [
+          0.45,
+          0.5,
+          -0.74
+        ],
+        "color": [
+          1.0,
+          0.92,
+          0.82
+        ],
+        "intensity": 2.6,
+        "angle_deg": 4.0
+      },
+      "fill": {
+        "direction": [
+          -0.78,
+          0.36,
+          -0.32
+        ],
+        "color": [
+          0.72,
+          0.82,
+          1.0
+        ],
+        "intensity": 0.5,
+        "angle_deg": 8.0
+      },
+      "rim": {
+        "direction": [
+          -0.22,
+          -0.72,
+          -0.66
+        ],
+        "color": [
+          0.86,
+          0.9,
+          1.0
+        ],
+        "intensity": 1.6,
+        "angle_deg": 2.0
+      }
+    },
+    "ambient": {
+      "color": [
+        0.62,
+        0.7,
+        0.85
+      ],
+      "intensity": 0.22
+    },
+    "environment": "sky (path tracer)",
+    "set": "cyclorama (a floor curving into a back wall)"
+  },
+  "goals": {
+    "arm_length_m": {
+      "R": 0.5362,
+      "L": 0.5362
+    },
+    "hands": {
+      "1.6": {
+        "arm_ik.R": [
+          -0.3059,
+          -0.3613,
+          1.6713
+        ],
+        "arm_ik.L": [
+          0.5935,
+          -0.1118,
+          1.1364
+        ]
+      },
+      "2.6": {
+        "arm_ik.R": [
+          -0.1356,
+          -0.4622,
+          1.2823
+        ],
+        "arm_ik.L": [
+          0.456,
+          -0.3811,
+          1.2443
+        ]
+      }
+    },
+    "rule": "hand goals along fixed directions from the shoulder at 85-90 % of the arm's measured length (the shoulder 0.18 m lower with the hips at 2.6 s)"
+  },
+  "switches": {
+    "fk_to_ik": {
+      "time": 0.6,
+      "joint_mismatch_m": 6.6591298491655e-16,
+      "skin_displacement_m": 2.625584602355957e-05,
+      "joints_moved_m": 2.4147783321382308e-05
+    },
+    "ik_to_fk": {
+      "time": 3.4,
+      "joint_mismatch_m": 3.8559277963506344e-16,
+      "skin_displacement_m": 3.10409814119339e-05,
+      "joints_moved_m": 1.4685668356137505e-05
+    },
+    "legs_held": {
+      "idle_channels_removed": 23,
+      "feet_moved_m": 0.0
+    }
+  },
+  "reach": {
+    "keyframes": {
+      "1.6": {
+        "arm_ik.L": 0.0,
+        "arm_ik.R": 0.0,
+        "leg_ik.L": 0.0,
+        "leg_ik.R": 0.0
+      },
+      "2.6": {
+        "arm_ik.L": 0.0,
+        "arm_ik.R": 0.0,
+        "leg_ik.L": 0.0,
+        "leg_ik.R": 0.0
+      }
+    },
+    "worst_over_ik_interval_m": {
+      "arm_ik.L": 3.3422138886441676e-16,
+      "arm_ik.R": 4.552252871008668e-16,
+      "leg_ik.L": 2.237726045655905e-16,
+      "leg_ik.R": 2.498016863724722e-16
+    },
+    "samples": 41
+  },
+  "frames": {
+    "frames": 300,
+    "first": 0,
+    "fps": 60,
+    "start": 0.0,
+    "end": 5.0,
+    "seconds": 105.0,
+    "seconds_per_frame_median": 0.351,
+    "size": [
+      1920,
+      1080
+    ]
+  },
+  "video": {
+    "commands": {
+      "mp4": "-y -loglevel error -framerate 60 -i examples/output/rigging/c_ikfk/frames/frame_%05d.png -c:v libx264 -preset slow -crf 10 -pix_fmt yuv420p -vf scale=1920:1080:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/rigging/c_ikfk/ikfk_1080p.mp4",
+      "preview": "-y -loglevel error -framerate 60 -i examples/output/rigging/c_ikfk/frames/frame_%05d.png -c:v libx264 -preset slow -crf 23 -pix_fmt yuv420p -vf scale=960:540:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/rigging/c_ikfk/ikfk_preview.mp4",
+      "master": "-y -loglevel error -framerate 60 -i examples/output/rigging/c_ikfk/frames/frame_%05d.png -c:v ffv1 -level 3 -pix_fmt bgr0 examples/output/rigging/c_ikfk/ikfk_master.mkv"
+    },
+    "mp4": {
+      "path": "examples/output/rigging/c_ikfk/ikfk_1080p.mp4",
+      "bytes": 1111296,
+      "seconds": 1.9
+    },
+    "preview": {
+      "path": "examples/output/rigging/c_ikfk/ikfk_preview.mp4",
+      "bytes": 122760,
+      "seconds": 1.0
+    },
+    "master": {
+      "path": "examples/output/rigging/c_ikfk/ikfk_master.mkv",
+      "bytes": 44711832,
+      "seconds": 1.6
+    },
+    "verify": {
+      "psnr": "PSNR r:44.865090 g:43.441264 b:40.944141 average:42.774807 min:42.549303 max:42.904391",
+      "ssim": "SSIM R:0.996470 (24.522354) G:0.999044 (30.194225) B:0.993105 (21.614565) All:0.996206 (24.209283)"
+    },
+    "verify_master": {
+      "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+      "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+    }
+  },
+  "seconds": 226.2
+}

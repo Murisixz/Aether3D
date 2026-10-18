@@ -1196,12 +1196,40 @@ class _Reader:
             tail = stored["tail"]
             if len(tail) == 3 and all(_is_number(v) for v in tail):
                 joint["tail"] = [float(v) for v in tail]
+        if isinstance(stored, dict):
+            self.joint_semantics(joint, stored, f"{where}/extras/{EXTRAS_KEY}")
         plan.rigs.setdefault(arm.id, []).append(joint)
         plan.joint_name[index] = name
         plan.joint_armature[index] = arm.id
         local = anim_import.compose(pos, rot, scl)
         plan.model[index] = local if parent_joint is None else plan.model[parent_joint] @ local
         return arm
+
+    def joint_semantics(self, joint: dict[str, Any], stored: dict[str, Any], where: str) -> None:
+        """Aether3D's joint extras (Stage 18): role, helper flag and limits -- each checked
+        as the rig checks it; what does not pass is reported and left out."""
+        from ..animation.rig import _check_limits
+
+        role = stored.get("role")
+        if role is not None:
+            if isinstance(role, str) and 0 < len(role) <= 64 and role.isprintable():
+                joint["role"] = role
+            else:
+                self.note("JOINT_EXTRAS_IGNORED", INFO, "an invalid joint role", f"{where}/role")
+        deform = stored.get("deform")
+        if deform is not None:
+            if isinstance(deform, bool):
+                joint["deform"] = deform
+            else:
+                self.note("JOINT_EXTRAS_IGNORED", INFO, "deform is a boolean", f"{where}/deform")
+        limits = stored.get("limits")
+        if limits is not None:
+            try:
+                _check_limits(limits, f"{where}/limits")
+            except AetherError as exc:
+                self.note("JOINT_EXTRAS_IGNORED", INFO, f"invalid limits: {exc}", f"{where}/limits")
+            else:
+                joint["limits"] = limits
 
     def place_under_joint(self, plan, obj, joint: int, local: np.ndarray) -> None:
         """Put ``obj`` (a child of the armature) where the joint holds it; attach it later."""

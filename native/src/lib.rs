@@ -12,7 +12,9 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 mod buffers;
+mod dqs;
 mod earcut;
+mod geodesic;
 mod hierarchy;
 mod hydro;
 mod ldl;
@@ -25,7 +27,7 @@ use buffers::Arrays;
 
 /// The calling convention between `aether3d._native` and this module: a module whose
 /// `ABI` differs from what Aether3D expects is not used.
-const ABI: u32 = 5;
+const ABI: u32 = 6;
 
 fn check(ok: bool, message: impl FnOnce() -> String) -> PyResult<()> {
     if ok {
@@ -730,6 +732,192 @@ fn skin_linear(
     Ok(())
 }
 
+/// Dual quaternion skinning (`animation.rig.skin_dual_quaternion`): `out_p` (n, 3)
+/// float32 from `pos` (n, 3) float32, `idx` (n, k) int32, `w` (n, k) float64 and per joint
+/// `q`, `d` (m, 4) and `kmat` (m, 9) float64; with `pal` (m, 12) and `blend` (n), mixed
+/// with linear blend skinning per vertex; with `nrm`, also `out_n` (n, 3).
+#[pyfunction]
+#[pyo3(signature = (pos, nrm, idx, w, q, d, kmat, pal, blend, out_p, out_n, threads=1))]
+#[allow(clippy::too_many_arguments)]
+fn skin_dual_quaternion(
+    py: Python<'_>,
+    pos: &Bound<'_, PyAny>,
+    nrm: Option<&Bound<'_, PyAny>>,
+    idx: &Bound<'_, PyAny>,
+    w: &Bound<'_, PyAny>,
+    q: &Bound<'_, PyAny>,
+    d: &Bound<'_, PyAny>,
+    kmat: &Bound<'_, PyAny>,
+    pal: Option<&Bound<'_, PyAny>>,
+    blend: Option<&Bound<'_, PyAny>>,
+    out_p: &Bound<'_, PyAny>,
+    out_n: Option<&Bound<'_, PyAny>>,
+    threads: usize,
+) -> PyResult<()> {
+    let mut arrays = Arrays::new();
+    let p = arrays.input::<f32>(pos, "pos", None)?;
+    let n = unsafe { p.slice() }.len() / 3;
+    check(unsafe { p.slice() }.len() == 3 * n, || {
+        "pos: not (n, 3)".into()
+    })?;
+    let ix = arrays.input::<i32>(idx, "idx", None)?;
+    let len = unsafe { ix.slice() }.len();
+    let k = len.checked_div(n).unwrap_or(1);
+    check(n * k == len && (n > 0 || len == 0), || {
+        "idx: not (n, k)".into()
+    })?;
+    check((1..=8).contains(&k), || {
+        format!("idx: {k} influences per vertex (1..8)")
+    })?;
+    let wt = arrays.input::<f64>(w, "w", Some(n * k))?;
+    let qq = arrays.input::<f64>(q, "q", None)?;
+    let m = unsafe { qq.slice() }.len() / 4;
+    check(unsafe { qq.slice() }.len() == 4 * m, || {
+        "q: not (m, 4)".into()
+    })?;
+    let dd = arrays.input::<f64>(d, "d", Some(4 * m))?;
+    let km = arrays.input::<f64>(kmat, "kmat", Some(9 * m))?;
+    for (e, &j) in unsafe { ix.slice() }.iter().enumerate() {
+        check(j >= 0 && (j as usize) < m, || {
+            format!("idx[{e}] = {j}: not a joint of the palette ({m})")
+        })?;
+    }
+    let pl = match pal {
+        Some(obj) => Some(arrays.input::<f64>(obj, "pal", Some(12 * m))?),
+        None => None,
+    };
+    let bl = match blend {
+        Some(obj) => Some(arrays.input::<f64>(obj, "blend", Some(n))?),
+        None => None,
+    };
+    check(pl.is_some() == bl.is_some(), || {
+        "pal and blend go together".into()
+    })?;
+    let op = arrays.output::<f32>(out_p, "out_p", Some(3 * n))?;
+    let nr = match nrm {
+        Some(obj) => Some(arrays.input::<f32>(obj, "nrm", Some(3 * n))?),
+        None => None,
+    };
+    let on = match out_n {
+        Some(obj) => Some(arrays.output::<f32>(obj, "out_n", Some(3 * n))?),
+        None => None,
+    };
+    check(nr.is_some() == on.is_some(), || {
+        "nrm and out_n go together".into()
+    })?;
+    arrays.check_overlaps()?;
+    py.detach(|| unsafe {
+        dqs::skin_dual_quaternion(
+            p.slice(),
+            nr.as_ref().map(|a| a.slice() as &[f32]),
+            ix.slice(),
+            wt.slice(),
+            qq.slice(),
+            dd.slice(),
+            km.slice(),
+            pl.as_ref().map(|a| a.slice() as &[f64]),
+            bl.as_ref().map(|a| a.slice() as &[f64]),
+            k,
+            op.slice(),
+            on.as_ref().map(|a| a.slice()),
+            threads,
+        )
+    });
+    drop(arrays);
+    Ok(())
+}
+
+/// Geodesic voxel distances (`animation.voxels.geodesic`): `out` (queries, bones) int32
+/// chamfer distances inside the solid (`sid`: flat index -> solid index or -1, x fastest,
+/// an `nx` x `ny` x `nz` grid whose border voxels are empty) from each bone's source
+/// voxels (`ptr`, `src`: flat indices) to each query voxel; -1 beyond `cutoff`.
+#[pyfunction]
+#[pyo3(signature = (sid, nx, ny, nz, ptr, src, queries, cutoff, out, threads=1))]
+#[allow(clippy::too_many_arguments)]
+fn geodesic_voxels(
+    py: Python<'_>,
+    sid: &Bound<'_, PyAny>,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+    ptr: &Bound<'_, PyAny>,
+    src: &Bound<'_, PyAny>,
+    queries: &Bound<'_, PyAny>,
+    cutoff: i64,
+    out: &Bound<'_, PyAny>,
+    threads: usize,
+) -> PyResult<()> {
+    let n = nx
+        .checked_mul(ny)
+        .and_then(|v| v.checked_mul(nz))
+        .ok_or_else(|| PyValueError::new_err("grid too large"))?;
+    check(nx >= 3 && ny >= 3 && nz >= 3, || {
+        "the grid needs a border".into()
+    })?;
+    let mut arrays = Arrays::new();
+    let sd = arrays.input::<i32>(sid, "sid", Some(n))?;
+    let pt = arrays.input::<i64>(ptr, "ptr", None)?;
+    let sr = arrays.input::<i64>(src, "src", None)?;
+    let qs = arrays.input::<i64>(queries, "queries", None)?;
+    let bones = unsafe { pt.slice() }.len().saturating_sub(1);
+    check(!unsafe { pt.slice() }.is_empty(), || {
+        "ptr: at least one entry".into()
+    })?;
+    let q = unsafe { qs.slice() }.len();
+    let o = arrays.output::<i32>(out, "out", Some(q * bones))?;
+    {
+        let p = unsafe { pt.slice() };
+        check(p[0] == 0 && p.windows(2).all(|w| w[0] <= w[1]), || {
+            "ptr: not increasing from 0".into()
+        })?;
+        check(p[bones] as usize == unsafe { sr.slice() }.len(), || {
+            "ptr: does not end at len(src)".into()
+        })?;
+        for (e, &f) in unsafe { sr.slice() }.iter().enumerate() {
+            check(f >= 0 && (f as usize) < n, || {
+                format!("src[{e}] = {f}: outside the grid")
+            })?;
+        }
+        for (e, &f) in unsafe { qs.slice() }.iter().enumerate() {
+            check(f >= 0 && (f as usize) < n, || {
+                format!("queries[{e}] = {f}: outside the grid")
+            })?;
+        }
+        let s = unsafe { sd.slice() };
+        let mut count = 0i64;
+        for (f, &v) in s.iter().enumerate() {
+            if v < 0 {
+                continue;
+            }
+            check(v as i64 == count, || {
+                "sid: solid indices are not 0, 1, 2, ...".into()
+            })?;
+            count += 1;
+            let (i, j, k) = (f % nx, (f / nx) % ny, f / (nx * ny));
+            check(
+                i > 0 && j > 0 && k > 0 && i + 1 < nx && j + 1 < ny && k + 1 < nz,
+                || format!("sid: solid voxel {f} on the grid's border"),
+            )?;
+        }
+    }
+    arrays.check_overlaps()?;
+    py.detach(|| unsafe {
+        geodesic::geodesic_voxels(
+            sd.slice(),
+            nx,
+            ny,
+            pt.slice(),
+            sr.slice(),
+            qs.slice(),
+            cutoff,
+            o.slice(),
+            threads,
+        )
+    });
+    drop(arrays);
+    Ok(())
+}
+
 /// Priority-Flood with an epsilon (`worlds.hydrology.priority_flood`): `out` (n) float64
 /// from `h` (n) float64 and `outlet` (n) uint8 on an `nx` x `ny` grid.
 #[pyfunction]
@@ -944,6 +1132,8 @@ fn aether3d_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pack_horizon, m)?)?;
     m.add_function(wrap_pyfunction!(triangulate, m)?)?;
     m.add_function(wrap_pyfunction!(skin_linear, m)?)?;
+    m.add_function(wrap_pyfunction!(skin_dual_quaternion, m)?)?;
+    m.add_function(wrap_pyfunction!(geodesic_voxels, m)?)?;
     m.add_function(wrap_pyfunction!(priority_flood, m)?)?;
     m.add_function(wrap_pyfunction!(accumulate, m)?)?;
     m.add_function(wrap_pyfunction!(stream_power, m)?)?;

@@ -9,13 +9,16 @@ deformed meshes and joint matrices. Order (the documented contract):
    kinematics, its joint constraints in order, then its attachments) or an object's
    constraint list -- where a unit runs after every unit that moves one of its targets
    (or a target's ancestor); a cycle is reported and its units skipped;
-3. skins and morph targets deform their meshes with the final matrices.
+3. **correctives** read the final joint rotations and add to morph target weights;
+4. morph targets, then skins (linear, dual quaternion or blended) deform their meshes with
+   the final matrices.
 
 Nothing here changes the scene; the result only feeds the render overlay.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -41,6 +44,10 @@ class RiggingResult:
     )  # armature -> (rig, model)
     residuals: dict[str, float] = field(default_factory=dict)  # "Armature/constraint" -> distance
     diagnostics: list[Diagnostic] = field(default_factory=list)
+    # "Armature/corrective" -> (driver angle in degrees, weight added to the morph target)
+    correctives: dict[str, tuple[float, float]] = field(default_factory=dict)
+    # mesh object id -> {morph target: weight the correctives add} (what glTF bakes)
+    morph_extra: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 def _diag(code: str, message: str, location: str) -> Diagnostic:
@@ -85,8 +92,12 @@ class _Worlds:
             stack.extend(reversed(o._children))
 
 
-def evaluate_rigging(system: AnimationSystem, pose: AnimationPose) -> RiggingResult:
-    """The rigging pass for ``pose`` (see the module docstring)."""
+def evaluate_rigging(
+    system: AnimationSystem, pose: AnimationPose, *, deform: bool = True
+) -> RiggingResult:
+    """The rigging pass for ``pose`` (see the module docstring); ``deform=False`` stops
+    before the meshes (correctives, morph targets, skins): joints, objects and residuals
+    only, for measuring motion."""
     from .system import canonical_quats
 
     scene = system.scene
@@ -134,15 +145,60 @@ def evaluate_rigging(system: AnimationSystem, pose: AnimationPose) -> RiggingRes
         else:
             _run_object_constraints(system, pose, oid, object_constraints[oid][1], worlds, result)
     result.local = worlds.local
+    if not deform:
+        return result
+    extra = _corrective_weights(system, rigs, morphs, result)
+    result.morph_extra = extra
     # Deformation: morph targets then skins, with the final matrices.
     for oid, skin in skins.items():
-        _run_skin(system, pose, oid, skin, worlds, result)
+        _run_skin(system, pose, oid, skin, worlds, result, extra.get(oid))
     for oid in morphs:
         if oid not in result.meshes:
-            mesh = _morphed(system, pose, oid)
+            mesh = _morphed(system, pose, oid, extra.get(oid))
             if mesh is not None:
                 result.meshes[oid] = mesh
     return result
+
+
+def _corrective_weights(
+    system: AnimationSystem, rigs: dict, morphs: dict, result: RiggingResult
+) -> dict[str, dict[str, float]]:
+    """Mesh object id -> {morph target: weight to add}, from every rig's correctives
+    (their driver joints' final rotations)."""
+    out: dict[str, dict[str, float]] = {}
+    for arm, (_item, rig) in rigs.items():
+        if not rig.correctives:
+            continue
+        found = result.joints.get(arm)
+        if found is None:
+            continue
+        _, model = found
+        rest_rot = rig.rest_trs()[1]
+        parents = rig.parents
+        arm_obj = system.scene._objects.get(arm)
+        arm_name = arm if arm_obj is None else arm_obj.name
+        for c in rig.correctives:
+            k = rig.index(c.joint)
+            morph = morphs.get(c.mesh)
+            if k is None or morph is None or c.target not in morph.names:
+                result.diagnostics.append(
+                    _diag(
+                        "CORRECTIVE_TARGET_MISSING",
+                        f"corrective {c.name!r} of {arm_name!r} drives a morph target its "
+                        "mesh does not have",
+                        f"objects[{arm_name}].correctives[{c.name}]",
+                    )
+                )
+                continue
+            parent_m = np.eye(4) if parents[k] < 0 else model[parents[k]]
+            _, q, _ = decompose(np.linalg.solve(parent_m, model[k]))
+            value = c.value(q, rest_rot[k])
+            weight = c.weight_for(value)
+            result.correctives[f"{arm_name}/{c.name}"] = (value, weight)
+            if weight != 0.0:
+                bucket = out.setdefault(c.mesh, {})
+                bucket[c.target] = bucket.get(c.target, 0.0) + weight
+    return out
 
 
 def _cached(scene: Any, name: str, make: Any) -> Any:
@@ -299,7 +355,8 @@ def _run_rig(
     model = forward_kinematics(local, parents, depth)
     armature_world = worlds.world[arm_id]
     influences = pose.influences.get(arm_id, {})
-    for c in rig.constraints:
+    for i in constraint_order(rig):
+        c = rig.constraints[i]
         if c.mute:
             continue
         w = influences.get(c.name, c.influence)
@@ -317,6 +374,17 @@ def _run_rig(
                     f"objects[{arm.name}].constraints[{c.name}]",
                 )
             )
+    if rig.enforce_limits == "always":
+        limited = False
+        for k, j in enumerate(rig.joints):
+            if j.limits != "null":
+                new = _limit(rig, k, local[k])
+                if new is not local[k]:
+                    local = local if limited else local.copy()
+                    local[k] = new
+                    limited = True
+        if limited:
+            model = forward_kinematics(local, parents, depth)
     result.joints[arm_id] = (rig, model)
     # Attachments: W' = A' J' (A J)^-1 W (rest: authored).
     if rig.attachments:
@@ -342,6 +410,61 @@ def _run_rig(
             worlds.set_local(obj, np.linalg.solve(p_world, w_new))
 
 
+def constraint_order(rig: Rig) -> list[int]:
+    """The rig's joint constraints in dependency order: a constraint after those that
+    write what it reads -- a twist reads its source joint's own rotation, any other a
+    target joint's world matrix (that joint and its ancestors) -- the list's order
+    otherwise (a cycle keeps it). Cached on the rig."""
+    found = rig._cache.get("constraint_order")
+    if found is not None:
+        return found
+    cons = rig.constraints
+    writes: list[set[int]] = []
+    reads: list[set[int]] = []
+    for c in cons:
+        p = c.p
+        if c.type == "ik":
+            w = {rig.index(n) for n in p["chain"]}
+        else:
+            w = {rig.index(p["joint"])} if isinstance(p.get("joint"), str) else set()
+        r: set[int] = set()
+        for key in ("target", "pole"):
+            t = p.get(key)
+            k = rig.index(t["joint"]) if isinstance(t, dict) and "joint" in t else None
+            if k is None:
+                continue
+            if c.type == "twist":
+                r.add(k)
+            else:
+                r.add(k)
+                r.update(_ancestors(rig, k))
+        writes.append({k for k in w if k is not None})
+        reads.append(r)
+    deps = [
+        {j for j in range(len(cons)) if j != i and writes[j] & reads[i]} for i in range(len(cons))
+    ]
+    order: list[int] = []
+    done: set[int] = set()
+    while len(order) < len(cons):
+        ready = [i for i in range(len(cons)) if i not in done and deps[i] <= done]
+        if not ready:  # a cycle: the rest in list order
+            order.extend(i for i in range(len(cons)) if i not in done)
+            break
+        order.append(ready[0])
+        done.add(ready[0])
+    rig._cache["constraint_order"] = order
+    return order
+
+
+def _ancestors(rig: Rig, k: int) -> set[int]:
+    out = set()
+    p = rig.parents[k]
+    while p >= 0:
+        out.add(int(p))
+        p = rig.parents[p]
+    return out
+
+
 def _attachments_in_order(order: dict[str, int], attachments: tuple) -> list:
     return sorted(attachments, key=lambda a: order.get(a[0], -1))
 
@@ -351,6 +474,8 @@ def _joint_constraint(
     armature_world: np.ndarray, worlds: _Worlds, result: RiggingResult, scene: Any, arm: Any,
 ) -> tuple[np.ndarray, np.ndarray]:  # fmt: skip
     p = c.p
+    if c.type == "twist":  # (local rotations only: no targets, no armature space)
+        return _twist(p, w, rig, local)
     inv_a = np.linalg.inv(armature_world)
     rig_model = (rig, model, armature_world)
     target = _target_world(p.get("target"), worlds, result, scene, rig_model)
@@ -409,12 +534,19 @@ def _joint_constraint(
                 _, s = model[k][:3, :3], np.linalg.norm(model[k][:3, :3], axis=0)
                 m[:3, :3] = target_a[:3, :3] / np.linalg.norm(target_a[:3, :3], axis=0) * s
             new_model[k] = m
+        if p.get("bend_axis") and len(chain) == 3:
+            _align_bend(new_model, chain, new_pos, p["bend_axis"], rig)
+        limited = False
         for i, k in enumerate(chain):
             if i == len(chain) - 1 and p["end"] == "keep":
                 break
             parent_m = np.eye(4) if parents[k] < 0 else new_model[parents[k]]
-            new_local[k] = np.linalg.solve(parent_m, new_model[k])
-            new_local[k] = _limit(rig, k, new_local[k])
+            free = np.linalg.solve(parent_m, new_model[k])
+            new_local[k] = _limit(rig, k, free)
+            limited |= new_local[k] is not free
+        if limited:  # the residual is where the limited chain's end really is
+            reached = forward_kinematics(new_local, rig.parents, rig.depth)[chain[-1]][:3, 3]
+            residual = float(np.linalg.norm(reached - goal))
         result.residuals[f"{arm.name}/{c.name}"] = float(residual)
     else:
         k = rig.index(p["joint"])
@@ -430,6 +562,142 @@ def _joint_constraint(
     return new_local, new_model
 
 
+def _twist(p: dict[str, Any], w: float, rig: Rig, local: np.ndarray):
+    """A twist constraint: the joint turns about its ``axis`` by ``factor`` times the source
+    joint's twist about it (relative to rest; :func:`.limits.twist_angle`); the influence
+    scales the angle (the same rotation as blending toward it, along the shortest arc).
+    Scalar arithmetic: two of these run per character and frame."""
+    from . import limits as L
+
+    src = rig.index(p["target"]["joint"])
+    k = rig.index(p["joint"])
+    m = local[src][:3, :3]
+    qx, qy, qz, qw = _quat_of((m / np.linalg.norm(m, axis=0)).tolist())
+    rx, ry, rz, rw = rig.rest_trs()[1][src].tolist()
+    # q_rest^-1 q (Hamilton), then w >= 0
+    x = rw * qx - rx * qw - ry * qz + rz * qy
+    y = rw * qy + rx * qz - ry * qw - rz * qx
+    z = rw * qz - rx * qy + ry * qx - rz * qw
+    v = rw * qw + rx * qx + ry * qy + rz * qz
+    n = math.sqrt(x * x + y * y + z * z + v * v)
+    if v < 0.0:
+        n = -n
+    axis = L.AXES[p["axis"]]
+    ax, ay, az = axis.tolist()
+    proj = (x * ax + y * ay + z * az) / n
+    w_rel = v / n
+    if abs(proj) < 1e-15 and abs(w_rel) < 1e-15:
+        return local, forward_kinematics(local, rig.parents, rig.depth)
+    angle = 2.0 * math.atan2(proj, w_rel) * p["factor"] * w
+    new_local = local.copy()
+    if angle != 0.0:
+        # The joint's own rotation turned about its axis: T R S -> T (R turn) S.
+        mk = local[k][:3, :3]
+        scale = np.linalg.norm(mk, axis=0)
+        c, s_ = math.cos(angle), math.sin(angle)
+        kx = np.array([[0.0, -az, ay], [az, 0.0, -ax], [-ay, ax, 0.0]])
+        turn = np.eye(3) + s_ * kx + (1.0 - c) * (kx @ kx)
+        new_local[k][:3, :3] = ((mk / scale) @ turn) * scale
+    return new_local, forward_kinematics(new_local, rig.parents, rig.depth)
+
+
+def _quat_of(m: list) -> tuple[float, float, float, float]:
+    """``(x, y, z, w)`` of a 3x3 rotation (rows; Shepperd's method, as math3d)."""
+    (a, b, c), (d, e, f), (g, h, i) = m
+    tr = a + e + i
+    if tr > 0.0:
+        s = math.sqrt(tr + 1.0) * 2.0
+        return (h - f) / s, (c - g) / s, (d - b) / s, 0.25 * s
+    if a > e and a > i:
+        s = math.sqrt(1.0 + a - e - i) * 2.0
+        return 0.25 * s, (b + d) / s, (c + g) / s, (h - f) / s
+    if e > i:
+        s = math.sqrt(1.0 + e - a - i) * 2.0
+        return (b + d) / s, 0.25 * s, (f + h) / s, (c - g) / s
+    s = math.sqrt(1.0 + i - a - e) * 2.0
+    return (c + g) / s, (f + h) / s, 0.25 * s, (d - b) / s
+
+
+def _align_bend(
+    model: np.ndarray, chain: list, pos: np.ndarray, axis: str, rig: Rig | None = None
+) -> None:
+    """Twist the first two bones of a chain about themselves toward their ``axis`` lying
+    along the bend plane's normal ``d1 x d2`` (positions unchanged): a positive rotation
+    about it then bends the chain the way it bends now. With the middle joint's limits
+    known (``rig``), only as far as they require: a pose they already allow keeps its
+    bones' roll (switching a relaxed FK limb to IK changes nothing visible), a deep bend
+    turns as far as its limits need (the smallest fraction found by bisection)."""
+    import json as _json
+
+    from . import limits as L
+
+    d1 = pos[1] - pos[0]
+    d2 = pos[2] - pos[1]
+    n = np.cross(d1, d2)
+    nn = float(np.linalg.norm(n))
+    scale_len = float(np.linalg.norm(d1) * np.linalg.norm(d2))
+    if nn < 1e-9 * scale_len or nn == 0.0:
+        return  # a straight chain: no plane
+    bend = math.degrees(math.atan2(nn, float(d1 @ d2)))
+    if bend < 2.0:
+        return  # (nearly straight: the plane is not defined)
+    n /= nn
+    a_local = L.AXES[axis]
+    turns = []
+    for k, d in ((chain[0], d1), (chain[1], d2)):
+        lin = model[k][:3, :3]
+        scale = np.linalg.norm(lin, axis=0)
+        rot = lin / scale
+        bone = d / np.linalg.norm(d)
+        current = rot @ a_local
+        cur = current - (current @ bone) * bone
+        want = n - (n @ bone) * bone
+        if np.linalg.norm(cur) < 1e-9 or np.linalg.norm(want) < 1e-9:
+            turns.append(None)
+            continue
+        cur /= np.linalg.norm(cur)
+        want /= np.linalg.norm(want)
+        angle = math.atan2(float(np.cross(cur, want) @ bone), float(cur @ want))
+        turns.append((k, bone, angle, rot, scale))
+
+    def rolled(frac: float) -> tuple[np.ndarray, np.ndarray]:
+        out = []
+        for t in turns:
+            if t is None:
+                out.append(None)
+                continue
+            k, bone, angle, rot, scale = t
+            turn = R.matrices(R.axis_angle(bone, angle * frac))[0]
+            out.append((turn @ rot) * scale)
+        return out
+
+    frac = 1.0
+    raw = _json.loads(rig.joints[chain[1]].limits) if rig is not None else None
+    if isinstance(raw, dict) and not L.is_euler(raw):
+        rest_q = np.asarray(rig.joints[chain[1]].rotation, np.float64)
+
+        def allowed(f: float) -> bool:
+            lin = rolled(f)
+            upper = lin[0] if lin[0] is not None else model[chain[0]][:3, :3]
+            lower = lin[1] if lin[1] is not None else model[chain[1]][:3, :3]
+            rel = np.linalg.solve(upper / np.linalg.norm(upper, axis=0),
+                                  lower / np.linalg.norm(lower, axis=0))  # fmt: skip
+            q = R.from_matrices(rel[None])[0]
+            return L.clamp(raw, q, rest_q) is None
+
+        if allowed(0.0):
+            return
+        if allowed(1.0):
+            lo, hi = 0.0, 1.0
+            for _ in range(10):
+                mid = 0.5 * (lo + hi)
+                lo, hi = (lo, mid) if allowed(mid) else (mid, hi)
+            frac = min(1.0, hi + 0.02)
+    for t, lin in zip(turns, rolled(frac), strict=True):
+        if t is not None:
+            model[t[0]][:3, :3] = lin
+
+
 def _limit(rig: Rig, k: int, local: np.ndarray) -> np.ndarray:
     """A joint's local matrix with its rotation limits (Euler XYZ degrees) applied."""
     from .rig import joint_limits
@@ -437,6 +705,13 @@ def _limit(rig: Rig, k: int, local: np.ndarray) -> np.ndarray:
     limits = joint_limits(rig, k)
     if not limits:
         return local
+    if "rotation" not in limits:  # swing-twist or hinge, from the rest rotation
+        from . import limits as L
+        from .constraints import compose
+
+        p, q, s = decompose(local)
+        clamped = L.clamp(limits, q, rig.rest_trs()[1][k])
+        return local if clamped is None else compose(p, clamped, s)
     rot = limits["rotation"]
     p, q, s = decompose(local)
     e = R.to_euler(q[None])[0]
@@ -534,6 +809,7 @@ def _run_skin(
     skin: Any,
     worlds: _Worlds,
     result: RiggingResult,
+    extra: dict[str, float] | None = None,
 ) -> None:
     from ..mesh import Mesh
 
@@ -550,7 +826,7 @@ def _run_skin(
     if found is None:
         return
     _, model = found
-    base = _morphed(system, pose, oid)
+    base = _morphed(system, pose, oid, extra)
     mesh = base if base is not None else obj.mesh
     if mesh is None or mesh.vertex_count != skin.vertex_count:
         result.diagnostics.append(
@@ -575,8 +851,13 @@ def _run_skin(
     a_world = worlds.world[rig.object]
     m_world_inv = np.linalg.inv(worlds.world[oid])
     palette = m_world_inv @ a_world @ model[idx] @ skin.inverse_bind
-    fn = skin_linear if skin.method == "linear" else skin_dual_quaternion
-    pos, nrm = fn(mesh.positions, mesh.normals, skin.indices, skin.weights, palette)
+    if skin.method == "linear":
+        pos, nrm = skin_linear(mesh.positions, mesh.normals, skin.indices, skin.weights, palette)
+    else:
+        pos, nrm = skin_dual_quaternion(
+            mesh.positions, mesh.normals, skin.indices, skin.weights, palette,
+            skin.dq if skin.method == "blended" else None,
+        )  # fmt: skip
     if not np.all(np.isfinite(pos)):
         result.diagnostics.append(
             _diag(
@@ -591,10 +872,20 @@ def _run_skin(
     )
 
 
-def _morphed(system: AnimationSystem, pose: AnimationPose, oid: str) -> Any:
-    """The morphed mesh of ``oid`` (``None``: no morph targets or all weights 0)."""
+def _morphed(
+    system: AnimationSystem, pose: AnimationPose, oid: str, extra: dict[str, float] | None = None
+) -> Any:
+    """The morphed mesh of ``oid`` (``None``: no morph targets or all weights 0);
+    ``extra``: weights correctives add to the animated (or default) ones."""
     morphs = system._morphs() if hasattr(system, "_morphs") else {}
     morph = morphs.get(oid)
     if morph is None:
         return None
-    return morph.apply(system.scene._objects[oid].mesh, pose.morphs.get(oid, {}))
+    weights = pose.morphs.get(oid, {})
+    if extra:
+        weights = dict(weights)
+        for name, w in extra.items():
+            if name in morph.names:
+                base = weights.get(name, morph.defaults[morph.names.index(name)])
+                weights[name] = base + w
+    return morph.apply(system.scene._objects[oid].mesh, weights)
