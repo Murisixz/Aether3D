@@ -12,9 +12,15 @@
   one by one (undone when they do not help), then save.
 * ``rig preview PROJECT OUT.png --armature A [--mode pose|weights|stretch|skeleton]`` --
   a picture; ``.svg`` writes the skeleton diagram.
+* ``rig parts PROJECT --root R`` -- the parts of a rigid-part character (no bones):
+  roles, pivots, sides (read-only).
+* ``rig convert PROJECT --source S --to skeleton|rigid`` -- on request, a rigid
+  hierarchy to an armature with attached copies, or an armature's attached parts to a
+  rigid hierarchy; motion baked and verified, the source kept (hidden), then save.
 * ``rig guide`` -- the agent guide (Markdown).
 
-Rigging scripts are animation scripts: ``aether3d animation run PROJECT SCRIPT``.
+Rigging scripts are animation scripts: ``aether3d animation run PROJECT SCRIPT``
+(``generate_rigid`` animates a rigid-part character without bones).
 """
 
 from __future__ import annotations
@@ -143,6 +149,41 @@ def cmd_rig_preview(args: argparse.Namespace) -> CommandOutput:
     return data, f"wrote {out} ({mode}, {args.view})", EXIT_OK
 
 
+def cmd_rig_parts(args: argparse.Namespace) -> CommandOutput:
+    scene, _ = _load_scene(Path(args.path))
+    rep = _run(scene.animation.rigid_parts, args.root, forward=args.forward)
+    lines = [f"{rep['root']}: {len(rep['parts'])} parts, facing {rep['forward']}"]
+    lines += [
+        f"{role}: {p['object']} (pivot {p['pivot']}, {p['pivot_source']})"
+        for role, p in rep["parts"].items()
+    ]
+    lines += [f"{d['severity']}: {d['code']}: {d['message']}" for d in rep["diagnostics"]]
+    return rep, "\n".join(lines), EXIT_OK
+
+
+def cmd_rig_convert(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    scene, _ = _load_scene(path, history=True)
+    options: dict[str, Any] = {"hide_original": not args.keep_visible, "forward": args.forward}
+    if args.name:
+        options["name"] = args.name
+    if args.to == "rigid":
+        options.pop("forward")
+    rep = _run(scene.animation.convert_character, args.source, args.to, **options)
+    written = _write_or_dry_run(scene, path, args)
+    data = {"path": str(path), "output": written, "dry_run": args.dry_run, **rep}
+    v = rep["verification"]
+    made = rep.get("armature") or rep.get("root")
+    lines = [
+        f"{rep['source']} -> {made} ({args.to})",
+        f"verified at {v['samples']} times: within {v['position']:.3g} m, "
+        f"{v['rotation_deg']:.3g} deg",
+    ]
+    lines += [f"{d['severity']}: {d['code']}: {d['message']}" for d in rep["diagnostics"]]
+    lines.append("dry run: nothing written" if args.dry_run else f"saved {written}")
+    return data, "\n".join(lines), EXIT_OK
+
+
 def cmd_rig_guide(args: argparse.Namespace) -> CommandOutput:
     from importlib import resources
 
@@ -209,5 +250,22 @@ def add_rig_parsers(sub, common, writing) -> None:
     p.add_argument("--backend", default="cpu", choices=("cpu", "gpu", "auto"))
     p.add_argument("--force", action="store_true", help="overwrite an existing file")
     p.set_defaults(handler=cmd_rig_preview)
+    p = rs.add_parser("parts", parents=[common], help="a rigid-part character's parts")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--root", required=True, help="the character's root object")
+    p.add_argument("--forward", default="-y", choices=("+x", "-x", "+y", "-y"))
+    p.set_defaults(handler=cmd_rig_parts)
+    p = rs.add_parser("convert", parents=[common, writing], help="convert between workflows",
+                      description="On request: a rigid-part hierarchy to an armature with "
+                      "attached copies (--to skeleton), or an armature's attached parts to a "
+                      "rigid hierarchy (--to rigid); motion baked and verified; the source "
+                      "is kept (hidden unless --keep-visible).")  # fmt: skip
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--source", required=True, help="the rigid root, or the armature")
+    p.add_argument("--to", required=True, choices=("skeleton", "rigid"))
+    p.add_argument("--name", help="the new armature or root's name")
+    p.add_argument("--forward", default="-y", choices=("+x", "-x", "+y", "-y"))
+    p.add_argument("--keep-visible", action="store_true", help="do not hide the source")
+    p.set_defaults(handler=cmd_rig_convert)
     p = rs.add_parser("guide", parents=[common], help="the agent guide to rigging")
     p.set_defaults(handler=cmd_rig_guide)

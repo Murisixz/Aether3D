@@ -1832,6 +1832,31 @@ class AnimationSystem:
 
         return generate(self, armature, kind, **options)
 
+    def generate_rigid(self, root: Any, kind: str, **options: Any) -> dict[str, Any]:
+        """A motion for a rigid-part character (a hierarchy of solid parts under ``root``,
+        no armature): ordinary ``transform`` clips on its parts (see :mod:`.rigid`).
+        Options: ``parts``, ``name``, ``forward``, ``start``, ``travel``, ``tolerance``,
+        ``bind`` and the motion's parameters. One undo step."""
+        from .rigid import generate_rigid
+
+        return generate_rigid(self, root, kind, **options)
+
+    def rigid_parts(self, root: Any, **options: Any) -> dict[str, Any]:
+        """The parts, pivots and sides measured for a rigid-part character (see
+        :func:`.rigid.find_parts`; read-only)."""
+        from .rigid import describe_parts
+
+        return describe_parts(self, root, **options)
+
+    def convert_character(self, source: Any, to: str, **options: Any) -> dict[str, Any]:
+        """Convert a character between workflows, on request: a rigid hierarchy to an
+        armature with attached copies (``to="skeleton"``) or an armature's attached parts
+        to a rigid hierarchy (``to="rigid"``); motion baked and verified, the source left
+        as it was (see :func:`.rigid.convert_character`). One undo step."""
+        from .rigid import convert_character
+
+        return convert_character(self, source, to, **options)
+
     def follow_camera(self, camera: Any, target: Any, **options: Any) -> dict[str, Any]:
         """Key a camera to follow a target with lag, aimed at it (see
         :func:`.generators.follow_camera`)."""

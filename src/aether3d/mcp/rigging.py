@@ -11,7 +11,9 @@ step, all or nothing): ``autorig``, ``edit_rig``, ``generate_weights``, ``edit_w
 * ``diagnose`` -- the rig, its skins and the deformation under the diagnostic pose suite;
 * ``fixes`` -- correction proposals for the findings (apply them with ``apply_rig_fix``);
 * ``preview`` -- a picture (PNG): ``mode`` pose, weights (``joint``), stretch (``pose``)
-  or skeleton (with its SVG), from ``view``.
+  or skeleton (with its SVG), from ``view``;
+* ``parts`` -- a rigid-part character (no bones): the parts found under ``target`` (its
+  root), their pivots and sides (animate it with ``generate_rigid``).
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ from typing import Any
 
 from .session import Session, ToolError
 
-WHAT = ("summary", "landmarks", "weights", "diagnose", "fixes", "preview")
+WHAT = ("summary", "landmarks", "weights", "diagnose", "fixes", "preview", "parts")
 MAX_FINDINGS = 30
 
 
@@ -95,6 +97,8 @@ def inspect_rig(session: Session, args: dict, ctx: Any):
                                        max_findings=MAX_FINDINGS, poses=poses)  # fmt: skip
         elif what == "fixes":
             data = system.propose_rig_fix(_need(args, "target"), time=args.get("time"))
+        elif what == "parts":
+            data = system.rigid_parts(_need(args, "target"))
         elif what == "preview":
             from ..rendering.png import encode_png
 
@@ -136,7 +140,8 @@ def specs() -> tuple[Any, ...]:
             "Inspect a rig",
             "Read-only rigging questions: summary (joints, controls, skins); landmarks of "
             "unrigged meshes; weights of a mesh; diagnose (pose suite); fixes (proposals); "
-            "preview (PNG: mode pose|weights|stretch|skeleton). Rig with run_script.",
+            "preview (PNG: mode pose|weights|stretch|skeleton); parts (a rigid-part "
+            "character, no bones). Rig with run_script.",
             _schema(
                 {
                     "what": {"enum": list(WHAT)},

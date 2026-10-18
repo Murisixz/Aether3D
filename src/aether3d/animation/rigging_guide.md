@@ -99,11 +99,22 @@ frames) are choices: pass them explicitly.
 
 ## Rigid-part characters need no bones
 
-A Minecraft-style character can stay a hierarchy of block objects animated by their own
-transforms (`keyframe` on `transform.rotation_euler` of pivot objects). Nothing here is
-required for that, and nothing here changes it. Bones are optional: `attach` (blocks
-follow joints) or `autorig` with `template: "blocky"` (blocks skinned rigidly) when you
-want generators, retargeting or IK.
+A Minecraft-style character can stay a hierarchy of solid parts (head, torso, arms, legs)
+moved by their own object transforms. Nothing here is required for that and nothing here
+changes it: no armature, no skin, no weights.
+
+* `{"what": "parts", "target": "Hero"}` (`inspect_rig`) shows the parts found under the
+  root (by name: head, torso/body, arm, leg; sides measured), their pivots and any
+  `SIDE_NAME_MISMATCH`. Name them yourself with `roles` when the names say nothing.
+* `{"op": "generate_rigid", "root": "Hero", "motion": "walk"}` writes walk, run, jump,
+  land, idle, wave or head_turn as ordinary `transform` clips on the parts (travel on the
+  root); the report gives the fitting error, a verification against the motion and the
+  feet's sliding. Edit the keys like any others.
+* Bones only when you want them: `attach` (blocks follow joints), `autorig` with
+  `template: "blocky"` (separate blocks are attached, not skinned), or
+  `{"op": "convert_character", "source": "Hero", "to": "skeleton"}` -- an armature with
+  attached copies of the parts and the motion baked onto its joints, verified; the
+  original stays (hidden) and `to: "rigid"` converts back.
 
 ## Honest limits
 

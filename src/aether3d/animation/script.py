@@ -40,8 +40,10 @@ rigging (Stage 18): ``autorig``, ``edit_rig``, ``add_joint``, ``remove_joint``,
 ``move_joint``, ``orient_joints``, ``rename_joint``, ``reparent_joint``,
 ``mirror_joint_chain``, ``generate_weights``, ``edit_weights``, ``normalize_weights``,
 ``transfer_weights``, ``add_control``, ``ik_fk``, ``pose_character``, ``apply_rig_fix``;
+rigid-part characters (no bones): ``generate_rigid``, ``convert_character``;
 read-only: ``report``, ``trajectory``, ``diagnose``, ``contacts``, ``sample``,
-``detect_landmarks``, ``inspect_weights``, ``diagnose_rig``, ``propose_rig_fix``.
+``detect_landmarks``, ``inspect_weights``, ``diagnose_rig``, ``propose_rig_fix``,
+``rigid_parts``.
 
 :func:`run_animation_script` applies everything or nothing, as one step of the scene's
 history: if an operation fails, a limit is reached or the run is cancelled, the scene is
@@ -328,6 +330,46 @@ OPERATIONS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...], bool]] = {
         ),
         False,
     ),  # fmt: skip
+    "generate_rigid": (
+        "generate_rigid",
+        ("root", "motion"),
+        (
+            "name",
+            "start",
+            "roles",
+            "forward",
+            "travel",
+            "tolerance",
+            "bind",
+            "amplitude",
+            "period",
+            "cadence",
+            "stride",
+            "duty",
+            "lift",
+            "gravity",
+            "height",
+            "distance",
+            "style",
+            "knee",
+            "side",
+            "waves",
+            "rate",
+            "yaw",
+            "pitch",
+            "turn",
+            "hold",
+            "back",
+        ),
+        False,
+    ),
+    "convert_character": (
+        "convert_character",
+        ("source", "to"),
+        ("roles", "forward", "name", "hide_original", "start", "end", "tolerance"),
+        False,
+    ),
+    "rigid_parts": ("rigid_parts", ("root",), ("roles", "forward"), True),
     "edit_weights": ("edit_weights", ("mesh", "operations"), ("dry_run",), False),
     "normalize_weights": ("normalize_weights", ("mesh",), (), False),
     "transfer_weights": (
@@ -389,11 +431,14 @@ _RENAMED = {
     "normalize_weights": {"mesh": "mesh_object"},
     "inspect_weights": {"mesh": "mesh_object"},
     "transfer_weights": {"mesh": "target"},
+    "generate_rigid": {"motion": "kind", "roles": "parts"},
+    "convert_character": {"roles": "parts"},
+    "rigid_parts": {"roles": "parts"},
 }
 # Arguments holding lists of object references.
 _REF_LISTS = ("meshes", "context")
 # Arguments naming scene objects (or materials), checked to be references.
-_REFS = ("target", "object", "armature", "camera", "owner", "mesh", "source")
+_REFS = ("target", "object", "armature", "camera", "owner", "mesh", "source", "root")
 MAX_SAMPLE_TIMES = 10_000
 
 
@@ -495,6 +540,12 @@ def check_script(script: Any) -> dict:
                     raise AnimationScriptError(f"{key} names 1..256 objects", f"{loc}.{key}")
                 for i, r in enumerate(refs):
                     _ref(r, f"{loc}.{key}[{i}]")
+        if "roles" in args:
+            roles = args["roles"]
+            if not isinstance(roles, dict) or not 1 <= len(roles) <= 16:
+                raise AnimationScriptError("roles is {role: object}", f"{loc}.roles")
+            for role, r in roles.items():
+                _ref(r, f"{loc}.roles.{role}")
         if op == "sample":
             times = args["times"]
             if not isinstance(times, list) or not 1 <= len(times) <= MAX_SAMPLE_TIMES:
@@ -562,6 +613,9 @@ def _call(system: Any, op: str, args: dict[str, Any], loc: str) -> Any:
                 next(iter(r.values())) if isinstance(r, dict) else r
                 for r in (v if isinstance(v, list) else [v])
             ]
+        if k == "roles":
+            v = {role: next(iter(r.values())) if isinstance(r, dict) else r
+                 for role, r in v.items()}  # fmt: skip
         kwargs[renamed.get(k, k)] = v
     if method_name == "_set_time":
         system.time = kwargs["time"]

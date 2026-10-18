@@ -14,7 +14,9 @@ Templates:
   Thigh, Shin, Foot, Toe -- sides ``.L``/``.R``; names the motion generators recognize,
   and explicit ``role`` s. ``stylized`` differs in its weight policy (tighter blends).
 * ``blocky`` -- Minecraft-style characters: Hips, Body, Head, Arm.L/R, Leg.L/R, pivots at
-  the blocks' tops, each block bound rigidly.
+  the blocks' tops; separate block objects are attached to their joints (no skinning),
+  a single mesh is skinned rigidly block by block. (A rigid-part character needs no
+  rig at all: :mod:`.rigid`.)
 * ``quadruped`` -- Pelvis, Spine, Chest, Neck, Head, Tail, and four legs of three joints
   (hip, knee, foot) each.
 
@@ -665,11 +667,20 @@ def _brief(rep: dict[str, Any], mode: str) -> dict[str, Any]:
 
 def _part_modes(system, objs, parts, template) -> list[tuple[Any, str]]:
     """Each mesh's binding: ``parts`` by name, else ``geodesic`` (all parts voxelized
-    together, so clothing over a body takes the body's distances)."""
+    together, so clothing over a body takes the body's distances) -- except a blocky
+    character made of separate blocks, whose blocks are attached to their joints (they
+    move rigidly: skinning them would cost every frame for nothing)."""
+    from .voxels import mesh_components
+
     parts = dict(parts or {})
     out = []
     for obj in objs:
-        mode = parts.pop(obj.name, parts.pop(obj._id, "geodesic"))
+        default = "geodesic"
+        if template == "blocky" and len(objs) > 1:
+            _, count = mesh_components(obj.mesh.vertex_count, obj.mesh.triangles)
+            if count == 1:
+                default = "attach"
+        mode = parts.pop(obj.name, parts.pop(obj._id, default))
         if mode not in PART_MODES:
             raise _err(
                 "INVALID_ARGUMENT",
@@ -679,7 +690,6 @@ def _part_modes(system, objs, parts, template) -> list[tuple[Any, str]]:
         out.append((obj, mode))
     if parts:
         raise _err("INVALID_ARGUMENT", f"parts names meshes not rigged: {sorted(parts)}", "parts")
-    del template
     return out
 
 

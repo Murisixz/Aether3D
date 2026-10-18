@@ -128,6 +128,15 @@ _ARGUMENTS: dict[str, Any] = {
         "description": "proposals from propose_rig_fix, or 'safe' / 'verify'",
         "oneOf": [{"enum": ["safe", "verify"]}, {"type": "array", "items": {"type": "object"}}],
     },
+    "root": _REF,
+    "roles": {
+        "type": "object",
+        "description": "rigid parts by role: {head|torso|arm.L|arm.R|leg.L|leg.R: object} "
+        "(default: found by name under the root, sides measured)",
+        "additionalProperties": _REF,
+    },
+    "to": {"enum": ["skeleton", "rigid"]},
+    "hide_original": {"type": "boolean"},
     "policy": {"enum": ["organic", "stylized", "rigid"]},
     "skinning": {"enum": ["linear", "dual_quaternion", "blended"]},
     "kind": {"enum": ["ik", "pole", "gaze", "fk", "root"]},
