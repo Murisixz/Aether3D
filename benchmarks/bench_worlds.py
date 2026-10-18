@@ -88,9 +88,14 @@ def group_regional(quick: bool) -> dict[str, Any]:
         t0 = time.perf_counter()
         reg = w.runtime.regional()
         s = reg.summary()
-        out[preset] = {"seconds": round(time.perf_counter() - t0, 3), "nodes": s["nodes"],
-                       "rivers": s["rivers"], "lakes": s["lakes"],
-                       "iterations": s["iterations"], "timings": s["timings"]}  # fmt: skip
+        out[preset] = {
+            "seconds": round(time.perf_counter() - t0, 3),
+            "nodes": s["nodes"],
+            "rivers": s["rivers"],
+            "lakes": s["lakes"],
+            "iterations": s["iterations"],
+            "timings": s["timings"],
+        }
     return out
 
 
@@ -151,9 +156,14 @@ def group_vegetation(quick: bool) -> dict[str, Any]:
     veg.visible(view)
     warm = time.perf_counter() - t0
     s = veg.stats()
-    return {"cold_seconds": round(cold, 3), "warm_seconds": round(warm, 4),
-            "tiles_placed": s["tiles_placed"], "plants_placed": s["plants_placed"],
-            "candidates": s["candidates"], "drawn": int(len(vis["species"]))}  # fmt: skip
+    return {
+        "cold_seconds": round(cold, 3),
+        "warm_seconds": round(warm, 4),
+        "tiles_placed": s["tiles_placed"],
+        "plants_placed": s["plants_placed"],
+        "candidates": s["candidates"],
+        "drawn": int(len(vis["species"])),
+    }
 
 
 def group_blocks(quick: bool) -> dict[str, Any]:
@@ -184,10 +194,15 @@ def group_blocks(quick: bool) -> dict[str, Any]:
         dt, _ = _contribute(scene, rs)
         times.append(dt)
     s = w.runtime.stats()
-    return {"chunk_generate_ms": round(1000 * gen, 2), "chunk_mesh_ms": round(1000 * mesh, 2),
-            "first_frame_seconds": round(cold, 3), "warm_frame_seconds": round(warm, 4),
-            "first_frame": frame, "moving_seconds_median": round(sorted(times)[len(times) // 2], 4),
-            "cached_bytes": s["memory"]["cached_bytes"]}  # fmt: skip
+    return {
+        "chunk_generate_ms": round(1000 * gen, 2),
+        "chunk_mesh_ms": round(1000 * mesh, 2),
+        "first_frame_seconds": round(cold, 3),
+        "warm_frame_seconds": round(warm, 4),
+        "first_frame": frame,
+        "moving_seconds_median": round(sorted(times)[len(times) // 2], 4),
+        "cached_bytes": s["memory"]["cached_bytes"],
+    }
 
 
 def group_volumes(quick: bool) -> dict[str, Any]:
@@ -200,7 +215,9 @@ def group_volumes(quick: bool) -> dict[str, Any]:
     vol = volumes_of(w.runtime)
     n = 6 if quick else 12
     t0 = time.perf_counter()
-    cols = {(i, j): vol.column(i, j) for i in range(-n // 2, n // 2) for j in range(-n // 2, n // 2)}
+    cols = {
+        (i, j): vol.column(i, j) for i in range(-n // 2, n // 2) for j in range(-n // 2, n // 2)
+    }
     classify = (time.perf_counter() - t0) / len(cols)
     cubes = [(i, j, k) for (i, j), c in cols.items() for k, f in c][: 12 if quick else 40]
     t0 = time.perf_counter()
@@ -209,8 +226,12 @@ def group_volumes(quick: bool) -> dict[str, Any]:
         m = vol.cube(i, j, k, 0)
         tris += 0 if m is None else m.triangle_count
     mesh = (time.perf_counter() - t0) / max(len(cubes), 1)
-    return {"column_ms": round(1000 * classify, 2), "cube_ms": round(1000 * mesh, 2),
-            "cubes": len(cubes), "triangles": tris}  # fmt: skip
+    return {
+        "column_ms": round(1000 * classify, 2),
+        "cube_ms": round(1000 * mesh, 2),
+        "cubes": len(cubes),
+        "triangles": tris,
+    }
 
 
 def group_queries(quick: bool) -> dict[str, Any]:
@@ -237,10 +258,14 @@ def group_queries(quick: bool) -> dict[str, Any]:
     t0 = time.perf_counter()
     sites = w.find_sites(5)
     find = time.perf_counter() - t0
-    return {"height_points_per_second": round(n / heights), "all_fields_points_per_second":
-            round(n / 10 / full), "ground_path_seconds": round(ground_path, 3),
-            "ground_path_points": len(path), "find_sites_seconds": round(find, 3),
-            "sites": len(sites)}  # fmt: skip
+    return {
+        "height_points_per_second": round(n / heights),
+        "all_fields_points_per_second": round(n / 10 / full),
+        "ground_path_seconds": round(ground_path, 3),
+        "ground_path_points": len(path),
+        "find_sites_seconds": round(find, 3),
+        "sites": len(sites),
+    }
 
 
 def group_render(quick: bool) -> dict[str, Any]:
@@ -257,13 +282,26 @@ def group_render(quick: bool) -> dict[str, Any]:
         w = scene.worlds.create("W", preset, seed=7, **kw)
         x0, y0 = (-1500.0, -1500.0) if preset != "blocky_adventure" else (-60.0, -80.0)
         g = w.ground(x0, y0)
-        cam = scene.add_camera("Cam", position=(x0, y0, g + 80.0), look_at=(0.0, 0.0, g), fov=55, far=30000)
+        cam = scene.add_camera(
+            "Cam", position=(x0, y0, g + 80.0), look_at=(0.0, 0.0, g), fov=55, far=30000
+        )
         scene.add_directional_light("Sun", direction=(0.5, 0.6, -0.4), intensity=1.8)
-        scene.world.atmosphere.configure(enabled=True, sun="Sun", fog_density=0.0002, fog_height=g,
-                                         fog_falloff=0.001, ambient="hemisphere")  # fmt: skip
+        scene.world.atmosphere.configure(
+            enabled=True,
+            sun="Sun",
+            fog_density=0.0002,
+            fog_height=g,
+            fog_falloff=0.001,
+            ambient="hemisphere",
+        )
         scene.world.environment.configure(type="sky")
-        opts = {"backend": "gpu", "width": width, "height": height,
-                "shadows": {"cascades": 4, "distance": 3000.0}, "tonemap": "neutral"}  # fmt: skip
+        opts = {
+            "backend": "gpu",
+            "width": width,
+            "height": height,
+            "shadows": {"cascades": 4, "distance": 3000.0},
+            "tonemap": "neutral",
+        }
         t0 = time.perf_counter()
         first = scene.render(**opts)
         cold = time.perf_counter() - t0
@@ -278,13 +316,19 @@ def group_render(quick: bool) -> dict[str, Any]:
             times.append(time.perf_counter() - t0)
         res = r.backend.get("resources", {}).get("mesh_cache", {})
         med = sorted(times)[len(times) // 2]
-        out[preset] = {"first_frame_seconds": round(cold, 3), "frame_seconds_median": round(med, 4),
-                       "fps_median": round(1.0 / med, 2), "frames": n, "size": [width, height],
-                       "world_parts": w.runtime.last_frame.get("parts"),
-                       "triangles": w.runtime.last_frame.get("triangles"),
-                       "gpu_mesh_cache_bytes": res.get("bytes"),
-                       "timings": {k: round(v, 4) for k, v in first.stats["timings"].items()
-                                   if isinstance(v, float)}}  # fmt: skip
+        out[preset] = {
+            "first_frame_seconds": round(cold, 3),
+            "frame_seconds_median": round(med, 4),
+            "fps_median": round(1.0 / med, 2),
+            "frames": n,
+            "size": [width, height],
+            "world_parts": w.runtime.last_frame.get("parts"),
+            "triangles": w.runtime.last_frame.get("triangles"),
+            "gpu_mesh_cache_bytes": res.get("bytes"),
+            "timings": {
+                k: round(v, 4) for k, v in first.stats["timings"].items() if isinstance(v, float)
+            },
+        }
     return out
 
 
@@ -323,7 +367,9 @@ def main(argv: list[str]) -> int:
         if args.quick:
             cmd.append("--quick")
         t0 = time.perf_counter()
-        proc = subprocess.run(cmd, capture_output=True, text=True, env={**os.environ, **env}, cwd=ROOT)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, env={**os.environ, **env}, cwd=ROOT
+        )
         lines = [line for line in proc.stdout.splitlines() if line.startswith("BENCH-RESULT ")]
         if proc.returncode != 0 or not lines:
             results[key] = {"error": proc.stderr[-2000:]}

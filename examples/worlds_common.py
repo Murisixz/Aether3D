@@ -31,8 +31,14 @@ LIGHTING = {
 }
 
 
-def light(scene, preset: str = "golden", *, fog: float = 0.00012, fog_height: float = 0.0,
-          falloff: float = 0.0012) -> Any:  # fmt: skip
+def light(
+    scene,
+    preset: str = "golden",
+    *,
+    fog: float = 0.00012,
+    fog_height: float = 0.0,
+    falloff: float = 0.0012,
+) -> Any:
     """A sun, a sky with glows, height fog and hemisphere ambient light."""
     direction, intensity, glow, fog_color, horizon, ambient, _ = LIGHTING[preset]
     sun = scene.add_directional_light("Sun", direction=direction, intensity=intensity)
@@ -59,8 +65,17 @@ def exposure(preset: str) -> float:
     return LIGHTING[preset][6]
 
 
-def flight(scene, name: str, eyes: list, aims: list, *, start: float, end: float, fov: float = 50.0,
-           far: float = 40000.0) -> Any:  # fmt: skip
+def flight(
+    scene,
+    name: str,
+    eyes: list,
+    aims: list,
+    *,
+    start: float,
+    end: float,
+    fov: float = 50.0,
+    far: float = 40000.0,
+) -> Any:
     """A camera flying through ``eyes`` (smooth path, constant speed) while looking at a
     target moving through ``aims``."""
     a = scene.animation
@@ -74,44 +89,84 @@ def flight(scene, name: str, eyes: list, aims: list, *, start: float, end: float
     return cam
 
 
-def render_still(scene, path: Path, *, camera=None, time: float | None = None, width=1920,
-                 height=1080, path_tracing: int = 0, preset: str = "golden",
-                 cascades: int = 4, distance: float = 6000.0) -> dict:  # fmt: skip
+def render_still(
+    scene,
+    path: Path,
+    *,
+    camera=None,
+    time: float | None = None,
+    width=1920,
+    height=1080,
+    path_tracing: int = 0,
+    preset: str = "golden",
+    cascades: int = 4,
+    distance: float = 6000.0,
+) -> dict:
     """One still (GPU rasterizer with cascaded shadows, or the GPU path tracer with
     ``path_tracing`` samples per pixel); returns timings and the backend report."""
-    options: dict[str, Any] = {"width": width, "height": height, "tonemap": "neutral",
-                               "exposure": exposure(preset)}  # fmt: skip
+    options: dict[str, Any] = {
+        "width": width,
+        "height": height,
+        "tonemap": "neutral",
+        "exposure": exposure(preset),
+    }
     if camera is not None:
         options["camera"] = camera
     if time is not None:
         options["time"] = time
     t0 = _now()
     if path_tracing:
-        r = scene.render(backend="gpu_path", path={"samples": path_tracing, "bounces": 3}, **options)
+        r = scene.render(
+            backend="gpu_path", path={"samples": path_tracing, "bounces": 3}, **options
+        )
     else:
-        r = scene.render(backend="gpu", shadows={"cascades": cascades, "distance": distance,
-                                                 "map_size": 4096}, **options)  # fmt: skip
+        r = scene.render(
+            backend="gpu",
+            shadows={"cascades": cascades, "distance": distance, "map_size": 4096},
+            **options,
+        )
     seconds = _now() - t0
     path.parent.mkdir(parents=True, exist_ok=True)
     r.save(path)
-    return {"path": str(path), "seconds": round(seconds, 2), "backend": r.backend.get("name"),
-            "adapter": (r.backend.get("adapter") or {}).get("name"),
-            "diagnostics": sorted({d.code for d in r.diagnostics})}  # fmt: skip
+    return {
+        "path": str(path),
+        "seconds": round(seconds, 2),
+        "backend": r.backend.get("name"),
+        "adapter": (r.backend.get("adapter") or {}).get("name"),
+        "diagnostics": sorted({d.code for d in r.diagnostics}),
+    }
 
 
-def render_video_frames(scene, frames_dir: Path, *, fps: int, start: float, end: float, camera=None,
-                        width=1920, height=1080, preset: str = "golden", cascades: int = 4,
-                        distance: float = 6000.0, progress=None, step: int = 1) -> dict:  # fmt: skip
+def render_video_frames(
+    scene,
+    frames_dir: Path,
+    *,
+    fps: int,
+    start: float,
+    end: float,
+    camera=None,
+    width=1920,
+    height=1080,
+    preset: str = "golden",
+    cascades: int = 4,
+    distance: float = 6000.0,
+    progress=None,
+    step: int = 1,
+) -> dict:
     """Every frame of ``[start, end)`` at ``fps`` as PNG (GPU rasterizer, cascaded shadows),
     with per-frame seconds and the worlds' statistics."""
     if frames_dir.exists():
         shutil.rmtree(frames_dir)
     frames_dir.mkdir(parents=True)
     count = int(round((end - start) * fps))
-    options: dict[str, Any] = {"width": width, "height": height, "tonemap": "neutral",
-                               "exposure": exposure(preset), "backend": "gpu",
-                               "shadows": {"cascades": cascades, "distance": distance,
-                                           "map_size": 4096}}  # fmt: skip
+    options: dict[str, Any] = {
+        "width": width,
+        "height": height,
+        "tonemap": "neutral",
+        "exposure": exposure(preset),
+        "backend": "gpu",
+        "shadows": {"cascades": cascades, "distance": distance, "map_size": 4096},
+    }
     if camera is not None:
         options["camera"] = camera
     rows = []
@@ -124,15 +179,28 @@ def render_video_frames(scene, frames_dir: Path, *, fps: int, start: float, end:
         r.save(frames_dir / f"frame_{k // step:05d}.png")
         worlds = {w.name: dict(w.runtime.last_frame) for w in scene.worlds}
         cache = (r.backend.get("resources") or {}).get("mesh_cache") or {}
-        rows.append({"frame": k // step, "time": round(t, 4), "seconds": round(seconds, 3),
-                     "worlds": worlds, "gpu_mesh_cache_bytes": cache.get("bytes")})  # fmt: skip
+        rows.append(
+            {
+                "frame": k // step,
+                "time": round(t, 4),
+                "seconds": round(seconds, 3),
+                "worlds": worlds,
+                "gpu_mesh_cache_bytes": cache.get("bytes"),
+            }
+        )
         if progress is not None:
             progress(k // step + 1, count // step)
     total = _now() - t_all
     secs = sorted(r["seconds"] for r in rows)
-    return {"frames": len(rows), "fps": fps / step, "seconds": round(total, 1),
-            "seconds_per_frame_median": secs[len(secs) // 2], "seconds_per_frame_max": secs[-1],
-            "size": [width, height], "rows": rows}  # fmt: skip
+    return {
+        "frames": len(rows),
+        "fps": fps / step,
+        "seconds": round(total, 1),
+        "seconds_per_frame_median": secs[len(secs) // 2],
+        "seconds_per_frame_max": secs[-1],
+        "size": [width, height],
+        "rows": rows,
+    }
 
 
 def encode(frames_dir: Path, out_dir: Path, name: str, fps: float, *, master: bool = True) -> dict:
@@ -147,21 +215,83 @@ def encode(frames_dir: Path, out_dir: Path, name: str, fps: float, *, master: bo
     out_dir.mkdir(parents=True, exist_ok=True)
     mp4 = out_dir / f"{name}_1080p.mp4"
     commands = {
-        "mp4": [exe, "-y", "-loglevel", "error", "-framerate", rate, "-i", pattern, "-c:v", "libx264",
-                "-preset", "slow", "-crf", "14", "-pix_fmt", "yuv420p", "-vf",
-                "scale=1920:1080:flags=lanczos:out_color_matrix=bt709:out_range=tv",
-                "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-                "-movflags", "+faststart", str(mp4)],
-        "preview": [exe, "-y", "-loglevel", "error", "-framerate", rate, "-i", pattern, "-c:v", "libx264",
-                    "-preset", "slow", "-crf", "23", "-pix_fmt", "yuv420p", "-vf",
-                    "scale=960:540:flags=lanczos:out_color_matrix=bt709:out_range=tv",
-                    "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-                    "-movflags", "+faststart", str(out_dir / f"{name}_preview.mp4")],
-    }  # fmt: skip
+        "mp4": [
+            exe,
+            "-y",
+            "-loglevel",
+            "error",
+            "-framerate",
+            rate,
+            "-i",
+            pattern,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "slow",
+            "-crf",
+            "14",
+            "-pix_fmt",
+            "yuv420p",
+            "-vf",
+            "scale=1920:1080:flags=lanczos:out_color_matrix=bt709:out_range=tv",
+            "-colorspace",
+            "bt709",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-movflags",
+            "+faststart",
+            str(mp4),
+        ],
+        "preview": [
+            exe,
+            "-y",
+            "-loglevel",
+            "error",
+            "-framerate",
+            rate,
+            "-i",
+            pattern,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "slow",
+            "-crf",
+            "23",
+            "-pix_fmt",
+            "yuv420p",
+            "-vf",
+            "scale=960:540:flags=lanczos:out_color_matrix=bt709:out_range=tv",
+            "-colorspace",
+            "bt709",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-movflags",
+            "+faststart",
+            str(out_dir / f"{name}_preview.mp4"),
+        ],
+    }
     if master:
-        commands["master"] = [exe, "-y", "-loglevel", "error", "-framerate", rate, "-i", pattern,
-                              "-c:v", "ffv1", "-level", "3", "-pix_fmt", "bgr0",
-                              str(out_dir / f"{name}_master.mkv")]  # fmt: skip
+        commands["master"] = [
+            exe,
+            "-y",
+            "-loglevel",
+            "error",
+            "-framerate",
+            rate,
+            "-i",
+            pattern,
+            "-c:v",
+            "ffv1",
+            "-level",
+            "3",
+            "-pix_fmt",
+            "bgr0",
+            str(out_dir / f"{name}_master.mkv"),
+        ]
     out: dict[str, Any] = {"commands": {k: " ".join(v[1:]) for k, v in commands.items()}}
     for key, cmd in commands.items():
         t0 = _now()
@@ -169,7 +299,11 @@ def encode(frames_dir: Path, out_dir: Path, name: str, fps: float, *, master: bo
         if run.returncode != 0:
             raise RuntimeError(f"ffmpeg {key} failed: {run.stderr[-600:]}")
         target = Path(cmd[-1])
-        out[key] = {"path": str(target), "bytes": target.stat().st_size, "seconds": round(_now() - t0, 1)}
+        out[key] = {
+            "path": str(target),
+            "bytes": target.stat().st_size,
+            "seconds": round(_now() - t0, 1),
+        }
     out["verify"] = verify(mp4, pattern, rate)
     if master:
         out["verify_master"] = verify(out_dir / f"{name}_master.mkv", pattern, rate)
@@ -180,20 +314,38 @@ def verify(video: Path, pattern: str, rate: str) -> dict:
     """PSNR (dB) and SSIM of a video's decoded frames against the PNG frames (both in
     RGB, at the frames' size)."""
     exe = shutil.which("ffmpeg")
-    graph = ("[0:v]scale=flags=lanczos:in_color_matrix=bt709:in_range=tv,format=rgb24[a];"
-             "[1:v]format=rgb24[b];[a][b]{}")  # fmt: skip
+    graph = (
+        "[0:v]scale=flags=lanczos:in_color_matrix=bt709:in_range=tv,format=rgb24[a];"
+        "[1:v]format=rgb24[b];[a][b]{}"
+    )
     result: dict[str, Any] = {}
     for metric in ("psnr", "ssim"):
-        cmd = [exe, "-hide_banner", "-i", str(video), "-framerate", rate, "-i", pattern,
-               "-lavfi", graph.format(metric), "-f", "null", "-"]  # fmt: skip
+        cmd = [
+            exe,
+            "-hide_banner",
+            "-i",
+            str(video),
+            "-framerate",
+            rate,
+            "-i",
+            pattern,
+            "-lavfi",
+            graph.format(metric),
+            "-f",
+            "null",
+            "-",
+        ]
         run = subprocess.run(cmd, capture_output=True, text=True, timeout=7200, check=False)
-        line = [x for x in run.stderr.splitlines() if "Parsed_" in x and "All:" in x or "average:" in x]
+        line = [
+            x for x in run.stderr.splitlines() if "Parsed_" in x and "All:" in x or "average:" in x
+        ]
         result[metric] = line[-1].split("] ", 1)[-1].strip() if line else run.stderr[-300:]
     return result
 
 
-def sheet(paths: list, out: Path, *, labels: list[str] | None = None, columns: int = 4,
-          width: int = 480) -> str:  # fmt: skip
+def sheet(
+    paths: list, out: Path, *, labels: list[str] | None = None, columns: int = 4, width: int = 480
+) -> str:
     """A contact sheet of PNG frames (downscaled to ``width``), drawn by Aether3D."""
     from aether3d.animation.frames import contact_sheet
     from aether3d.materials.images import decode_png
@@ -260,8 +412,12 @@ def machine() -> dict:
                 break
     except OSError:
         pass
-    return {"cpu": cpu, "aether3d": aether3d.__version__, "native": _native.status().get("enabled"),
-            "python": platform.python_version()}  # fmt: skip
+    return {
+        "cpu": cpu,
+        "aether3d": aether3d.__version__,
+        "native": _native.status().get("enabled"),
+        "python": platform.python_version(),
+    }
 
 
 def progress_printer(label: str):
