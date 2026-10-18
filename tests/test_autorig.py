@@ -294,3 +294,39 @@ def test_dry_runs_change_nothing_and_parts_bind_their_way(bodies):
     assert dominant == {"Head"}
     with pytest.raises(AnimationError):
         s.animation.autorig(body, parts={"Nope": "rigid"})
+
+
+def test_attached_parts_move_with_the_placed_character(bodies):
+    """Attached hard pieces are parented to the armature (where they are), so placing or
+    turning the character afterwards keeps them on their joints; undo restores the
+    hierarchy."""
+    from aether3d.rendering.overlay import animation_overlay
+    from aether3d.rendering.scene_data import world_matrices
+
+    s = Scene("Placed")
+    body = s.add_object("Body", mesh=bodies["a_pose"])
+    helmet = s.add_object(
+        "Helmet",
+        mesh=implicit_surface(
+            [{"type": "ellipsoid", "center": [0, 0.01, 1.66], "radii": [0.12, 0.13, 0.12]}], 0.02
+        ),
+    )
+    a = s.animation
+    rep = a.autorig([body, helmet], name="Rig", parts={"Helmet": "attach"})
+    assert rep["weights"]["Helmet"] == {"mode": "attach", "method": "attachment",
+                                        "joint": "Head", "parented": True}  # fmt: skip
+    arm = s.get_by_name("Rig")
+    assert helmet.parent is arm
+    rest = helmet.world_matrix
+    head0 = a.pose_joints(arm, 0.0, space="world")["Head"]
+    arm.rotation_euler = (0.0, 0.0, 90.0)
+    arm.position = (-2.6, 1.0, 0.0)
+    a.generate(arm, "walk", forward="-y")
+    for t in (0.0, 0.35, 0.7):
+        head = a.pose_joints(arm, t, space="world")["Head"]
+        w = world_matrices(s, animation_overlay(s, t))[helmet.id]
+        # the helmet keeps its place relative to the head, wherever the character goes
+        assert np.allclose(w, head @ np.linalg.inv(head0) @ rest, atol=1e-9), t
+    for _ in range(4):  # (the walk, the position, the rotation, the auto-rig)
+        s.history.undo()
+    assert helmet.parent is None and "Rig" not in [o.name for o in s.objects]

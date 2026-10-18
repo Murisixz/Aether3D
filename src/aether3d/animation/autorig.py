@@ -713,6 +713,7 @@ def _brief(rep: dict[str, Any], mode: str) -> dict[str, Any]:
         "distance",
         "joint",
         "spine_smoothing",
+        "parented",
         "timings",
     )
     return {"mode": mode, **{k: rep[k] for k in keep if k in rep}}
@@ -765,8 +766,16 @@ def _attach_part(system, obj, arm) -> dict[str, Any]:
         d = float(np.linalg.norm(c - (a + t * (b - a))))
         if d < best:
             best, joint = d, j.name
+    # Parented to the armature (where it is): an attachment follows its joint relative to
+    # the authored armature, so the character can then be placed or turned as a whole.
+    ancestor, parented = obj.parent, False
+    while ancestor is not None and ancestor is not arm:
+        ancestor = ancestor.parent
+    if ancestor is None:
+        obj.set_parent(arm, keep_world_transform=True)
+        parented = True
     system.attach(obj, arm, joint)
-    return {"joint": joint, "method": "attachment"}
+    return {"joint": joint, "method": "attachment", "parented": parented}
 
 
 def _armature(system, armature, name, det) -> Any:
