@@ -1209,4 +1209,5 @@ def _same_arrays(rm: RenderMesh, mesh: Mesh) -> bool:
         and rm.normals is mesh.normals
         and rm.uvs is mesh.uvs
         and rm.groups is mesh.groups
+        and rm.colors is mesh.colors
     )

@@ -36,7 +36,7 @@ from .transform import Transform
 FORMAT_ID = "aether3d.project"
 """Value of the top-level ``format`` field identifying an Aether3D project."""
 
-FORMAT_VERSION = 9
+FORMAT_VERSION = 10
 """Version written by this release. Files with a higher version are rejected.
 
 * Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
@@ -56,6 +56,9 @@ FORMAT_VERSION = 9
   drawings) and their links to the objects that show them.
 * Version 9 (Aether3D 0.17.0) adds the animation document: ``scene.animation`` with the
   timeline settings and its items (clips, bindings).
+* Version 10 (Aether3D 0.18.0) adds procedural worlds (``scene.worlds``: definitions and
+  block edits), the outdoor atmosphere (``scene.world.atmosphere``) and vertex colours on
+  meshes (``colors``).
 
 Older files are upgraded on load by the functions in :data:`MIGRATIONS`.
 """
@@ -190,6 +193,24 @@ def _migrate_v8_to_v9(document: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _migrate_v9_to_v10(document: dict[str, Any]) -> dict[str, Any]:
+    """v9 -> v10: no worlds; the default (disabled) atmosphere; meshes have no colours."""
+    from .rendering.settings import Atmosphere
+
+    out = dict(document)
+    scene = out.get("scene")
+    if isinstance(scene, dict):
+        scene = dict(scene)
+        scene.setdefault("worlds", [])
+        world = scene.get("world")
+        if isinstance(world, dict):
+            world = dict(world)
+            world.setdefault("atmosphere", Atmosphere().to_dict())
+            scene["world"] = world
+        out["scene"] = scene
+    return out
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -199,6 +220,7 @@ MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     6: _migrate_v6_to_v7,
     7: _migrate_v7_to_v8,
     8: _migrate_v8_to_v9,
+    9: _migrate_v9_to_v10,
 }
 """``MIGRATIONS[n]`` upgrades a version-``n`` document to version ``n + 1``."""
 
@@ -223,6 +245,8 @@ def _mesh_to_dict(mesh: Mesh) -> dict[str, Any]:
     data["triangles"] = mesh.triangles.tolist()
     if mesh.groups is not None:
         data["groups"] = mesh.groups.tolist()
+    if mesh.colors is not None:
+        data["colors"] = _float32_list(mesh.colors)
     return data
 
 
@@ -316,6 +340,7 @@ def scene_to_dict(
             "objects": objects,
             "cad": _cad_to_dict(scene),
             "animation": _animation_to_dict(scene),
+            "worlds": [] if scene._worlds is None else scene._worlds.to_json(),
         },
         "meshes": meshes,
     }
@@ -442,11 +467,12 @@ def _type_name(value: Any) -> str:
 
 
 def _mesh_from_dict(value: Any, loc: str) -> Mesh:
-    data = _object(value, loc, ("positions", "triangles"), ("normals", "uvs", "groups"))
+    data = _object(value, loc, ("positions", "triangles"), ("normals", "uvs", "groups", "colors"))
     positions = _rows(data["positions"], 3, f"{loc}.positions")
     triangles = _rows(data["triangles"], 3, f"{loc}.triangles", integer=True)
     normals = _rows(data["normals"], 3, f"{loc}.normals") if "normals" in data else None
     uvs = _rows(data["uvs"], 2, f"{loc}.uvs") if "uvs" in data else None
+    colors = _rows(data["colors"], 4, f"{loc}.colors") if "colors" in data else None
     groups = None
     if "groups" in data:
         groups = _list(data["groups"], f"{loc}.groups")
@@ -459,6 +485,7 @@ def _mesh_from_dict(value: Any, loc: str) -> Mesh:
             normals=None if normals is None else np.array(normals, dtype=np.float64).reshape(-1, 3),
             uvs=None if uvs is None else np.array(uvs, dtype=np.float64).reshape(-1, 2),
             groups=None if groups is None else np.array(groups, dtype=np.int64),
+            colors=None if colors is None else np.array(colors, dtype=np.float64).reshape(-1, 4),
         )
     except OverflowError:
         raise ProjectFormatError("number out of range", loc) from None
@@ -522,6 +549,7 @@ def scene_from_dict(
             "objects",
             "cad",
             "animation",
+            "worlds",
         ),
     )
     scene = Scene(_string(scene_data["name"], "scene.name"))
@@ -732,6 +760,20 @@ def _read_scene(
         library.base_dir = base.absolute()
     _read_cad(scene, scene_data["cad"])
     _read_animation(scene, scene_data["animation"])
+    _read_worlds(scene, scene_data["worlds"])
+
+
+def _read_worlds(scene: Scene, data: Any) -> None:
+    if not isinstance(data, list):
+        raise ProjectFormatError(f"expected an array, got {_type_name(data)}", "scene.worlds")
+    if not data:
+        return
+    try:
+        scene.worlds._load(data, "scene.worlds")
+    except AetherError as exc:
+        raise ProjectFormatError(
+            getattr(exc, "message", str(exc)), getattr(exc, "location", None) or "scene.worlds"
+        ) from None
 
 
 def _read_animation(scene: Scene, data: Any) -> None:

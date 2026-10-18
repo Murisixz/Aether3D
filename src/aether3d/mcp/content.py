@@ -17,6 +17,8 @@ Resources (read-only):
 * ``aether3d://schema/cad-script`` -- the JSON Schema of CAD scripts.
 * ``aether3d://animation/guide`` -- the animation guide for agents (Markdown).
 * ``aether3d://schema/animation-script`` -- the JSON Schema of animation scripts.
+* ``aether3d://worlds/guide`` -- the procedural worlds guide for agents (Markdown).
+* ``aether3d://schema/world-script`` -- the JSON Schema of world scripts.
 * ``aether3d://schema/expectations``, ``.../vision-evaluation``, ``.../corrections`` -- the
   JSON Schemas of the feedback documents.
 * ``aether3d://observations/{id}`` -- an observation's measured facts (JSON), and
@@ -74,6 +76,14 @@ def cad_guide() -> str:
 def animation_guide() -> str:
     return (
         importlib_resources.files("aether3d.animation")
+        .joinpath("guide.md")
+        .read_text(encoding="utf-8")
+    )
+
+
+def worlds_guide() -> str:
+    return (
+        importlib_resources.files("aether3d.worlds")
         .joinpath("guide.md")
         .read_text(encoding="utf-8")
     )
@@ -228,6 +238,25 @@ def resources(session: Session) -> list[types.Resource]:
             mime_type="application/schema+json",
         )
     )
+    out.append(
+        types.Resource(
+            uri="aether3d://worlds/guide",
+            name="worlds-guide",
+            title="Procedural worlds guide",
+            description="Worlds, presets, features, structures, block edits, queries and "
+            "world scripts",
+            mime_type="text/markdown",
+        )
+    )
+    out.append(
+        types.Resource(
+            uri="aether3d://schema/world-script",
+            name="world-script-schema",
+            title="World script JSON Schema",
+            description="The JSON Schema (2020-12) of aether3d.world-script version 1",
+            mime_type="application/schema+json",
+        )
+    )
     for uri, (name, title) in FEEDBACK_SCHEMAS.items():
         out.append(
             types.Resource(
@@ -346,6 +375,12 @@ def read_resource(session: Session, uri: str) -> list[Any]:
         from ..animation.schema import animation_script_schema
 
         return data(animation_script_schema(), "application/schema+json")
+    if uri == "aether3d://worlds/guide":
+        return text(worlds_guide(), "text/markdown")
+    if uri == "aether3d://schema/world-script":
+        from ..worlds.script import schema as world_script_schema
+
+        return data(world_script_schema(), "application/schema+json")
     if uri in FEEDBACK_SCHEMAS:
         return data(feedback_schema(uri), "application/schema+json")
     if uri.startswith("aether3d://observations/"):

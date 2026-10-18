@@ -1,0 +1,216 @@
+{
+  "label": "Stage 16 final (0.18.0)",
+  "quick": false,
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.18.0",
+    "switches": {
+      "AETHER3D_EDITING_BULK": true,
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.18.0",
+      "reason": "loaded"
+    },
+    "git": "70e4738",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "regional": {
+      "native": true,
+      "temperate": {
+        "seconds": 1.226,
+        "nodes": 66049,
+        "rivers": 2,
+        "lakes": 2,
+        "iterations": 40,
+        "timings": {
+          "base": 0.224,
+          "erosion": 0.943,
+          "water": 0.015,
+          "fields": 0.008
+        }
+      },
+      "alpine_valley": {
+        "seconds": 6.515,
+        "nodes": 263169,
+        "rivers": 26,
+        "lakes": 0,
+        "iterations": 60,
+        "timings": {
+          "base": 0.849,
+          "erosion": 5.424,
+          "water": 0.064,
+          "fields": 0.032
+        }
+      },
+      "peak_rss_mib": 117.3,
+      "wall_seconds": 7.96
+    },
+    "terrain": {
+      "regional_seconds": 6.862,
+      "first_frame_seconds": 11.159,
+      "warm_frame_seconds": 0.1866,
+      "first_frame": {
+        "parts": 11581,
+        "meshes": 300,
+        "triangles": 2215056,
+        "seconds": 11.1274
+      },
+      "path_frames": 30,
+      "path_seconds_median": 0.613,
+      "path_seconds_max": 1.2849,
+      "tiles_generated": 628,
+      "cached_bytes": {
+        "tiles": 203933648,
+        "regional": 7714980,
+        "vegetation": 5148212,
+        "volumes": 0
+      },
+      "process_rss_mib": 415.5,
+      "peak_rss_mib": 478.5,
+      "wall_seconds": 37.87
+    },
+    "vegetation": {
+      "cold_seconds": 1.63,
+      "warm_seconds": 0.0065,
+      "tiles_placed": 1109,
+      "plants_placed": 52003,
+      "candidates": 226572,
+      "drawn": 18187,
+      "peak_rss_mib": 242.7,
+      "wall_seconds": 3.03
+    },
+    "blocks": {
+      "chunk_generate_ms": 5.93,
+      "chunk_mesh_ms": 8.56,
+      "first_frame_seconds": 6.36,
+      "warm_frame_seconds": 0.0331,
+      "first_frame": {
+        "parts": 764,
+        "meshes": 764,
+        "triangles": 1671640,
+        "seconds": 6.3524
+      },
+      "moving_seconds_median": 0.0336,
+      "cached_bytes": {
+        "tiles": 0,
+        "regional": 1855588,
+        "blocks": 360294256
+      },
+      "peak_rss_mib": 451.7,
+      "wall_seconds": 11.23
+    },
+    "volumes": {
+      "column_ms": 6.31,
+      "cube_ms": 40.65,
+      "cubes": 40,
+      "triangles": 106206,
+      "peak_rss_mib": 83.4,
+      "wall_seconds": 3.98
+    },
+    "queries": {
+      "height_points_per_second": 64048,
+      "all_fields_points_per_second": 16471,
+      "ground_path_seconds": 0.035,
+      "ground_path_points": 4037,
+      "find_sites_seconds": 0.037,
+      "sites": 5,
+      "peak_rss_mib": 188.0,
+      "wall_seconds": 3.8
+    },
+    "render": {
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "alpine_valley": {
+        "first_frame_seconds": 12.821,
+        "frame_seconds_median": 1.1135,
+        "fps_median": 0.9,
+        "frames": 24,
+        "size": [
+          1920,
+          1080
+        ],
+        "world_parts": 7751,
+        "triangles": 2351598,
+        "gpu_mesh_cache_bytes": 225881680,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 0.0,
+          "extract": 0.0004,
+          "init": 0.0043,
+          "upload": 0.2208,
+          "prepare": 0.1186,
+          "gpu": 0.6292,
+          "readback": 0.0201,
+          "total": 12.5862
+        }
+      },
+      "blocky_adventure": {
+        "first_frame_seconds": 7.79,
+        "frame_seconds_median": 0.5382,
+        "fps_median": 1.86,
+        "frames": 24,
+        "size": [
+          1920,
+          1080
+        ],
+        "world_parts": 758,
+        "triangles": 1709226,
+        "gpu_mesh_cache_bytes": 293097448,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 0.0,
+          "extract": 0.0003,
+          "init": 0.0024,
+          "upload": 0.4653,
+          "prepare": 0.0099,
+          "gpu": 0.2617,
+          "readback": 0.0132,
+          "total": 7.5553
+        }
+      },
+      "peak_rss_mib": 1040.0,
+      "wall_seconds": 72.82
+    },
+    "regional_numpy": {
+      "native": false,
+      "temperate": {
+        "seconds": 7.706,
+        "nodes": 66049,
+        "rivers": 2,
+        "lakes": 2,
+        "iterations": 40,
+        "timings": {
+          "base": 0.223,
+          "erosion": 7.251,
+          "water": 0.106,
+          "fields": 0.008
+        }
+      },
+      "alpine_valley": {
+        "seconds": 53.708,
+        "nodes": 263169,
+        "rivers": 26,
+        "lakes": 0,
+        "iterations": 60,
+        "timings": {
+          "base": 1.075,
+          "erosion": 51.596,
+          "water": 0.474,
+          "fields": 0.034
+        }
+      },
+      "peak_rss_mib": 164.0,
+      "wall_seconds": 61.62
+    }
+  }
+}

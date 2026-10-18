@@ -83,6 +83,7 @@ ASPECTS: dict[str, h.Aspect] = {
     "cad.settings": h.CAD_SETTINGS,
     "animation.item": h.ANIMATION_ITEM,
     "animation.settings": h.ANIMATION_SETTINGS,
+    "world.item": h.WORLD_ITEM,
 }
 KEYS = {aspect: key for key, aspect in ASPECTS.items()}
 
@@ -123,6 +124,7 @@ class _Writer:
         self.detached_textures: dict[str, Any] = {}
         self.cad_items: dict[str, Any] = {}
         self.animation_items: dict[str, Any] = {}
+        self.world_items: dict[str, Any] = {}
 
     # -- references -------------------------------------------------------------------
 
@@ -169,6 +171,9 @@ class _Writer:
             return target.id
         if key == "animation.item":
             self.animation_items.setdefault(target.id, target)
+            return target.id
+        if key == "world.item":
+            self.world_items.setdefault(target.id, target)
             return target.id
         if key.startswith("object."):
             return self.obj(target)
@@ -221,6 +226,14 @@ class _Writer:
             return {"alive": alive, "name": name, "definition": definition.to_json()}
         if key == "animation.settings":
             return s
+        if key == "world.item":
+            alive, name, definition, edits = s
+            return {
+                "alive": alive,
+                "name": name,
+                "definition": definition,
+                "edits": edits.to_json(),
+            }
         raise AssertionError(key)  # pragma: no cover
 
     def tile_blob(self, tile: Any) -> int:
@@ -413,6 +426,9 @@ def history_document(scene: Scene, project_dir: Path) -> dict[str, Any]:
             {"id": i.id, "kind": i.kind}
             for i in sorted(writer.animation_items.values(), key=lambda i: i._serial)
         ],
+        "world_items": [
+            {"id": w.id} for w in sorted(writer.world_items.values(), key=lambda w: w._serial)
+        ],
     }
 
 
@@ -456,14 +472,16 @@ def _fields_from_dict(key: str, data: Any, loc: str) -> tuple | None:
 
 def _world_to_dict(state: tuple) -> dict[str, Any]:
     from .materials.material import _jsonable
-    from .rendering.settings import Environment
+    from .rendering.settings import Atmosphere, Environment
 
     env = dict(zip(Environment._FIELDS, state[3], strict=True))
+    atm = dict(zip(Atmosphere._FIELDS, state[4], strict=True))
     return {
         "background": _jsonable(state[0]),
         "ambient_color": _jsonable(state[1]),
         "ambient_intensity": state[2],
         "environment": {k: _jsonable(v) for k, v in env.items()},
+        "atmosphere": {k: _jsonable(v) for k, v in atm.items()},
     }
 
 
@@ -472,11 +490,13 @@ def _world_from_dict(data: Any, loc: str) -> tuple:
 
     world = World.from_dict(data, loc)
     env = world._environment
+    atm = world._atmosphere
     return (
         world._background,
         world._ambient_color,
         world._ambient_intensity,
         tuple(getattr(env, f"_{f}") for f in env._FIELDS),
+        tuple(getattr(atm, f"_{f}") for f in atm._FIELDS),
     )
 
 
@@ -568,6 +588,34 @@ class _Reader:
         self._cad_items(doc.get("cad_items", []))
         self.animation_items: dict[str, Any] = {}
         self._animation_items(doc.get("animation_items", []))
+        self.world_items: dict[str, Any] = {}
+        self._world_items(doc.get("world_items", []))
+
+    def _world_items(self, records: Any) -> None:
+        """Worlds the history refers to (removed ones come back through undo)."""
+        import uuid
+
+        from .worlds.definition import build_definition
+        from .worlds.edits import Edits
+        from .worlds.system import World
+
+        records = _list(records, "world_items")
+        if not records:
+            return
+        system = self.scene.worlds
+        for i, raw in enumerate(records):
+            loc = f"world_items[{i}]"
+            raw = _record(raw, loc, ("id",))
+            try:
+                wid = str(uuid.UUID(_string(raw["id"], f"{loc}.id")))
+            except ValueError:
+                raise _bad("not a UUID", f"{loc}.id") from None
+            world = system._items.get(wid)
+            if world is None:
+                world = World(system, wid, f"(removed {wid[:8]})", build_definition(), Edits())
+                world._alive = False
+                system._items[wid] = world
+            self.world_items[wid] = world
 
     def _animation_items(self, records: Any) -> None:
         """Animation items the history refers to (removed ones come back through undo)."""
@@ -847,6 +895,10 @@ class _Reader:
             if ref is not None:
                 raise _bad("a change of animation.settings has no target", loc)
             return self.scene.animation
+        if key == "world.item":
+            if ref not in self.world_items:
+                raise _bad(f"unknown world {ref!r}", loc)
+            return self.world_items[ref]
         if key.startswith("object."):
             return self.obj(ref, loc)
         if key == "material":
@@ -982,6 +1034,20 @@ class _Reader:
                 return _check_settings(data, loc)
             except AetherError as exc:
                 raise _bad(str(exc), loc) from None
+        if key == "world.item":
+            from .worlds.blocks import BLOCK_LIST
+            from .worlds.definition import check_definition
+            from .worlds.edits import Edits
+
+            data = _record(data, loc, ("alive", "name", "definition", "edits"))
+            if not isinstance(data["alive"], bool):
+                raise _bad("expected true or false", f"{loc}.alive")
+            try:
+                definition = check_definition(data["definition"], f"{loc}.definition")
+                edits = Edits.from_json(data["edits"], f"{loc}.edits", len(BLOCK_LIST))
+            except AetherError as exc:
+                raise _bad(str(exc), loc) from None
+            return (data["alive"], _string(data["name"], f"{loc}.name"), definition, edits)
         raise _bad(f"unknown aspect {key!r}", loc)  # pragma: no cover - checked before
 
     def animation_state(self, item: Any, data: Any, loc: str) -> tuple:
@@ -1106,7 +1172,7 @@ _TOP_KEYS = (
 
 
 def _check_header(doc: Any) -> dict[str, Any]:
-    doc = _record(doc, "", _TOP_KEYS, ("cad_items", "animation_items"))
+    doc = _record(doc, "", _TOP_KEYS, ("cad_items", "animation_items", "world_items"))
     if doc["format"] != FORMAT_ID:
         raise _bad(f"format must be {FORMAT_ID!r}", "format")
     if doc["format_version"] != FORMAT_VERSION:

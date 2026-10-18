@@ -76,7 +76,7 @@ MODE_NAMES = {
     5: "TRIANGLE_STRIP",
     6: "TRIANGLE_FAN",
 }
-SUPPORTED_ATTRIBUTES = ("POSITION", "NORMAL", "TEXCOORD_0")
+SUPPORTED_ATTRIBUTES = ("POSITION", "NORMAL", "TEXCOORD_0", "COLOR_0")
 _SKIN_ATTRIBUTE = re.compile(r"^(JOINTS|WEIGHTS)_\d+$")
 
 
@@ -574,6 +574,11 @@ class _Reader:
                 component == 5126 or (component in (5121, 5123) and normalized)
             )
             expected = "VEC2 float or normalized unsigned byte/short"
+        elif purpose == "COLOR_0":
+            ok = kind in ("VEC3", "VEC4") and (
+                component == 5126 or (component in (5121, 5123) and normalized)
+            )
+            expected = "VEC3/VEC4 float or normalized unsigned byte/short"
         else:
             ok = kind == "VEC3" and component == 5126
             expected = "VEC3 float"
@@ -654,7 +659,7 @@ class _Reader:
                 f"{loc}: more than {self.limits.max_vertices} vertices in total"
             )
         extra = {}
-        for name in ("NORMAL", "TEXCOORD_0"):
+        for name in ("NORMAL", "TEXCOORD_0", "COLOR_0"):
             if name in attributes:
                 values = self.accessor(attributes[name], f"{loc}/attributes/{name}", name)
                 if len(values) != n:
@@ -663,6 +668,18 @@ class _Reader:
                         f"{loc}/attributes/{name}",
                         "ATTRIBUTE_COUNT_MISMATCH",
                     )
+                if name == "COLOR_0":
+                    values = values.astype(np.float64)
+                    if values.shape[1] == 3:
+                        values = np.concatenate([values, np.ones((n, 1))], axis=1)
+                    if not np.all(np.isfinite(values)) or (
+                        values.size and (values.min() < 0.0 or values.max() > 1.0)
+                    ):
+                        raise AssetFormatError(
+                            "COLOR_0 values must be within [0, 1]",
+                            f"{loc}/attributes/COLOR_0",
+                            "INVALID_MESH_DATA",
+                        )
                 extra[name] = values
         skin = self.skin_weights(attributes, n, loc)
         targets = self.targets(prim, n, loc)
@@ -703,6 +720,7 @@ class _Reader:
             group,
             skin,
             targets,
+            extra.get("COLOR_0"),
         )
 
     def skin_weights(self, attributes: dict[str, Any], n: int, loc: str):
@@ -804,10 +822,11 @@ class _Reader:
                 f"{len(parts)} primitives became face groups of one mesh (each keeps its material)",
                 loc,
             )
-        positions, triangles, normals, uvs, offset = [], [], [], [], 0
+        positions, triangles, normals, uvs, colors, offset = [], [], [], [], [], 0
         groups = []
         has_normals = all(p[2] is not None for p in parts)
         has_uvs = all(p[3] is not None for p in parts)
+        has_colors = any(p[8] is not None for p in parts)
         for name, has, index in (("NORMAL", has_normals, 2), ("TEXCOORD_0", has_uvs, 3)):
             if not has and any(p[index] is not None for p in parts):
                 self.note(
@@ -826,6 +845,9 @@ class _Reader:
                 normals.append(nor)
             if has_uvs:
                 uvs.append(uv)
+            if has_colors:  # (primitives without COLOR_0 are white, as glTF renders them)
+                col = parts[k][8]
+                colors.append(np.ones((len(pos), 4)) if col is None else col)
         try:
             return Mesh(
                 axes.vectors_from_gltf(np.concatenate(positions).astype(np.float32)),
@@ -835,6 +857,7 @@ class _Reader:
                 else None,
                 uvs=axes.flip_uvs(np.concatenate(uvs)) if has_uvs else None,
                 groups=np.concatenate(groups) if grouped else None,
+                colors=np.concatenate(colors) if has_colors else None,
             )
         except ValidationError as exc:
             raise AssetFormatError(str(exc), loc, "INVALID_MESH_DATA") from None

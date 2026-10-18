@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.17.0 (animation, rigging, motion curves and cinematics).** Aether3D
+> **Status: v0.18.0 (procedural worlds and massive environments).** Aether3D
 > provides:
 >
 > - a scene graph with transforms and hierarchy;
@@ -92,15 +92,22 @@ graphical interface required.
 >   contacts and planting, mirroring, root motion, retargeting, camera moves and shot
 >   sequences, frame rendering with real motion blur, and glTF animation, skin and morph
 >   import/export -- all headless, from Python, JSON scripts, the CLI and MCP;
+> - **procedural worlds**: landscapes generated from a small JSON definition -- eroded
+>   multiscale terrain with rivers and lakes, climate and 16 blending biomes, 29
+>   vegetation species, volumetric caves and overhangs, structures and settlements joined
+>   by roads and bridges, and Minecraft-style block worlds with original pixel-art
+>   textures -- streamed with crack-free level of detail and byte-bounded caches, queried
+>   exactly, edited with undo, identical to the bit on every platform, and driven from
+>   Python, world scripts, the CLI and MCP;
 > - **incremental rendering and optional native kernels**: renders update only what
 >   changed since the last one (a 10,000-object GPU frame in 7-8 ms when nothing
 >   changed), and the optional `aether3d-native` package (Rust) traces rays, builds
->   transform hierarchies, skins meshes, filters PNG rows and triangulates polygons with
->   exactly the results of the NumPy code ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
+>   transform hierarchies, skins meshes, filters PNG rows, triangulates polygons and runs
+>   the hydrology sweeps of world generation with exactly the results of the NumPy code ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
-> Physics and procedural worlds (Stage 16, postponed: there is no 0.16.0) are not part
-> of this release. See the [changelog](CHANGELOG.md).
+> Physics is not part of this release. Procedural worlds (Stage 16) were built after
+> Stage 17 and ship as 0.18.0; there is no 0.16.0. See the [changelog](CHANGELOG.md).
 
 ## Quick start
 
@@ -445,6 +452,74 @@ See [docs/ANIMATION.md](docs/ANIMATION.md) and the examples
 [`animation_mcp_agent.py`](examples/animation_mcp_agent.py) (outputs in
 `examples/output/animation/`).
 
+### Procedural worlds
+
+```python
+from aether3d import Scene
+
+scene = Scene("Hills")
+hills = scene.worlds.create("Hills", "temperate", seed=4, size=2048)  # nothing generated yet
+print(hills.info()["mode"])  # terrain
+print(round(hills.height(100.0, -50.0), 3))  # 333.989 (exact; the same on every platform)
+print(hills.biome_at(100.0, -50.0))  # temperate_forest
+
+# A flat, dry site; a house on it (its foundation follows the natural ground) and a yard.
+site = hills.find_sites(1, radius=10.0, max_slope=12.0, spacing=80.0)[0]
+x, y = site["at"]
+hills.place_structure({"id": "inn", "kind": "house", "at": [x, y], "floors": 2})
+hills.add_feature({"type": "clear", "id": "yard", "shape": {"circle": [x, y, 45.0]}})
+print(len(hills.structures()), len(scene.history.entries))  # 1 3
+
+g = hills.height(x, y)
+scene.add_camera("Cam", position=(x - 24, y - 30, g + 9), look_at=(x, y, g + 3), far=4000)
+scene.add_directional_light("Sun", direction=(0.5, 0.6, -0.4), intensity=1.6)
+scene.world.atmosphere.configure(enabled=True, sun="Sun", ambient="hemisphere")
+image = scene.render(width=320, height=180, backend="cpu")  # generated here, for this view
+print(image.image.shape)  # (180, 320, 3)
+scene.save("hills.aether")  # the definition and edits, never generated geometry
+```
+
+- **A definition, not a mesh.** A world is a validated JSON definition (seed, extent,
+  terrain recipe, climate, biomes, hydrology, caves, vegetation, structures, streaming)
+  plus sparse edits; everything else is generated lazily for what a render, query or
+  export needs, cached within a memory budget, and identical to the bit on every
+  platform, with or without the native kernels.
+- **Landscapes.** Fractal, ridged and eroded noise with domain warping; a regional
+  hydrology stage (priority flood, drainage, stream-power erosion, sediment, thermal
+  relaxation) that carves valleys and traces rivers and lakes; climate with lapse rate
+  and rain shadows; 16 biomes blended by temperature and moisture, declared as data;
+  29 original vegetation species with three levels of detail; caves and overhangs as a
+  signed distance field meshed by marching cubes near the camera.
+- **Block worlds.** The same fields as Minecraft-style blocks: 58 kinds with original
+  16 x 16 pixel-art textures, greedy meshing with ambient occlusion, block trees, caves,
+  ores, structures stamped in blocks, block edits saved with the project.
+- **Structures.** Houses, towers, castles, ruins, wells and bridges on foundations that
+  follow the natural ground; site finding, villages, castles on high ground, roads with
+  bridges -- frozen into the definition, one undo step.
+- **Massive and streamed.** Bounded worlds up to 2,000 km and unbounded ones; a quadtree
+  of tiles refined by screen-space error, stitched and skirted (no cracks), byte-bounded
+  caches, measured memory, float64 coordinates and camera-relative rendering far from
+  the origin; animated cameras drive streaming and frames render identically in any
+  order.
+- **For agents.** World scripts (atomic JSON), `aether3d world
+  run|info|sample|export|presets|blocks|schema|guide`, the MCP tools `run_script` and
+  `inspect_world`, and glTF export of finite regions.
+
+![An alpine valley: eroded ranges, a lake and forests at golden hour, generated and path-traced by Aether3D](examples/output/worlds/a_alpine_valley/valley_preview.png)
+
+![A block world: a castle on a hill, block trees and a village, with original pixel-art textures](examples/output/worlds/b_block_world/castle_preview.png)
+
+![Biomes of one continent, from snowy taiga to tropical forest and swamp](examples/output/worlds/d_biomes/biomes_sheet.png)
+
+See [docs/WORLDS.md](docs/WORLDS.md) and the showcases
+[`worlds_alpine_valley.py`](examples/worlds_alpine_valley.py),
+[`worlds_block_world.py`](examples/worlds_block_world.py),
+[`worlds_streaming.py`](examples/worlds_streaming.py),
+[`worlds_biomes.py`](examples/worlds_biomes.py),
+[`worlds_caves.py`](examples/worlds_caves.py) and
+[`worlds_character.py`](examples/worlds_character.py) (outputs in
+`examples/output/worlds/`).
+
 ### Procedural geometry
 
 ```python
@@ -696,15 +771,15 @@ pip install -e ".[mcp]"
 claude mcp add aether3d -- aether3d mcp serve --workspace "$PWD"   # Claude Code
 ```
 
-The server gives MCP clients 26 tools -- `execute_scene_plan`, `spatial_query`,
+The server gives MCP clients 27 tools -- `execute_scene_plan`, `spatial_query`,
 `render_preview` (the GPU rasterizer when it works, the CPU one otherwise, and it says
 which; at any animation `time`), `history`, `scene_save`, `export_scene` (glTF with
 skeletons, skins, morph targets and animations, and STEP, IFC, DXF, SVG and PNG of CAD
-items), `run_script` (edit, procedural, scene, sculpt, texture, CAD and animation
+items), `run_script` (edit, procedural, scene, sculpt, texture, CAD, animation and world
 scripts), `inspect_mesh`, `inspect_uvs`, `inspect_texture`, `inspect_cad`, `import_cad`,
-`inspect_animation`, the visual feedback tools (`observe_scene`, `diagnose_scene`,
+`inspect_animation`, `inspect_world`, the visual feedback tools (`observe_scene`, `diagnose_scene`,
 `propose_corrections`, `apply_corrections`, `feedback_loop`), ... -- plus the plan,
-feedback, sculpting, texturing, CAD and animation guides, their JSON Schemas and example
+feedback, sculpting, texturing, CAD, animation and worlds guides, their JSON Schemas and example
 plans as resources. It speaks stdio only, keeps every file inside the workspace, and
 never runs code from its arguments.
 
@@ -893,6 +968,10 @@ $ aether3d animation run scene.aether walk.json --json      # animation script (
 $ aether3d animation report scene.aether --kind contacts --target Hero --feet Foot.L --feet Foot.R
 $ aether3d animation render scene.aether frames/ --contact-sheet sheet.png --video walk.mp4
 $ aether3d export scene.aether hero.glb --animation clips   # skins, morphs, animations
+$ aether3d world run valley.aether valley.json --json       # world script (atomic)
+$ aether3d world sample valley.aether --at 120,-40 --json   # exact height, biome, water
+$ aether3d world export valley.aether valley.glb --region=-250,-250,250,250   # glTF of a region
+$ aether3d world presets                                    # presets, biomes, species
 $ aether3d procedural run castle.aether build.json         # declarative procedural script
 $ aether3d procedural set castle.aether tower_count=8      # change parameters (validated)
 $ aether3d procedural inspect castle.aether --evaluate     # parameters, nodes, stacks
@@ -1037,6 +1116,7 @@ see [docs/PERFORMANCE.md](docs/PERFORMANCE.md#phase-3-native-kernels-rust).
 | [docs/MODELING.md](docs/MODELING.md) | Advanced modeling and sculpting: bevels, cuts, bridges, slides, sweeps; the sculpt mesh, brushes, strokes, masks, symmetry, dynamic topology, remeshing, symmetrize, validity tiers, scripts, CLI, MCP, history, design, performance, limitations |
 | [docs/TEXTURING.md](docs/TEXTURING.md) | UV mapping, texture painting and baking: unwrapping, projections, island tools, diagnostics, MikkTSpace, painted textures and layers, brushes and strokes, baking, texture transfer, scripts, CLI, MCP, safety, performance, limitations |
 | [docs/ANIMATION.md](docs/ANIMATION.md) | Animation, rigging and cinematics: authored and evaluated state, time, paths, F-curves (interpolation, handles, easing, derivatives, extrapolation, modifiers, key operations, reports, fitting, graphs), rotations, clips and NLA, rigs, skins, IK and constraints, motion generators, contacts, retargeting, cameras, frame rendering, glTF, scripts, CLI, MCP, security, limitations |
+| [docs/WORLDS.md](docs/WORLDS.md) | Procedural worlds: definitions and determinism, terrain, hydrology, climate and biomes, features, water, caves and overhangs, block worlds, vegetation, structures and settlements, streaming, level of detail and memory, rendering, queries, history and files, glTF export, world scripts, CLI, MCP, limits and security, performance |
 | [docs/CAD.md](docs/CAD.md) | Precision modeling and CAD: the document, units and tolerances, sketches and the constraint solver, features and persistent names, the B-rep kernel and booleans, assemblies, measurements and snapping, drawings, STEP/DXF/IFC exchange, CAD scripts, CLI, MCP, limitations |
 | [docs/BUILDINGS.md](docs/BUILDINGS.md) | Architecture and BIM: buildings, levels, walls and joins, openings and families, rooms, slabs, roofs, stairs, columns, beams, quantities and schedules, plans, IFC, limitations |
 | [docs/PROCEDURAL.md](docs/PROCEDURAL.md) | Procedural geometry: parameters, expressions, modifiers, caching, scripts, CLI, limitations |

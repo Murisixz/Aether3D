@@ -507,3 +507,45 @@ class AnimationError(AetherError, ValueError):
             "hint": self.hint,
             "details": self.details,
         }
+
+
+class WorldError(AetherError, ValueError):
+    """A procedural-world request cannot be carried out; the scene, its worlds and its
+    history are unchanged and no file was written.
+
+    Raised for world definitions and presets, terrain features, biomes, hydrology, caves,
+    block worlds and their edits, vegetation, structures and settlements, streaming
+    budgets, world queries, world scripts and world exports (see ``docs/WORLDS.md``).
+    ``code`` is a stable identifier (e.g. ``"INVALID_DEFINITION"``, ``"UNKNOWN_BIOME"``,
+    ``"OUTSIDE_WORLD"``, ``"LIMIT_EXCEEDED"``, ``"GENERATION_CANCELLED"``), ``location``
+    names the offending element (``worlds[Valley].definition.terrain.mountains.height``),
+    ``hint`` suggests how to proceed and ``details`` carries structured context.
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        location: str | None = None,
+        *,
+        hint: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.location = location
+        self.hint = hint
+        self.details = dict(details or {})
+        text = f"[{code}] " + (f"{location}: " if location else "") + message
+        if hint:
+            text += f". Hint: {hint}"
+        super().__init__(text)
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "location": self.location,
+            "hint": self.hint,
+            "details": self.details,
+        }

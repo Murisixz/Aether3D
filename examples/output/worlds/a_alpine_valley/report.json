@@ -1,0 +1,533 @@
+{
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "aether3d": "0.18.0",
+    "native": true,
+    "python": "3.14.8"
+  },
+  "size": [
+    1920,
+    1080
+  ],
+  "build": {
+    "regional_seconds": 7.17,
+    "regional": {
+      "domain": [
+        -4096.0,
+        -4096.0,
+        4096.0,
+        4096.0
+      ],
+      "cell": 16.0,
+      "nodes": 263169,
+      "rivers": 26,
+      "river_length_km": 15.459,
+      "lakes": 0,
+      "seconds": 7.167,
+      "timings": {
+        "base": 1.211,
+        "erosion": 5.686,
+        "water": 0.066,
+        "fields": 0.034
+      },
+      "native": true,
+      "iterations": 60,
+      "kept_lakes": 3,
+      "eroded_m3": 7452886506.0010605,
+      "deposited_m3": 631818106.0156188
+    },
+    "settlements": {
+      "settlements": [
+        {
+          "prefix": "village-0",
+          "at": [
+            -1153.99,
+            -1577.81
+          ],
+          "houses": 6
+        }
+      ],
+      "roads": [],
+      "castles": [],
+      "items": 8,
+      "road_features": 3
+    },
+    "seconds": 7.39
+  },
+  "stills": {
+    "valley": {
+      "path": "examples/output/worlds/a_alpine_valley/valley.png",
+      "seconds": 112.21,
+      "backend": "gpu_path",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [],
+      "world": {
+        "parts": 8454,
+        "meshes": 287,
+        "triangles": 1866314,
+        "seconds": 11.9791
+      }
+    },
+    "village": {
+      "path": "examples/output/worlds/a_alpine_valley/village.png",
+      "seconds": 227.25,
+      "backend": "gpu_path",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [],
+      "world": {
+        "parts": 14586,
+        "meshes": 491,
+        "triangles": 3350871,
+        "seconds": 10.1361
+      }
+    },
+    "lake": {
+      "path": "examples/output/worlds/a_alpine_valley/lake.png",
+      "seconds": 128.6,
+      "backend": "gpu_path",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [],
+      "world": {
+        "parts": 10860,
+        "meshes": 407,
+        "triangles": 2593273,
+        "seconds": 3.9567
+      }
+    }
+  },
+  "video": {
+    "frames": 360,
+    "fps": 30.0,
+    "seconds": 492.9,
+    "seconds_per_frame_median": 0.96,
+    "seconds_per_frame_max": 4.742,
+    "size": [
+      1920,
+      1080
+    ],
+    "frames_report": [
+      {
+        "frame": 0,
+        "time": 0.0,
+        "seconds": 4.742,
+        "worlds": {
+          "Valley": {
+            "parts": 7755,
+            "meshes": 357,
+            "triangles": 2438984,
+            "seconds": 3.4966
+          }
+        },
+        "gpu_mesh_cache_bytes": 73000304
+      },
+      {
+        "frame": 15,
+        "time": 0.5,
+        "seconds": 1.114,
+        "worlds": {
+          "Valley": {
+            "parts": 8827,
+            "meshes": 385,
+            "triangles": 2710174,
+            "seconds": 0.3416
+          }
+        },
+        "gpu_mesh_cache_bytes": 94566720
+      },
+      {
+        "frame": 30,
+        "time": 1.0,
+        "seconds": 1.063,
+        "worlds": {
+          "Valley": {
+            "parts": 9729,
+            "meshes": 397,
+            "triangles": 2842720,
+            "seconds": 0.297
+          }
+        },
+        "gpu_mesh_cache_bytes": 104958744
+      },
+      {
+        "frame": 45,
+        "time": 1.5,
+        "seconds": 1.141,
+        "worlds": {
+          "Valley": {
+            "parts": 10662,
+            "meshes": 405,
+            "triangles": 2945110,
+            "seconds": 0.3945
+          }
+        },
+        "gpu_mesh_cache_bytes": 118152944
+      },
+      {
+        "frame": 60,
+        "time": 2.0,
+        "seconds": 1.005,
+        "worlds": {
+          "Valley": {
+            "parts": 11523,
+            "meshes": 415,
+            "triangles": 3055840,
+            "seconds": 0.2626
+          }
+        },
+        "gpu_mesh_cache_bytes": 135244120
+      },
+      {
+        "frame": 75,
+        "time": 2.5,
+        "seconds": 0.984,
+        "worlds": {
+          "Valley": {
+            "parts": 12254,
+            "meshes": 412,
+            "triangles": 3070210,
+            "seconds": 0.279
+          }
+        },
+        "gpu_mesh_cache_bytes": 153420120
+      },
+      {
+        "frame": 90,
+        "time": 3.0,
+        "seconds": 0.975,
+        "worlds": {
+          "Valley": {
+            "parts": 12767,
+            "meshes": 413,
+            "triangles": 3022152,
+            "seconds": 0.2551
+          }
+        },
+        "gpu_mesh_cache_bytes": 175528160
+      },
+      {
+        "frame": 105,
+        "time": 3.5,
+        "seconds": 0.974,
+        "worlds": {
+          "Valley": {
+            "parts": 13193,
+            "meshes": 420,
+            "triangles": 3032278,
+            "seconds": 0.2546
+          }
+        },
+        "gpu_mesh_cache_bytes": 195582368
+      },
+      {
+        "frame": 120,
+        "time": 4.0,
+        "seconds": 0.975,
+        "worlds": {
+          "Valley": {
+            "parts": 13546,
+            "meshes": 434,
+            "triangles": 3108908,
+            "seconds": 0.2484
+          }
+        },
+        "gpu_mesh_cache_bytes": 208112576
+      },
+      {
+        "frame": 135,
+        "time": 4.5,
+        "seconds": 0.979,
+        "worlds": {
+          "Valley": {
+            "parts": 13486,
+            "meshes": 434,
+            "triangles": 3160182,
+            "seconds": 0.244
+          }
+        },
+        "gpu_mesh_cache_bytes": 223961784
+      },
+      {
+        "frame": 150,
+        "time": 5.0,
+        "seconds": 1.054,
+        "worlds": {
+          "Valley": {
+            "parts": 13475,
+            "meshes": 438,
+            "triangles": 3193080,
+            "seconds": 0.3391
+          }
+        },
+        "gpu_mesh_cache_bytes": 240884792
+      },
+      {
+        "frame": 165,
+        "time": 5.5,
+        "seconds": 0.991,
+        "worlds": {
+          "Valley": {
+            "parts": 13549,
+            "meshes": 429,
+            "triangles": 3149352,
+            "seconds": 0.2853
+          }
+        },
+        "gpu_mesh_cache_bytes": 254849104
+      },
+      {
+        "frame": 180,
+        "time": 6.0,
+        "seconds": 0.998,
+        "worlds": {
+          "Valley": {
+            "parts": 13530,
+            "meshes": 417,
+            "triangles": 3059608,
+            "seconds": 0.2585
+          }
+        },
+        "gpu_mesh_cache_bytes": 261090240
+      },
+      {
+        "frame": 195,
+        "time": 6.5,
+        "seconds": 0.938,
+        "worlds": {
+          "Valley": {
+            "parts": 13162,
+            "meshes": 425,
+            "triangles": 3102314,
+            "seconds": 0.2746
+          }
+        },
+        "gpu_mesh_cache_bytes": 269826352
+      },
+      {
+        "frame": 210,
+        "time": 7.0,
+        "seconds": 0.857,
+        "worlds": {
+          "Valley": {
+            "parts": 12383,
+            "meshes": 417,
+            "triangles": 3059676,
+            "seconds": 0.247
+          }
+        },
+        "gpu_mesh_cache_bytes": 276958760
+      },
+      {
+        "frame": 225,
+        "time": 7.5,
+        "seconds": 0.864,
+        "worlds": {
+          "Valley": {
+            "parts": 11961,
+            "meshes": 421,
+            "triangles": 3066818,
+            "seconds": 0.2443
+          }
+        },
+        "gpu_mesh_cache_bytes": 281214080
+      },
+      {
+        "frame": 240,
+        "time": 8.0,
+        "seconds": 0.92,
+        "worlds": {
+          "Valley": {
+            "parts": 11672,
+            "meshes": 403,
+            "triangles": 2912492,
+            "seconds": 0.2732
+          }
+        },
+        "gpu_mesh_cache_bytes": 284050960
+      },
+      {
+        "frame": 255,
+        "time": 8.5,
+        "seconds": 0.958,
+        "worlds": {
+          "Valley": {
+            "parts": 11360,
+            "meshes": 405,
+            "triangles": 2915302,
+            "seconds": 0.2798
+          }
+        },
+        "gpu_mesh_cache_bytes": 284902024
+      },
+      {
+        "frame": 270,
+        "time": 9.0,
+        "seconds": 0.93,
+        "worlds": {
+          "Valley": {
+            "parts": 11000,
+            "meshes": 388,
+            "triangles": 2781512,
+            "seconds": 0.2408
+          }
+        },
+        "gpu_mesh_cache_bytes": 288589968
+      },
+      {
+        "frame": 285,
+        "time": 9.5,
+        "seconds": 0.885,
+        "worlds": {
+          "Valley": {
+            "parts": 10290,
+            "meshes": 380,
+            "triangles": 2705450,
+            "seconds": 0.2407
+          }
+        },
+        "gpu_mesh_cache_bytes": 296249544
+      },
+      {
+        "frame": 300,
+        "time": 10.0,
+        "seconds": 0.891,
+        "worlds": {
+          "Valley": {
+            "parts": 10237,
+            "meshes": 376,
+            "triangles": 2660362,
+            "seconds": 0.2393
+          }
+        },
+        "gpu_mesh_cache_bytes": 296249544
+      },
+      {
+        "frame": 315,
+        "time": 10.5,
+        "seconds": 0.87,
+        "worlds": {
+          "Valley": {
+            "parts": 9941,
+            "meshes": 367,
+            "triangles": 2602990,
+            "seconds": 0.2373
+          }
+        },
+        "gpu_mesh_cache_bytes": 296249544
+      },
+      {
+        "frame": 330,
+        "time": 11.0,
+        "seconds": 0.881,
+        "worlds": {
+          "Valley": {
+            "parts": 9473,
+            "meshes": 377,
+            "triangles": 2637814,
+            "seconds": 0.2656
+          }
+        },
+        "gpu_mesh_cache_bytes": 304166088
+      },
+      {
+        "frame": 345,
+        "time": 11.5,
+        "seconds": 0.86,
+        "worlds": {
+          "Valley": {
+            "parts": 9027,
+            "meshes": 373,
+            "triangles": 2573720,
+            "seconds": 0.2411
+          }
+        },
+        "gpu_mesh_cache_bytes": 306435592
+      }
+    ]
+  },
+  "encode": {
+    "commands": {
+      "mp4": "-y -loglevel error -framerate 30 -i examples/output/worlds/a_alpine_valley/frames/frame_%05d.png -c:v libx264 -preset slow -crf 14 -pix_fmt yuv420p -vf scale=1920:1080:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/worlds/a_alpine_valley/flight_1080p.mp4",
+      "preview": "-y -loglevel error -framerate 30 -i examples/output/worlds/a_alpine_valley/frames/frame_%05d.png -c:v libx264 -preset slow -crf 28 -pix_fmt yuv420p -vf scale=960:540:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/worlds/a_alpine_valley/flight_preview.mp4",
+      "master": "-y -loglevel error -framerate 30 -i examples/output/worlds/a_alpine_valley/frames/frame_%05d.png -c:v ffv1 -level 3 -pix_fmt bgr0 examples/output/worlds/a_alpine_valley/flight_master.mkv"
+    },
+    "mp4": {
+      "path": "examples/output/worlds/a_alpine_valley/flight_1080p.mp4",
+      "bytes": 34861655,
+      "seconds": 12.6
+    },
+    "preview": {
+      "path": "examples/output/worlds/a_alpine_valley/flight_preview.mp4",
+      "bytes": 1364878,
+      "seconds": 2.8
+    },
+    "master": {
+      "path": "examples/output/worlds/a_alpine_valley/flight_master.mkv",
+      "bytes": 432110560,
+      "seconds": 4.1
+    },
+    "verify": {
+      "psnr": "PSNR r:40.255486 g:41.497590 b:40.315286 average:40.653025 min:38.938516 max:42.863053",
+      "ssim": "SSIM R:0.976290 (16.250657) G:0.984432 (18.077749) B:0.976794 (16.343919) All:0.979172 (16.813504)"
+    },
+    "verify_master": {
+      "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+      "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+    }
+  },
+  "stats": {
+    "tiles_cached": 756,
+    "tile_bytes": 252866288,
+    "budget_bytes": 1073741824,
+    "tiles_generated": 756,
+    "tile_hits": 298119,
+    "tiles_evicted": 0,
+    "generation_seconds": 22.2373,
+    "regional_computed": 1,
+    "regional_cached": 1,
+    "last_frame": {
+      "parts": 8864,
+      "meshes": 365,
+      "triangles": 2485054,
+      "seconds": 0.3275
+    },
+    "vegetation": {
+      "tiles_placed": 5319,
+      "plants_placed": 137637,
+      "candidates": 1635443,
+      "seconds": 18.9117,
+      "bytes": 9359316,
+      "tiles_cached": 5319
+    },
+    "volumes": {
+      "columns": 0,
+      "cubes_meshed": 0,
+      "triangles": 0,
+      "seconds": 0.0,
+      "cubes_cached": 0,
+      "columns_cached": 0,
+      "bytes": 0
+    },
+    "memory": {
+      "logical": {
+        "bounded": true,
+        "area_km2": 67.108864,
+        "tiles_level0": 16384
+      },
+      "cached_bytes": {
+        "tiles": 252866288,
+        "regional": 7714980,
+        "vegetation": 9359316,
+        "volumes": 0
+      },
+      "cached_total": 269940584,
+      "rendered": {
+        "parts": 8864,
+        "meshes": 365,
+        "triangles": 2485054,
+        "seconds": 0.3275
+      },
+      "process_rss_bytes": 1672577024
+    }
+  },
+  "project_bytes": 33157
+}

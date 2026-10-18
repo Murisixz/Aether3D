@@ -1,0 +1,1144 @@
+{
+  "format": "aether3d.project",
+  "format_version": 10,
+  "generator": "aether3d 0.18.0",
+  "scene": {
+    "name": "Alpine valley",
+    "active_camera": "ed6254b8-3f51-4053-a4ba-bb1c698746fa",
+    "world": {
+      "background": [0.2, 0.2, 0.2],
+      "ambient_color": [1.0, 1.0, 1.0],
+      "ambient_intensity": 0.34,
+      "environment": {
+        "type": "sky",
+        "color": [1.0, 1.0, 1.0],
+        "intensity": 1.0,
+        "zenith_color": [0.22, 0.42, 0.78],
+        "horizon_color": [0.78, 0.85, 0.93],
+        "ground_color": [0.32, 0.3, 0.27]
+      },
+      "atmosphere": {
+        "enabled": true,
+        "sun": "Sun",
+        "sky": true,
+        "sun_glow": 1.2,
+        "sun_glow_color": [1.0, 0.76, 0.5],
+        "sun_glow_size": 32.0,
+        "horizon_glow": 0.6,
+        "fog_density": 0.00011,
+        "fog_height": 890.7284900175675,
+        "fog_falloff": 0.0009,
+        "fog_color": [0.88, 0.8, 0.72],
+        "fog_sun": 0.6,
+        "fog_sun_power": 8.0,
+        "ambient": "hemisphere",
+        "ground_ambient": [0.36, 0.33, 0.29]
+      }
+    },
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "samples": 2,
+      "exposure": 0.0,
+      "cull": "none",
+      "default_lights": true
+    },
+    "parameters": [],
+    "rules": [],
+    "geometry": [],
+    "materials": [
+      {
+        "id": "020b887c-9a8f-4bd3-944f-7087cf8ce90d",
+        "name": "Valley terrain",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.93,
+        "specular": 0.3,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "3cf3a937-4b8f-48ac-a414-61008b5224b7",
+            "coordinates": "world"
+          },
+          "normal": {
+            "texture": "d1995d04-3c2a-4dd7-bbb9-bb9684223079",
+            "coordinates": "world"
+          }
+        }
+      },
+      {
+        "id": "f5bcc2cf-027f-4e93-9304-eec92094d9e8",
+        "name": "Valley water",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.04,
+        "specular": 0.7,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "d714f315-3763-4f95-809a-41a2238a53cc",
+        "name": "Valley rock",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "390dfa9e-dbe5-4ae5-9831-7473292ff3c4",
+        "name": "Valley bark",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.95,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "c6ae342f-3e88-4dea-a70d-863b3a52e6c3",
+        "name": "Valley birch_bark",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "bbf8ad27-869a-4ad0-8584-ba5a082cf824",
+        "name": "Valley wood",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.85,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "c0444048-0c1a-4683-809d-94207b67934b",
+        "name": "Valley leaves",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "0ef0140f-2118-483c-823e-830415eb4481",
+        "name": "Valley needles",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.85,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "ef759db9-ce7e-466b-b23c-bf3eaf9857af",
+        "name": "Valley palm",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.75,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "576c9b19-e7c3-4cd2-96e1-c4ebbe63cd2d",
+        "name": "Valley grass",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "01120a3c-bfa6-4002-8d50-6a0d8b023f7c",
+        "name": "Valley flowers",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.7,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "aa038817-b64f-492b-9dc6-2ddddaaf8cc4",
+        "name": "Valley cactus",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.7,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "8e974446-35fa-43fb-8dd6-1fd86f04c397",
+        "name": "Valley mushroom",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.6,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "d229db7b-8ed8-44ac-997e-9d1a428c9a5e",
+        "name": "Valley road",
+        "model": "standard",
+        "base_color": [0.42, 0.38, 0.32],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.95,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "6489ba47-47f0-461f-b1fe-36786a545489",
+        "name": "Valley stone",
+        "model": "standard",
+        "base_color": [0.6, 0.58, 0.54],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.88,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "723757be-4e24-4ad2-8829-be847f3440bc",
+        "name": "Valley plaster",
+        "model": "standard",
+        "base_color": [0.86, 0.82, 0.74],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "cd37b636-6538-4a01-8a46-c0792a87bdb0",
+        "name": "Valley roof",
+        "model": "standard",
+        "base_color": [0.45, 0.2, 0.14],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "b32a9f05-934e-42e8-80ab-fc88a82e3a3c",
+        "name": "Valley timber",
+        "model": "standard",
+        "base_color": [0.3, 0.2, 0.12],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.85,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      }
+    ],
+    "textures": [
+      {
+        "id": "3cf3a937-4b8f-48ac-a414-61008b5224b7",
+        "name": "Valley ground detail",
+        "type": "procedural",
+        "graph": {
+          "nodes": {
+            "coarse": {
+              "type": "fbm",
+              "scale": 0.35,
+              "offset": 0.0,
+              "kind": "perlin",
+              "seed": 11,
+              "octaves": 4,
+              "lacunarity": 2.0,
+              "gain": 0.5
+            },
+            "fine": {
+              "type": "fbm",
+              "scale": 2.2,
+              "offset": 0.0,
+              "kind": "perlin",
+              "seed": 12,
+              "octaves": 3,
+              "lacunarity": 2.0,
+              "gain": 0.5
+            },
+            "mixed": {
+              "type": "mix",
+              "a": {
+                "node": "coarse"
+              },
+              "b": {
+                "node": "fine"
+              },
+              "factor": 0.45,
+              "mode": "mix"
+            },
+            "tone": {
+              "type": "ramp",
+              "factor": {
+                "node": "mixed"
+              },
+              "stops": [
+                [0.2, 0.74],
+                [0.5, 0.95],
+                [0.8, 1.08]
+              ],
+              "interpolation": "linear"
+            }
+          },
+          "output": "tone"
+        }
+      },
+      {
+        "id": "d1995d04-3c2a-4dd7-bbb9-bb9684223079",
+        "name": "Valley ground bump",
+        "type": "procedural",
+        "graph": {
+          "nodes": {
+            "h": {
+              "type": "fbm",
+              "scale": 1.6,
+              "offset": 0.0,
+              "kind": "perlin",
+              "seed": 13,
+              "octaves": 4,
+              "lacunarity": 2.0,
+              "gain": 0.5
+            },
+            "bump": {
+              "type": "bump",
+              "height": {
+                "node": "h"
+              },
+              "depth": 0.035,
+              "step": 0.001
+            }
+          },
+          "output": "bump"
+        }
+      }
+    ],
+    "objects": [
+      {
+        "id": "30aa9a02-dd86-468a-8687-676cb6409712",
+        "name": "Sun",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.09590818404735525, 0.15696779497604132, 0.8387606542622855, 0.5124873622194024],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "directional",
+          "color": [1.0, 0.94, 0.875],
+          "intensity": 2.4,
+          "range": null,
+          "falloff": "inverse_square",
+          "radius": 0.0,
+          "angle": 0.6
+        },
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "ed6254b8-3f51-4053-a4ba-bb1c698746fa",
+        "name": "Still valley",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-1900.0, -3200.0, 986.6847919875646],
+          "rotation": [-0.05389752853894722, -0.10351858794338845, 0.880917177793617, 0.4586544279037642],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 52.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "f62a682d-2087-45c6-ac2a-5154a2142edb",
+        "name": "Still village",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-1215.99, -1665.81, 943.8252109006924],
+          "rotation": [0.034897287663715686, 0.11070693704893711, 0.9472908393670673, 0.2986071316197851],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 52.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "dbdd4d96-037b-4e17-8f7e-8f47a74738a8",
+        "name": "Still lake",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-1340.0, -930.0, 927.1375296338744],
+          "rotation": [-0.014724335335195184, -0.07953136150562408, 0.9800685411682704, 0.1814486458982181],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 52.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "5a64d9b2-20c9-4312-9218-59f88001693f",
+        "name": "Flight",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-1853.99, -2477.81, 1124.3027432959798],
+          "rotation": [0.029844161447320848, 0.08698189252502159, 0.9418653083434642, 0.3231612868821745],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 52.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "65246f18-124e-4e2b-a7dd-fd5afb2821be",
+        "name": "Flight aim",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-1153.99, -1577.81, 911.8993],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      }
+    ],
+    "cad": {
+      "settings": {
+        "length_unit": "mm",
+        "angle_unit": "deg",
+        "precision": 3,
+        "display": {
+          "chord": 0.0005,
+          "angle_deg": 12.0,
+          "relative": 0.002
+        }
+      },
+      "items": []
+    },
+    "animation": {
+      "settings": {
+        "fps": 30,
+        "start": 0.0,
+        "end": 12.0,
+        "markers": [],
+        "sections": [],
+        "enabled": true
+      },
+      "items": [
+        {
+          "id": "5ed56252-d0c4-4648-9e66-f5234d0e0070",
+          "kind": "path",
+          "name": "Flight path",
+          "definition": {
+            "points": [
+              [-1853.99, -2477.81, 1124.3027432959798],
+              [-1353.99, -1927.81, 1009.6460675603449],
+              [-903.99, -1277.81, 1036.878127161588],
+              [-1550.0, -1400.0, 1072.778680147027],
+              [-1350.0, -850.0, 1090.7430427912325]
+            ],
+            "kind": "catmull_rom"
+          }
+        },
+        {
+          "id": "67194bca-6acf-4f98-a26f-011db52f440e",
+          "kind": "path",
+          "name": "Flight aim path",
+          "definition": {
+            "points": [
+              [-1153.99, -1577.81, 911.8993],
+              [-903.99, -1277.81, 911.8993],
+              [-1300.0, -700.0, 884.8307488384968],
+              [-900.0, 200.0, 1084.8307488384967],
+              [1100.0, -1100.0, 1859.3881969127876]
+            ],
+            "kind": "catmull_rom"
+          }
+        },
+        {
+          "id": "70cb023a-1be3-4660-b56c-105912d5aee1",
+          "kind": "constraints",
+          "name": "Flight Constraints",
+          "definition": {
+            "object": "5a64d9b2-20c9-4312-9218-59f88001693f",
+            "constraints": [
+              {
+                "name": "follow",
+                "type": "follow_path",
+                "axis": "+y",
+                "follow": false,
+                "loop": false,
+                "offset": 0.0,
+                "path": "5ed56252-d0c4-4648-9e66-f5234d0e0070",
+                "up": "+z"
+              },
+              {
+                "name": "look_at",
+                "type": "look_at",
+                "axis": "-y",
+                "target": {
+                  "object": "65246f18-124e-4e2b-a7dd-fd5afb2821be"
+                },
+                "target_offset": [0.0, 0.0, 0.0],
+                "up": "+z",
+                "world_up": [0.0, 0.0, 1.0]
+              }
+            ]
+          }
+        },
+        {
+          "id": "d0f135c5-c0d4-4df2-a5ce-dd045445a2b2",
+          "kind": "binding",
+          "name": "Flight",
+          "definition": {
+            "object": "5a64d9b2-20c9-4312-9218-59f88001693f",
+            "action": "42daf27f-7b7f-42cb-8666-017c8f83d585"
+          }
+        },
+        {
+          "id": "42daf27f-7b7f-42cb-8666-017c8f83d585",
+          "kind": "clip",
+          "name": "Flight Action",
+          "definition": {
+            "target": "object",
+            "channels": {
+              "constraints[\"follow\"].offset": {
+                "keys": {
+                  "time": [0.0, 12.0],
+                  "value": [0.0, 1.0],
+                  "interpolation": "linear",
+                  "left_type": "auto_clamped",
+                  "right_type": "auto_clamped"
+                }
+              }
+            }
+          }
+        },
+        {
+          "id": "c124533a-911f-46a6-a73e-588d83b1fe6f",
+          "kind": "constraints",
+          "name": "Flight aim Constraints",
+          "definition": {
+            "object": "65246f18-124e-4e2b-a7dd-fd5afb2821be",
+            "constraints": [
+              {
+                "name": "follow",
+                "type": "follow_path",
+                "axis": "+y",
+                "follow": false,
+                "loop": false,
+                "offset": 0.0,
+                "path": "67194bca-6acf-4f98-a26f-011db52f440e",
+                "up": "+z"
+              }
+            ]
+          }
+        },
+        {
+          "id": "6419b1b0-2722-4d2a-b919-e46f58e4ec67",
+          "kind": "binding",
+          "name": "Flight aim",
+          "definition": {
+            "object": "65246f18-124e-4e2b-a7dd-fd5afb2821be",
+            "action": "3e388888-cea3-41b9-a6dd-9946a6061437"
+          }
+        },
+        {
+          "id": "3e388888-cea3-41b9-a6dd-9946a6061437",
+          "kind": "clip",
+          "name": "Flight aim Action",
+          "definition": {
+            "target": "object",
+            "channels": {
+              "constraints[\"follow\"].offset": {
+                "keys": {
+                  "time": [0.0, 12.0],
+                  "value": [0.0, 1.0],
+                  "interpolation": "linear",
+                  "left_type": "auto_clamped",
+                  "right_type": "auto_clamped"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "worlds": [
+      {
+        "id": "fdb8ba37-2dcd-41df-9158-01e8f879f3ce",
+        "name": "Valley",
+        "definition": {
+          "seed": 7,
+          "generator": 1,
+          "mode": "terrain",
+          "extent": {
+            "min": [-4096.0, -4096.0],
+            "max": [4096.0, 4096.0]
+          },
+          "sea_level": 0.0,
+          "terrain": {
+            "scale": 1.0,
+            "height_scale": 1.0,
+            "continents": {
+              "scale": 14000.0,
+              "octaves": 4,
+              "land": 0.95,
+              "warp": 0.35,
+              "edge": 0.0,
+              "curve": [
+                [-1.0, 300.0],
+                [0.0, 600.0],
+                [1.0, 900.0]
+              ]
+            },
+            "ranges": {
+              "scale": 4500.0,
+              "coverage": 0.85,
+              "warp": 0.5,
+              "sharpness": 0.45
+            },
+            "mountains": {
+              "height": 3200.0,
+              "scale": 4200.0,
+              "octaves": 9,
+              "ridged": 0.8,
+              "sharpness": 2.0,
+              "roughness": 0.55,
+              "warp": 0.25
+            },
+            "hills": {
+              "height": 90.0,
+              "scale": 900.0,
+              "octaves": 6
+            },
+            "valleys": {
+              "depth": 220.0,
+              "scale": 3200.0,
+              "width": 0.09
+            },
+            "plateaus": {
+              "coverage": 0.0,
+              "scale": 6000.0,
+              "height": 110.0,
+              "step": 22.0,
+              "sharpness": 0.8
+            },
+            "canyons": {
+              "coverage": 0.0,
+              "scale": 3200.0,
+              "depth": 70.0,
+              "width": 0.05
+            },
+            "dunes": {
+              "height": 5.0,
+              "scale": 80.0,
+              "direction": 30.0
+            },
+            "detail": {
+              "height": 2.0,
+              "scale": 40.0,
+              "octaves": 4
+            },
+            "warp": {
+              "amplitude": 420.0,
+              "scale": 2400.0
+            },
+            "curve": null
+          },
+          "climate": {
+            "temperature": 8.5,
+            "variation": 3.0,
+            "gradient": [0.0, 0.0],
+            "lapse_rate": 6.5,
+            "moisture": 0.62,
+            "moisture_variation": 0.22,
+            "moisture_gradient": [0.0, 0.0],
+            "scale": 7000.0,
+            "water_influence": 0.2,
+            "water_distance": 1200.0,
+            "rain_shadow": 0.3,
+            "wind": 180.0,
+            "boundary_noise": 0.12
+          },
+          "biomes": {
+            "preset": "earth",
+            "blend": 0.12,
+            "table": {},
+            "disabled": []
+          },
+          "surface": {
+            "beach_height": 2.0,
+            "cliff_slope": 40.0,
+            "snow_temperature": -2.5,
+            "treeline_temperature": 1.5
+          },
+          "hydrology": {
+            "mode": "drainage",
+            "extent": null,
+            "cell": 16.0,
+            "max_cells": 4194304,
+            "erosion": {
+              "iterations": 60,
+              "strength": 3.0,
+              "deposition": 0.3,
+              "thermal": 0.15,
+              "talus": 45.0,
+              "uplift": 0.0
+            },
+            "rivers": {
+              "threshold": 3000000.0,
+              "width": 0.01,
+              "max_width": 45.0,
+              "depth": 1.5,
+              "contour_width": 0.012
+            },
+            "lakes": {
+              "enabled": true,
+              "max": 3,
+              "min_area": 40000.0,
+              "min_depth": 2.0
+            }
+          },
+          "caves": {
+            "enabled": false,
+            "tunnels": 0.4,
+            "caverns": 0.2,
+            "overhangs": 0.0,
+            "radius": 3.5,
+            "depth": [-80.0, -4.0],
+            "entrances": 0.35,
+            "scale": 120.0
+          },
+          "vegetation": {
+            "density": 0.7,
+            "clutter": 1.0,
+            "rocks": 1.0,
+            "distance": 2500.0,
+            "detail_distance": 90.0,
+            "variants": 6
+          },
+          "structures": {
+            "settlements": 0,
+            "size": [6, 16],
+            "spacing": 1500.0,
+            "castles": 0,
+            "towers": 0,
+            "ruins": 0,
+            "roads": true,
+            "bridges": true,
+            "biomes": ["plains", "meadow", "temperate_forest", "birch_forest", "savanna", "taiga"],
+            "max_slope": 14.0,
+            "items": [
+              {
+                "id": "village-0-well",
+                "kind": "well",
+                "at": [-1153.99, -1577.81],
+                "rotation": 0.0,
+                "size": [2.4, 2.4],
+                "floors": 1,
+                "style": "stone",
+                "seed": 0
+              },
+              {
+                "id": "village-0-house-1",
+                "kind": "house",
+                "at": [-1145.58, -1598.32],
+                "rotation": 93.86,
+                "size": [6.8, 5.3],
+                "floors": 2,
+                "style": "timber",
+                "seed": 236619887
+              },
+              {
+                "id": "village-0-house-2",
+                "kind": "house",
+                "at": [-1159.61, -1600.89],
+                "rotation": -86.14,
+                "size": [8.6, 5.9],
+                "floors": 1,
+                "style": "timber",
+                "seed": 1239319023
+              },
+              {
+                "id": "village-0-house-3",
+                "kind": "house",
+                "at": [-1146.29, -1587.38],
+                "rotation": 93.86,
+                "size": [7.1, 5.8],
+                "floors": 2,
+                "style": "timber",
+                "seed": 343219489
+              },
+              {
+                "id": "village-0-house-4",
+                "kind": "house",
+                "at": [-1160.14, -1587.4],
+                "rotation": -86.14,
+                "size": [7.9, 5.3],
+                "floors": 1,
+                "style": "brick",
+                "seed": 723844697
+              },
+              {
+                "id": "village-0-house-7",
+                "kind": "house",
+                "at": [-1148.01, -1561.17],
+                "rotation": 93.86,
+                "size": [7.3, 5.5],
+                "floors": 2,
+                "style": "brick",
+                "seed": 659482357
+              },
+              {
+                "id": "village-0-house-8",
+                "kind": "house",
+                "at": [-1162.12, -1563.0],
+                "rotation": -86.14,
+                "size": [7.1, 5.9],
+                "floors": 2,
+                "style": "timber",
+                "seed": 545497475
+              },
+              {
+                "id": "village-0-tower",
+                "kind": "tower",
+                "at": [-1145.01, -1577.2],
+                "rotation": 0.0,
+                "size": [6.0, 6.0],
+                "floors": 2,
+                "style": "stone",
+                "seed": 0
+              }
+            ]
+          },
+          "blocks": {
+            "size": 1.0,
+            "min_height": -64,
+            "max_height": 192,
+            "trees": true,
+            "ores": true,
+            "plants": true
+          },
+          "materials": {
+            "terrain": "020b887c-9a8f-4bd3-944f-7087cf8ce90d",
+            "water": "f5bcc2cf-027f-4e93-9304-eec92094d9e8",
+            "rock": "d714f315-3763-4f95-809a-41a2238a53cc",
+            "bark": "390dfa9e-dbe5-4ae5-9831-7473292ff3c4",
+            "birch_bark": "c6ae342f-3e88-4dea-a70d-863b3a52e6c3",
+            "wood": "bbf8ad27-869a-4ad0-8584-ba5a082cf824",
+            "leaves": "c0444048-0c1a-4683-809d-94207b67934b",
+            "needles": "0ef0140f-2118-483c-823e-830415eb4481",
+            "palm": "ef759db9-ce7e-466b-b23c-bf3eaf9857af",
+            "grass": "576c9b19-e7c3-4cd2-96e1-c4ebbe63cd2d",
+            "flowers": "01120a3c-bfa6-4002-8d50-6a0d8b023f7c",
+            "cactus": "aa038817-b64f-492b-9dc6-2ddddaaf8cc4",
+            "mushroom": "8e974446-35fa-43fb-8dd6-1fd86f04c397",
+            "road": "d229db7b-8ed8-44ac-997e-9d1a428c9a5e",
+            "stone": "6489ba47-47f0-461f-b1fe-36786a545489",
+            "plaster": "723757be-4e24-4ad2-8829-be847f3440bc",
+            "roof": "cd37b636-6538-4a01-8a46-c0792a87bdb0",
+            "timber": "b32a9f05-934e-42e8-80ab-fc88a82e3a3c"
+          },
+          "streaming": {
+            "chunk": 64.0,
+            "resolution": 64,
+            "lod_error": 3.0,
+            "view_distance": 12000.0,
+            "volume_distance": 400.0,
+            "memory_mb": 1024.0,
+            "max_tiles": 20000,
+            "threads": 1
+          },
+          "features": [
+            {
+              "type": "lake",
+              "id": "tarn",
+              "shape": {
+                "circle": [-1300.0, -700.0, 170.0]
+              },
+              "enabled": true,
+              "level": 892.23,
+              "depth": 7.0,
+              "falloff": 40.0
+            },
+            {
+              "type": "clear",
+              "id": "shore",
+              "shape": {
+                "circle": [-1300.0, -700.0, 260.0]
+              },
+              "enabled": true,
+              "what": ["trees"],
+              "falloff": 50.0
+            },
+            {
+              "type": "road",
+              "id": "village-0-street-0",
+              "shape": {
+                "line": [
+                  [-1152.11, -1605.67],
+                  [-1155.87, -1549.95]
+                ],
+                "width": 4.0
+              },
+              "enabled": true,
+              "falloff": 3.0,
+              "material": "dirt"
+            },
+            {
+              "type": "road",
+              "id": "village-0-street-1",
+              "shape": {
+                "line": [
+                  [-1135.42, -1576.56],
+                  [-1172.56, -1579.06]
+                ],
+                "width": 4.0
+              },
+              "enabled": true,
+              "falloff": 3.0,
+              "material": "dirt"
+            },
+            {
+              "type": "clear",
+              "id": "village-0-clearing",
+              "shape": {
+                "circle": [-1153.99, -1577.81, 56.3]
+              },
+              "enabled": true,
+              "what": ["trees"],
+              "falloff": 25.0
+            }
+          ]
+        },
+        "edits": []
+      }
+    ]
+  },
+  "meshes": []
+}

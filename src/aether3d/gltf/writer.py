@@ -208,6 +208,10 @@ def _export_mesh(
         attributes["TEXCOORD_0"] = buffers.add(
             axes.flip_uvs(mesh.uvs), FLOAT, "VEC2", ARRAY_BUFFER, False
         )
+    if mesh.colors is not None:  # linear RGBA, as Mesh.colors (glTF's COLOR_0 semantics)
+        attributes["COLOR_0"] = buffers.add(
+            np.ascontiguousarray(mesh.colors, dtype=np.float32), FLOAT, "VEC4", ARRAY_BUFFER, False
+        )
     if tangent is not None and "NORMAL" in attributes:
         # MikkTSpace on Aether3D's V-up UVs gives glTF's tangent and sign directly (the axes
         # change is a rotation; flipping V for TEXCOORD_0 is accounted for by the sign
@@ -485,6 +489,18 @@ def export_gltf(
     document, binary, diagnostics, node_map = build_gltf(
         scene, bake_textures=bake_textures, animation=animation, animation_options=options
     )
+    if scene._worlds is not None and len(scene._worlds):
+        diagnostics.append(
+            Diagnostic(
+                "WORLDS_NOT_EXPORTED",
+                WARNING,
+                "procedural worlds are generated content, not scene objects, and are not "
+                "exported with the scene; export a finite region with world.export_region "
+                "(aether3d world export)",
+                "scene.worlds",
+                len(scene._worlds),
+            )
+        )
     lossy = [d for d in diagnostics if d.lossy]
     if lossy and not allow_lossy:
         raise UnsupportedFeatureError(

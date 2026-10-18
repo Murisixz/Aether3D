@@ -46,6 +46,11 @@ apply to agents too.
   evaluated state, time, paths, F-curves, rotations, clips and NLA, rigs, skins, IK and
   constraints, generators, contacts, cameras, frames, glTF, scripts); the design record:
   [research/2026-10-stage17/DESIGN.md](research/2026-10-stage17/DESIGN.md).
+- Procedural worlds: [docs/WORLDS.md](docs/WORLDS.md) (definitions and determinism,
+  terrain, hydrology, climate and biomes, features, water, caves, block worlds,
+  vegetation, structures, streaming and memory, rendering, queries, files, world scripts,
+  limits); the design record:
+  [research/2026-10-stage16/DESIGN.md](research/2026-10-stage16/DESIGN.md).
 - Optional: `npm ci --prefix tools/gltf-validator` enables the Khronos validator tests locally.
 - Performance: [docs/PERFORMANCE.md](docs/PERFORMANCE.md) (how to measure with
   `benchmarks/bench_engine.py`, the correctness guards, implementation switches, the record
@@ -320,6 +325,36 @@ apply to agents too.
   - **No fake cinematography.** No renderer simulates depth of field and nothing claims
     it; motion blur is real temporal sampling; every frame is rendered by Aether3D.
 
+- Procedural worlds (`worlds/`, `rendering/atmosphere.py`, `native/src/hydro.rs`):
+  - **Determinism is a contract.** Generation uses integer hashing (`noise.derive`,
+    SplitMix64) for every random decision and only correctly rounded operations (`+ - *
+    /`, `sqrt`, `floor`, comparisons): no `np.exp`, `np.sin`, `np.cos` or `**` with
+    non-integer powers in generation (use `noise.cos_sin_deg` and the curves in
+    `noise.py`), and no BLAS -- no `@`, `np.dot`, `einsum` or `tensordot`, whose results
+    depend on batch size and CPU; write explicit ordered sums (`noise.blend`). The golden
+    hashes of `tests/test_worlds_determinism.py` change only with a deliberate generator
+    change (bump `definition["generator"]` and document it).
+  - **Pure functions of addresses.** A tile, chunk, plant tile or volume cube depends only
+    on the definition, the edits and its address -- never on the camera, generation order,
+    batch composition or threads (batched placement equals tile-by-tile placement
+    bitwise). Only *selection* depends on the camera.
+  - **Authoritative versus drawn.** Queries, structures, paths and exports of exact data
+    use the fields (`WorldModel.evaluate`, `Volumes.solid`, blocks with edits); levels of
+    detail are for drawing, with measured error. Do not answer a query from a mesh.
+  - **The hydrology twins.** `hydrology.py`'s NumPy sweeps and `native/src/hydro.rs`
+    stay bitwise equal (`tests/test_native.py`); change both or neither, and bump `ABI`
+    for a signature change.
+  - **Caches never own authored data.** Generated data lives in byte-budgeted LRU caches
+    keyed by content; definitions and edits are immutable and are the only state saved
+    and recorded in history.
+  - **Definitions and scripts are validated data.** A new definition key needs its
+    validation (type, range, size), default, docs and guide; a new world-script operation
+    its table entry, schema, guide and docs; a failing script changes nothing
+    (`tests/test_worlds_script.py` fuzzes it). No input reaches shader source or code.
+  - **Original assets only.** Block textures (`blocks.py`), plants (`assets.py`) and
+    structures are drawn procedurally by Aether3D; never add textures, models or names
+    from other games.
+
 - Visual feedback (`feedback/`):
   - **Facts and judgments stay apart.** Every `Finding` names its `basis` (`geometry`,
     `render`, `scene`, `heuristic`, `vision`, `agent`) and whether it is `exact`. Never
@@ -418,6 +453,15 @@ apply to agents too.
   `time` to look (`render_preview` with `time`, if you can see images). Express checks as
   `foot_contacts` and `animation_continuity` expectations; animation corrections need the
   policy's `allow_animation`. Match on error `code` and `location`.
+- **Build worlds with world scripts and query them.** Write an `aether3d.world-script`
+  (`aether3d world run PROJECT script.json --json`, MCP `run_script`, or the scene-plan
+  operation `world`; schema: `aether3d world schema`, guide: `aether3d world guide` or
+  `aether3d://worlds/guide`): create a world from a preset, add features, structures,
+  settlements and roads, edit blocks -- one undo step. Ask exact questions before placing
+  things (`inspect_world` / `aether3d world sample`: heights, slopes, biomes, water;
+  `sites`, `route`), check `info()`'s cost estimates before large regions, and keep
+  cameras above the ground with `ground_path(clearance=...)`. Renders include worlds
+  (`render_preview` frames them by their ground).
 - Prefer ids (`obj.id`) over names for durable references.
 - Every change can be undone: `scene.history.undo()`, `with scene.transaction("label"):`
   for several changes as one step (all or nothing), `scene.history.checkpoint(name)` and

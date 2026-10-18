@@ -14,6 +14,7 @@ use pyo3::prelude::*;
 mod buffers;
 mod earcut;
 mod hierarchy;
+mod hydro;
 mod ldl;
 mod pack;
 mod png;
@@ -24,7 +25,7 @@ use buffers::Arrays;
 
 /// The calling convention between `aether3d._native` and this module: a module whose
 /// `ABI` differs from what Aether3D expects is not used.
-const ABI: u32 = 4;
+const ABI: u32 = 5;
 
 fn check(ok: bool, message: impl FnOnce() -> String) -> PyResult<()> {
     if ok {
@@ -729,6 +730,200 @@ fn skin_linear(
     Ok(())
 }
 
+/// Priority-Flood with an epsilon (`worlds.hydrology.priority_flood`): `out` (n) float64
+/// from `h` (n) float64 and `outlet` (n) uint8 on an `nx` x `ny` grid.
+#[pyfunction]
+fn priority_flood(
+    py: Python<'_>,
+    h: &Bound<'_, PyAny>,
+    outlet: &Bound<'_, PyAny>,
+    nx: usize,
+    ny: usize,
+    out: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let n = nx
+        .checked_mul(ny)
+        .ok_or_else(|| PyValueError::new_err("grid too large"))?;
+    let mut arrays = Arrays::new();
+    let hh = arrays.input::<f64>(h, "h", Some(n))?;
+    let ol = arrays.input::<u8>(outlet, "outlet", Some(n))?;
+    let o = arrays.output::<f64>(out, "out", Some(n))?;
+    check(unsafe { hh.slice() }.iter().all(|v| v.is_finite()), || {
+        "h must be finite".into()
+    })?;
+    arrays.check_overlaps()?;
+    py.detach(|| unsafe { hydro::priority_flood(hh.slice(), ol.slice(), nx, ny, o.slice()) });
+    drop(arrays);
+    Ok(())
+}
+
+fn check_indices(name: &str, values: &[i64], n: usize) -> PyResult<()> {
+    for (e, &v) in values.iter().enumerate() {
+        check(v >= 0 && (v as usize) < n, || {
+            format!("{name}[{e}] = {v}: not a node index (< {n})")
+        })?;
+    }
+    Ok(())
+}
+
+/// Drainage accumulation (`worlds.hydrology.accumulate`): in place on `area` (n) int64.
+#[pyfunction]
+fn accumulate(
+    py: Python<'_>,
+    order: &Bound<'_, PyAny>,
+    recv: &Bound<'_, PyAny>,
+    area: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let mut arrays = Arrays::new();
+    let a = arrays.output::<i64>(area, "area", None)?;
+    let n = unsafe { a.slice() }.len();
+    let od = arrays.input::<i64>(order, "order", Some(n))?;
+    let rv = arrays.input::<i64>(recv, "recv", Some(n))?;
+    check_indices("order", unsafe { od.slice() }, n)?;
+    check_indices("recv", unsafe { rv.slice() }, n)?;
+    arrays.check_overlaps()?;
+    py.detach(|| unsafe { hydro::accumulate(od.slice(), rv.slice(), a.slice()) });
+    drop(arrays);
+    Ok(())
+}
+
+/// One implicit stream-power step (`worlds.hydrology.stream_power`): `out` (n) float64,
+/// which the caller fills with `h` first.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn stream_power(
+    py: Python<'_>,
+    order: &Bound<'_, PyAny>,
+    recv: &Bound<'_, PyAny>,
+    dist: &Bound<'_, PyAny>,
+    area: &Bound<'_, PyAny>,
+    h: &Bound<'_, PyAny>,
+    filled: &Bound<'_, PyAny>,
+    kdt: f64,
+    uplift: &Bound<'_, PyAny>,
+    out: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let mut arrays = Arrays::new();
+    let o = arrays.output::<f64>(out, "out", None)?;
+    let n = unsafe { o.slice() }.len();
+    let od = arrays.input::<i64>(order, "order", Some(n))?;
+    let rv = arrays.input::<i64>(recv, "recv", Some(n))?;
+    let ds = arrays.input::<f64>(dist, "dist", Some(n))?;
+    let ar = arrays.input::<f64>(area, "area", Some(n))?;
+    let hh = arrays.input::<f64>(h, "h", Some(n))?;
+    let fl = arrays.input::<f64>(filled, "filled", Some(n))?;
+    let up = arrays.input::<f64>(uplift, "uplift", Some(n))?;
+    check_indices("order", unsafe { od.slice() }, n)?;
+    check_indices("recv", unsafe { rv.slice() }, n)?;
+    arrays.check_overlaps()?;
+    py.detach(|| unsafe {
+        hydro::stream_power(
+            od.slice(),
+            rv.slice(),
+            ds.slice(),
+            ar.slice(),
+            hh.slice(),
+            fl.slice(),
+            kdt,
+            up.slice(),
+            o.slice(),
+        )
+    });
+    drop(arrays);
+    Ok(())
+}
+
+/// Sediment transport (`worlds.hydrology.sediment`): in place on `after` (n) float64.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn sediment(
+    py: Python<'_>,
+    order: &Bound<'_, PyAny>,
+    recv: &Bound<'_, PyAny>,
+    area: &Bound<'_, PyAny>,
+    before: &Bound<'_, PyAny>,
+    after: &Bound<'_, PyAny>,
+    filled: &Bound<'_, PyAny>,
+    sea: f64,
+    cell: f64,
+    deposition: f64,
+    aggradation: f64,
+) -> PyResult<()> {
+    let mut arrays = Arrays::new();
+    let af = arrays.output::<f64>(after, "after", None)?;
+    let n = unsafe { af.slice() }.len();
+    let od = arrays.input::<i64>(order, "order", Some(n))?;
+    let rv = arrays.input::<i64>(recv, "recv", Some(n))?;
+    let ar = arrays.input::<f64>(area, "area", Some(n))?;
+    let bf = arrays.input::<f64>(before, "before", Some(n))?;
+    let fl = arrays.input::<f64>(filled, "filled", Some(n))?;
+    check_indices("order", unsafe { od.slice() }, n)?;
+    check_indices("recv", unsafe { rv.slice() }, n)?;
+    check(unsafe { ar.slice() }.iter().all(|&v| v > 0.0), || {
+        "area must be positive".into()
+    })?;
+    arrays.check_overlaps()?;
+    py.detach(|| unsafe {
+        hydro::sediment(
+            od.slice(),
+            rv.slice(),
+            ar.slice(),
+            bf.slice(),
+            af.slice(),
+            fl.slice(),
+            sea,
+            cell,
+            deposition,
+            aggradation,
+        )
+    });
+    drop(arrays);
+    Ok(())
+}
+
+/// Talus relaxation (`worlds.hydrology.thermal`): `out` (n) float64 from `h` (n) float64.
+#[pyfunction]
+#[pyo3(signature = (h, nx, ny, cell, talus_tan, rate, iterations, out, threads=1))]
+#[allow(clippy::too_many_arguments)]
+fn thermal(
+    py: Python<'_>,
+    h: &Bound<'_, PyAny>,
+    nx: usize,
+    ny: usize,
+    cell: f64,
+    talus_tan: f64,
+    rate: f64,
+    iterations: usize,
+    out: &Bound<'_, PyAny>,
+    threads: usize,
+) -> PyResult<()> {
+    let n = nx
+        .checked_mul(ny)
+        .ok_or_else(|| PyValueError::new_err("grid too large"))?;
+    let mut arrays = Arrays::new();
+    let hh = arrays.input::<f64>(h, "h", Some(n))?;
+    let o = arrays.output::<f64>(out, "out", Some(n))?;
+    check(iterations <= 100_000, || {
+        "iterations: at most 100000".into()
+    })?;
+    arrays.check_overlaps()?;
+    py.detach(|| unsafe {
+        hydro::thermal(
+            hh.slice(),
+            nx,
+            ny,
+            cell,
+            talus_tan,
+            rate,
+            iterations,
+            o.slice(),
+            threads,
+        )
+    });
+    drop(arrays);
+    Ok(())
+}
+
 fn to_err_count(r: Result<usize, String>) -> PyResult<usize> {
     r.map_err(PyValueError::new_err)
 }
@@ -749,5 +944,10 @@ fn aether3d_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pack_horizon, m)?)?;
     m.add_function(wrap_pyfunction!(triangulate, m)?)?;
     m.add_function(wrap_pyfunction!(skin_linear, m)?)?;
+    m.add_function(wrap_pyfunction!(priority_flood, m)?)?;
+    m.add_function(wrap_pyfunction!(accumulate, m)?)?;
+    m.add_function(wrap_pyfunction!(stream_power, m)?)?;
+    m.add_function(wrap_pyfunction!(sediment, m)?)?;
+    m.add_function(wrap_pyfunction!(thermal, m)?)?;
     Ok(())
 }

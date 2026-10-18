@@ -65,9 +65,11 @@ RAISED_LIMITS = (
     "max-storage-buffer-binding-size",
     "max-buffer-size",
     "max-storage-buffers-per-shader-stage",
+    "max-inter-stage-shader-variables",
 )
 """Limits requested at the adapter's maximum (larger images, meshes and buffers; the path
-tracer's kernel reads 11 storage buffers, WebGPU's default allows 8)."""
+tracer's kernel reads 11 storage buffers, WebGPU's default allows 8; the scene pass passes
+17 values between its stages, WebGPU's default allows 16)."""
 REPORTED_LIMITS = (
     "max-texture-dimension-2d",
     "max-texture-array-layers",

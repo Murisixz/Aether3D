@@ -1069,6 +1069,7 @@ class Scene:
         self._procedural: ProceduralSystem | None = None
         self._cad: Any = None  # the CAD document, created on first use (scene.cad)
         self._animation: Any = None  # the animation document, on first use (scene.animation)
+        self._worlds: Any = None  # the procedural worlds, on first use (scene.worlds)
         self._name = _check_name(name, "scene name")
         self._objects: dict[str, SceneObject] = {}
         self._by_name: dict[str, SceneObject] = {}
@@ -1873,6 +1874,17 @@ class Scene:
 
             self._animation = AnimationSystem(self)
         return self._animation
+
+    @property
+    def worlds(self) -> Any:
+        """The scene's :class:`~aether3d.worlds.WorldSystem`: procedural worlds (terrain or
+        block worlds with biomes, water, caves, vegetation and structures), generated lazily
+        and rendered with the scene (see ``docs/WORLDS.md``)."""
+        if self._worlds is None:
+            from .worlds.system import WorldSystem
+
+            self._worlds = WorldSystem(self)
+        return self._worlds
 
     @property
     def cad(self) -> Any:

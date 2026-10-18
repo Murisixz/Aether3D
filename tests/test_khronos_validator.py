@@ -66,11 +66,36 @@ def corpus(directory: Path) -> list[Path]:
     keep.metadata = {"floors": 3, "doors": [{"side": "south", "open": True}], "note": "naïve ✓"}
     tagged.add_sphere("Ball", parent=keep).set_metadata("weight", None)
     scenes["tags_and_metadata"] = tagged
+    colored = Scene("Colours")  # vertex colours as COLOR_0 (0.18.0)
+    colored.add_object(
+        "Tri",
+        mesh=Mesh(
+            [(0, 0, 0), (1, 0, 0), (0, 1, 0)],
+            [(0, 1, 2)],
+            colors=[(1, 0, 0, 1), (0, 1, 0, 0.5), (0, 0, 1, 1)],
+        ),
+    )
+    scenes["vertex_colors"] = colored
     paths = []
     for name, scene in scenes.items():
         for fmt in ("glb", "gltf"):
             scene.export(directory / f"{name}.{fmt}")
             paths.append(directory / f"{name}.{fmt}")
+    # World regions (0.18.0): coloured tiles, a cave volume, instanced plants, a tower; and
+    # block chunks with their pixel-art textures.
+    worlds = Scene("Worlds")
+    terrain = worlds.worlds.create(
+        "T", "cavernous_highlands", seed=3, size=1024.0, overrides={"hydrology": {"cell": 32.0}}
+    )
+    terrain.add_feature(
+        {"type": "cave", "id": "hall", "kind": "cavern", "radius": 12.0, "noise": 0.2,
+         "shape": {"circle": [0.0, 0.0, 12.0]}}
+    )  # fmt: skip
+    terrain.place_structure({"id": "tower", "kind": "tower", "at": [30.0, 30.0]})
+    terrain.export_region(directory / "world_region.glb", [-60, -60, 60, 60], level=1, plant_lod=2)
+    blocks = worlds.worlds.create("B", "blocky_adventure", seed=3, size=256)
+    blocks.export_region(directory / "block_region.glb", [0, 0, 32, 32])
+    paths += [directory / "world_region.glb", directory / "block_region.glb"]
     # Khronos samples imported and re-exported by Aether3D.
     for sample in KHRONOS.rglob("*.gl*"):
         out = directory / f"reexport_{sample.parent.parent.name}_{sample.parent.name}.glb"

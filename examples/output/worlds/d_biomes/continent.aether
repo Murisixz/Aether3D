@@ -1,0 +1,1045 @@
+{
+  "format": "aether3d.project",
+  "format_version": 10,
+  "generator": "aether3d 0.18.0",
+  "scene": {
+    "name": "Biomes",
+    "active_camera": "105ba352-1719-4b27-88eb-af10bef0dec7",
+    "world": {
+      "background": [0.2, 0.2, 0.2],
+      "ambient_color": [1.0, 1.0, 1.0],
+      "ambient_intensity": 0.45,
+      "environment": {
+        "type": "sky",
+        "color": [1.0, 1.0, 1.0],
+        "intensity": 1.0,
+        "zenith_color": [0.22, 0.42, 0.78],
+        "horizon_color": [0.78, 0.85, 0.93],
+        "ground_color": [0.32, 0.3, 0.27]
+      },
+      "atmosphere": {
+        "enabled": true,
+        "sun": "Sun",
+        "sky": true,
+        "sun_glow": 0.7,
+        "sun_glow_color": [1.0, 0.95, 0.85],
+        "sun_glow_size": 32.0,
+        "horizon_glow": 0.15,
+        "fog_density": 4e-05,
+        "fog_height": 0.0,
+        "fog_falloff": 0.0004,
+        "fog_color": [0.74, 0.82, 0.92],
+        "fog_sun": 0.25,
+        "fog_sun_power": 8.0,
+        "ambient": "hemisphere",
+        "ground_ambient": [0.36, 0.33, 0.29]
+      }
+    },
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "samples": 2,
+      "exposure": 0.0,
+      "cull": "none",
+      "default_lights": true
+    },
+    "parameters": [],
+    "rules": [],
+    "geometry": [],
+    "materials": [
+      {
+        "id": "88c47009-a80b-438e-aeb0-174ce7d2d065",
+        "name": "Continent terrain",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.93,
+        "specular": 0.3,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {
+          "base_color": {
+            "texture": "3d8685f3-251c-4fc9-9019-b97917c77c03",
+            "coordinates": "world"
+          },
+          "normal": {
+            "texture": "15173676-c6d2-4a7d-8549-b2da924eb968",
+            "coordinates": "world"
+          }
+        }
+      },
+      {
+        "id": "a0e866f9-2f6e-4cca-9174-69312f985528",
+        "name": "Continent water",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.04,
+        "specular": 0.7,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "6af2473a-3dc9-4b29-bb95-2000a4e470f7",
+        "name": "Continent rock",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "a2c970e8-26e8-4cb1-b459-33ad887c79ae",
+        "name": "Continent bark",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.95,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "7ab2b687-b05d-4462-943b-65ad4f24b04b",
+        "name": "Continent birch_bark",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "7b540613-561e-431c-a0cd-b9a52a16d2ff",
+        "name": "Continent wood",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.85,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "de52bdfb-5099-4ce6-827a-3448df3a00dc",
+        "name": "Continent leaves",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "78122c00-b01d-488d-8be3-c1b3f7be0d89",
+        "name": "Continent needles",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.85,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "c5607bfd-fda1-4640-b490-f71df904f337",
+        "name": "Continent palm",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.75,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "950bdbec-fd4b-4619-9319-689a6dd68465",
+        "name": "Continent grass",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "ade00d5f-4c14-40a2-a2ea-a69ce89ddeca",
+        "name": "Continent flowers",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.7,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "54b27d02-27a5-40d9-9eba-6c3247221b71",
+        "name": "Continent cactus",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.7,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "2bc8c3ab-4e8f-4dda-9574-642bf3e6ddf7",
+        "name": "Continent mushroom",
+        "model": "standard",
+        "base_color": [1.0, 1.0, 1.0],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.6,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "dd07c719-eecb-4b9a-8072-7e38fc1339ba",
+        "name": "Continent road",
+        "model": "standard",
+        "base_color": [0.42, 0.38, 0.32],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.95,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "04089a5b-19c4-4a71-a5e2-2f385f2b69c1",
+        "name": "Continent stone",
+        "model": "standard",
+        "base_color": [0.6, 0.58, 0.54],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.88,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "5ee1046c-ed7e-450d-998d-4027211ac959",
+        "name": "Continent plaster",
+        "model": "standard",
+        "base_color": [0.86, 0.82, 0.74],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.9,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "a938ce5c-0c26-4901-9632-fc88689b9a23",
+        "name": "Continent roof",
+        "model": "standard",
+        "base_color": [0.45, 0.2, 0.14],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.8,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      },
+      {
+        "id": "e57fb894-1c22-4c40-8804-732e20dd95cb",
+        "name": "Continent timber",
+        "model": "standard",
+        "base_color": [0.3, 0.2, 0.12],
+        "opacity": 1.0,
+        "alpha_mode": "opaque",
+        "alpha_cutoff": 0.5,
+        "metallic": 0.0,
+        "roughness": 0.85,
+        "specular": 0.5,
+        "emissive": [0.0, 0.0, 0.0],
+        "emissive_strength": 1.0,
+        "normal_strength": 1.0,
+        "occlusion_strength": 1.0,
+        "double_sided": true,
+        "textures": {}
+      }
+    ],
+    "textures": [
+      {
+        "id": "3d8685f3-251c-4fc9-9019-b97917c77c03",
+        "name": "Continent ground detail",
+        "type": "procedural",
+        "graph": {
+          "nodes": {
+            "coarse": {
+              "type": "fbm",
+              "scale": 0.35,
+              "offset": 0.0,
+              "kind": "perlin",
+              "seed": 11,
+              "octaves": 4,
+              "lacunarity": 2.0,
+              "gain": 0.5
+            },
+            "fine": {
+              "type": "fbm",
+              "scale": 2.2,
+              "offset": 0.0,
+              "kind": "perlin",
+              "seed": 12,
+              "octaves": 3,
+              "lacunarity": 2.0,
+              "gain": 0.5
+            },
+            "mixed": {
+              "type": "mix",
+              "a": {
+                "node": "coarse"
+              },
+              "b": {
+                "node": "fine"
+              },
+              "factor": 0.45,
+              "mode": "mix"
+            },
+            "tone": {
+              "type": "ramp",
+              "factor": {
+                "node": "mixed"
+              },
+              "stops": [
+                [0.2, 0.74],
+                [0.5, 0.95],
+                [0.8, 1.08]
+              ],
+              "interpolation": "linear"
+            }
+          },
+          "output": "tone"
+        }
+      },
+      {
+        "id": "15173676-c6d2-4a7d-8549-b2da924eb968",
+        "name": "Continent ground bump",
+        "type": "procedural",
+        "graph": {
+          "nodes": {
+            "h": {
+              "type": "fbm",
+              "scale": 1.6,
+              "offset": 0.0,
+              "kind": "perlin",
+              "seed": 13,
+              "octaves": 4,
+              "lacunarity": 2.0,
+              "gain": 0.5
+            },
+            "bump": {
+              "type": "bump",
+              "height": {
+                "node": "h"
+              },
+              "depth": 0.035,
+              "step": 0.001
+            }
+          },
+          "output": "bump"
+        }
+      }
+    ],
+    "objects": [
+      {
+        "id": "93300535-6402-40f4-a6ac-3f850fb42386",
+        "name": "Sun",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.11594744009676411, 0.39817021453946205, 0.8736653959724241, 0.25441196369069113],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": null,
+        "light": {
+          "type": "directional",
+          "color": [1.0, 0.9875, 0.9625],
+          "intensity": 2.2,
+          "range": null,
+          "falloff": "inverse_square",
+          "radius": 0.0,
+          "angle": 0.6
+        },
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "105ba352-1719-4b27-88eb-af10bef0dec7",
+        "name": "Top",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [0.0, -1.0, 52000.0],
+          "rotation": [0.0, 0.7070999820501952, 0.7071135802575239, 0.0],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 39.17409833700444,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 90000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "16d0bf24-f1fd-47ca-9348-6f7c5350449e",
+        "name": "Biome snowy_taiga",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [10643.103174805627, 10643.103174805627, 60.27760247763839],
+          "rotation": [0.013263663768260507, 0.03202131695609115, 0.9233244423568951, 0.38245350649480103],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 58.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "87f1f637-ae46-42e1-b5e3-df770fda96be",
+        "name": "Biome taiga",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [3020.515872813422, 5665.0873013848495, 64.64177277665118],
+          "rotation": [0.03202131695609119, -0.013263663768260534, -0.3824535064948012, 0.923324442356895],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 58.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "5aab8408-8f78-48b0-83aa-47d936a4676d",
+        "name": "Biome temperate_forest",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [3526.476190476191, -6391.047619047619, 79.3306766020294],
+          "rotation": [0.02450805496321485, 0.02450805496321485, 0.7066819335754382, 0.7066819335754382],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 58.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "b44dacd5-4417-4dc3-8520-7d014ebf8b5f",
+        "name": "Biome plains",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-2709.3888890913413, -6987.373015670564, 722.4276236653087],
+          "rotation": [0.013263663768260534, -0.03202131695609119, -0.923324442356895, 0.3824535064948012],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 58.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "4a8ab1dd-165b-49e1-a182-5bf45c9a607a",
+        "name": "Biome savanna",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-4472.43650813896, -14039.563491861041, 65.43370933659436],
+          "rotation": [0.013263663768260507, -0.032021316956091186, -0.9233244423568954, 0.3824535064948006],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 58.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "0fa3c02c-0d93-4ab9-a611-5ac8e1410673",
+        "name": "Biome badlands",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-11394.992063289614, -3150.150793853246, 89.2941191485285],
+          "rotation": [0.032021316956091166, 0.013263663768260521, 0.3824535064948012, 0.923324442356895],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 58.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "23950f31-216c-4a44-93e3-7f0ca867a188",
+        "name": "Biome desert",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-5289.523809523809, -10798.666666666666, 112.46706270110809],
+          "rotation": [0.02450805496321485, -0.02450805496321485, -0.7066819335754382, 0.7066819335754382],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 58.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "b18f31c0-6a9c-4ccd-95cb-9f57e51a1926",
+        "name": "Biome tropical_forest",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [-1387.1031748056257, -13158.039682337232, 60.64169240238379],
+          "rotation": [0.013263663768260507, -0.03202131695609118, -0.9233244423568951, 0.3824535064948008],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 58.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "d03e8ce4-24d5-4e61-b64f-1ebc20e495eb",
+        "name": "Biome swamp",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [10954.23015852771, -4472.43650813896, 61.4471204229465],
+          "rotation": [0.03202131695609118, -0.013263663768260535, -0.3824535064948015, 0.9233244423568949],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 58.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 40000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      },
+      {
+        "id": "2840d7e0-3e50-4785-8a2c-541826e01c1f",
+        "name": "Transition",
+        "tags": [],
+        "metadata": {},
+        "parent": null,
+        "transform": {
+          "position": [0.0, 4000.0, 3045.8359732287163],
+          "rotation": [0.11481812440702255, 0.0, 0.0, 0.9933865301621788],
+          "scale": [1.0, 1.0, 1.0]
+        },
+        "mesh": null,
+        "geometry": null,
+        "camera": {
+          "projection": "perspective",
+          "fov": 60.0,
+          "fov_axis": "vertical",
+          "ortho_scale": 10.0,
+          "near": 0.1,
+          "far": 90000.0,
+          "aspect_ratio": null
+        },
+        "light": null,
+        "appearance": null,
+        "visible": true,
+        "material": null,
+        "group_materials": {}
+      }
+    ],
+    "cad": {
+      "settings": {
+        "length_unit": "mm",
+        "angle_unit": "deg",
+        "precision": 3,
+        "display": {
+          "chord": 0.0005,
+          "angle_deg": 12.0,
+          "relative": 0.002
+        }
+      },
+      "items": []
+    },
+    "animation": {
+      "settings": {
+        "fps": 24,
+        "start": 0.0,
+        "end": 10.0,
+        "markers": [],
+        "sections": [],
+        "enabled": true
+      },
+      "items": []
+    },
+    "worlds": [
+      {
+        "id": "0885583b-1fff-432e-a8f5-8a2e4f727393",
+        "name": "Continent",
+        "definition": {
+          "seed": 3,
+          "generator": 1,
+          "mode": "terrain",
+          "extent": {
+            "min": [-16384.0, -16384.0],
+            "max": [16384.0, 16384.0]
+          },
+          "sea_level": 0.0,
+          "terrain": {
+            "scale": 1.0,
+            "height_scale": 1.0,
+            "continents": {
+              "scale": 22000.0,
+              "octaves": 4,
+              "land": 0.68,
+              "warp": 0.35,
+              "edge": 5000.0,
+              "curve": [
+                [-1.0, -420.0],
+                [-0.3, -60.0],
+                [-0.06, -6.0],
+                [0.0, 1.5],
+                [0.12, 10.0],
+                [0.45, 55.0],
+                [1.0, 180.0]
+              ]
+            },
+            "ranges": {
+              "scale": 12000.0,
+              "coverage": 0.35,
+              "warp": 0.5,
+              "sharpness": 0.5
+            },
+            "mountains": {
+              "height": 1500.0,
+              "scale": 3200.0,
+              "octaves": 7,
+              "ridged": 0.75,
+              "sharpness": 2.0,
+              "roughness": 0.47,
+              "warp": 0.25
+            },
+            "hills": {
+              "height": 55.0,
+              "scale": 1100.0,
+              "octaves": 6
+            },
+            "valleys": {
+              "depth": 0.0,
+              "scale": 4000.0,
+              "width": 0.06
+            },
+            "plateaus": {
+              "coverage": 0.0,
+              "scale": 6000.0,
+              "height": 110.0,
+              "step": 22.0,
+              "sharpness": 0.8
+            },
+            "canyons": {
+              "coverage": 0.0,
+              "scale": 3200.0,
+              "depth": 70.0,
+              "width": 0.05
+            },
+            "dunes": {
+              "height": 5.0,
+              "scale": 80.0,
+              "direction": 30.0
+            },
+            "detail": {
+              "height": 2.5,
+              "scale": 45.0,
+              "octaves": 4
+            },
+            "warp": {
+              "amplitude": 320.0,
+              "scale": 2600.0
+            },
+            "curve": null
+          },
+          "climate": {
+            "temperature": 12.0,
+            "variation": 3.0,
+            "gradient": [0.0, -1.3],
+            "lapse_rate": 6.5,
+            "moisture": 0.47,
+            "moisture_variation": 0.22,
+            "moisture_gradient": [0.04, 0.0],
+            "scale": 7000.0,
+            "water_influence": 0.2,
+            "water_distance": 1200.0,
+            "rain_shadow": 0.3,
+            "wind": 180.0,
+            "boundary_noise": 0.12
+          },
+          "biomes": {
+            "preset": "earth",
+            "blend": 0.12,
+            "table": {},
+            "disabled": []
+          },
+          "surface": {
+            "beach_height": 2.0,
+            "cliff_slope": 40.0,
+            "snow_temperature": -2.5,
+            "treeline_temperature": -7.0
+          },
+          "hydrology": {
+            "mode": "drainage",
+            "extent": null,
+            "cell": 32.0,
+            "max_cells": 4194304,
+            "erosion": {
+              "iterations": 40,
+              "strength": 2.0,
+              "deposition": 0.3,
+              "thermal": 0.3,
+              "talus": 42.0,
+              "uplift": 0.0
+            },
+            "rivers": {
+              "threshold": 1500000.0,
+              "width": 0.008,
+              "max_width": 60.0,
+              "depth": 1.5,
+              "contour_width": 0.012
+            },
+            "lakes": {
+              "enabled": true,
+              "max": 6,
+              "min_area": 40000.0,
+              "min_depth": 2.0
+            }
+          },
+          "caves": {
+            "enabled": false,
+            "tunnels": 0.4,
+            "caverns": 0.2,
+            "overhangs": 0.0,
+            "radius": 3.5,
+            "depth": [-80.0, -4.0],
+            "entrances": 0.35,
+            "scale": 120.0
+          },
+          "vegetation": {
+            "density": 1.0,
+            "clutter": 1.0,
+            "rocks": 1.0,
+            "distance": 2500.0,
+            "detail_distance": 90.0,
+            "variants": 6
+          },
+          "structures": {
+            "settlements": 0,
+            "size": [6, 16],
+            "spacing": 1500.0,
+            "castles": 0,
+            "towers": 0,
+            "ruins": 0,
+            "roads": true,
+            "bridges": true,
+            "biomes": ["plains", "meadow", "temperate_forest", "birch_forest", "savanna", "taiga"],
+            "max_slope": 14.0,
+            "items": []
+          },
+          "blocks": {
+            "size": 1.0,
+            "min_height": -64,
+            "max_height": 192,
+            "trees": true,
+            "ores": true,
+            "plants": true
+          },
+          "materials": {
+            "terrain": "88c47009-a80b-438e-aeb0-174ce7d2d065",
+            "water": "a0e866f9-2f6e-4cca-9174-69312f985528",
+            "rock": "6af2473a-3dc9-4b29-bb95-2000a4e470f7",
+            "bark": "a2c970e8-26e8-4cb1-b459-33ad887c79ae",
+            "birch_bark": "7ab2b687-b05d-4462-943b-65ad4f24b04b",
+            "wood": "7b540613-561e-431c-a0cd-b9a52a16d2ff",
+            "leaves": "de52bdfb-5099-4ce6-827a-3448df3a00dc",
+            "needles": "78122c00-b01d-488d-8be3-c1b3f7be0d89",
+            "palm": "c5607bfd-fda1-4640-b490-f71df904f337",
+            "grass": "950bdbec-fd4b-4619-9319-689a6dd68465",
+            "flowers": "ade00d5f-4c14-40a2-a2ea-a69ce89ddeca",
+            "cactus": "54b27d02-27a5-40d9-9eba-6c3247221b71",
+            "mushroom": "2bc8c3ab-4e8f-4dda-9574-642bf3e6ddf7",
+            "road": "dd07c719-eecb-4b9a-8072-7e38fc1339ba",
+            "stone": "04089a5b-19c4-4a71-a5e2-2f385f2b69c1",
+            "plaster": "5ee1046c-ed7e-450d-998d-4027211ac959",
+            "roof": "a938ce5c-0c26-4901-9632-fc88689b9a23",
+            "timber": "e57fb894-1c22-4c40-8804-732e20dd95cb"
+          },
+          "streaming": {
+            "chunk": 64.0,
+            "resolution": 64,
+            "lod_error": 3.0,
+            "view_distance": 40000.0,
+            "volume_distance": 400.0,
+            "memory_mb": 1024.0,
+            "max_tiles": 20000,
+            "threads": 1
+          },
+          "features": []
+        },
+        "edits": []
+      }
+    ]
+  },
+  "meshes": []
+}

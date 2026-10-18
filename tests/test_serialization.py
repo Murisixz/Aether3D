@@ -192,7 +192,10 @@ def obj(doc, name):
             "meshes[0].triangles[12]",
             "integers",
         ),
-        (lambda d: d["meshes"][0].update(colors=[]), "meshes[0]", "unknown key"),
+        # (Stage 16: "colors" is a mesh key now -- vertex colours -- so the unknown-key case
+        # uses another name, and a wrong colour count is rejected.)
+        (lambda d: d["meshes"][0].update(tangents=[]), "meshes[0]", "unknown key"),
+        (lambda d: d["meshes"][0].update(colors=[]), "meshes[0]", "colors has 0 entries"),
     ],
 )
 def test_invalid_documents_are_rejected_with_location(mutate, location, message):

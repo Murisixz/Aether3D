@@ -92,6 +92,25 @@ def test_document_layout():
             "horizon_color": [0.78, 0.85, 0.93],
             "ground_color": [0.32, 0.3, 0.27],
         },
+        # (Stage 16: the world's atmosphere -- sky, sun glow, height fog, hemisphere
+        # ambient -- off by default.)
+        "atmosphere": {
+            "enabled": False,
+            "sun": None,
+            "sky": True,
+            "sun_glow": 1.0,
+            "sun_glow_color": [1.0, 0.86, 0.62],
+            "sun_glow_size": 32.0,
+            "horizon_glow": 0.0,
+            "fog_density": 0.0,
+            "fog_height": 0.0,
+            "fog_falloff": 0.0,
+            "fog_color": [0.78, 0.84, 0.92],
+            "fog_sun": 0.0,
+            "fog_sun_power": 8.0,
+            "ambient": "uniform",
+            "ground_ambient": [0.36, 0.33, 0.29],
+        },
     }
     assert s["render"] == {
         "width": 320,

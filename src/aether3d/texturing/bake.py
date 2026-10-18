@@ -172,7 +172,9 @@ def source_scene(scene: Any, objects: list[Any]):
         if key not in index:
             index[key] = len(meshes)
             meshes.append(
-                RenderMesh(mesh.positions, mesh.triangles, mesh.normals, mesh.uvs, mesh.groups)
+                RenderMesh(
+                    mesh.positions, mesh.triangles, mesh.normals, mesh.uvs, mesh.groups, mesh.colors
+                )
             )
         world = np.asarray(obj.world_matrix, dtype=np.float64)
         lin = world[:3, :3]
@@ -264,7 +266,9 @@ class _Target:
             cp = cage_mesh.positions.astype(np.float64) @ lin.T + world[:3, 3]
             self.cage_p = cp[cage_mesh.triangles.astype(np.int64)]
         t = corner_tangents(
-            RenderMesh(mesh.positions, mesh.triangles, mesh.normals, mesh.uvs, mesh.groups)
+            RenderMesh(
+                mesh.positions, mesh.triangles, mesh.normals, mesh.uvs, mesh.groups, mesh.colors
+            )
         )
         v = t[..., :3].astype(np.float64) @ lin.T
         v /= np.maximum(np.linalg.norm(v, axis=2, keepdims=True), 1e-300)

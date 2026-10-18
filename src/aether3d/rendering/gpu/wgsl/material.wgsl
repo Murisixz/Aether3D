@@ -119,6 +119,9 @@ struct VertexOut {
   // The interpolated MikkTSpace tangent (world, not renormalized) and its sign, for UV normal
   // maps (zero otherwise).
   @location(15) @interpolate(perspective, centroid) tangent: vec4<f32>,
+  // The interpolated vertex colour (linear RGBA; white without colours): multiplies the
+  // material's base colour and opacity, as glTF's COLOR_0.
+  @location(16) @interpolate(perspective, centroid) color: vec4<f32>,
 };
 
 fn build_vertex(vertex: u32, instance: u32, view_proj: mat4x4<f32>) -> VertexOut {
@@ -177,6 +180,10 @@ fn build_vertex(vertex: u32, instance: u32, view_proj: mat4x4<f32>) -> VertexOut
   out.tangent = vec4<f32>(0.0);
   if ((inst.flags & INSTANCE_HAS_UVS) != 0u && needs_tangents(out.material)) {
     out.tangent = world_tangent(inst, mesh_tangent(3u * triangle + corner));
+  }
+  out.color = vec4<f32>(1.0);
+  if ((inst.flags & INSTANCE_HAS_COLORS) != 0u) {
+    out.color = mesh_color(inst, tri[corner]);
   }
   return out;
 }
@@ -757,6 +764,7 @@ struct SurfaceInput {
   normal: vec3<f32>,  // outward unit shading normal (world)
   vnormal: vec3<f32>,  // the interpolated outward normal, not renormalized (MikkTSpace N)
   tangent: vec4<f32>,  // the interpolated MikkTSpace tangent and its sign (zero: none)
+  color: vec4<f32>,    // the interpolated vertex colour (white without vertex colours)
 };
 
 struct Corners {
@@ -969,7 +977,16 @@ fn material_flags(m: u32) -> u32 {
 // knows: one call per slot and projection made the shader dozens of times larger, and took
 // minutes to compile there. The loop visits the bound slots through a mask of loaded data (in
 // slot order; each slot sets its own values), and each slot's projections.
+// What a material looks like at a surface point: factors x textures (surface_textures),
+// times the vertex colour (glTF COLOR_0 multiplies base colour and opacity).
 fn evaluate_surface(m: u32, s: SurfaceInput, has_uvs: bool, alpha_only: bool) -> SurfaceValues {
+  var v = surface_textures(m, s, has_uvs, alpha_only);
+  v.base = v.base * s.color.rgb;
+  v.alpha = v.alpha * s.color.a;
+  return v;
+}
+
+fn surface_textures(m: u32, s: SurfaceInput, has_uvs: bool, alpha_only: bool) -> SurfaceValues {
   let mb = material_base(m);
   var v = SurfaceValues(
     word3(mb + 1u), wordf(mb + 4u), wordf(mb + 6u), wordf(mb + 7u), 1.0, word3(mb + 10u), s.normal

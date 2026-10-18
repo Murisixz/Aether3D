@@ -72,6 +72,7 @@ from .errors import (
     TexturingError,
     UnsupportedFeatureError,
     ValidationError,
+    WorldError,
 )
 from .feedback import FeedbackSession
 from .gltf import ExportResult, ImportLimits, ImportResult, export_gltf, import_gltf
@@ -100,6 +101,7 @@ from .procedural.script import run_procedural_script
 from .rendering import (
     AOSettings,
     Appearance,
+    Atmosphere,
     Camera,
     Environment,
     Light,
@@ -128,6 +130,7 @@ __all__ = [
     "AnimationError",
     "Appearance",
     "AssetFormatError",
+    "Atmosphere",
     "Camera",
     "CommitResult",
     "DetachedObjectError",
@@ -190,6 +193,7 @@ __all__ = [
     "UnsupportedFeatureError",
     "ValidationError",
     "World",
+    "WorldError",
     "__version__",
     "create_cube",
     "create_plane",

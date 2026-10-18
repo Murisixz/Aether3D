@@ -82,7 +82,7 @@ def test_projects_store_tags_and_metadata(tmp_path):
     s = tagged_scene()
     s.save(tmp_path / "t.aether", history=True)
     doc = json.loads((tmp_path / "t.aether").read_text())
-    assert doc["format_version"] == FORMAT_VERSION == 9
+    assert doc["format_version"] == FORMAT_VERSION == 10
     record = next(o for o in doc["scene"]["objects"] if o["name"] == "Keep")
     assert list(record)[:4] == ["id", "name", "tags", "metadata"]
     assert record["tags"] == ["stone", "tower"] and record["metadata"]["floors"] == 3
@@ -102,7 +102,7 @@ def test_version_5_projects_load_without_tags():
         del record["tags"], record["metadata"]
     old = scene_from_dict(doc)
     assert all(o.tags == () and o.metadata == {} for o in old)
-    assert scene_to_dict(old)["format_version"] == 9
+    assert scene_to_dict(old)["format_version"] == 10
 
 
 def test_invalid_stored_tags_are_reported_with_their_location():

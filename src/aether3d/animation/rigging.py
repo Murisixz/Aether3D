@@ -586,7 +586,9 @@ def _run_skin(
             )
         )
         return
-    result.meshes[oid] = Mesh._from_arrays(pos, mesh.triangles, nrm, mesh.uvs, mesh.groups)
+    result.meshes[oid] = Mesh._from_arrays(
+        pos, mesh.triangles, nrm, mesh.uvs, mesh.groups, mesh.colors
+    )
 
 
 def _morphed(system: AnimationSystem, pose: AnimationPose, oid: str) -> Any:

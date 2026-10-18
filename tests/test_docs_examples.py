@@ -509,3 +509,35 @@ def test_animation_doc_script_example():
     report = out["operations"][-1]["result"]
     assert report["keys"] == 3 and not report["overshoot"]
     assert scene.history.entries[-1].label == "Bounce"
+
+
+# --------------------------------------------------------------------------- #
+# Procedural worlds (0.18.0)
+# --------------------------------------------------------------------------- #
+
+WORLDS_START = 'from aether3d import Scene\n\nscene = Scene("Hills")\nhills = scene.worlds.create('
+
+
+@pytest.mark.parametrize("doc", ["docs/WORLDS.md", "README.md"])
+def test_worlds_quick_start(doc, tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    source = python_block(ROOT / doc, WORLDS_START)
+    exec(compile(source, doc, "exec"), {})
+    assert_printed(source, capsys.readouterr().out)
+    assert (tmp_path / "hills.aether").stat().st_size < 64_000  # no generated geometry
+
+
+def test_worlds_doc_script_example():
+    from aether3d.worlds.script import run_world_script, schema
+
+    jsonschema = pytest.importorskip("jsonschema")
+    text = (ROOT / "docs/WORLDS.md").read_text(encoding="utf-8")
+    script = json.loads(re.search(r'```json\n(\{"format": "aether3d.world-script".*?)\n```',
+                                  text, re.S).group(1))  # fmt: skip
+    jsonschema.validate(script, schema())
+    scene = Scene()
+    out = run_world_script(scene, script)
+    assert [o["op"] for o in out["operations"]] == ["create", "add_feature", "build_settlements"]
+    assert out["operations"][2]["settlements"]  # a village was built
+    assert any(i["kind"] == "house" for i in out["queries"][0]["items"])
+    assert scene.history.entries[-1].label == "Valley with a village"

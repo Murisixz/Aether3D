@@ -225,6 +225,24 @@ Aether3D/
 │   │   │                                   contacts and planting, retargeting
 │   │   ├── cinematics.py, frames.py        Paths, shots, camera moves; frame rendering
 │   │   └── script.py, schema.py, guide.md  Animation scripts, their schema, the agent guide
+│   ├── worlds/            Procedural worlds (see docs/WORLDS.md)
+│   │   ├── definition.py                   Validated definitions, defaults, presets, biomes
+│   │   ├── noise.py                        Deterministic noise: integer hashes, fBm, ridged,
+│   │   │                                   eroded and warped fractals, exact cos/sin, blends
+│   │   ├── features.py, fields.py          Authored features; the definition compiled into
+│   │   │                                   pure field functions (height, climate, biomes, water)
+│   │   ├── hydrology.py                    The regional stage: erosion, rivers, lakes (native)
+│   │   ├── tiles.py, terrain_mesh.py       Quadtree LOD selection and stitching; tile meshes
+│   │   ├── surface.py, materials.py        Surface colours; the world's layer materials
+│   │   ├── vegetation.py, assets.py        Plant placement and culling; procedural species
+│   │   ├── volumes.py                      Caves and overhangs: SDF, marching cubes
+│   │   ├── blocks.py, voxels.py, edits.py  Block registry and pixel art; block chunks, greedy
+│   │   │                                   meshing, coarse levels; block edits
+│   │   ├── structures.py                   Structures, sites, roads, bridges, settlements
+│   │   ├── runtime.py, workers.py          Generated data, caches, budgets, accounting; threads
+│   │   ├── render.py, export.py            A world's render contribution; glTF regions
+│   │   ├── system.py                       scene.worlds: items, history, the API
+│   │   └── script.py, guide.md             World scripts and their schema; the agent guide
 │   ├── cad/               Precision modeling (see docs/CAD.md)
 │   │   ├── units.py, tolerance.py, expr.py   Quantities, tolerances, safe expressions
 │   │   ├── nurbs.py, geom2d.py, geom3d.py    Exact curves and surfaces
@@ -302,6 +320,7 @@ Aether3D/
 | `cad.*` | `errors`, `_native` (triangulation), `history` (aspects), `rendering.raytrace` (hidden lines), `rendering.png`; `manifold3d` (optional, lazily, booleans); `scene` only for type hints and through `scene.cad` |
 | `arch.*` | `cad` (document, kinds, B-rep, sketches, interop helpers), `errors` |
 | `animation.*` | `errors`, `diagnostics`, `history` (aspects), `mesh`, `transform`, `materials`, `rendering.scene_data` (world matrices), `rendering.overlay`, `rendering.camera`, `rendering.png`, `rendering.tonemap` (motion blur), `cad.drawing` (graph rasterizer and stroke font), `_native` (skinning); `scene` only for type hints and through `scene.animation` |
+| `worlds.*` | `errors`, `diagnostics`, `history` (aspects), `mesh`, `rendering.scene_data` (render-scene parts), `rendering.materials`, `.color`, `.settings`, `.overlay`, `.png`, `sculpt.voxel` (marching cubes), `gltf.writer` and `scene` (region export, lazily), `_native` (hydrology); otherwise `scene` only for type hints and through `scene.worlds` |
 | `gltf.anim_export`, `gltf.anim_import` | `gltf.axes`, `animation` (clips, curves, tracks, rigs), `diagnostics`, `errors` |
 | `mcp.*` | `plans`, `scene`, `serialization`, `gltf`, `rendering`, `spatial`, `history`, `editing` and `procedural` (scripts), `feedback`, `errors`; the `mcp` SDK (optional: never imported by `import aether3d`) |
 | `cli` | `editing`, `procedural`, `rendering`, `materials`, `gltf`, `serialization`, `scene`, `history`, `spatial`, `plans`, `feedback`, `errors`; `mcp` lazily (`aether3d mcp serve`) |
@@ -315,6 +334,11 @@ Animation feeds the renderers through one overlay: `scene.animation.overlay(t)` 
 posed local matrices, field overrides and deformed meshes that `extract_render_scene` and
 the retained world apply; nothing in `rendering` imports `animation` except lazily, to
 evaluate at a requested time.
+
+Worlds feed the renderers the same way: `renderer.render` asks `worlds.render.contribute`
+(imported lazily, only when the scene has worlds) for each world's meshes and instances
+for the frame's camera and appends them to the extracted render scene; the backends do
+not know worlds exist.
 
 ## Core concepts
 
@@ -1057,3 +1081,42 @@ Stage 17 was built before Stage 16, which is postponed. Key decisions:
 - **Same contract for agents.** Animation scripts are data, atomic, limited and
   schema-described; the CLI, the MCP tools, the scene-plan operation and the feedback
   checks reuse them.
+
+## Procedural worlds and massive environments (v0.18.0)
+
+`aether3d.worlds` adds generated landscapes; see [WORLDS.md](WORLDS.md) and the design
+record [research/2026-10-stage16/DESIGN.md](../research/2026-10-stage16/DESIGN.md).
+Stage 16 was built after Stage 17 and ships as 0.18.0. Key decisions:
+
+- **A world is a definition, not geometry.** Each world is an item with an immutable,
+  validated JSON definition and an immutable store of block edits, recorded by one history
+  aspect (`world.item`) and saved in project format 10. Everything generated -- the
+  regional stage, tiles, plants, chunks, volumes -- is a cache keyed by content, so undo,
+  load and reload give the same bits, and nothing generated is ever saved.
+- **Pure functions of coordinates.** The definition compiles into field functions
+  (height, climate, biome weights, water) of world coordinates; tiles, chunks and plant
+  tiles are pure functions of their addresses, so generation order, batching and threads
+  never change results.
+- **Determinism by construction.** Integer hashing (SplitMix64) for every random
+  decision; only correctly rounded floating-point operations (`+ - * /`, `sqrt`, `floor`)
+  with explicit, ordered sums instead of BLAS (`noise.blend`) and our own exact cosine
+  and sine; the native hydrology kernels are bitwise twins of the NumPy code. Golden
+  hashes of float64 bits guard it.
+- **Authoritative versus drawn.** Queries, structures and paths use the exact fields
+  (heights at any point, the cave field, every block); renders draw levels of detail whose
+  error is measured and bounded in pixels. Each is documented with what it approximates.
+- **Contributions, not objects.** A world appends meshes and instances to the render
+  scene for each frame's camera (synthetic ids, shared immutable meshes the GPU caches by
+  identity); it adds nothing to the scene, its history or its files. Frame selection
+  depends only on the frame's camera, so animated renders are order independent.
+- **Bounded memory.** Byte-budgeted LRU caches per kind; a frame's working set is pinned
+  for the frame only; memory is measured (cached bytes per kind, the last frame, the
+  process's resident memory, GPU mesh caches) rather than estimated.
+- **Languages decided up front.** NumPy (float64) for fields, tiles, plants, blocks,
+  greedy meshing and volumes, vectorized and batched across tiles; Rust kernels only for
+  the sequential hydrology sweeps (priority flood, receivers, accumulation, stream power;
+  ABI 5); WGSL for the atmosphere on the GPU; no GPU generation (GPU float arithmetic is
+  not reproducible across adapters).
+- **Same contract for agents.** World scripts are data, atomic, limited and
+  schema-described; the CLI, the MCP tools (`run_script`, `inspect_world`) and the
+  scene-plan operation `world` reuse them.

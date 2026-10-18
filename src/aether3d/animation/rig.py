@@ -768,7 +768,9 @@ class Morph:
                 nn = nn + w[k] * self.normals[k].astype(np.float64)
             length = np.linalg.norm(nn, axis=1)
             nrm = (nn / np.where(length > 0, length, 1.0)[:, None]).astype(np.float32)
-        return Mesh._from_arrays(pos.astype(np.float32), mesh.triangles, nrm, mesh.uvs, mesh.groups)
+        return Mesh._from_arrays(
+            pos.astype(np.float32), mesh.triangles, nrm, mesh.uvs, mesh.groups, mesh.colors
+        )
 
     def to_json(self) -> dict[str, Any]:
         out: dict[str, Any] = {

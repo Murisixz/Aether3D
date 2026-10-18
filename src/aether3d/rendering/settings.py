@@ -258,6 +258,132 @@ class Environment(_Validated):
     ground_color = _prop("ground_color")
 
 
+AMBIENT_MODES = ("uniform", "hemisphere")
+DEFAULT_FOG: Color = (0.78, 0.84, 0.92)
+
+
+class Atmosphere(_Validated):
+    """Outdoor atmosphere (``scene.world.atmosphere``, since 0.18.0): a sky with a sun glow,
+    exponential height fog with forward-scattered sunlight, and hemisphere ambient light.
+    Off by default (``enabled=False``): scenes render exactly as before.
+
+    * ``enabled`` -- turn the atmosphere on.
+    * ``sun`` -- name or id of the directional light whose direction places the sun glow and
+      fog scattering (``None``: the brightest directional light).
+    * ``sky`` -- rasterizers draw ``world.environment``'s sky (with the glow) behind the
+      geometry instead of ``world.background`` (the path tracers always see the
+      environment).
+    * ``sun_glow``, ``sun_glow_color``, ``sun_glow_size`` -- strength, display colour and
+      tightness (an exponent, larger = smaller halo) of the glow around the sun in the sky.
+    * ``horizon_glow`` -- a warm band along the horizon, strongest toward the sun (sunsets).
+    * ``fog_density`` -- extinction per metre at ``fog_height``; ``fog_falloff`` (per
+      metre) thins it with height: ``density(z) = fog_density * e^(-fog_falloff (z -
+      fog_height))`` (0: uniform fog). The optical depth along each camera ray is exact.
+    * ``fog_color`` -- display colour of the fog; ``fog_sun`` and ``fog_sun_power`` add
+      sunlight scattered toward the camera when looking toward the sun.
+    * ``ambient`` -- ``"uniform"`` (as before) or ``"hemisphere"``: on the rasterizers,
+      surfaces facing up get the world's ambient light and surfaces facing down
+      ``ground_ambient`` (times ``ambient_intensity``), blended by the normal (the path
+      tracers light with the environment instead).
+
+    Fog applies along camera rays on every backend (rasterizers per sample, path tracers to
+    each camera path's first segment): an aerial-perspective model, not a participating
+    medium that scatters light between surfaces.
+    """
+
+    _FIELDS = (
+        "enabled",
+        "sun",
+        "sky",
+        "sun_glow",
+        "sun_glow_color",
+        "sun_glow_size",
+        "horizon_glow",
+        "fog_density",
+        "fog_height",
+        "fog_falloff",
+        "fog_color",
+        "fog_sun",
+        "fog_sun_power",
+        "ambient",
+        "ground_ambient",
+    )
+    _CODE = "INVALID_WORLD"
+    __slots__ = tuple(f"_{name}" for name in _FIELDS)
+
+    def __init__(
+        self,
+        enabled: bool = False,
+        sun: str | None = None,
+        sky: bool = True,
+        sun_glow: float = 1.0,
+        sun_glow_color: Any = (1.0, 0.86, 0.62),
+        sun_glow_size: float = 32.0,
+        horizon_glow: float = 0.0,
+        fog_density: float = 0.0,
+        fog_height: float = 0.0,
+        fog_falloff: float = 0.0,
+        fog_color: Any = DEFAULT_FOG,
+        fog_sun: float = 0.0,
+        fog_sun_power: float = 8.0,
+        ambient: str = "uniform",
+        ground_ambient: Any = (0.36, 0.33, 0.29),
+    ) -> None:
+        self._assign(self._check(dict(locals(), **{}), "world.atmosphere"))
+
+    def _location(self) -> str:
+        return "world.atmosphere"
+
+    def _check(self, values: dict[str, Any], location: str) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for name in ("enabled", "sky"):
+            if not isinstance(values[name], bool):
+                raise RenderError(self._CODE, f"{name} must be true or false", f"{location}.{name}")
+            out[name] = values[name]
+        sun = values["sun"]
+        if sun is not None and (not isinstance(sun, str) or not sun):
+            raise RenderError(self._CODE, "sun is a light's name or id, or null", f"{location}.sun")
+        out["sun"] = sun
+        for name in ("sun_glow_color", "fog_color", "ground_ambient"):
+            out[name] = _color(values[name], self._CODE, f"{location}.{name}")
+        ranges = {
+            "sun_glow": (0.0, 100.0),
+            "sun_glow_size": (1.0, 65536.0),
+            "horizon_glow": (0.0, 100.0),
+            "fog_density": (0.0, 10.0),
+            "fog_height": (-1e7, 1e7),
+            "fog_falloff": (0.0, 10.0),
+            "fog_sun": (0.0, 100.0),
+            "fog_sun_power": (1.0, 4096.0),
+        }
+        for name, (lo, hi) in ranges.items():
+            out[name] = _number(values[name], self._CODE, name, f"{location}.{name}", lo, hi)
+        if values["ambient"] not in AMBIENT_MODES:
+            raise RenderError(
+                self._CODE,
+                f"ambient must be one of {', '.join(AMBIENT_MODES)}, got {values['ambient']!r}",
+                f"{location}.ambient",
+            )
+        out["ambient"] = values["ambient"]
+        return {name: out[name] for name in self._FIELDS}
+
+    enabled = _prop("enabled")
+    sun = _prop("sun")
+    sky = _prop("sky")
+    sun_glow = _prop("sun_glow")
+    sun_glow_color = _prop("sun_glow_color")
+    sun_glow_size = _prop("sun_glow_size")
+    horizon_glow = _prop("horizon_glow")
+    fog_density = _prop("fog_density")
+    fog_height = _prop("fog_height")
+    fog_falloff = _prop("fog_falloff")
+    fog_color = _prop("fog_color")
+    fog_sun = _prop("fog_sun")
+    fog_sun_power = _prop("fog_sun_power")
+    ambient = _prop("ambient")
+    ground_ambient = _prop("ground_ambient")
+
+
 class World(_Validated):
     """Scene-wide background, ambient light and environment (``scene.world``).
 
@@ -271,9 +397,15 @@ class World(_Validated):
       a dict of its fields (missing fields keep their current values).
     """
 
-    _FIELDS = ("background", "ambient_color", "ambient_intensity", "environment")
+    _FIELDS = ("background", "ambient_color", "ambient_intensity", "environment", "atmosphere")
     _CODE = "INVALID_WORLD"
-    __slots__ = ("_background", "_ambient_color", "_ambient_intensity", "_environment")
+    __slots__ = (
+        "_background",
+        "_ambient_color",
+        "_ambient_intensity",
+        "_environment",
+        "_atmosphere",
+    )
 
     def __init__(
         self,
@@ -281,6 +413,7 @@ class World(_Validated):
         ambient_color: Any = (1.0, 1.0, 1.0),
         ambient_intensity: float = 0.1,
         environment: Any = None,
+        atmosphere: Any = None,
     ) -> None:
         self._assign(
             self._check(
@@ -289,6 +422,7 @@ class World(_Validated):
                     "ambient_color": ambient_color,
                     "ambient_intensity": ambient_intensity,
                     "environment": Environment() if environment is None else environment,
+                    "atmosphere": Atmosphere() if atmosphere is None else atmosphere,
                 },
                 "world",
             )
@@ -297,27 +431,43 @@ class World(_Validated):
     def _clone(self):
         other = super()._clone()
         other._environment = self._environment._clone()  # a value object, not a value
+        other._atmosphere = self._atmosphere._clone()
         return other
 
     def configure(self, **changes: Any):
-        env = changes.get("environment")
-        if isinstance(env, dict):  # partial updates keep the other environment fields
-            changes = {**changes, "environment": {**self._environment.to_dict(), **env}}
+        for name, current in (("environment", self._environment), ("atmosphere", self._atmosphere)):
+            value = changes.get(name)
+            if isinstance(value, dict):  # partial updates keep the other fields
+                changes = {**changes, name: {**current.to_dict(), **value}}
         return super().configure(**changes)
 
     def _assign(self, values: dict[str, Any]) -> None:
         super()._assign(values)
         self._environment._owner = (self, None)  # its changes are changes of the world
+        self._atmosphere._owner = (self, "atmosphere")
 
     def _edit_value(self, aspect: Any, fields: Any) -> Any:
-        return recording(self, [f"environment.{f}" for f in fields])
+        prefix = "atmosphere" if aspect == "atmosphere" else "environment"
+        return recording(self, [f"{prefix}.{f}" for f in fields])
 
     def to_dict(self) -> dict[str, Any]:
         data = super().to_dict()
         data["environment"] = self._environment.to_dict()
+        data["atmosphere"] = self._atmosphere.to_dict()
         return data
 
     def _check(self, values: dict[str, Any], location: str) -> dict[str, Any]:
+        atm = values["atmosphere"]
+        if isinstance(atm, Atmosphere):
+            atm = atm.copy()
+        elif isinstance(atm, dict):
+            atm = Atmosphere.from_dict({**Atmosphere().to_dict(), **atm}, f"{location}.atmosphere")
+        else:
+            raise RenderError(
+                self._CODE,
+                f"atmosphere must be an Atmosphere or a dict, got {atm!r}",
+                f"{location}.atmosphere",
+            )
         env = values["environment"]
         if isinstance(env, Environment):
             env = env.copy()
@@ -343,12 +493,14 @@ class World(_Validated):
                 1e6,
             ),
             "environment": env,
+            "atmosphere": atm,
         }
 
     background = _prop("background")
     ambient_color = _prop("ambient_color")
     ambient_intensity = _prop("ambient_intensity")
     environment = _prop("environment")
+    atmosphere = _prop("atmosphere")
 
 
 class RenderSettings(_Validated):
@@ -473,13 +625,29 @@ class ShadowSettings(_Validated):
     * ``pcf_radius`` -- percentage-closer filtering: ``(2r + 1)^2`` bilinear
       depth comparisons around each point (0-4, default 1; 0 is the
       hardest edge the map can give).
+    * ``cascades`` -- maps per light, each covering a slice of the view's depth (1-4,
+      default 1: one map, as before 0.18.0). Cascades keep shadows sharp near the camera in
+      wide outdoor views; lights x cascades is at most :data:`MAX_SHADOW_MAPS`.
+    * ``cascade_split`` -- how the slices grow: 0 equal depths, 1 logarithmic (default
+      0.75, between them).
+    * ``distance`` -- the farthest view depth that gets shadows (0, default: the farthest
+      geometry).
 
     See ``docs/GPU.md`` for how the shadow map is fitted and what these mean.
     """
 
-    _FIELDS = ("lights", "map_size", "bias", "normal_offset", "pcf_radius")
+    _FIELDS = (
+        "lights",
+        "map_size",
+        "bias",
+        "normal_offset",
+        "pcf_radius",
+        "cascades",
+        "cascade_split",
+        "distance",
+    )
     _CODE = "INVALID_SHADOWS"
-    __slots__ = ("_lights", "_map_size", "_bias", "_normal_offset", "_pcf_radius")
+    __slots__ = tuple(f"_{name}" for name in _FIELDS)
 
     def __init__(
         self,
@@ -488,6 +656,9 @@ class ShadowSettings(_Validated):
         bias: float = 0.5,
         normal_offset: float = 0.5,
         pcf_radius: int = 1,
+        cascades: int = 1,
+        cascade_split: float = 0.75,
+        distance: float = 0.0,
     ) -> None:
         self._assign(
             self._check(
@@ -497,6 +668,9 @@ class ShadowSettings(_Validated):
                     "bias": bias,
                     "normal_offset": normal_offset,
                     "pcf_radius": pcf_radius,
+                    "cascades": cascades,
+                    "cascade_split": cascade_split,
+                    "distance": distance,
                 },
                 "shadows",
             )
@@ -545,6 +719,30 @@ class ShadowSettings(_Validated):
             "pcf_radius": _integer(
                 values["pcf_radius"], self._CODE, "pcf_radius", f"{location}.pcf_radius", 0, 4
             ),
+            "cascades": _integer(
+                values.get("cascades", 1),
+                self._CODE,
+                "cascades",
+                f"{location}.cascades",
+                1,
+                MAX_SHADOW_MAPS,
+            ),
+            "cascade_split": _number(
+                values.get("cascade_split", 0.75),
+                self._CODE,
+                "cascade_split",
+                f"{location}.cascade_split",
+                0.0,
+                1.0,
+            ),
+            "distance": _number(
+                values.get("distance", 0.0),
+                self._CODE,
+                "distance",
+                f"{location}.distance",
+                0.0,
+                1e9,
+            ),
         }
 
     lights = _prop("lights")
@@ -552,6 +750,9 @@ class ShadowSettings(_Validated):
     bias = _prop("bias")
     normal_offset = _prop("normal_offset")
     pcf_radius = _prop("pcf_radius")
+    cascades = _prop("cascades")
+    cascade_split = _prop("cascade_split")
+    distance = _prop("distance")
 
     @classmethod
     def coerce(cls, value: Any) -> ShadowSettings | None:

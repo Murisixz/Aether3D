@@ -35,6 +35,7 @@ import numpy as np
 
 from ..diagnostics import WARNING, Diagnostic
 from ..errors import RenderError
+from . import atmosphere as atmo
 from . import raster, surface
 from .raster import EMPTY, RasterStats
 from .scene_data import RenderScene, _mat4_mul
@@ -344,8 +345,9 @@ def render_scene(
     del keys
     uncovered = samples * samples - covered_per_pixel
     inv = 1.0 / float(samples * samples)
+    background = _background(rs, width, height, hx, hy, perspective)
     for c in range(3):  # in place: no full-image temporaries
-        accum[c] += rs.background[c] * uncovered
+        accum[c] += (rs.background[c] if background is None else background[:, c]) * uncovered
         accum[c] *= inv
     linear = np.stack(accum, axis=-1)
     del accum
@@ -365,6 +367,34 @@ def render_scene(
         timings=timings,
         diagnostics=diagnostics,
     )
+
+
+def _background(
+    rs: RenderScene, width: int, height: int, hx: float, hy: float, perspective: bool
+) -> np.ndarray | None:
+    """Per-pixel background radiance ``(pixels, 3)`` with the atmosphere (its sky at the
+    pixel centre's view direction, through the fog), or ``None`` (the flat background)."""
+    model = _atmosphere(rs)
+    if model is None or not (model.sky_background or model.fog):
+        return None
+    frame = rs.camera.frame
+    row, col = np.divmod(np.arange(width * height), width)
+    xn = (col + 0.5) * (2.0 / width) - 1.0
+    yn = 1.0 - (row + 0.5) * (2.0 / height)
+    if perspective:
+        d = (
+            frame.forward[None, :]
+            + (xn * hx)[:, None] * frame.right[None, :]
+            + (yn * hy)[:, None] * frame.up[None, :]
+        )
+        d = d / np.linalg.norm(d, axis=1, keepdims=True)
+    else:
+        d = np.broadcast_to(frame.forward, (width * height, 3)).copy()
+    if model.sky_background:
+        color = atmo.sky(model, d)
+    else:
+        color = np.broadcast_to(rs.background, d.shape).copy()
+    return atmo.fog(model, color, d, np.full(d.shape[0], np.inf))
 
 
 def _front_facing(
@@ -522,6 +552,8 @@ def _shade(
     plain = np.array([m.model == "simple" and m.plain for m in materials], dtype=bool)
     radiance = [np.empty(ct.shape[0]) for _ in range(3)]
     simple_rows = plain[mat] if len(materials) else np.ones(ct.shape[0], dtype=bool)
+    if ctx.has_colors is not None:  # vertex colours shade through the material path
+        simple_rows &= ~ctx.has_colors[inst]
     if simple_rows.any():
         # Untextured simple materials (every object color): Stage 5 shading, unchanged.
         rows = None if simple_rows.all() else simple_rows
@@ -553,7 +585,22 @@ def _shade(
         _shade_materials(
             rs, ctx, table, ct, xn, yn, ~simple_rows, mat, (nx, ny, nz), (px, py, pz), radiance
         )
+    model = _atmosphere(rs)
+    if model is not None and model.fog:  # aerial perspective along the camera rays
+        dx, dy, dz = px - ex, py - ey, pz - ez
+        dist = np.sqrt(dx * dx + dy * dy + dz * dz)
+        safe = np.maximum(dist, 1e-30)
+        d = np.stack([dx / safe, dy / safe, dz / safe], axis=1)
+        fogged = atmo.fog(model, np.stack(radiance, axis=1), d, dist)
+        radiance = [fogged[:, c] for c in range(3)]
     return radiance, view_depth, inst
+
+
+def _atmosphere(rs: RenderScene):
+    atm = rs.atmosphere
+    if atm is None or not atm["settings"].enabled:
+        return None
+    return atmo.resolve(rs)
 
 
 def _shade_context(
@@ -585,6 +632,7 @@ def _shade_context(
         )
     has_uvs = np.array([rs.meshes[i.mesh].uvs is not None for i in rs.instances], dtype=bool)
     linear = np.array([i.world[:3, :3] for i in rs.instances], dtype=np.float64).reshape(-1, 3, 3)
+    CO, has_colors = vertex_colors(rs)
     return surface.ShadeContext(
         rs,
         P,
@@ -600,7 +648,26 @@ def _shade_context(
         perspective,
         2.0 / sw,
         -2.0 / sh,
+        CO=CO,
+        has_colors=has_colors,
     )
+
+
+def vertex_colors(rs: RenderScene) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """``(V, 4)`` vertex colours of every instance's vertices, concatenated in instance
+    order (ones for meshes without), and which instances have them; ``(None, None)`` when no
+    instance's mesh has colours."""
+    has = np.array([rs.meshes[i.mesh].colors is not None for i in rs.instances], dtype=bool)
+    if not has.any():
+        return None, None
+    parts = []
+    for inst in rs.instances:
+        m = rs.meshes[inst.mesh]
+        if m.colors is not None:
+            parts.append(m.colors.astype(np.float64))
+        else:
+            parts.append(np.ones((m.positions.shape[0], 4)))
+    return np.concatenate(parts), has
 
 
 def _surface_samples(

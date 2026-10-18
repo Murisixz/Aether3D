@@ -232,6 +232,10 @@ ambient light.
 | `emissive` | RGB | sRGB | `emissive × emissive_strength × texture` |
 | `occlusion` | channel `r` | linear | ambient × `1 + occlusion_strength × (texture − 1)` |
 
+- **Vertex colours** (`Mesh.colors`, since 0.18.0) multiply too: the base colour by the
+  interpolated vertex RGB and the opacity by its alpha, after the texture, as glTF's
+  `COLOR_0` -- on every backend. Worlds use them for biome tints, ambient occlusion of
+  blocks and water depth, under tiling detail textures.
 - **Channels.** Number slots read their default channel. A binding's
   `channel` (`"r"`, `"g"`, `"b"`, `"a"`, `"luminance"`) overrides it.
   Procedural textures used in number slots read `r` by default: the node's

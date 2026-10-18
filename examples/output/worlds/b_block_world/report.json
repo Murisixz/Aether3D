@@ -1,0 +1,528 @@
+{
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "aether3d": "0.18.0",
+    "native": true,
+    "python": "3.14.8"
+  },
+  "size": [
+    1920,
+    1080
+  ],
+  "build": {
+    "castle": {
+      "at": [
+        789.29,
+        -859.34
+      ],
+      "height": 51.68,
+      "biome": "temperate_forest",
+      "slope": 3.17,
+      "score": -0.088
+    },
+    "village": {
+      "settlements": [
+        {
+          "prefix": "village-0",
+          "at": [
+            769.05,
+            -860.04
+          ],
+          "houses": 5
+        }
+      ],
+      "roads": [],
+      "castles": [],
+      "items": 6,
+      "road_features": 2
+    },
+    "road": 20.3,
+    "seconds": 4.44
+  },
+  "stills": {
+    "castle": {
+      "path": "examples/output/worlds/b_block_world/castle.png",
+      "seconds": 111.67,
+      "backend": "gpu_path",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [
+        "PASS_THROUGH_LIMIT"
+      ],
+      "world": {
+        "parts": 597,
+        "meshes": 597,
+        "triangles": 1873462,
+        "seconds": 9.0805
+      }
+    },
+    "village": {
+      "path": "examples/output/worlds/b_block_world/village.png",
+      "seconds": 1.17,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [],
+      "world": {
+        "parts": 603,
+        "meshes": 603,
+        "triangles": 1912124,
+        "seconds": 0.2751
+      }
+    },
+    "panorama": {
+      "path": "examples/output/worlds/b_block_world/panorama.png",
+      "seconds": 3.05,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": [],
+      "world": {
+        "parts": 411,
+        "meshes": 411,
+        "triangles": 1250808,
+        "seconds": 2.3242
+      }
+    }
+  },
+  "video": {
+    "frames": 300,
+    "fps": 30.0,
+    "seconds": 250.6,
+    "seconds_per_frame_median": 0.534,
+    "seconds_per_frame_max": 1.355,
+    "size": [
+      1920,
+      1080
+    ],
+    "frames_report": [
+      {
+        "frame": 0,
+        "time": 0.0,
+        "seconds": 1.355,
+        "worlds": {
+          "Blocks": {
+            "parts": 630,
+            "meshes": 630,
+            "triangles": 1900046,
+            "seconds": 0.7021
+          }
+        },
+        "gpu_mesh_cache_bytes": 292910464
+      },
+      {
+        "frame": 12,
+        "time": 0.4,
+        "seconds": 0.533,
+        "worlds": {
+          "Blocks": {
+            "parts": 632,
+            "meshes": 632,
+            "triangles": 1905954,
+            "seconds": 0.0375
+          }
+        },
+        "gpu_mesh_cache_bytes": 292910464
+      },
+      {
+        "frame": 24,
+        "time": 0.8,
+        "seconds": 0.543,
+        "worlds": {
+          "Blocks": {
+            "parts": 636,
+            "meshes": 636,
+            "triangles": 1934844,
+            "seconds": 0.0371
+          }
+        },
+        "gpu_mesh_cache_bytes": 293420736
+      },
+      {
+        "frame": 36,
+        "time": 1.2,
+        "seconds": 0.566,
+        "worlds": {
+          "Blocks": {
+            "parts": 626,
+            "meshes": 626,
+            "triangles": 1924634,
+            "seconds": 0.0608
+          }
+        },
+        "gpu_mesh_cache_bytes": 293800192
+      },
+      {
+        "frame": 48,
+        "time": 1.6,
+        "seconds": 0.534,
+        "worlds": {
+          "Blocks": {
+            "parts": 628,
+            "meshes": 628,
+            "triangles": 1939144,
+            "seconds": 0.0379
+          }
+        },
+        "gpu_mesh_cache_bytes": 294115360
+      },
+      {
+        "frame": 60,
+        "time": 2.0,
+        "seconds": 0.579,
+        "worlds": {
+          "Blocks": {
+            "parts": 592,
+            "meshes": 592,
+            "triangles": 1859004,
+            "seconds": 0.0346
+          }
+        },
+        "gpu_mesh_cache_bytes": 294115360
+      },
+      {
+        "frame": 72,
+        "time": 2.4,
+        "seconds": 0.578,
+        "worlds": {
+          "Blocks": {
+            "parts": 594,
+            "meshes": 594,
+            "triangles": 1872174,
+            "seconds": 0.0346
+          }
+        },
+        "gpu_mesh_cache_bytes": 294115360
+      },
+      {
+        "frame": 84,
+        "time": 2.8,
+        "seconds": 0.522,
+        "worlds": {
+          "Blocks": {
+            "parts": 599,
+            "meshes": 599,
+            "triangles": 1899598,
+            "seconds": 0.0347
+          }
+        },
+        "gpu_mesh_cache_bytes": 294115360
+      },
+      {
+        "frame": 96,
+        "time": 3.2,
+        "seconds": 0.547,
+        "worlds": {
+          "Blocks": {
+            "parts": 603,
+            "meshes": 603,
+            "triangles": 1912124,
+            "seconds": 0.0346
+          }
+        },
+        "gpu_mesh_cache_bytes": 294115360
+      },
+      {
+        "frame": 108,
+        "time": 3.6,
+        "seconds": 0.517,
+        "worlds": {
+          "Blocks": {
+            "parts": 605,
+            "meshes": 605,
+            "triangles": 1930734,
+            "seconds": 0.0344
+          }
+        },
+        "gpu_mesh_cache_bytes": 294115360
+      },
+      {
+        "frame": 120,
+        "time": 4.0,
+        "seconds": 0.535,
+        "worlds": {
+          "Blocks": {
+            "parts": 610,
+            "meshes": 610,
+            "triangles": 1936192,
+            "seconds": 0.0348
+          }
+        },
+        "gpu_mesh_cache_bytes": 301933184
+      },
+      {
+        "frame": 132,
+        "time": 4.4,
+        "seconds": 0.522,
+        "worlds": {
+          "Blocks": {
+            "parts": 605,
+            "meshes": 605,
+            "triangles": 1886924,
+            "seconds": 0.0332
+          }
+        },
+        "gpu_mesh_cache_bytes": 302992928
+      },
+      {
+        "frame": 144,
+        "time": 4.8,
+        "seconds": 0.582,
+        "worlds": {
+          "Blocks": {
+            "parts": 613,
+            "meshes": 613,
+            "triangles": 1916374,
+            "seconds": 0.0331
+          }
+        },
+        "gpu_mesh_cache_bytes": 305895312
+      },
+      {
+        "frame": 156,
+        "time": 5.2,
+        "seconds": 0.574,
+        "worlds": {
+          "Blocks": {
+            "parts": 620,
+            "meshes": 620,
+            "triangles": 1931462,
+            "seconds": 0.0606
+          }
+        },
+        "gpu_mesh_cache_bytes": 307179776
+      },
+      {
+        "frame": 168,
+        "time": 5.6,
+        "seconds": 0.519,
+        "worlds": {
+          "Blocks": {
+            "parts": 615,
+            "meshes": 615,
+            "triangles": 1956922,
+            "seconds": 0.0336
+          }
+        },
+        "gpu_mesh_cache_bytes": 320390952
+      },
+      {
+        "frame": 180,
+        "time": 6.0,
+        "seconds": 0.624,
+        "worlds": {
+          "Blocks": {
+            "parts": 623,
+            "meshes": 623,
+            "triangles": 1984944,
+            "seconds": 0.1159
+          }
+        },
+        "gpu_mesh_cache_bytes": 323180608
+      },
+      {
+        "frame": 192,
+        "time": 6.4,
+        "seconds": 0.52,
+        "worlds": {
+          "Blocks": {
+            "parts": 626,
+            "meshes": 626,
+            "triangles": 1998478,
+            "seconds": 0.0337
+          }
+        },
+        "gpu_mesh_cache_bytes": 324696296
+      },
+      {
+        "frame": 204,
+        "time": 6.8,
+        "seconds": 0.526,
+        "worlds": {
+          "Blocks": {
+            "parts": 632,
+            "meshes": 632,
+            "triangles": 2024486,
+            "seconds": 0.0326
+          }
+        },
+        "gpu_mesh_cache_bytes": 327296696
+      },
+      {
+        "frame": 216,
+        "time": 7.2,
+        "seconds": 0.501,
+        "worlds": {
+          "Blocks": {
+            "parts": 637,
+            "meshes": 637,
+            "triangles": 2051388,
+            "seconds": 0.0347
+          }
+        },
+        "gpu_mesh_cache_bytes": 330309680
+      },
+      {
+        "frame": 228,
+        "time": 7.6,
+        "seconds": 0.529,
+        "worlds": {
+          "Blocks": {
+            "parts": 640,
+            "meshes": 640,
+            "triangles": 2055248,
+            "seconds": 0.034
+          }
+        },
+        "gpu_mesh_cache_bytes": 339603216
+      },
+      {
+        "frame": 240,
+        "time": 8.0,
+        "seconds": 0.659,
+        "worlds": {
+          "Blocks": {
+            "parts": 641,
+            "meshes": 641,
+            "triangles": 2058066,
+            "seconds": 0.0541
+          }
+        },
+        "gpu_mesh_cache_bytes": 339918832
+      },
+      {
+        "frame": 252,
+        "time": 8.4,
+        "seconds": 0.537,
+        "worlds": {
+          "Blocks": {
+            "parts": 645,
+            "meshes": 645,
+            "triangles": 2088992,
+            "seconds": 0.0345
+          }
+        },
+        "gpu_mesh_cache_bytes": 343382544
+      },
+      {
+        "frame": 264,
+        "time": 8.8,
+        "seconds": 0.537,
+        "worlds": {
+          "Blocks": {
+            "parts": 646,
+            "meshes": 646,
+            "triangles": 2091848,
+            "seconds": 0.0543
+          }
+        },
+        "gpu_mesh_cache_bytes": 343702416
+      },
+      {
+        "frame": 276,
+        "time": 9.2,
+        "seconds": 0.557,
+        "worlds": {
+          "Blocks": {
+            "parts": 635,
+            "meshes": 635,
+            "triangles": 2066292,
+            "seconds": 0.0851
+          }
+        },
+        "gpu_mesh_cache_bytes": 351134064
+      },
+      {
+        "frame": 288,
+        "time": 9.6,
+        "seconds": 0.544,
+        "worlds": {
+          "Blocks": {
+            "parts": 635,
+            "meshes": 635,
+            "triangles": 2066292,
+            "seconds": 0.0346
+          }
+        },
+        "gpu_mesh_cache_bytes": 351134064
+      }
+    ]
+  },
+  "encode": {
+    "commands": {
+      "mp4": "-y -loglevel error -framerate 30 -i examples/output/worlds/b_block_world/frames/frame_%05d.png -c:v libx264 -preset slow -crf 14 -pix_fmt yuv420p -vf scale=1920:1080:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/worlds/b_block_world/orbit_1080p.mp4",
+      "preview": "-y -loglevel error -framerate 30 -i examples/output/worlds/b_block_world/frames/frame_%05d.png -c:v libx264 -preset slow -crf 28 -pix_fmt yuv420p -vf scale=960:540:flags=lanczos:out_color_matrix=bt709:out_range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart examples/output/worlds/b_block_world/orbit_preview.mp4",
+      "master": "-y -loglevel error -framerate 30 -i examples/output/worlds/b_block_world/frames/frame_%05d.png -c:v ffv1 -level 3 -pix_fmt bgr0 examples/output/worlds/b_block_world/orbit_master.mkv"
+    },
+    "mp4": {
+      "path": "examples/output/worlds/b_block_world/orbit_1080p.mp4",
+      "bytes": 62395436,
+      "seconds": 11.6
+    },
+    "preview": {
+      "path": "examples/output/worlds/b_block_world/orbit_preview.mp4",
+      "bytes": 825392,
+      "seconds": 2.2
+    },
+    "master": {
+      "path": "examples/output/worlds/b_block_world/orbit_master.mkv",
+      "bytes": 618946804,
+      "seconds": 4.0
+    },
+    "verify": {
+      "psnr": "PSNR r:38.470150 g:39.713612 b:36.002447 average:37.780716 min:37.130719 max:39.253139",
+      "ssim": "SSIM R:0.967879 (14.932114) G:0.978546 (16.684888) B:0.919927 (10.965134) All:0.955451 (13.511581)"
+    },
+    "verify_master": {
+      "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+      "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+    }
+  },
+  "stats": {
+    "tiles_cached": 0,
+    "tile_bytes": 0,
+    "budget_bytes": 1073741824,
+    "tiles_generated": 0,
+    "tile_hits": 0,
+    "tiles_evicted": 0,
+    "generation_seconds": 0.0,
+    "regional_computed": 1,
+    "regional_cached": 1,
+    "last_frame": {
+      "parts": 636,
+      "meshes": 636,
+      "triangles": 2073494,
+      "seconds": 0.0338
+    },
+    "blocks": {
+      "chunks_generated": 490,
+      "chunks_meshed": 403,
+      "coarse_meshed": 575,
+      "seconds_generate": 3.0383,
+      "seconds_mesh": 3.5237,
+      "chunks_cached": 490,
+      "meshes_cached": 403,
+      "coarse_cached": 575,
+      "bytes": 419917164
+    },
+    "memory": {
+      "logical": {
+        "bounded": true,
+        "area_km2": 4.194304,
+        "blocks": 1073741824,
+        "chunks": 16384
+      },
+      "cached_bytes": {
+        "tiles": 0,
+        "regional": 7470116,
+        "blocks": 419917164
+      },
+      "cached_total": 427387280,
+      "rendered": {
+        "parts": 636,
+        "meshes": 636,
+        "triangles": 2073494,
+        "seconds": 0.0338
+      },
+      "process_rss_bytes": 1303695360
+    }
+  },
+  "project_bytes": 123791
+}

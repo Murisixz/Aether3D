@@ -306,6 +306,14 @@ Operations change objects after the plan's objects are made, in order:
   `/operations/0/script/operations/1/op`), and a failure rolls the whole plan back. The
   operation's result counts the script's operations (`animation_operations`) and the
   scene's clips (`animation_clips`).
+- **`world`** (0.18.0) runs a world script (`"script": {"format":
+  "aether3d.world-script", ...}`, [WORLDS.md](WORLDS.md#world-scripts-mcp-and-the-command-line))
+  inside the plan's step: create and configure procedural worlds, add features,
+  structures, settlements and roads, edit blocks. Its structure is checked with the rest
+  of the plan (problems point into it: `/operations/0/script/operations/0/op`), and a
+  failure rolls the whole plan back. The result counts the script's operations
+  (`world_operations`), names the scene's worlds (`worlds`) and carries the answers to
+  the script's queries (`world_queries`).
 
 ### Selectors
 

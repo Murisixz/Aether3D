@@ -4,8 +4,11 @@ Native kernels for [Aether3D](https://github.com/Murisixz/Aether3D), in Rust thr
 PyO3: ray traversal (closest hit and any hit), transform hierarchies (local and world
 matrices; also skeletons' forward kinematics), PNG row filters (encoding and decoding),
 sparse LDL^T, atlas packing, polygon triangulation (ear clipping of many polygons with
-holes per call, for CAD faces, sections and fills) and linear blend skinning (deformed
-positions and cofactor normals of skinned meshes, threaded by vertex range).
+holes per call, for CAD faces, sections and fills), linear blend skinning (deformed
+positions and cofactor normals of skinned meshes, threaded by vertex range) and the
+hydrology sweeps of world generation (priority-flood filling, drainage accumulation in
+integers, implicit stream-power incision, sediment transport and thermal relaxation;
+since 0.18.0).
 
 Aether3D does not need it: every kernel has a NumPy implementation, which Aether3D uses
 when this package is missing, cannot be loaded, or is switched off with

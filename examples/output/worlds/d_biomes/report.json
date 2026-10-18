@@ -1,0 +1,221 @@
+{
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "aether3d": "0.18.0",
+    "native": true,
+    "python": "3.14.8"
+  },
+  "size": [
+    1920,
+    1080
+  ],
+  "regional": {
+    "domain": [
+      -16384.0,
+      -16384.0,
+      16384.0,
+      16384.0
+    ],
+    "cell": 32.0,
+    "nodes": 1050625,
+    "rivers": 27,
+    "river_length_km": 102.839,
+    "lakes": 13,
+    "seconds": 21.144,
+    "timings": {
+      "base": 4.357,
+      "erosion": 15.732,
+      "water": 0.285,
+      "fields": 0.215
+    },
+    "native": true,
+    "iterations": 40,
+    "kept_lakes": 6,
+    "eroded_m3": 4977407698.6694355,
+    "deposited_m3": 729234317.5027554
+  },
+  "stills": {
+    "continent": {
+      "path": "examples/output/worlds/d_biomes/continent.png",
+      "seconds": 27.75,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": []
+    },
+    "biome_snowy_taiga": {
+      "path": "examples/output/worlds/d_biomes/biome_snowy_taiga.png",
+      "seconds": 14.71,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": []
+    },
+    "biome_taiga": {
+      "path": "examples/output/worlds/d_biomes/biome_taiga.png",
+      "seconds": 8.27,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": []
+    },
+    "biome_temperate_forest": {
+      "path": "examples/output/worlds/d_biomes/biome_temperate_forest.png",
+      "seconds": 11.1,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": []
+    },
+    "biome_plains": {
+      "path": "examples/output/worlds/d_biomes/biome_plains.png",
+      "seconds": 14.75,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": []
+    },
+    "biome_savanna": {
+      "path": "examples/output/worlds/d_biomes/biome_savanna.png",
+      "seconds": 4.55,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": []
+    },
+    "biome_badlands": {
+      "path": "examples/output/worlds/d_biomes/biome_badlands.png",
+      "seconds": 7.22,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": []
+    },
+    "biome_desert": {
+      "path": "examples/output/worlds/d_biomes/biome_desert.png",
+      "seconds": 3.94,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": []
+    },
+    "biome_tropical_forest": {
+      "path": "examples/output/worlds/d_biomes/biome_tropical_forest.png",
+      "seconds": 5.2,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": []
+    },
+    "biome_swamp": {
+      "path": "examples/output/worlds/d_biomes/biome_swamp.png",
+      "seconds": 6.93,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": []
+    },
+    "transition": {
+      "path": "examples/output/worlds/d_biomes/transition.png",
+      "seconds": 5.26,
+      "backend": "gpu",
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "diagnostics": []
+    }
+  },
+  "places": {
+    "snowy_taiga": {
+      "at": [
+        10798.7,
+        10798.7
+      ],
+      "weights": {
+        "snowy_taiga": 0.5,
+        "tundra": 0.4192,
+        "taiga": 0.0808
+      },
+      "temperature": -3.18,
+      "moisture": 1.0
+    },
+    "taiga": {
+      "at": [
+        2865.0,
+        5509.5
+      ],
+      "weights": {
+        "taiga": 1.0
+      },
+      "temperature": 3.59,
+      "moisture": 0.87
+    },
+    "temperate_forest": {
+      "at": [
+        3746.5,
+        -6391.0
+      ],
+      "weights": {
+        "temperate_forest": 1.0
+      },
+      "temperature": 17.78,
+      "moisture": 0.622
+    },
+    "plains": {
+      "at": [
+        -2865.0,
+        -6831.8
+      ],
+      "weights": {
+        "plains": 1.0
+      },
+      "temperature": 18.76,
+      "moisture": 0.349
+    },
+    "savanna": {
+      "at": [
+        -4628.0,
+        -13884.0
+      ],
+      "weights": {
+        "savanna": 1.0
+      },
+      "temperature": 30.07,
+      "moisture": 0.387
+    },
+    "badlands": {
+      "at": [
+        -11239.4,
+        -3305.7
+      ],
+      "weights": {
+        "badlands": 1.0
+      },
+      "temperature": 15.03,
+      "moisture": 0.056
+    },
+    "desert": {
+      "at": [
+        -5509.5,
+        -10798.7
+      ],
+      "weights": {
+        "desert": 0.8687,
+        "badlands": 0.1313
+      },
+      "temperature": 26.52,
+      "moisture": 0.0
+    },
+    "tropical_forest": {
+      "at": [
+        -1542.7,
+        -13002.5
+      ],
+      "weights": {
+        "tropical_forest": 1.0
+      },
+      "temperature": 28.73,
+      "moisture": 0.597
+    },
+    "swamp": {
+      "at": [
+        10798.7,
+        -4628.0
+      ],
+      "weights": {
+        "swamp": 1.0
+      },
+      "temperature": 19.03,
+      "moisture": 0.948
+    }
+  },
+  "seconds": 167.5
+}

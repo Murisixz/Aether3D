@@ -157,14 +157,27 @@ def test_multiple_scenes_imports_default_scene_only():
     assert not result.lossy
 
 
-def test_cameras_and_vertex_colors_are_reported():
+def test_cameras_are_reported_and_vertex_colors_imported():
     assert codes(import_gltf(KHRONOS / "Cameras/glTF-Embedded/Cameras.gltf")) == [
         "CAMERAS_IGNORED",
         "NODE_CAMERA_IGNORED",
     ]
-    result = import_gltf(KHRONOS / "BoxVertexColors/glTF-Binary/BoxVertexColors.glb")
-    (diag,) = result.diagnostics
-    assert diag.code == "ATTRIBUTES_IGNORED" and "COLOR_0" in diag.message
+    # (Stage 16: COLOR_0 was ignored before -- ATTRIBUTES_IGNORED. Meshes carry vertex
+    # colours now, Mesh.colors.) Compare with the file's accessor read independently.
+    path = KHRONOS / "BoxVertexColors/glTF-Binary/BoxVertexColors.glb"
+    result = import_gltf(path)
+    assert not result.diagnostics and not result.lossy
+    data = path.read_bytes()
+    (length,) = struct.unpack_from("<I", data, 12)
+    doc = json.loads(data[20 : 20 + length])
+    accessor = doc["accessors"][doc["meshes"][0]["primitives"][0]["attributes"]["COLOR_0"]]
+    view = doc["bufferViews"][accessor["bufferView"]]
+    start = 20 + length + 8 + view.get("byteOffset", 0) + accessor["byteOffset"]
+    expected = np.frombuffer(data, "<f4", accessor["count"] * 3, start).reshape(-1, 3)
+    (obj,) = result.scene.objects
+    assert obj.mesh.colors.shape == (24, 4)
+    np.testing.assert_array_equal(obj.mesh.colors[:, :3], expected)
+    np.testing.assert_array_equal(obj.mesh.colors[:, 3], 1.0)
 
 
 def test_unicode_percent_encoded_uris_and_images(tmp_path):

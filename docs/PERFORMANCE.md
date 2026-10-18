@@ -16,6 +16,11 @@ tracing as a separate decision).
 - [Phase 4: mesh editing](#phase-4-mesh-editing)
 - [Phase 5: hardware ray tracing (prototype, deferred)](#phase-5-hardware-ray-tracing-prototype-deferred)
 - [Visual feedback (0.12.0)](#visual-feedback-0120)
+- [Advanced modeling and sculpting (0.13.0)](#advanced-modeling-and-sculpting-0130)
+- [UV texture painting and baking (0.14.0)](#uv-texture-painting-and-baking-0140)
+- [Precision modeling (0.15)](#precision-modeling-015)
+- [Animation (0.17)](#animation-017)
+- [Procedural worlds (0.18)](#procedural-worlds-018)
 
 ## Measuring
 
@@ -919,3 +924,63 @@ Known slow spots: sampling one rig's joints over time (`foot_contacts`, trajecto
 10,341-object showcase -- so measuring motion in a large scene takes seconds per
 character (one pass serves all of a rig's joints); dual quaternion skinning is NumPy only;
 FABRIK and CCD are Python loops (0.93 ms for 12 joints).
+
+## Procedural worlds (0.18)
+
+Stage 16 decided its languages before implementation
+([research/2026-10-stage16/DESIGN.md](../research/2026-10-stage16/DESIGN.md), section 3):
+NumPy (float64, only correctly rounded operations) for fields, tiles, plants, blocks,
+greedy meshing and cave volumes, batched across tiles and chunks; and one group of native
+kernels:
+
+- **Hydrology** (`native/src/hydro.rs`, `aether3d-native` 0.18.0, ABI 5): priority-flood
+  filling, drainage accumulation in integers, implicit stream-power incision, sediment
+  transport and thermal relaxation -- sequential sweeps over hundreds of thousands of
+  nodes. They perform the NumPy twins' operations in their order, so the results are
+  bitwise identical (`tests/test_native.py`; the worlds' golden hashes are checked with
+  and without them). The regional stage of `alpine_valley` (263,169 nodes, 60
+  iterations): 53.7 s on NumPy, 6.5 s native (its erosion loop 51.6 s -> 5.4 s).
+
+Native noise and a native greedy mesher were to be added only if profiling showed them
+dominating; it did not: generation time goes to many NumPy calls on mid-sized arrays, and
+batching (plant placement across tiles, chunks together) brought the large wins. Threads
+(`streaming.threads`) gain little under the GIL: measured on block chunks, 2 threads were
+about 17 % faster than 1 and more were slower, so the default is 1.
+
+Measured with `benchmarks/bench_worlds.py` at 70e4738
+(`benchmarks/results/stage16-worlds.json`; i9-12900H laptop, 20 logical CPUs, Python 3.14.8,
+NumPy 2.5.4, RTX 4060 Laptop GPU through wgpu 0.32 on Vulkan). Each group runs in its own
+process; "first" calls generate everything they need, "cached" ones reuse it:
+
+| Workload | Size | Time | Peak RSS |
+| --- | --- | ---: | ---: |
+| regional stage, native / NumPy | `temperate` 4 km: 66,049 nodes, 40 iterations | 1.23 / 7.71 s | 117 / 164 MiB |
+| same | `alpine_valley` 8 km: 263,169 nodes, 60 iterations | 6.52 / 53.7 s | |
+| a terrain view's contribution: first / cached | `alpine_valley`, 300 meshes, 2.2M triangles | 11.2 s / 0.19 s | 479 MiB |
+| along a 1.5 km flight (30 frames): median / max | 628 tiles generated in all | 0.61 / 1.28 s | |
+| plants for a 2.5 km view: placed / cached | 1,109 tiles, 52,003 plants (226,572 candidates) | 1.63 s / 6.5 ms | 243 MiB |
+| block chunk: generate / mesh | 16 x 16 columns | 5.9 / 8.6 ms | |
+| block-world view: first / cached / moving camera (median) | 764 parts, 1.67M triangles | 6.36 s / 33 ms / 34 ms | 452 MiB |
+| cave volumes: classify a column / mesh a cube | 32 m cubes of 1 m voxels | 6.3 / 40.7 ms | 83 MiB |
+| queries: heights / every field | 100,000 / 10,000 points | 64,048 / 16,471 points per second | 188 MiB |
+| a ground path / five building sites | 4,037 points | 35 / 37 ms | |
+| GPU frames at 1920x1080 along a path: first / median | `alpine_valley`: 7,751 parts, 2.35M triangles | 12.8 / 1.11 s | 1,040 MiB |
+| same | `blocky_adventure`: 758 parts, 1.71M triangles | 7.79 / 0.54 s | |
+
+The engine's existing benchmarks are unchanged: `bench_engine.py --compare
+stage16-baseline.json` (`stage16-engine.json`) reads 5-10 % slower on core operations, but
+`main` measured again on the same machine state reads the same -- the laptop was warmer
+than when the baseline was recorded. Run interleaved (main, Stage 16, main, Stage 16;
+the old code through a git worktree; `stage16-engine-interleaved.json`), every core, query
+and extraction timing agrees within -5 % to +5 %, in both directions.
+
+Optimizations made during the stage, measured on this machine:
+
+| Change | Before | After |
+| --- | ---: | ---: |
+| plants for a 2.5 km view: placement batched per class across tiles (exactly the plants of tile-by-tile placement, tested), fields on an 8 m lattice with survivors checked against the exact fields | 48 s | 1.0-1.6 s |
+
+Known slow spots: a first view of a large world spends seconds generating (6-20 s in the
+showcases), so prefetch camera paths with `scene.worlds.prepare`; path tracing a world
+takes minutes per 1080p still (millions of triangles in the BVH); the CPU rasterizer
+spends seconds per frame on dense forests (about 4 s at 480x270 in showcase C).

@@ -136,6 +136,7 @@ struct Params {
   tile_w: u32, tile_h: u32, n_pix: u32, _pad0: u32,
   root_lo: vec3<f32>, _pad1: f32,
   root_hi: vec3<f32>, _pad2: f32,
+  atmo: Atmo,  // scene.world.atmosphere (atmosphere.wgsl): sky glows, fog on camera paths
 };
 
 @group(0) @binding(8) var<storage, read> pt: array<u32>;
@@ -307,6 +308,7 @@ struct Inter {
   has_uvs: bool,
   vn: vec3<f32>,     // interpolated normal, not renormalized (MikkTSpace N), outward
   tan: vec4<f32>,    // interpolated MikkTSpace tangent and sign (zero: none)
+  color: vec4<f32>,  // interpolated vertex colour (white without vertex colours)
 };
 
 fn bary_derivative(e1: vec3<f32>, e2: vec3<f32>, dp: vec3<f32>) -> vec3<f32> {
@@ -430,6 +432,7 @@ fn interaction(
     it.uv2 = mesh_uv(tv.z);
   }
   it.material = triangle_material_of(h.inst, it.mesh_tri);
+  it.color = vertex_color(rec, tv, h.b);
   it.tan = vec4<f32>(0.0);
   if (it.has_uvs && needs_tangents(it.material)) {
     let c3 = 3u * it.mesh_tri;
@@ -441,8 +444,16 @@ fn interaction(
   return it;
 }
 
+// The vertex colour at barycentrics `b` of a triangle with vertices `tv` (white without).
+fn vertex_color(rec: Instance, tv: vec3<u32>, b: vec3<f32>) -> vec4<f32> {
+  if ((rec.flags & INSTANCE_HAS_COLORS) == 0u) {
+    return vec4<f32>(1.0);
+  }
+  return b.x * mesh_color(rec, tv.x) + b.y * mesh_color(rec, tv.y) + b.z * mesh_color(rec, tv.z);
+}
+
 fn surface_input(it: Inter) -> SurfaceInput {
-  return SurfaceInput(it.inst, it.b, it.dbdx, it.dbdy, it.p0, it.p1, it.p2, it.uv0, it.uv1, it.uv2, it.ns, it.vn, it.tan);
+  return SurfaceInput(it.inst, it.b, it.dbdx, it.dbdy, it.p0, it.p1, it.p2, it.uv0, it.uv1, it.uv2, it.ns, it.vn, it.tan, it.color);
 }
 
 // Ray origins off a surface along n (Waechter and Binder 2019): a fixed number of float
@@ -564,6 +575,10 @@ fn bsdf_albedo(s: Bsdf) -> vec3<f32> {
 // -- the environment (pathtrace/environment.py) -----------------------------------------------
 
 fn env_radiance(d: vec3<f32>) -> vec3<f32> {
+  return env_base(d) + atmo_glow(params.atmo, d);
+}
+
+fn env_base(d: vec3<f32>) -> vec3<f32> {
   if (params.env_kind != ENV_SKY) {
     return params.env_uniform;
   }
@@ -576,7 +591,7 @@ fn env_radiance(d: vec3<f32>) -> vec3<f32> {
 
 fn env_camera(d: vec3<f32>) -> vec3<f32> {
   if (params.env_kind == ENV_AMBIENT) {
-    return params.background;
+    return params.background + atmo_glow(params.atmo, d);
   }
   return env_radiance(d);
 }
@@ -766,6 +781,8 @@ struct State {
   kind: u32,
   ro: vec3<f32>,
   rd: vec3<f32>,
+  cam_d: vec3<f32>,  // the camera ray's direction (fog)
+  first_t: f32,      // distance to the first surface the camera ray reached (-1: none)
   rtmin: f32,
   rtmax: f32,
   skip_inst: u32,
@@ -1038,6 +1055,9 @@ fn mis_weight_emission(st: ptr<function, State>) -> f32 {
 fn on_shade(st: ptr<function, State>) {
   let it = (*st).it;
   let sv = (*st).sv;
+  if ((*st).vertex == 0u && (*st).first_t < 0.0) {
+    (*st).first_t = length(it.p);  // (camera-relative: the distance from the eye)
+  }
   let mb = material_base(it.material);
   let specular_factor = wordf(mb + 8u);
   var metallic = 0.0;
@@ -1181,7 +1201,7 @@ fn on_nee(st: ptr<function, State>) {
           let tv = triangle_vertices(mesh_tri);
           uv = array<vec2<f32>, 3>(mesh_uv(tv.x), mesh_uv(tv.y), mesh_uv(tv.z));
         }
-        let s = SurfaceInput(inst, bary, vec3<f32>(0.0), vec3<f32>(0.0), c.p0, c.p1, c.p2, uv[0], uv[1], uv[2], normal, normal, vec4<f32>(0.0));
+        let s = SurfaceInput(inst, bary, vec3<f32>(0.0), vec3<f32>(0.0), c.p0, c.p1, c.p2, uv[0], uv[1], uv[2], normal, normal, vec4<f32>(0.0), vertex_color(rec, triangle_vertices(mesh_tri), bary));
         (*st).em_masked = (mflags & MATERIAL_MASK) != 0u;
         (*st).em_cutoff = wordf(material_base(m) + 5u);
         request_eval(st, m, s, has_uvs, false);
@@ -1316,6 +1336,7 @@ fn new_state(key: vec2<u32>) -> State {
   st.normal = vec3<f32>(0.0);
   st.ao = 1.0;
   st.hit_any = false;
+  st.first_t = -1.0;
   st.depth = PT_INF;
   st.center_inst = PT_NONE;
   st.tally = Tally(0u, 0u, 0u, 0u, 0u, 0u, 0u);
@@ -1363,8 +1384,14 @@ fn path_main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invoc
         let key = path_key(pixel, s);
         var st = new_state(key);
         camera_ray(&st, RAY_CAMERA, x, y, rnd(key, 0u, SLOT_PIXEL), rnd(key, 0u, SLOT_PIXEL + 1u), true);
+        st.cam_d = st.rd;
         st.tally.camera += 1u;
         run_state(&st);
+        if (params.atmo.fog.w > 0.5) {  // the camera segment through the fog
+          let trans = atmo_transmittance(params.atmo, st.cam_d, st.first_t);
+          st.direct = atmo_fog(params.atmo, st.direct, st.cam_d, st.first_t);
+          st.indirect = st.indirect * trans;
+        }
         var indirect = st.indirect;
         if (params.clamp > 0.0) {
           let peak = max3(indirect);

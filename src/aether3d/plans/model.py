@@ -106,6 +106,7 @@ OPERATIONS = (
     "set_active_camera",
     "cad",
     "animation",
+    "world",
 )
 UPDATE_FIELDS = (
     "name",
@@ -2208,6 +2209,7 @@ _OPERATION_KEYS = {
     "set_active_camera": (("camera",), ()),
     "cad": (("script",), ()),
     "animation": (("script",), ()),
+    "world": (("script",), ()),
 }
 
 
@@ -2303,6 +2305,23 @@ def _parse_operations(r: Reader, raw: Any, ptr: str) -> list[OperationSpec]:
                     join(p, "script") + ("/" + where if where else ""),
                     hint="an animation script (format aether3d.animation-script); see "
                     "aether3d://animation/guide",
+                    operation=k,
+                )
+        elif op == "world":
+            from ..errors import WorldError
+            from ..worlds.script import check_script as check_world
+
+            try:
+                spec.values["script"] = check_world(obj.get("script"))
+            except WorldError as exc:
+                where = (exc.location or "").removeprefix("script").strip(".")
+                where = where.replace("[", ".").replace("]", "").replace(".", "/")
+                r.issues.add(
+                    "INVALID_VALUE",
+                    f"world script: {exc.message}",
+                    join(p, "script") + ("/" + where if where else ""),
+                    hint="a world script (format aether3d.world-script); see "
+                    "aether3d://worlds/guide",
                     operation=k,
                 )
         for issue in r.issues.items[before:]:

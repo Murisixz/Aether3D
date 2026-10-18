@@ -21,6 +21,7 @@ The ``pack_*`` functions build the exact byte layouts of the WGSL structs in
 
 from __future__ import annotations
 
+import math
 import os
 import weakref
 from collections import OrderedDict
@@ -43,11 +44,13 @@ CACHE_ENV = "AETHER3D_GPU_CACHE_MB"
 INSTANCE_FLOATS = 32  # 128 bytes, see `struct Instance` in common.wgsl
 LIGHT_FLOATS = 12  # 48 bytes, `struct Light` in scene.wgsl
 SHADOW_FLOATS = 20  # 80 bytes, `struct ShadowMap` in scene.wgsl
-FRAME_FLOATS = 32  # 128 bytes, `struct Frame` in scene.wgsl
+FRAME_FLOATS = 80  # 320 bytes, `struct Frame` in scene.wgsl (with `struct Atmo`)
+ATMO_FLOATS = 48  # `struct Atmo` in atmosphere.wgsl
 MIRRORED = 1
 HAS_NORMALS = 2
 HAS_UVS = 4
 HAS_GROUPS = 8
+HAS_COLORS = 16
 MAX_GPU_INSTANCES = 2**24 - 1
 """Object indices travel through a float32 target, exact up to 2**24."""
 
@@ -104,7 +107,7 @@ class GPUMesh:
 
 
 def _mesh_arrays(mesh: RenderMesh) -> list[np.ndarray | None]:
-    return [mesh.positions, mesh.triangles, mesh.normals, mesh.uvs, mesh.groups]
+    return [mesh.positions, mesh.triangles, mesh.normals, mesh.uvs, mesh.groups, mesh.colors]
 
 
 def _mesh_key(mesh: RenderMesh) -> tuple[int, ...] | None:
@@ -262,9 +265,13 @@ class MeshCache:
             usage=usage,
         )
         optional = {}
+        # UVs, then vertex colours, share one buffer (binding 3): the vertex stage reads
+        # colours from the float Instance.colors on (no extra storage binding).
+        attributes = [a.reshape(-1) for a in (mesh.uvs, mesh.colors) if a is not None]
+        uv_data = np.concatenate(attributes).astype(np.float32) if attributes else None
         for name, array, dtype in (
             ("normals", mesh.normals, np.float32),
-            ("uvs", mesh.uvs, np.float32),
+            ("uvs", uv_data, np.float32),
             ("groups", mesh.groups, np.uint32),  # one 32-bit word per triangle
         ):
             optional[name] = None
@@ -286,7 +293,7 @@ class MeshCache:
         )
         nbytes = mesh.positions.nbytes + mesh.triangles.nbytes
         nbytes += 0 if mesh.normals is None else mesh.normals.nbytes
-        nbytes += 0 if mesh.uvs is None else mesh.uvs.nbytes
+        nbytes += 0 if uv_data is None else uv_data.nbytes
         nbytes += 0 if mesh.groups is None else 4 * mesh.groups.shape[0]
         bounds = np.stack([mesh.positions.min(axis=0), mesh.positions.max(axis=0)])
         return GPUMesh(
@@ -803,6 +810,10 @@ def pack_instances(rs: RenderScene, order: np.ndarray, eye: np.ndarray) -> np.nd
     has_normals = np.array([m.normals is not None for m in rs.meshes], dtype=bool)
     has_uvs = np.array([m.uvs is not None for m in rs.meshes], dtype=bool)
     has_groups = np.array([m.groups is not None for m in rs.meshes], dtype=bool)
+    has_colors = np.array([m.colors is not None for m in rs.meshes], dtype=bool)
+    color_start = np.array(
+        [0 if m.uvs is None else 2 * m.uvs.shape[0] for m in rs.meshes], dtype=np.uint32
+    )
     mesh = arrays.mesh[order]
     mirrored = arrays.mirrored[order]
     words[:n, 29] = (
@@ -810,8 +821,10 @@ def pack_instances(rs: RenderScene, order: np.ndarray, eye: np.ndarray) -> np.nd
         | np.where(has_normals[mesh], HAS_NORMALS, 0)
         | np.where(has_uvs[mesh], HAS_UVS, 0)
         | np.where(has_groups[mesh], HAS_GROUPS, 0)
+        | np.where(has_colors[mesh], HAS_COLORS, 0)
     )
     words[:n, 30] = order
+    words[:n, 31] = np.where(has_colors[mesh], color_start[mesh], 0)
     return data
 
 
@@ -831,6 +844,7 @@ def pack_lights(rs: RenderScene, eye: np.ndarray, plan: ShadowPlan | None) -> np
             data[i, 7] = 0.0 if light.range is None else light.range
             words[i, 8] = 1 if light.falloff == "inverse_square" else 0
         signed[i, 9] = -1 if plan is None else plan.layer_of(i)
+        words[i, 10] = 0 if plan is None else plan.cascades_of(i)
     return data
 
 
@@ -842,6 +856,7 @@ def pack_shadow_maps(plan: ShadowPlan | None) -> np.ndarray:
         data[i, 0:16] = shadow.matrix.T.reshape(-1)  # WGSL matrices are column-major
         data[i, 16] = shadow.bias
         data[i, 17] = shadow.normal_offset
+        data[i, 18] = shadow.split if math.isfinite(shadow.split) else 3.0e38
     return data
 
 
@@ -874,6 +889,38 @@ def pack_frame(rs: RenderScene, aspect: float, plan: ShadowPlan | None) -> np.nd
         signed[25] = plan.settings.pcf_radius
         data[26] = 1.0 / plan.settings.map_size
     data[28:31] = rs.camera.frame.position  # world-space texture coordinates add it back
+    data[32:80] = pack_atmosphere(rs)
+    return data
+
+
+def pack_atmosphere(rs: RenderScene) -> np.ndarray:
+    """``struct Atmo`` (atmosphere.wgsl) of the render scene (all zero when it is off)."""
+    from ..atmosphere import resolve
+
+    data = np.zeros(ATMO_FLOATS, dtype=np.float32)
+    words = data.view(np.uint32)
+    model = resolve(rs)
+    if model is None:
+        return data
+    words[0:4] = (1, 1 if model.sky_background else 0, 1 if model.hemisphere else 0, model.env_kind)
+    if model.sun is not None:
+        data[4:7] = model.sun
+        data[7] = 1.0
+    data[8:11] = model.zenith
+    data[11] = model.glow_size
+    data[12:15] = model.horizon
+    data[15] = model.horizon_glow
+    data[16:19] = model.ground
+    data[20:23] = model.glow
+    data[23] = model.fog_power
+    data[24] = model.fog_density
+    data[25] = model.fog_falloff
+    data[26] = model.fog_rel
+    data[27] = 1.0 if model.fog else 0.0
+    data[28:31] = model.fog_color
+    data[32:35] = model.fog_sun
+    data[36:39] = model.ground_ambient
+    data[40:43] = model.background
     return data
 
 
@@ -881,11 +928,20 @@ def pack_finalize(
     width: int, height: int, supersample: int, msaa: int, rs: RenderScene, exposure: float
 ) -> np.ndarray:
     """``struct Params`` of the finalize pass."""
-    data = np.zeros(8, dtype=np.float32)
+    data = np.zeros(20 + ATMO_FLOATS, dtype=np.float32)
     data[:4].view(np.uint32)[:] = (width, height, supersample, msaa)
     camera = rs.camera.camera
     data[4] = camera.near
     data[5] = camera.far
     data[6] = 1.0 if camera.is_perspective else 0.0
     data[7] = 2.0**exposure
+    frame = rs.camera.frame
+    hx, hy = camera.half_extents(width / height)
+    data[8:11] = frame.forward
+    data[11] = 1.0 if camera.is_perspective else 0.0
+    data[12:15] = frame.right
+    data[15] = hx
+    data[16:19] = frame.up
+    data[19] = hy
+    data[20:] = pack_atmosphere(rs)
     return data

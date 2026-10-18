@@ -389,6 +389,16 @@ aether3d render castle.aether --backend gpu --shadows --shadow-lights Sun --shad
 | `bias` | 0.5 | Constant depth bias, in texels |
 | `normal_offset` | 0.5 | Extra offset along the normal, in texels (see below) |
 | `pcf_radius` | 1 | Percentage-closer filtering: (2r+1)² bilinear depth comparisons per lookup |
+| `cascades` | 1 | Maps per light, each covering a slice of the view's depth (1–4; since 0.18.0). Lights × cascades is at most 4 |
+| `cascade_split` | 0.75 | How the slices grow: 0 equal depths, 1 logarithmic (parallel-split shadow maps, Zhang et al.) |
+| `distance` | 0 | The farthest view depth that gets shadows (0: the camera's far plane) |
+
+**Cascades (0.18.0).** One shadow map stretched over a kilometre-wide view has texels
+metres across. With `cascades=4` each light gets four maps, each fitted to one slice of
+the view frustum (`cascade_split` blends equal and logarithmic slices), and the shader
+picks the nearest cascade covering each sample by its view depth: shadows stay sharp near
+the camera and still reach the horizon. `distance` bounds the shadowed depth (worlds use a
+few kilometres). `result.backend["shadows"]` lists every map with its cascade and split.
 
 **What casts and receives.**
 - **Lights:** directional lights cast shadows. Up to 4 per render, the

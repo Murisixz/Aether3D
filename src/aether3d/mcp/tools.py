@@ -903,14 +903,18 @@ def run_script(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
         from ..animation.script import run_animation_script
 
         data = run_animation_script(scene, script, should_stop=ctx.cancel.is_set)
+    elif kind == "aether3d.world-script":
+        from ..worlds.script import run_world_script
+
+        data = run_world_script(scene, script, should_stop=ctx.cancel.is_set)
     else:
         raise ToolError(
             "INVALID_ARGUMENT",
             f"unknown script format {kind!r}",
             hint="aether3d.edit-script, aether3d.procedural-script, aether3d.scene-script, "
-            "aether3d.sculpt-script, aether3d.texture-script, aether3d.cad-script or "
-            "aether3d.animation-script (objects, materials and placement: use "
-            "execute_scene_plan)",
+            "aether3d.sculpt-script, aether3d.texture-script, aether3d.cad-script, "
+            "aether3d.animation-script or aether3d.world-script (objects, materials and "
+            "placement: use execute_scene_plan)",
         )
     data = {"format": kind, **data, "scene": scene_status(session)}
     return ToolOutput(data)
@@ -1435,7 +1439,13 @@ TOOLS: tuple[ToolSpec, ...] = (
         "answers of its queries.",
         _schema(
             {
-                "plan": PLAN,
+                # (The plan's properties are described once, in execute_scene_plan: the
+                # tool list stays within its size budget.)
+                "plan": {
+                    "type": "object",
+                    "description": "a scene plan, as for execute_scene_plan (JSON Schema: "
+                    "resource aether3d://schema/scene-plan)",
+                },
                 "dry_run": {"type": "boolean", "default": False},
                 "max_results": MAX_RESULTS,
             },
@@ -1569,12 +1579,11 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         "run_script",
         "Run a JSON script",
-        "Run a JSON script atomically (one undo step; on error nothing changes): "
-        "aether3d.edit-script (mesh editing), .procedural-script, .scene-script (cameras, "
-        "lights, materials), .sculpt-script, .texture-script, .cad-script, .animation-script "
-        "(keys, curves, clips, rigs, IK, generators, cameras). Schemas: "
-        "aether3d://schema/<name>-script; guides: aether3d://<sculpt|texturing|cad|animation>"
-        "/guide. Objects: execute_scene_plan.",
+        "Run a JSON script atomically (one undo step; on error nothing changes): edit "
+        "(meshes), procedural, scene (cameras, lights, materials), sculpt, texture, cad, "
+        "animation, world (procedural worlds). Schemas: aether3d://schema/<name>-script; "
+        "guides: aether3d://<sculpt|texturing|cad|animation|worlds>/guide. Objects: "
+        "execute_scene_plan.",
         _schema(
             {
                 "script": {
@@ -1589,6 +1598,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                                 "aether3d.texture-script",
                                 "aether3d.cad-script",
                                 "aether3d.animation-script",
+                                "aether3d.world-script",
                             ]
                         }
                     },
@@ -1719,8 +1729,9 @@ def _with_feedback(tools: tuple[ToolSpec, ...]) -> tuple[ToolSpec, ...]:
     from .animation import specs as animation_specs
     from .cad import specs as cad_specs
     from .feedback import specs
+    from .worlds import specs as world_specs
 
-    return tools + specs() + cad_specs() + animation_specs()
+    return tools + specs() + cad_specs() + animation_specs() + world_specs()
 
 
 TOOLS = _with_feedback(TOOLS)

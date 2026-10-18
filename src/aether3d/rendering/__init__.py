@@ -28,6 +28,7 @@ from .scene_data import RenderScene, extract_render_scene
 from .settings import (
     AOSettings,
     Appearance,
+    Atmosphere,
     Environment,
     PathSettings,
     RenderLimits,
@@ -39,6 +40,7 @@ from .settings import (
 __all__ = [
     "AOSettings",
     "Appearance",
+    "Atmosphere",
     "Camera",
     "CameraFrame",
     "Environment",

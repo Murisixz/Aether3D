@@ -402,6 +402,18 @@ class _Tracer:
     # -------------------------------------------------------------------- paths --
 
     def trace(self, pixel: np.ndarray, sample: np.ndarray) -> dict[str, np.ndarray]:
+        """Trace the camera paths of ``(pixel, sample)`` pairs (see the module docstring);
+        with the atmosphere's fog, every path's first segment is seen through it."""
+        out, d, first = self._trace(pixel, sample)
+        model = self.ps.atmosphere
+        if model is not None and model.fog:
+            from ..atmosphere import fog, transmittance
+
+            out["direct"] = fog(model, out["direct"], d, first)
+            out["indirect"] = out["indirect"] * transmittance(model, d, first)[:, None]
+        return out
+
+    def _trace(self, pixel: np.ndarray, sample: np.ndarray):
         ps, cam, path = self.ps, self.cam, self.path
         n = pixel.shape[0]
         keys = path_keys(path.seed, pixel, sample)
@@ -425,13 +437,16 @@ class _Tracer:
         miss = ~hits.hit
         if miss.any():
             out["direct"][miss] = ps.environment.camera(d[miss])
+        first = np.full(n, np.inf)  # distance to the first surface seen (fog)
         if it is None:
-            return out
+            return out, d, first
+        diff_p = it.p - cam.eye
+        first[it.rows] = np.sqrt(np.sum(diff_p * diff_p, axis=1))
         if self.ao is not None:
             out["ao"][it.rows] = self._ao(it, keys[it.rows])
         if path.integrator == "ao":
             out["direct"][it.rows] = out["ao"][it.rows, None]
-            return out
+            return out, d, first
         throughput = np.ones((n, 3))
         prev_pdf = np.zeros(n)
         spread = np.zeros(n)
@@ -523,7 +538,7 @@ class _Tracer:
             peak = out["indirect"].max(axis=1)
             scale = np.where(peak > path.clamp, path.clamp / np.maximum(peak, 1e-300), 1.0)
             out["indirect"] *= scale[:, None]
-        return out
+        return out, d, first
 
     # ---------------------------------------------------------- direct lighting --
 
