@@ -162,3 +162,37 @@ def test_previews_render_without_touching_the_scene(body_mesh, tmp_path):
         a.rig_preview(arm, mode="stretch")
     with pytest.raises(AnimationError):
         a.rig_preview(arm, mode="xray")
+
+
+def test_custom_poses_are_data_for_diagnosis_and_verified_fixes():
+    """A pose as data -- {name, turns: [{joint, axis, angle}], joint} -- is measured like
+    a suite pose, travels with the blend proposals made in it, and their verification
+    measures in it; bad specs are refused before anything changes."""
+    from aether3d.errors import AnimationError
+
+    s = Scene("Custom")
+    body = s.add_object("Body", mesh=implicit_surface(humanoid_shapes(), 0.02))
+    a = s.animation
+    a.autorig(body, name="Rig")
+    knee = {"name": "deep_knee", "joint": "Shin.L",
+            "turns": [{"joint": "Thigh.L", "axis": "+x", "angle": -60.0},
+                      {"joint": "Shin.L", "axis": "+x", "angle": 145.0}]}  # fmt: skip
+    d = a.diagnose_rig("Rig", poses=[knee, "elbow_bend_120.L"], animation=False)
+    assert set(d["poses"]) == {"deep_knee", "elbow_bend_120.L"}
+    keep = d["poses"]["deep_knee"]["Body"]["joint_ring"]
+    props = a.propose_rig_fix("Rig", poses=[knee], animation=False)["proposals"]
+    blend = [p for p in props if p["operations"][0]["call"] == "skin_method"]
+    if keep < 0.75:  # (a collapse here: the fix measures in the custom pose)
+        assert blend and blend[0]["operations"][0]["dq"]["pose"] == knee
+        rep = a.apply_rig_fix("Rig", blend, poses=[knee], animation=False)
+        after = a.diagnose_rig("Rig", poses=[knee], animation=False)
+        if rep["applied"]:
+            assert after["poses"]["deep_knee"]["Body"]["joint_ring"] > keep
+    steps = len(s.history)
+    for bad in ({"name": "x", "turns": [{"joint": "Nope", "axis": "+x", "angle": 10}]},
+                {"name": "x", "turns": [{"joint": "Shin.L", "axis": "+w", "angle": 10}]},
+                {"name": "x", "turns": [{"joint": "Shin.L", "axis": "+x", "angle": 999}]},
+                {"turns": []}, "no_such_pose"):  # fmt: skip
+        with pytest.raises(AnimationError):
+            a.diagnose_rig("Rig", poses=[bad], animation=False)
+    assert len(s.history) == steps

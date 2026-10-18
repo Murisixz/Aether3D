@@ -386,7 +386,12 @@ OPERATIONS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...], bool]] = {
     ),  # fmt: skip
     "ik_fk": ("ik_fk", ("armature", "limb", "mode", "time"), ("blend",), False),
     "pose_character": ("pose_character", ("armature", "commands"), ("time",), False),
-    "apply_rig_fix": ("apply_rig_fix", ("armature", "fixes"), ("dry_run", "verify"), False),
+    "apply_rig_fix": (
+        "apply_rig_fix",
+        ("armature", "fixes"),
+        ("dry_run", "verify", "poses", "animation"),
+        False,
+    ),
     "detect_landmarks": (
         "detect_landmarks",
         ("meshes",),

@@ -722,6 +722,12 @@ def propose_rig_fix(
     if rig is None:
         raise _err("RIG_MISSING", "the armature has no rig", "armature")
     diag = diagnosis or diagnose_rig(system, arm, **opts)
+    # Custom diagnostic poses travel with the proposals that measure in them.
+    custom = {
+        q["name"]: q
+        for q in (opts.get("poses") if isinstance(opts.get("poses"), list) else [])
+        if isinstance(q, dict) and isinstance(q.get("name"), str)
+    }
     proposals: list[dict[str, Any]] = []
     by_mesh: dict[str, Any] = {}
     for f in diag["findings"]:
@@ -788,7 +794,11 @@ def propose_rig_fix(
                         "call": "skin_method",
                         "mesh": mesh,
                         "method": "blended",
-                        "dq": {"joint": joint, "share": "auto", "pose": f["pose"]},
+                        "dq": {
+                            "joint": joint,
+                            "share": "auto",
+                            "pose": custom.get(f["pose"], f["pose"]),
+                        },
                     }
                 ]
                 proposals.append(
@@ -920,14 +930,23 @@ def apply_rig_fix(
     *,
     dry_run: bool = False,
     verify: bool = True,
+    poses: Any = "suite",
+    animation: bool = True,
 ) -> dict[str, Any]:
     """Apply proposals (their dicts, or ``"safe"`` / ``"verify"``: every proposal of that
     safety and below from a fresh diagnosis) as one undo step; re-measure; undo when a
-    ``verify`` proposal did not improve its target or anything got worse."""
+    ``verify`` proposal did not improve its target or anything got worse. ``poses`` and
+    ``animation`` say what is measured (``diagnose_rig``'s: the suite and the timeline by
+    default; custom poses as data)."""
     arm = system._object(armature, "armature")
+    measure = {"poses": poses, "animation": animation}
     if fixes in ("safe", "verify"):
         allowed = ("safe",) if fixes == "safe" else ("safe", "verify")
-        fixes = [p for p in propose_rig_fix(system, arm)["proposals"] if p["safety"] in allowed]
+        fixes = [
+            p
+            for p in propose_rig_fix(system, arm, **measure)["proposals"]
+            if p["safety"] in allowed
+        ]
     if not isinstance(fixes, list) or len(fixes) > MAX_FIXES:
         raise _err(
             "INVALID_ARGUMENT",
@@ -938,7 +957,7 @@ def apply_rig_fix(
         _check_fix(system, arm, f, f"fixes[{i}]")
     if not fixes:
         return {"armature": arm.name, "applied": [], "reverted": [], "before": {}, "after": {}}
-    before = diagnose_rig(system, arm, max_findings=1000)
+    before = diagnose_rig(system, arm, max_findings=1000, **measure)
     report: dict[str, Any] = {
         "armature": arm.name,
         "applied": [],
@@ -961,7 +980,7 @@ def apply_rig_fix(
                     with system._op(f.get("title") or f["code"]):
                         for op in f["operations"]:
                             _run_fix_op(system, arm, op)
-                        measured = _remeasure(system, arm, current, f)
+                        measured = _remeasure(system, arm, current, f, measure)
                         worse, unimproved = _compare(current, measured, [f])
                         if verify and f.get("safety") != "approval" and (worse or unimproved):
                             why[f.get("id")] = {"worse": worse, "unimproved": bool(unimproved)}
@@ -1049,8 +1068,8 @@ def _check_fix(system, arm, f: Any, where: str) -> None:
                 raise _err(
                     "INVALID_ARGUMENT", "share 'auto' measures a joint in a pose", f"{at}.dq"
                 )
-            if "pose" in dq and dq["pose"] not in {q["name"] for q in pose_suite(rig)}:
-                raise _err("INVALID_ARGUMENT", "no such diagnostic pose", f"{at}.dq.pose")
+            if "pose" in dq:
+                resolve_pose(rig, dq["pose"], f"{at}.dq.pose")  # (a suite name or a custom pose)
             if "joint" in dq and (
                 not isinstance(dq["joint"], str) or rig.index(dq["joint"]) is None
             ):
@@ -1079,18 +1098,21 @@ _SCOPE = {
 _MOTION_CODES = ("IK_FLIP", "IK_UNREACHABLE", "FOOT_SLIDING")
 
 
-def _remeasure(system, arm, current: dict[str, Any], fix: dict[str, Any]) -> dict[str, Any]:
+def _remeasure(
+    system, arm, current: dict[str, Any], fix: dict[str, Any], measure: dict[str, Any]
+) -> dict[str, Any]:
     """The diagnosis after ``fix``: what it can change measured again, the rest carried
     over from ``current`` (the skeleton and weight checks always run: they are cheap)."""
     scope = set().union(*(_SCOPE[op["call"]] for op in fix["operations"]))
     if scope >= {"deform", "motion"}:
-        return diagnose_rig(system, arm, max_findings=1000)
+        return diagnose_rig(system, arm, max_findings=1000, **measure)
     if scope == {"deform"}:
-        d = diagnose_rig(system, arm, max_findings=1000, animation=False)
+        d = diagnose_rig(system, arm, max_findings=1000, poses=measure["poses"], animation=False)
         kept = [f for f in current["findings"] if f["code"] in _MOTION_CODES]
         d["timeline"] = current.get("timeline", {})
     else:
-        d = diagnose_rig(system, arm, max_findings=1000, poses=[])
+        d = diagnose_rig(system, arm, max_findings=1000, poses=[],
+                         animation=measure["animation"])  # fmt: skip
         kept = [f for f in current["findings"] if "pose" in f]
         d["poses"] = current["poses"]
     findings = d["findings"] + kept
