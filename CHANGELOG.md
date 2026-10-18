@@ -4,6 +4,135 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.19.0: advanced character rigging
+
+Stage 18 ships as 0.19.0. It extends Stage 17's animation system -- the same `Rig`,
+joints, skins, solvers, timelines, clips and glTF; nothing was rebuilt beside them -- with
+**automatic rigging** of unrigged meshes, **skin weights computed and edited as data**,
+**deformation measured over a pose suite and corrected with verification**, **controls**
+(IK/FK switching that keeps the pose, high-level pose commands) and a separate, bone-free
+workflow for **Minecraft-style rigid-part characters** ([docs/CHARACTER_RIGGING.md](docs/CHARACTER_RIGGING.md)).
+The design record (what was inspected, the research behind each method, the language of
+every subsystem, the outcome): [research/2026-10-stage18/DESIGN.md](research/2026-10-stage18/DESIGN.md).
+Languages: Python for the rig document, editing, controls, diagnostics, scripts, CLI and
+MCP; NumPy for voxelization, landmarks and weights; Rust kernels for dual quaternion and
+blended skinning and for geodesic voxel distances (`aether3d-native` 0.19.0, ABI 6),
+bitwise equal to their NumPy twins. Nothing in rigging or skinning runs on the GPU.
+
+Stage 17's characters are untouched: the blocky Nova's generated motions give the part
+matrices v0.18.0 gives, bit for bit (a fixture computed by the v0.18.0 sources), and
+rigid-part characters never get a skeleton unless one is asked for.
+
+Measured on the development machine (i9-12900H laptop, Python 3.14, NumPy 2.5, RTX 4060
+Laptop GPU; `benchmarks/bench_rigging.py`, saved as `benchmarks/results/stage18-rigging.json`;
+the tables are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md#character-rigging-019)):
+
+- auto-rigging an unrigged 18,008-vertex body -- landmarks, skeleton, controls, geodesic
+  weights -- in 0.67 s (6,488 vertices: 0.47 s);
+- dual quaternion skinning of a million vertices: 393 ms in NumPy, 66 ms native on one
+  thread, 14.7 ms on 20 (v0.18.0's NumPy implementation: 703 ms);
+- 50 auto-rigged characters walking with IK, twist helpers and a gaze, 6,488 vertices
+  each: 16.9 ms per frame; 50 Minecraft-style characters: 1.4 ms as rigid parts, 6.8 ms
+  as bone-attached blocks, 3.6 ms as rigidly skinned meshes;
+- `diagnose_rig` over 13 poses in 1.0 s; verified fixes re-measure only what each fix
+  can change (16 fixes: 63.7 s -> 5.1 s during the stage);
+- Stage 17's animation benchmarks are unchanged: run interleaved with v0.18.0 on one
+  machine state, every group agrees within -5 % to +6.5 %
+  (`stage18-animation-interleaved.json`).
+
+### Added
+
+- **The rig document** (extended, backward compatible): joint `role`s (`hips`,
+  `upper_arm.L`, ...) used first by generators and pose commands, helper joints
+  (`deform: false`), **swing-twist limits** relative to the rest pose (cones, ellipses,
+  twist ranges) and **hinges** with play, `controls` backed by scene objects (IK targets,
+  poles, gaze, FK, root), **corrective shapes** (morph targets driven by a joint's swing,
+  twist, hinge angle or rotation), `landmarks`, `template`, `info` and an
+  `enforce_limits` mode; **twist constraints** (helpers taking a fraction of a joint's
+  twist); joint constraints evaluated in dependency order.
+- **Automatic rigging**: `detect_landmarks` (read-only: symmetry and facing, extremities
+  from geodesic distances inside the voxelized body, limbs from the Reeb graph of that
+  distance, joints at measured sections and bends, proportion priors only where the mesh
+  shows nothing; every landmark with its confidence, method and note; overrides;
+  diagnostics) and `autorig` (humanoid, stylized, blocky and quadruped templates with
+  bone-oriented frames, limits measured from the rest bends, forearm twist helpers, IK
+  and gaze controls; clothing bound by weight transfer, hard pieces attached to their
+  joints and parented to the armature), one undo step; implicit surfaces (`aether3d.sculpt.implicit`: smooth unions of spheres,
+  ellipsoids, round cones and boxes meshed by marching cubes) with original humanoid and
+  quadruped recipes.
+- **Weights**: `generate_weights` (geodesic voxel binding -- exact integer chamfer
+  distances inside the voxelized solid -- with organic, stylized and rigid policies,
+  rigid parts, rules against leaking to the other side or to non-neighbouring bones, the
+  auto-rig's body-part regions, smoothing that never crosses mesh components, time
+  limits), `edit_weights` (assign, add, subtract, scale, replace, normalize, prune, cap,
+  smooth, mirror, rigid, lock, unlock on selections with numeric brushes; untouched rows
+  stay bit for bit), `transfer_weights` (clothing by closest surface points, with
+  distances and confidence) and `inspect_weights`.
+- **Skinning**: **blended** linear/dual quaternion skinning per vertex (0: LBS bit for
+  bit, 1: DQS bit for bit), native kernels for dual quaternion and blended skinning,
+  normals transformed by the cofactor matrix.
+- **Structural rig editing** (`edit_rig`: add, remove, move, orient, rename, reparent,
+  insert, split, mirror, align, set) with skins, clips, layer masks, constraints,
+  controls, correctives and attachments kept consistent, one undo step, dry runs.
+- **Controls and posing**: `add_control` (IK limbs, poles, gaze, FK, root) for any rig;
+  `ik_fk` switching with matched poses both ways (no joint moves; reported); IK bend
+  axes aligned only as far as the limits require; residuals after limits;
+  `pose_character` commands (`reach`, `plant_feet`, `look_at`, `raise_arm`, `lean`,
+  `crouch`, `aim_hips`, `rotate`) turned into keys, with reachability and residuals.
+- **Diagnostics and verified correction**: `diagnose_rig` (skeleton, weights, binding,
+  deformation over a pose suite or poses given as data -- joint collapse, flipped,
+  stretched and compressed triangles, interpenetration, volume -- and the timeline: IK
+  flips, unreachable targets, sliding feet), `propose_rig_fix` (operations with a safety
+  class), `apply_rig_fix` (one undo step; each fix re-measured and undone unless it
+  helped and nothing got worse) and `rig_preview` (poses, weight and stretch heatmaps,
+  skeleton overlays as PNG and SVG).
+- **Feedback**: the `rig` expectation check and `rig_fix` corrections (the rig's own
+  proposals, checked as data, verified again by the feedback session).
+- **Rigid-part characters**: `rigid_parts` (parts by name or role, sides and pivots
+  measured), `generate_rigid` (Stage 17's generators on a private skeleton through the
+  parts' pivots, written as ordinary transform clips on the parts and verified -- no
+  armature, skin or weights in the scene), `convert_character` (rigid hierarchy to an
+  armature with attached copies, or back; motion baked and verified; the source kept).
+- **Scripts, CLI, MCP**: animation-script operations for all of the above (allowlisted
+  data, atomic), `aether3d rig` (`autorig`, `info`, `landmarks`, `weights`, `diagnose`,
+  `fix`, `preview`, `parts`, `convert`, `guide`), the MCP tool `inspect_rig` (summary,
+  landmarks, weights, diagnose, fixes, preview, parts) and the resource
+  `aether3d://rigging/guide`.
+- **glTF**: joint roles, helper flags, tails and limits as extras on joint nodes (read
+  back on import, checked); every mesh of a character as its own skin; corrective
+  shapes' weights in baked animation.
+- **Showcases** (`examples/rigging_*.py`, outputs in `examples/output/rigging/`): an
+  unrigged mesh auto-rigged, weighted, checked and animated (walk, run, crouch, reach);
+  demanding poses compared across envelope LBS, geodesic LBS, DQS and a verified blend
+  with stretch maps; IK/FK control with hands and feet on targets; a clothed and armoured
+  character of separate meshes and attachments; a Minecraft-style character animated by
+  rigid transforms only; both kinds walking a procedural world; `.aether` and GLB round
+  trips compared numerically. 1080p videos at a true 60 fps are regenerated by the
+  scripts; previews, sheets and reports are committed.
+- `benchmarks/bench_rigging.py`.
+
+### Changed
+
+- Project format 11: rigs and skins carry the Stage 18 fields. Files of format 10 and
+  older load unchanged.
+- Dual quaternion skinning gives v0.18.0's results bit for bit (NumPy), now also from a
+  native kernel.
+- Generators find joints by role first, then by name as before.
+- MCP: 28 tools (`inspect_rig`), within the 40,000-byte tool-list budget.
+
+### Fixed
+
+- glTF export: the diagnostic for an animated property that cannot be exported crashed
+  (a positional argument); constraint influence channels of a baked export are no longer
+  reported as lost.
+
+### Compatibility
+
+- Projects written by 0.19.0 (format 11) cannot be opened by earlier versions.
+- `aether3d-native` 0.19.0 (ABI 6) adds the dual quaternion, blended and geodesic
+  kernels. An older native package (ABI 5) is not loaded: the NumPy implementations run,
+  with the same results.
+
 ## 0.18.0: procedural worlds and massive environments
 
 Stage 16 was built after Stage 17 (0.17.0), so it ships as 0.18.0; there is no 0.16.0.

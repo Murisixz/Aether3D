@@ -46,6 +46,11 @@ apply to agents too.
   evaluated state, time, paths, F-curves, rotations, clips and NLA, rigs, skins, IK and
   constraints, generators, contacts, cameras, frames, glTF, scripts); the design record:
   [research/2026-10-stage17/DESIGN.md](research/2026-10-stage17/DESIGN.md).
+- Character rigging: [docs/CHARACTER_RIGGING.md](docs/CHARACTER_RIGGING.md) (three
+  workflows, the rig document, automatic rigging and landmarks, weights, deformation,
+  structural editing, IK/FK and pose commands, diagnostics and verified correction,
+  rigid-part characters); the design record:
+  [research/2026-10-stage18/DESIGN.md](research/2026-10-stage18/DESIGN.md).
 - Procedural worlds: [docs/WORLDS.md](docs/WORLDS.md) (definitions and determinism,
   terrain, hydrology, climate and biomes, features, water, caves, block worlds,
   vegetation, structures, streaming and memory, rendering, queries, files, world scripts,
@@ -325,6 +330,29 @@ apply to agents too.
   - **No fake cinematography.** No renderer simulates depth of field and nothing claims
     it; motion blur is real temporal sampling; every frame is rendered by Aether3D.
 
+- Character rigging (`animation/autorig.py`, `landmarks.py`, `voxels.py`, `weights.py`,
+  `rig_edit.py`, `controls.py`, `limits.py`, `rig_report.py`, `rig_preview.py`,
+  `rigid.py`; `native/src/dqs.rs`, `geodesic.rs`):
+  - **Extend Stage 17, never fork it.** One `Rig`, one skin representation, one set of
+    solvers and timelines: new joint, control or corrective data goes into the immutable
+    rig document with its validation (`parse_rig`), `to_json`, a file-format migration if
+    needed, glTF handling (exported, kept as extras, or reported) and docs.
+  - **Requests are data.** Rigging operations are allowlisted script operations; fix
+    proposals coming back from agents are checked call by call (`_check_fix`) before
+    anything changes; nothing is evaluated as code.
+  - **Twins.** `rig.skin_dual_quaternion` and `native/src/dqs.rs`, `voxels.geodesic` and
+    `native/src/geodesic.rs` give the same bits (`tests/test_native.py`); change both or
+    neither, and bump `ABI` for a signature change.
+  - **Measure and say how.** Landmarks report `confidence` and `method`; diagnostics are
+    numeric; a fix is kept only when re-measurement shows it helped and nothing got worse.
+    Never claim anatomical correctness, physically based deformation or GPU execution.
+  - **Untouched means bit for bit.** Weight edits leave the rows they do not select
+    exactly as they were; switching IK/FK must not move any joint
+    (`tests/test_rig_controls.py`).
+  - **Rigid-part characters stay rigid.** Nothing adds a skeleton to a character unless
+    asked (`convert_character`); Stage 17's blocky motions are pinned by
+    `tests/data/v0.18.0/nova_motion.json`.
+
 - Procedural worlds (`worlds/`, `rendering/atmosphere.py`, `native/src/hydro.rs`):
   - **Determinism is a contract.** Generation uses integer hashing (`noise.derive`,
     SplitMix64) for every random decision and only correctly rounded operations (`+ - *
@@ -453,6 +481,14 @@ apply to agents too.
   `time` to look (`render_preview` with `time`, if you can see images). Express checks as
   `foot_contacts` and `animation_continuity` expectations; animation corrections need the
   policy's `allow_animation`. Match on error `code` and `location`.
+- **Rig characters with scripts, then measure before fixing.** Look first
+  (`inspect_rig` `landmarks`, or `aether3d rig landmarks`); rig with an animation script
+  (`autorig`, with `parts` for clothes and hard pieces and `landmarks` overrides); pose
+  with `pose_character`, switch with `ik_fk`; check with `inspect_rig` `diagnose` and
+  previews (`stretch`, `weights`, `skeleton`); apply `fixes` with `apply_rig_fix` and read
+  what was `applied` and `reverted`. Joint rotation channels are absolute (rest
+  included). Minecraft-style characters need no bones: `generate_rigid`. Guide:
+  `aether3d://rigging/guide`.
 - **Build worlds with world scripts and query them.** Write an `aether3d.world-script`
   (`aether3d world run PROJECT script.json --json`, MCP `run_script`, or the scene-plan
   operation `world`; schema: `aether3d world schema`, guide: `aether3d world guide` or

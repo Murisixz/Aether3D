@@ -1,6 +1,6 @@
 # The `.aether` project format
 
-**Current version: 10** (Aether3D 0.18.0; version 1–9 files are upgraded on load)
+**Current version: 11** (Aether3D 0.19.0; version 1–10 files are upgraded on load)
 
 An `.aether` file stores one scene:
 
@@ -490,6 +490,14 @@ settings and the items, each with an immutable JSON definition.
 | `settings` | The timeline: `fps` (an integer or an exact rational `"num/den"`), `start` and `end` (seconds), `markers` (`{time, name, data?}`), `sections`, `enabled`. |
 | `items` | Every item: `id`, `kind` (`clip`, `binding`, `rig`, `skin`, `constraints`, `morph`, `path`, `sequence`), `name`, `definition` (plain JSON: clips hold channels by property path as structure-of-arrays keys, rotation tracks, modifiers and events; bindings reference an object or material and clips by id; rigs, skins, morph targets and constraints reference scene objects by id). |
 
+Since version 11 (0.19.0) rig and skin definitions may carry the character-rigging data
+([CHARACTER_RIGGING.md](CHARACTER_RIGGING.md)), all optional: joints `role` and
+`deform`, swing-twist and hinge `limits` (besides Euler bounds); rigs `controls`,
+`correctives`, `landmarks`, `template`, `info` and `enforce_limits`; constraints of type
+`twist` and IK constraints' `bend_axis`; skins `method` `"blended"` with a per-vertex
+`dq` share, and `locked_joints` / `locked_vertices`. A rig or skin without them is the
+Stage 17 one.
+
 Only authored data is stored: evaluated poses, deformed meshes and the current time are
 not. Definitions are checked by their item kinds on load as on any change (finite
 numbers, key order, handle shapes, quaternion norms, acyclic joint hierarchies and
@@ -581,6 +589,7 @@ copy comes back to the same document.
 | 8 | 0.15.0 | The CAD document: `scene.cad` (settings and items). The migration from 7 adds an empty document with the default settings. |
 | 9 | 0.17.0 | The animation document: `scene.animation` (timeline settings and items). The migration from 8 adds an empty document with the default timeline (24 fps, 0 to 10 s), so every project loads and renders unchanged. |
 | 10 | 0.18.0 | Procedural worlds and outdoor rendering: `scene.worlds`, `scene.world.atmosphere` and optional mesh `colors`. The migration from 9 adds no worlds and the default atmosphere (off), so every project loads and renders unchanged. |
+| 11 | 0.19.0 | Character rigging: optional joint `role` and `deform`, swing-twist and hinge limits, rig `controls`, `correctives`, `landmarks`, `template`, `info`, `enforce_limits`, `twist` constraints and IK `bend_axis`, blended skins (`method: "blended"`, `dq`) and weight locks. The migration from 10 changes nothing: a version 10 document has none of them. |
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged, and Aether3D
 0.6.0 reads and writes version 3 unchanged (GPU rendering added render
