@@ -543,6 +543,12 @@ def check_feature(v: Any, loc: str) -> dict:
     return out
 
 
+def _structure_items(v: Any, loc: str) -> list[dict]:
+    from .structures import check_items
+
+    return check_items(v, loc)
+
+
 def _features(v: Any, loc: str) -> list[dict]:
     if not isinstance(v, (list, tuple)) or len(v) > MAX_FEATURES:
         raise _err(f"expected a list of at most {MAX_FEATURES} features", loc)
@@ -736,6 +742,7 @@ SPEC: dict[str, Any] = {
         "bridges": B,
         "biomes": NAMES,
         "max_slope": F(1.0, 60.0),
+        "items": lambda v, loc: _structure_items(v, loc),
     },
     "blocks": {
         "size": F(0.0625, 64.0),
@@ -882,6 +889,7 @@ DEFAULTS: dict[str, Any] = {
         "bridges": True,
         "biomes": ["plains", "meadow", "temperate_forest", "birch_forest", "savanna", "taiga"],
         "max_slope": 14.0,
+        "items": [],
     },
     "blocks": {
         "size": 1.0,

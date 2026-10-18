@@ -14,6 +14,7 @@ depends on it, and evicting or losing the cache never loses anything authored.
 from __future__ import annotations
 
 import copy
+import math
 import re
 import uuid
 from collections.abc import Iterator
@@ -270,6 +271,186 @@ class World:
         new["features"] = features
         new = D.check_definition(new, f"{self.location}.definition")
         self._system._set(self, label, definition=new)
+
+    # -- structures ----------------------------------------------------------------------
+
+    def structures(self, kind: str | None = None) -> list[dict]:
+        """The authored structures (``structures.items``), optionally of one kind."""
+        items = self._definition["structures"]["items"]
+        return [copy.deepcopy(i) for i in items if kind is None or i["kind"] == kind]
+
+    def place_structure(self, item: dict) -> dict:
+        """Add a structure (``house``, ``tower``, ``castle``, ``ruin``, ``well`` at ``at``,
+        or a ``bridge`` along ``line``; see ``docs/WORLDS.md``); its pad follows the natural
+        ground. Returns it as stored; one undo step."""
+        self._check()
+        from .structures import check_item
+
+        it = check_item(dict(item), f"{self.location}.structures.items[new]")
+        if any(x["id"] == it["id"] for x in self._definition["structures"]["items"]):
+            raise _err(
+                "DUPLICATE_ID",
+                f"a structure with id {it['id']!r} exists",
+                f"{self.location}.structures.items",
+            )
+        self._replace_structures(
+            [*self._definition["structures"]["items"], it], [], f"Place {it['kind']} {it['id']!r}"
+        )
+        return copy.deepcopy(it)
+
+    def remove_structure(self, sid: str) -> None:
+        self._check()
+        items = [i for i in self._definition["structures"]["items"] if i["id"] != sid]
+        if len(items) == len(self._definition["structures"]["items"]):
+            raise _err(
+                "UNKNOWN_STRUCTURE", f"no structure {sid!r}", f"{self.location}.structures.items"
+            )
+        self._replace_structures(items, [], f"Remove structure {sid!r}")
+
+    def _replace_structures(self, items: list[dict], roads: list[dict], label: str) -> None:
+        new = dict(self._definition)
+        new["structures"] = {**self._definition["structures"], "items": items}
+        if roads:
+            new["features"] = [*self._definition["features"], *roads]
+        new = D.check_definition(new, f"{self.location}.definition")
+        self._system._set(self, label, definition=new)
+
+    def find_sites(self, count: int = 5, **options: Any) -> list[dict]:
+        """Candidate sites, best first (read-only): ``radius``, ``max_slope``, ``biomes``,
+        ``spacing``, ``region`` [x0, y0, x1, y1], ``seed``, ``kind`` (``village``; ``castle``
+        and ``tower`` prefer high ground). See :func:`.structures.find_sites`."""
+        self._check()
+        from .structures import find_sites
+
+        count = int(_int_arg(count, 1, 256, f"{self.location}.find_sites.count"))
+        rt = self.runtime
+        rt.regional()
+        return find_sites(rt.model(), count, **_site_options(options, self.location))
+
+    def route(self, a: Any, b: Any, *, cell: float = 16.0) -> dict:
+        """A road from ``a`` to ``b`` [x, y] following the terrain (read-only): the road
+        features and bridge items :meth:`build_road` would add, and its length."""
+        self._check()
+        from .structures import plan_road
+
+        rt = self.runtime
+        rt.regional()
+        return plan_road(
+            rt.model(), _point(a, "a"), _point(b, "b"), prefix="road", cell=float(cell)
+        )
+
+    def build_road(self, a: Any, b: Any, *, name: str = "road", cell: float = 16.0) -> dict:
+        """Add a road from ``a`` to ``b`` (road features, bridges over water); one undo step."""
+        self._check()
+        from .structures import plan_road
+
+        rt = self.runtime
+        rt.regional()
+        prefix = _unique_prefix(self._definition, name)
+        plan = plan_road(
+            rt.model(), _point(a, "a"), _point(b, "b"), prefix=prefix, cell=float(cell)
+        )
+        self._replace_structures(
+            [*self._definition["structures"]["items"], *plan["items"]],
+            plan["roads"],
+            f"Build road {prefix!r}",
+        )
+        return plan
+
+    def build_settlements(
+        self,
+        count: int | None = None,
+        *,
+        houses: Any = None,
+        roads: bool | None = None,
+        seed: int = 0,
+        **options: Any,
+    ) -> dict:
+        """Find ``count`` sites (default ``structures.settlements``) and build a village on
+        each (``houses``: [min, max], default ``structures.size``), joined by roads (default
+        ``structures.roads``); castles (``structures.castles``) on high ground. Everything
+        is written into the definition as items and road features -- frozen, so it
+        survives regeneration -- in one undo step. Returns a summary."""
+        self._check()
+        from .structures import find_sites, plan_road, plan_settlement
+
+        st = self._definition["structures"]
+        count = st["settlements"] if count is None else int(_int_arg(count, 0, 256, "count"))
+        lo, hi = st["size"] if houses is None else _range_arg(houses, "houses")
+        roads = st["roads"] if roads is None else bool(roads)
+        rt = self.runtime
+        rt.regional()
+        model = rt.model()
+        opts = _site_options(options, self.location)
+        sites = find_sites(model, count, seed=seed, **opts) if count else []
+        items, features, summary = [], [], {"settlements": [], "roads": [], "castles": []}
+        for k, site in enumerate(sites):
+            prefix = _unique_prefix(self._definition, f"village-{k}")
+            n = lo + int(nz_u(seed, k) * (hi - lo + 1))
+            plan = plan_settlement(model, site["at"], min(n, hi), prefix=prefix, seed=seed + k)
+            items += plan["items"]
+            features += plan["roads"]
+            summary["settlements"].append(
+                {"prefix": prefix, "at": site["at"], "houses": plan["houses"]}
+            )
+        if roads and len(sites) > 1:
+            done = {0}
+            while len(done) < len(sites):  # nearest-neighbour spanning tree
+                a, b = min(
+                    ((i, j) for i in done for j in range(len(sites)) if j not in done),
+                    key=lambda p: math.dist(sites[p[0]]["at"], sites[p[1]]["at"]),
+                )
+                prefix = _unique_prefix(self._definition, f"road-{a}-{b}")
+                plan = plan_road(model, sites[a]["at"], sites[b]["at"], prefix=prefix)
+                items += plan["items"]
+                features += plan["roads"]
+                summary["roads"].append(
+                    {"prefix": prefix, "length": plan["length"], "bridges": len(plan["items"])}
+                )
+                done.add(b)
+        castles = st["castles"]
+        if castles:
+            spots = find_sites(
+                model,
+                castles,
+                kind="castle",
+                radius=30.0,
+                max_slope=max(opts.get("max_slope", 0) or 0, 18.0),
+                seed=seed + 101,
+                spacing=opts.get("spacing"),
+                region=opts.get("region"),
+                biomes=opts.get("biomes"),
+            )
+            for k, spot in enumerate(spots):
+                cid = _unique_prefix(self._definition, f"castle-{k}")
+                items.append(
+                    {
+                        "id": cid,
+                        "kind": "castle",
+                        "at": spot["at"],
+                        "rotation": 0.0,
+                        "size": [40.0, 36.0],
+                        "floors": 1,
+                        "style": "stone",
+                        "seed": seed + k,
+                    }
+                )
+                features.append(
+                    {
+                        "type": "clear",
+                        "id": f"{cid}-clearing",
+                        "shape": {"circle": [spot["at"][0], spot["at"][1], 60.0]},
+                        "what": ["trees"],
+                        "falloff": 20.0,
+                    }
+                )
+                summary["castles"].append({"id": cid, "at": spot["at"]})
+        if not items and not features:
+            return summary
+        self._replace_structures([*st["items"], *items], features, "Build settlements")
+        summary["items"] = len(items)
+        summary["road_features"] = len(features)
+        return summary
 
     # -- block edits -----------------------------------------------------------------------
 
@@ -614,3 +795,58 @@ class WorldSystem:
             w = World(self, wid, name, defn, edits)
             self._items[wid] = w
             self._names[name] = w
+
+
+def _int_arg(v: Any, lo: int, hi: int, loc: str) -> int:
+    if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+        raise _err("INVALID_ARGUMENT", f"expected an integer in [{lo}, {hi}]", loc)
+    return v
+
+
+def _range_arg(v: Any, loc: str) -> tuple[int, int]:
+    if not isinstance(v, (list, tuple)) or len(v) != 2:
+        raise _err("INVALID_ARGUMENT", "expected [min, max]", loc)
+    lo, hi = (_int_arg(x, 1, 400, loc) for x in v)
+    if hi < lo:
+        raise _err("INVALID_ARGUMENT", "expected [min, max] with min <= max", loc)
+    return lo, hi
+
+
+def _point(v: Any, loc: str) -> list[float]:
+    arr = np.asarray(v, dtype=np.float64) if isinstance(v, (list, tuple)) else None
+    if arr is None or arr.shape != (2,) or not np.all(np.isfinite(arr)):
+        raise _err("INVALID_ARGUMENT", "expected a point [x, y]", loc)
+    return [float(arr[0]), float(arr[1])]
+
+
+def _site_options(options: dict, location: str) -> dict:
+    allowed = {"radius", "max_slope", "biomes", "spacing", "region", "kind", "seed"}
+    for key in options:
+        if key not in allowed:
+            raise _err(
+                "INVALID_ARGUMENT",
+                f"unknown option {key!r}",
+                location,
+                hint="options: " + ", ".join(sorted(allowed)),
+            )
+    return dict(options)
+
+
+def _unique_prefix(definition: dict, name: str) -> str:
+    used = {i["id"] for i in definition["structures"]["items"]} | {
+        f["id"] for f in definition["features"]
+    }
+    base = "".join(ch if ch.isalnum() or ch in "_.-" else "-" for ch in name)[:40] or "s"
+    k, prefix = 1, base
+    while any(u == prefix or u.startswith(prefix + "-") for u in used):
+        k += 1
+        prefix = f"{base}{k}"
+    return prefix
+
+
+def nz_u(seed: int, k: int) -> float:
+    from . import noise as nz
+
+    return float(
+        nz.random2(nz.derive(int(seed), "settlement-size"), np.array([k]), np.array([0]))[0]
+    )

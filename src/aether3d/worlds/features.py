@@ -269,9 +269,9 @@ def apply_final(
         if kind in ("flatten", "pad"):
             dist = shape_distance(s["shape"], px, py)
             mask = falloff_mask(dist, s["falloff"])
-            target = s["height"]
+            target = s["height"] if s["height"] is not None else c.data.get("height")
             if target is None:
-                continue  # (an unresolved automatic height: resolved when the feature is added)
+                continue  # (an automatic height not resolved: see WorldModel._resolve)
             h += mask * (target - h)
         elif kind == "road":
             d, z = _line_height(c, px, py)

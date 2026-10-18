@@ -143,9 +143,9 @@ def _empty() -> PlantSet:
 
 
 def placement_key(d: dict) -> str:
-    """What placement depends on: everything but streaming, materials, structures and
-    block settings."""
-    skip = ("streaming", "materials", "structures", "blocks")
+    """What placement depends on: everything but streaming, materials and block settings
+    (structures clear the ground under them)."""
+    skip = ("streaming", "materials", "blocks")
     return digest({k: d[k] for k in d if k not in skip})
 
 

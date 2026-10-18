@@ -152,7 +152,7 @@ class BlockWorld:
         from .definition import digest
 
         d = self.rt.definition
-        return digest({k: d[k] for k in d if k not in ("materials", "streaming", "structures")})
+        return digest({k: d[k] for k in d if k not in ("materials", "streaming")})
 
     def _edit_key(self, cx: int, cy: int) -> str:
         d = self.rt.definition
@@ -369,7 +369,61 @@ class BlockWorld:
         data = ChunkData(cx, cy, zmin, blocks, tint, np.where(wet, water, np.nan))
         if b["trees"] or b["plants"]:
             self._stamp_plants(data, col, top_all, M, biomes, seed, size, trees)
+        if d["structures"]["items"]:
+            self._stamp_structures(data, d["structures"]["items"], size)
         return data
+
+    def _stamp_structures(self, data: ChunkData, items: list[dict], size: float) -> None:
+        """Stamp the structures overlapping the chunk (their block versions, turned in
+        quarter turns, standing on their pads)."""
+        from .structures import quarter_turns, rotate_cells, structure_cells
+
+        model = self.rt.model()
+        x0, y0 = data.cx * CHUNK, data.cy * CHUNK
+        H = data.blocks.shape[0]
+        for item in items:
+            if item["kind"] == "bridge":
+                self._stamp_bridge(data, item, size)
+                continue
+            ax = int(math.floor(item["at"][0] / size))
+            ay = int(math.floor(item["at"][1] / size))
+            reach = int(max(item["size"]) / size) // 2 + 8
+            if (
+                ax + reach < x0
+                or ax - reach >= x0 + CHUNK
+                or ay + reach < y0
+                or ay - reach >= y0 + CHUNK
+            ):
+                continue
+            az = int(round(model.pad_height(f"structure:{item['id']}") / size))
+            for x, y, z, name in rotate_cells(structure_cells(item), quarter_turns(item)):
+                i, j, k = ax + x - x0, ay + y - y0, az + z - data.z0
+                if 0 <= i < CHUNK and 0 <= j < CHUNK and 0 <= k < H:
+                    data.blocks[k, j, i] = AIR if name == "air" else BLOCKS[name]
+
+    def _stamp_bridge(self, data: ChunkData, item: dict, size: float) -> None:
+        model = self.rt.model()
+        (ax, ay), (bx, by) = item["line"]
+        ends = model.natural(np.array([ax, bx]), np.array([ay, by]))
+        length = math.hypot(bx - ax, by - ay)
+        steps = max(2, int(length / (0.5 * size)))
+        half = item["width"] / 2.0
+        x0, y0 = data.cx * CHUNK, data.cy * CHUNK
+        H = data.blocks.shape[0]
+        nx, ny = -(by - ay) / length, (bx - ax) / length
+        for k in range(steps + 1):
+            t = k / steps
+            z = int(round((ends[0] + (ends[1] - ends[0]) * t) / size))
+            for o in np.arange(-half, half + 1e-9, 0.5 * size):
+                px = ax + (bx - ax) * t + nx * o
+                py = ay + (by - ay) * t + ny * o
+                i = int(math.floor(px / size)) - x0
+                j = int(math.floor(py / size)) - y0
+                kz = z - data.z0
+                if 0 <= i < CHUNK and 0 <= j < CHUNK and 0 <= kz < H:
+                    data.blocks[kz, j, i] = BLOCKS["oak_planks"]
+                    if abs(abs(o) - half) < 0.5 * size and kz + 1 < H:
+                        data.blocks[kz + 1, j, i] = BLOCKS["oak_log"]
 
     def _caves(self, blocks, z, top, wet, col, inner, seed, size, cv):
         """Carve caverns (thresholded fBm) and tunnels (where two noise fields are both near
@@ -439,7 +493,8 @@ class BlockWorld:
         """``(x, y, z, species, variant)`` of the block trees whose trunk stands on a column
         of ``[bx0, bx1) x [by0, by1)`` (blocks), ``z`` the block above the ground. One hashed
         candidate per 5 x 5 column cell grows with the probability its biomes' tree
-        densities give; never in water, below the tree line or on beaches."""
+        densities give; never in water, below the tree line, on beaches, roads, pads or
+        cleared ground."""
         return self.trees_many([(bx0, by0, bx1, by1)])[0]
 
     def trees_many(self, regions: list[tuple[int, int, int, int]]) -> list[list]:
@@ -495,7 +550,15 @@ class BlockWorld:
         dry = np.isnan(water) | (water <= (top + 1) * size - 0.3)
         warm = smp["temperature"] >= d["surface"]["treeline_temperature"]
         beach = np.abs((top + 1) * size - float(d["sea_level"])) < 2.5 * size
-        grow &= dry & warm & ~beach
+        grow &= dry & warm & ~beach & (smp["road"] < 0.3)
+        model = self.rt.model()
+        if model.final_features:  # pads, clearings, roads
+            from .features import clear_mask
+
+            grow &= (
+                clear_mask(model.final_features, (sx + 0.5) * size, (sy + 0.5) * size, "trees")
+                < 0.5
+            )
         pick = nz.random2(nz.derive(seed, "tree-pick"), ci, cj)
         cum = np.cumsum(per, axis=1) / np.maximum(dens[:, None], 1e-12)
         choice = np.argmax(cum > pick[:, None], axis=1)

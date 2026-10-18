@@ -62,9 +62,11 @@ def contribute(
             got = render_parts(rt, view, ctx)
         else:
             got = _terrain_parts(world, rt, view, ctx)
+        from .structures import render_parts as structure_parts
         from .vegetation import render_parts as plant_parts
 
         got += plant_parts(rt, view, ctx)
+        got += structure_parts(rt, view, ctx)
         rt.last_frame = {
             "parts": len(got),
             "triangles": int(sum(m.triangle_count for _, _, m, _, _ in got)),

@@ -126,7 +126,13 @@ class WorldModel:
         t = definition["terrain"]
         self.curve_continents = nz.MonotoneCurve(t["continents"]["curve"])
         self.curve_final = None if t["curve"] is None else nz.MonotoneCurve(t["curve"])
-        self.features = compile_features(definition["features"])
+        from .structures import pad_features
+
+        self.features = compile_features(
+            definition["features"] + pad_features(definition["structures"]["items"])
+        )
+        self._auto: dict[str, float] | None = None  # resolved automatic heights by feature id
+        self._auto_lock = threading.Lock()
         self.shape_features = [f for f in self.features if f.stage == "shape"]
         self.final_features = [f for f in self.features if f.stage == "final"]
         # biomes
@@ -520,8 +526,59 @@ class WorldModel:
     # Everything
     # ------------------------------------------------------------------------------- #
 
-    def evaluate(self, x: Any, y: Any, ctx: Context | None = None) -> Sample:
-        """Every field at points (see :class:`Sample`)."""
+    def natural(self, x: Any, y: Any, ctx: Context | None = None) -> np.ndarray:
+        """The natural ground at points: the height before final features (pads, roads,
+        lakes, rivers...) -- what structures and roads are fitted to."""
+        return self.evaluate(x, y, ctx, final=False)["height"]
+
+    def pad_height(self, fid: str) -> float:
+        """The height of a pad or flatten feature (authored, or resolved automatically)."""
+        self._resolve()
+        for c in self.final_features:
+            if c.spec["id"] == fid:
+                h = c.spec.get("height")
+                return float(h if h is not None else c.data["height"])
+        raise KeyError(fid)
+
+    def _resolve(self) -> None:
+        """Resolve automatic heights once per model, from the natural ground: pads and
+        flattens without a height (the median over their footprint for structures, the
+        centre otherwise) and roads given as ``[x, y]`` lines (densified every 4 m and
+        given smoothed natural heights)."""
+        if self._auto is not None:
+            return
+        with self._auto_lock:
+            if self._auto is not None:
+                return
+            from .structures import auto_height
+
+            items = {f"structure:{i['id']}": i for i in self.d["structures"]["items"]}
+            done: dict[str, float] = {}
+            for c in self.final_features:
+                s = c.spec
+                if s["type"] in ("pad", "flatten") and s.get("height") is None:
+                    item = items.get(s["id"])
+                    if item is not None:
+                        h = auto_height(self, item)
+                    else:
+                        cx, cy = _centre_of(s["shape"])
+                        h = float(self.natural(np.array([cx]), np.array([cy]))[0])
+                    c.data["height"] = round(h, 4)
+                    done[s["id"]] = c.data["height"]
+                elif s["type"] == "road" and "z" not in c.data:
+                    line = _densify(c.data["line"], 4.0)
+                    z = self.natural(line[:, 0], line[:, 1])
+                    k = min(9, len(z))
+                    if k >= 3:  # moving average (ends kept)
+                        pad = np.concatenate([np.full(k // 2, z[0]), z, np.full(k // 2, z[-1])])
+                        z = np.convolve(pad, np.ones(k) / k, mode="valid")[: len(line)]
+                    c.data["line"] = line
+                    c.data["z"] = z
+            self._auto = done
+
+    def evaluate(self, x: Any, y: Any, ctx: Context | None = None, final: bool = True) -> Sample:
+        """Every field at points (see :class:`Sample`); ``final=False`` leaves out the final
+        features (the natural ground)."""
         x = np.ascontiguousarray(x, dtype=np.float64).reshape(-1)
         y = np.ascontiguousarray(y, dtype=np.float64).reshape(-1)
         aux: dict = {}
@@ -610,7 +667,8 @@ class WorldModel:
             water[on] = self.sea
             kind[on] = 3
         road = None
-        if self.final_features:
+        if final and self.final_features:
+            self._resolve()
             h, extras = apply_final(self.final_features, x, y, h, detail)
             wa = extras.get("water")
             if wa is not None:
@@ -644,3 +702,23 @@ class WorldModel:
 
 
 _SHAPE_TYPES = ("raise", "lower", "scale", "mountain", "ridge", "valley")
+
+
+def _centre_of(shape: dict) -> tuple[float, float]:
+    if "circle" in shape:
+        return shape["circle"][0], shape["circle"][1]
+    if "rect" in shape:
+        x0, y0, x1, y1 = shape["rect"]
+        return (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    pts = np.asarray(shape.get("polygon") or shape.get("line"), dtype=np.float64)[:, :2]
+    return float(pts[:, 0].mean()), float(pts[:, 1].mean())
+
+
+def _densify(line: np.ndarray, step: float) -> np.ndarray:
+    """A polyline with extra points so no segment is longer than ``step``."""
+    out = [line[0]]
+    for a, b in zip(line[:-1], line[1:], strict=True):
+        n = max(1, int(np.ceil(np.hypot(*(b - a)) / step)))
+        for k in range(1, n + 1):
+            out.append(a + (b - a) * (k / n))
+    return np.asarray(out, dtype=np.float64)
