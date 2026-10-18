@@ -92,8 +92,12 @@ class _Worlds:
             stack.extend(reversed(o._children))
 
 
-def evaluate_rigging(system: AnimationSystem, pose: AnimationPose) -> RiggingResult:
-    """The rigging pass for ``pose`` (see the module docstring)."""
+def evaluate_rigging(
+    system: AnimationSystem, pose: AnimationPose, *, deform: bool = True
+) -> RiggingResult:
+    """The rigging pass for ``pose`` (see the module docstring); ``deform=False`` stops
+    before the meshes (correctives, morph targets, skins): joints, objects and residuals
+    only, for measuring motion."""
     from .system import canonical_quats
 
     scene = system.scene
@@ -141,6 +145,8 @@ def evaluate_rigging(system: AnimationSystem, pose: AnimationPose) -> RiggingRes
         else:
             _run_object_constraints(system, pose, oid, object_constraints[oid][1], worlds, result)
     result.local = worlds.local
+    if not deform:
+        return result
     extra = _corrective_weights(system, rigs, morphs, result)
     result.morph_extra = extra
     # Deformation: morph targets then skins, with the final matrices.

@@ -1297,16 +1297,35 @@ class AnimationSystem:
         a = world_matrices(self.scene, overlay)[obj._id]
         return {j.name: a @ model[k] for k, j in enumerate(rig.joints)}
 
-    def rigging(self, time: float | None = None) -> Any:
+    def rigging(self, time: float | None = None, *, deform: bool = True) -> Any:
         """The rigging pass at ``time`` (:class:`~.rigging.RiggingResult`: local
-        matrices, deformed meshes, joint matrices, IK residuals, diagnostics)."""
+        matrices, deformed meshes, joint matrices, IK residuals, diagnostics);
+        ``deform=False``: without the deformed meshes (what measuring motion needs)."""
         from .rigging import evaluate_rigging
 
         pose = self.evaluate(time)
         found = pose.extra.get("rigging")
+        if found is None and not deform:
+            found = pose.extra.get("rigging_joints")
+            if found is None:
+                found = pose.extra["rigging_joints"] = evaluate_rigging(self, pose, deform=False)
+            return found
         if found is None:
             found = pose.extra["rigging"] = evaluate_rigging(self, pose)
         return found
+
+    def _posed_worlds(self, time: float) -> dict[str, np.ndarray]:
+        """Every object's world matrix at ``time`` -- as rendered, without deforming any
+        mesh (for measuring motion)."""
+        from ..rendering.overlay import RenderOverlay
+        from ..rendering.scene_data import world_matrices
+
+        if not self.active:
+            return world_matrices(self.scene)
+        rr = self.rigging(time, deform=False)
+        ids = tuple(rr.local)
+        local = np.array([rr.local[i] for i in ids]).reshape(-1, 4, 4)
+        return world_matrices(self.scene, RenderOverlay(ids=ids, local=local, time=float(time)))
 
     # ------------------------------------------------------------------ #
     # Cinematics: paths, path following, shots, camera moves

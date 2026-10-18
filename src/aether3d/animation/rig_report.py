@@ -571,7 +571,7 @@ def _timeline_checks(system, arm, rig, add) -> dict[str, Any]:
     worst: dict[str, tuple[float, float]] = {}
     prev: dict[str, np.ndarray] = {}
     for t in times.tolist():
-        rr = system.rigging(t)
+        rr = system.rigging(t, deform=False)
         found = rr.joints.get(arm._id)
         if found is None:
             continue
@@ -901,7 +901,7 @@ def apply_rig_fix(
                     with system._op(f.get("title") or f["code"]):
                         for op in f["operations"]:
                             _run_fix_op(system, arm, op)
-                        measured = diagnose_rig(system, arm, max_findings=1000)
+                        measured = _remeasure(system, arm, current, f)
                         worse, unimproved = _compare(current, measured, [f])
                         if verify and f.get("safety") != "approval" and (worse or unimproved):
                             why[f.get("id")] = {"worse": worse, "unimproved": bool(unimproved)}
@@ -1004,6 +1004,40 @@ def _check_fix(system, arm, f: Any, where: str) -> None:
                 )  # fmt: skip
         if call == "plant_feet" and not isinstance(op["legs"], dict):
             raise _err("INVALID_ARGUMENT", "legs is {foot: [hip, knee, foot]}", f"{at}.legs")
+
+
+# What each kind of fix can change: the deformation (weights, skinning, binding: the pose
+# suite), the motion (poles, planted feet: the timeline), or both (the skeleton).
+_SCOPE = {
+    "edit_weights": {"deform"},
+    "skin_method": {"deform"},
+    "rebind": {"deform"},
+    "pole": {"motion"},
+    "plant_feet": {"motion"},
+    "edit_rig": {"deform", "motion"},
+}
+_MOTION_CODES = ("IK_FLIP", "IK_UNREACHABLE", "FOOT_SLIDING")
+
+
+def _remeasure(system, arm, current: dict[str, Any], fix: dict[str, Any]) -> dict[str, Any]:
+    """The diagnosis after ``fix``: what it can change measured again, the rest carried
+    over from ``current`` (the skeleton and weight checks always run: they are cheap)."""
+    scope = set().union(*(_SCOPE[op["call"]] for op in fix["operations"]))
+    if scope >= {"deform", "motion"}:
+        return diagnose_rig(system, arm, max_findings=1000)
+    if scope == {"deform"}:
+        d = diagnose_rig(system, arm, max_findings=1000, animation=False)
+        kept = [f for f in current["findings"] if f["code"] in _MOTION_CODES]
+        d["timeline"] = current.get("timeline", {})
+    else:
+        d = diagnose_rig(system, arm, max_findings=1000, poses=[])
+        kept = [f for f in current["findings"] if "pose" in f]
+        d["poses"] = current["poses"]
+    findings = d["findings"] + kept
+    findings.sort(key=lambda f: SEVERITIES.index(f["severity"]))
+    d["findings"] = findings
+    d["summary"] = {s: sum(1 for f in findings if f["severity"] == s) for s in SEVERITIES}
+    return d
 
 
 def _run_fix_op(system, arm, op: dict[str, Any]) -> None:
