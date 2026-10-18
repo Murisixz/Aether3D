@@ -325,7 +325,7 @@ apply to agents too.
   - **No fake cinematography.** No renderer simulates depth of field and nothing claims
     it; motion blur is real temporal sampling; every frame is rendered by Aether3D.
 
-- Procedural worlds (`worlds/`, `rendering/atmosphere.py`, `native/src/hydrology.rs`):
+- Procedural worlds (`worlds/`, `rendering/atmosphere.py`, `native/src/hydro.rs`):
   - **Determinism is a contract.** Generation uses integer hashing (`noise.derive`,
     SplitMix64) for every random decision and only correctly rounded operations (`+ - *
     /`, `sqrt`, `floor`, comparisons): no `np.exp`, `np.sin`, `np.cos` or `**` with
@@ -341,7 +341,7 @@ apply to agents too.
   - **Authoritative versus drawn.** Queries, structures, paths and exports of exact data
     use the fields (`WorldModel.evaluate`, `Volumes.solid`, blocks with edits); levels of
     detail are for drawing, with measured error. Do not answer a query from a mesh.
-  - **The hydrology twins.** `hydrology.py`'s NumPy sweeps and `native/src/hydrology.rs`
+  - **The hydrology twins.** `hydrology.py`'s NumPy sweeps and `native/src/hydro.rs`
     stay bitwise equal (`tests/test_native.py`); change both or neither, and bump `ABI`
     for a signature change.
   - **Caches never own authored data.** Generated data lives in byte-budgeted LRU caches
