@@ -46,22 +46,17 @@ def _palette(n: int) -> np.ndarray:
     return np.array(out)
 
 
-def _posed_meshes(system, arm, time: float | None, pose: str | None):
+def _posed_meshes(system, arm, time: float | None, pose: Any):
     """``(rigging result, {mesh id: (posed Mesh, world matrix)})`` for a time or a
-    diagnostic pose."""
+    diagnostic pose (a suite name, or a custom pose: :func:`.rig_report.resolve_pose`)."""
     from ..rendering.overlay import RenderOverlay
     from ..rendering.scene_data import world_matrices
-    from .rig_report import _posed, pose_suite
+    from .rig_report import _posed, resolve_pose
 
     rig = system.rig(arm)
     t = system.time if time is None else float(time)
     if pose is not None:
-        suite = {p["name"]: p for p in pose_suite(rig)}
-        if pose not in suite:
-            raise _err(
-                "INVALID_ARGUMENT", f"no diagnostic pose {pose!r}; one of {sorted(suite)}", "pose"
-            )
-        result = _posed(system, arm, rig, suite[pose]["turns"], t)
+        result = _posed(system, arm, rig, resolve_pose(rig, pose, "pose")["turns"], t)
     else:
         result = system.rigging(t)
     ids = tuple(result.local)
@@ -75,10 +70,11 @@ def _posed_meshes(system, arm, time: float | None, pose: str | None):
     for (kind, oid), item in system._owned.items():
         if kind == "skin" and item._definition.rig == rig_item.id and oid in system.scene._objects:
             obj = system.scene._objects[oid]
-            meshes[oid] = (result.meshes.get(oid, obj.mesh), worlds[oid])
+            if obj.visible:  # (what the scene shows: hidden meshes stay out)
+                meshes[oid] = (result.meshes.get(oid, obj.mesh), worlds[oid])
     for oid in attached:
         obj = system.scene._objects.get(oid)
-        if obj is not None and obj.mesh is not None:
+        if obj is not None and obj.mesh is not None and obj.visible:
             meshes[oid] = (obj.mesh, worlds[oid])
     return result, meshes, worlds
 
@@ -90,7 +86,7 @@ def rig_preview(
     mode: str = "pose",
     joint: str | None = None,
     time: float | None = None,
-    pose: str | None = None,
+    pose: Any = None,
     width: int = 480,
     height: int = 640,
     view: str = "front",

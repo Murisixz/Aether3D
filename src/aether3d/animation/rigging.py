@@ -355,7 +355,8 @@ def _run_rig(
     model = forward_kinematics(local, parents, depth)
     armature_world = worlds.world[arm_id]
     influences = pose.influences.get(arm_id, {})
-    for c in rig.constraints:
+    for i in constraint_order(rig):
+        c = rig.constraints[i]
         if c.mute:
             continue
         w = influences.get(c.name, c.influence)
@@ -407,6 +408,61 @@ def _run_rig(
             parent = obj._parent
             p_world = np.eye(4) if parent is None else worlds.world[parent._id]
             worlds.set_local(obj, np.linalg.solve(p_world, w_new))
+
+
+def constraint_order(rig: Rig) -> list[int]:
+    """The rig's joint constraints in dependency order: a constraint after those that
+    write what it reads -- a twist reads its source joint's own rotation, any other a
+    target joint's world matrix (that joint and its ancestors) -- the list's order
+    otherwise (a cycle keeps it). Cached on the rig."""
+    found = rig._cache.get("constraint_order")
+    if found is not None:
+        return found
+    cons = rig.constraints
+    writes: list[set[int]] = []
+    reads: list[set[int]] = []
+    for c in cons:
+        p = c.p
+        if c.type == "ik":
+            w = {rig.index(n) for n in p["chain"]}
+        else:
+            w = {rig.index(p["joint"])} if isinstance(p.get("joint"), str) else set()
+        r: set[int] = set()
+        for key in ("target", "pole"):
+            t = p.get(key)
+            k = rig.index(t["joint"]) if isinstance(t, dict) and "joint" in t else None
+            if k is None:
+                continue
+            if c.type == "twist":
+                r.add(k)
+            else:
+                r.add(k)
+                r.update(_ancestors(rig, k))
+        writes.append({k for k in w if k is not None})
+        reads.append(r)
+    deps = [
+        {j for j in range(len(cons)) if j != i and writes[j] & reads[i]} for i in range(len(cons))
+    ]
+    order: list[int] = []
+    done: set[int] = set()
+    while len(order) < len(cons):
+        ready = [i for i in range(len(cons)) if i not in done and deps[i] <= done]
+        if not ready:  # a cycle: the rest in list order
+            order.extend(i for i in range(len(cons)) if i not in done)
+            break
+        order.append(ready[0])
+        done.add(ready[0])
+    rig._cache["constraint_order"] = order
+    return order
+
+
+def _ancestors(rig: Rig, k: int) -> set[int]:
+    out = set()
+    p = rig.parents[k]
+    while p >= 0:
+        out.add(int(p))
+        p = rig.parents[p]
+    return out
 
 
 def _attachments_in_order(order: dict[str, int], attachments: tuple) -> list:
@@ -575,10 +631,12 @@ def _align_bend(model: np.ndarray, chain: list, pos: np.ndarray, axis: str) -> N
     scale_len = float(np.linalg.norm(d1) * np.linalg.norm(d2))
     if nn < 1e-9 * scale_len or nn == 0.0:
         return  # a straight chain: no plane
-    # A nearly straight chain has an ill-defined plane: the alignment fades in between
-    # 2 and 10 degrees of bend (no twist pops as a limb straightens).
-    bend = math.degrees(math.asin(min(1.0, nn / scale_len)))
-    fade = min(1.0, max(0.0, (bend - 2.0) / 8.0))
+    # A slightly bent limb needs no alignment (its limits allow a little sideways swing),
+    # and its plane is poorly defined: the alignment fades in between 20 and 45 degrees
+    # of bend. So switching a relaxed FK limb to IK does not roll its bones (the visible
+    # pose is kept), while deep bends (crouches, reaches) bend about the bend axis.
+    bend = math.degrees(math.atan2(nn, float(d1 @ d2)))
+    fade = min(1.0, max(0.0, (bend - 20.0) / 25.0))
     fade = fade * fade * (3.0 - 2.0 * fade)
     if fade <= 0.0:
         return

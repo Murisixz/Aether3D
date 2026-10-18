@@ -168,3 +168,32 @@ def test_a_held_crouch_keeps_the_feet_where_they_were_planted(body_mesh):
     hips = chain_positions(a, arm, ["Hips"], 1.5)[0]
     rest = chain_positions(a, arm, ["Hips"], 0.5)[0]
     assert rest[2] - hips[2] == pytest.approx(0.4, abs=0.02)
+
+
+def test_switches_keep_every_joint_including_twist_helpers(body_mesh):
+    """FK -> IK -> FK with a hand target turned in between: no joint moves or turns at
+    either switch -- helpers driven by twist constraints included (they are evaluated
+    after the IK that moves their source joint), and a relaxed limb is not rolled."""
+    from aether3d.animation.rigging import constraint_order
+
+    s, arm, _ = rigged(body_mesh)
+    a = s.animation
+    a.generate(arm, "idle", forward="-y")
+    rig = a.rig(arm)
+    order = [rig.constraints[i].name for i in constraint_order(rig)]
+    assert order.index("forearm_twist.R") > order.index("arm_ik.R")
+    a.ik_fk(arm, "arm_ik.R", "ik", 0.5)
+    c = next(c for c in rig.constraints if c.name == "arm_ik.R")
+    target = s._objects[c.p["target"]["object"]]
+    from aether3d.animation import rotation as R
+
+    q0 = np.asarray(a.sample(target, "transform.rotation", [0.5])[0], float)
+    turned = R.multiply(q0[None], R.axis_angle(np.array([0.0, 1.0, 0.0]), np.radians(70.0)))[0]
+    a.keyframe(target, "transform.rotation", 1.2, list(turned))
+    for t, mode in ((0.5, None), (1.8, "fk")):
+        if mode:
+            a.ik_fk(arm, "arm_ik.R", mode, t)
+        before = a.pose_joints(arm, t - 1e-6, space="world")
+        after = a.pose_joints(arm, t, space="world")
+        for name, m in after.items():
+            assert np.abs(m - before[name]).max() < 1e-4, (t, name)

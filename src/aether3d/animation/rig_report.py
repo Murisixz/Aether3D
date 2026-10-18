@@ -549,18 +549,78 @@ def diagnose_rig(
     }
 
 
+MAX_POSE_TURNS = 16
+
+
 def _named(poses: Any, rig) -> list[dict[str, Any]]:
-    suite = {p["name"]: p for p in pose_suite(rig)}
-    if not isinstance(poses, list) or not all(isinstance(p, str) for p in poses):
-        raise _err("INVALID_ARGUMENT", "poses is 'suite', none or a list of pose names", "poses")
-    out = []
-    for p in poses:
-        if p not in suite:
+    if not isinstance(poses, list) or len(poses) > 64:
+        raise _err(
+            "INVALID_ARGUMENT", "poses is 'suite', none or a list of up to 64 poses", "poses"
+        )
+    return [resolve_pose(rig, p, f"poses[{i}]") for i, p in enumerate(poses)]
+
+
+def resolve_pose(rig, spec: Any, location: str = "pose") -> dict[str, Any]:
+    """A diagnostic pose: a suite pose by name, or a custom one as data --
+    ``{"name": ..., "turns": [{"joint": ..., "axis": "+x" | [x, y, z], "angle": degrees}],
+    "joint": the joint measured (default: the first turned)}``. A string axis is in the
+    joint's own frame (auto-rigged bones: +Y along the bone, +X the bend axis), a vector
+    is in armature space; turns are from the rest pose."""
+    from .limits import AXES
+
+    if isinstance(spec, str):
+        suite = {p["name"]: p for p in pose_suite(rig)}
+        if spec not in suite:
             raise _err(
-                "INVALID_ARGUMENT", f"no diagnostic pose {p!r}; one of {sorted(suite)}", "poses"
+                "INVALID_ARGUMENT", f"no diagnostic pose {spec!r}; one of {sorted(suite)}", location
             )
-        out.append(suite[p])
-    return out
+        return suite[spec]
+    if not isinstance(spec, dict) or set(spec) - {"name", "turns", "joint"}:
+        raise _err("INVALID_ARGUMENT", "a custom pose is {name, turns, joint}", location)
+    name = spec.get("name")
+    if not isinstance(name, str) or not 0 < len(name) <= 64:
+        raise _err("INVALID_ARGUMENT", "a custom pose has a name", f"{location}.name")
+    turns_raw = spec.get("turns")
+    if not isinstance(turns_raw, list) or not 1 <= len(turns_raw) <= MAX_POSE_TURNS:
+        raise _err(
+            "INVALID_ARGUMENT", f"turns is a list of 1 to {MAX_POSE_TURNS}", f"{location}.turns"
+        )
+    model = rig.rest_model()
+    turns: dict[int, tuple[np.ndarray, float]] = {}
+    for i, t in enumerate(turns_raw):
+        at = f"{location}.turns[{i}]"
+        if not isinstance(t, dict) or set(t) - {"joint", "axis", "angle"}:
+            raise _err("INVALID_ARGUMENT", "a turn is {joint, axis, angle}", at)
+        k = rig.index(t.get("joint")) if isinstance(t.get("joint"), str) else None
+        if k is None:
+            raise _err("INVALID_ARGUMENT", "no such joint", f"{at}.joint")
+        angle = t.get("angle")
+        if (
+            isinstance(angle, bool)
+            or not isinstance(angle, (int, float))
+            or not (-360.0 <= angle <= 360.0)
+        ):
+            raise _err("INVALID_ARGUMENT", "angle is -360..360 degrees", f"{at}.angle")
+        axis = t.get("axis", "+x")
+        if isinstance(axis, str) and axis in AXES:
+            vec = model[k][:3, :3] @ AXES[axis]
+        elif (
+            isinstance(axis, list)
+            and len(axis) == 3
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in axis)
+            and np.linalg.norm(axis) > 1e-9
+        ):
+            vec = np.asarray(axis, np.float64)
+        else:
+            raise _err(
+                "INVALID_ARGUMENT", "axis is +x..-z (joint frame) or [x, y, z]", f"{at}.axis"
+            )
+        turns[k] = (vec / np.linalg.norm(vec), float(angle))
+    joint = spec.get("joint")
+    k = rig.index(joint) if isinstance(joint, str) else next(iter(turns))
+    if k is None:
+        raise _err("INVALID_ARGUMENT", "no such joint", f"{location}.joint")
+    return {"name": name, "joint": k, "turns": turns}
 
 
 def _timeline_checks(system, arm, rig, add) -> dict[str, Any]:
