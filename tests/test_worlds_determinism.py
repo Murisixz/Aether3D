@@ -171,3 +171,26 @@ def test_seeds_give_different_worlds_and_the_generator_version_is_recorded():
     assert a != b
     w = Scene("S").worlds.create("W", "temperate", seed=1, size=1024.0)
     assert w.definition["generator"] == 1
+
+
+def test_exact_angle_and_logarithm_helpers_match_the_math_library():
+    """``atan2_deg`` and ``log10`` (orientation of settlements, wetness colours) use only
+    correctly rounded operations, yet agree with the platform's functions."""
+    import math
+
+    from aether3d.worlds import noise as nz
+
+    rng = np.random.default_rng(3)
+    pairs = rng.normal(size=(5000, 2)) * 10.0 ** rng.uniform(-6.0, 6.0, (5000, 2))
+    worst = max(abs(nz.atan2_deg(y, x) - math.degrees(math.atan2(y, x))) for y, x in pairs)
+    assert worst < 1e-12
+    assert nz.atan2_deg(0.0, 0.0) == 0.0
+    assert [round(nz.atan2_deg(y, x), 9) for y, x in ((0, 1), (1, 0), (0, -1), (-1, 0))] == [
+        0.0,
+        90.0,
+        180.0,
+        -90.0,
+    ]
+    v = 10.0 ** rng.uniform(-10.0, 12.0, 200_000)
+    assert np.max(np.abs(nz.log10(v) - np.log10(v))) < 1e-14
+    assert nz.log10(np.array([1.0, 10.0, 1000.0])).tolist() == pytest.approx([0.0, 1.0, 3.0])

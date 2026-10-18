@@ -62,6 +62,27 @@ def test_a_script_builds_a_world_in_one_step_and_answers_queries():
     assert len(scene.worlds) == 0
 
 
+def test_scene_plans_carry_world_scripts():
+    from aether3d import execute_plan
+    from aether3d.errors import PlanError
+
+    plan = {
+        "format": "aether3d.scene-plan",
+        "version": 1,
+        "operations": [{"op": "world", "script": copy.deepcopy(SCRIPT)}],
+    }
+    scene = Scene("Plan")
+    op = execute_plan(scene, plan).to_dict()["operations"][0]
+    assert op["world_operations"] == 4 and op["worlds"] == ["Valley"]
+    assert op["world_queries"][1]["items"][0]["id"] == "lookout"
+    assert len(scene.history.entries) == 1  # the plan, world script included, is one step
+    bad = copy.deepcopy(plan)
+    bad["operations"][0]["script"]["operations"][0]["op"] = "terraform"
+    with pytest.raises(PlanError) as info:
+        execute_plan(Scene("P"), bad)
+    assert info.value.to_dict()["issues"][0]["pointer"].endswith("script/operations/0/op")
+
+
 def test_failing_scripts_change_nothing_and_name_the_operation():
     scene = Scene("S")
     run_world_script(scene, copy.deepcopy(SCRIPT))

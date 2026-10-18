@@ -89,7 +89,7 @@ def colors(model, sample: dict, x: np.ndarray, y: np.ndarray, normals: np.ndarra
     rock = rock * (0.9 + 0.22 * broad)[:, None] * np.array([1.0, 0.985, 0.96])
     reg = model.regional_if_ready()
     if reg is not None:
-        wetness = np.clip((np.log10(np.maximum(reg.flow(x, y), 1.0)) - 3.6) / 2.4, 0.0, 1.0)
+        wetness = np.clip((nz.log10(np.maximum(reg.flow(x, y), 1.0)) - 3.6) / 2.4, 0.0, 1.0)
         rock = rock * (1.06 - 0.3 * wetness)[:, None]
         soil = soil * (1.04 - 0.2 * wetness)[:, None]
     # 2. Soil and rock by slope (cos of the slope angle = n_z), with a noisy band; above the

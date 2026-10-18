@@ -718,7 +718,8 @@ def _densify(line: np.ndarray, step: float) -> np.ndarray:
     """A polyline with extra points so no segment is longer than ``step``."""
     out = [line[0]]
     for a, b in zip(line[:-1], line[1:], strict=True):
-        n = max(1, int(np.ceil(np.hypot(*(b - a)) / step)))
+        d = b - a
+        n = max(1, int(np.ceil(np.sqrt(d[0] * d[0] + d[1] * d[1]) / step)))
         for k in range(1, n + 1):
             out.append(a + (b - a) * (k / n))
     return np.asarray(out, dtype=np.float64)

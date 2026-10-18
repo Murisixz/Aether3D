@@ -156,3 +156,8 @@ def test_world_regions_export_to_gltf_with_vertex_colours(tmp_path):
     with pytest.raises(Exception) as info:
         w.export_region(tmp_path / "huge.glb", [0, 0, 1e6, 1e6])
     assert getattr(info.value, "code", "") == "LIMIT_EXCEEDED"
+    # Exporting the scene itself reports its worlds instead of dropping them silently.
+    result = scene.export(tmp_path / "scene.glb")
+    assert [d.code for d in result.diagnostics if d.code == "WORLDS_NOT_EXPORTED"] == [
+        "WORLDS_NOT_EXPORTED"
+    ]

@@ -2008,6 +2008,15 @@ class _Run:
                     data = run_animation_script(self.scene, op.values["script"])
                 result["animation_operations"] = len(data["operations"])
                 result["animation_clips"] = len(data["animation"]["clips"])
+            elif op.op == "world":
+                from ..worlds.script import run_world_script
+
+                with self._wrap(op.pointer, op.index):
+                    data = run_world_script(self.scene, op.values["script"])
+                result["world_operations"] = len(data["operations"])
+                result["worlds"] = [w["name"] for w in data["worlds"]]
+                if data["queries"]:
+                    result["world_queries"] = data["queries"]
             elif op.op == "frame_camera":
                 camera = (
                     self.scene_object(op.values["camera"], f"{op.pointer}/camera")

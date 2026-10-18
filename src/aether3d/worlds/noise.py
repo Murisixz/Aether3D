@@ -198,6 +198,56 @@ def cos_sin_deg(degrees: float) -> tuple[float, float]:
     return ((c, s), (-s, c), (-c, -s), (s, -c))[quadrant]
 
 
+_ATAN = tuple((-1.0) ** k / (2 * k + 1) for k in range(13))  # (exact: decimal fractions)
+_ATANH = tuple(1.0 / (2 * k + 1) for k in range(16))
+_LOG10_2 = 0.30102999566398119521  # log10(2), the nearest double
+_TWO_OVER_LN2 = 2.0 / 0.69314718055994530942
+
+
+def atan2_deg(y: float, x: float) -> float:
+    """``atan2(y, x)`` in degrees with only correctly rounded operations (two half-angle
+    reductions, then a Taylor series): the same bits on every platform. Accurate to about
+    1e-13 degrees; ``atan2_deg(0, 0)`` is 0."""
+    y, x = float(y), float(x)
+    if x == 0.0 and y == 0.0:
+        return 0.0
+    ax, ay = abs(x), abs(y)
+    swap = ay > ax
+    t = ax / ay if swap else ay / ax  # in [0, 1]
+    for _ in range(2):  # atan(t) = 2 atan(t / (1 + sqrt(1 + t^2)))
+        t = t / (1.0 + math.sqrt(1.0 + t * t))
+    t2 = t * t  # t <= tan(pi / 16)
+    s = 0.0
+    for c in reversed(_ATAN):
+        s = s * t2 + c
+    a = 4.0 * t * s  # radians, in [0, pi / 4]
+    if swap:
+        a = math.pi / 2.0 - a
+    if x < 0.0:
+        a = math.pi - a
+    if y < 0.0:
+        a = -a
+    return a * (180.0 / math.pi)
+
+
+def log10(x: Any) -> np.ndarray:
+    """``log10`` of positive values with only correctly rounded operations (an exact
+    ``frexp`` split, then an atanh series of the centred mantissa): the same bits on every
+    platform. Absolute error about 2e-15."""
+    m, e = np.frexp(np.asarray(x, dtype=np.float64))  # x = m 2^e, m in [0.5, 1)
+    m = m * 2.0
+    e = e - 1
+    big = m > 1.4142135623730951  # centre the mantissa on 1: [0.707, 1.414]
+    m = np.where(big, m * 0.5, m)
+    e = np.where(big, e + 1, e)
+    z = (m - 1.0) / (m + 1.0)  # |z| <= 0.172
+    z2 = z * z
+    s = np.zeros_like(z)
+    for c in reversed(_ATANH):
+        s = s * z2 + c
+    return (e + _TWO_OVER_LN2 * z * s) * _LOG10_2
+
+
 def smoothstep(edge0: float, edge1: float, x: np.ndarray) -> np.ndarray:
     """Cubic Hermite step from 0 at ``edge0`` to 1 at ``edge1`` (clamped)."""
     t = np.clip((np.asarray(x, dtype=np.float64) - edge0) / (edge1 - edge0), 0.0, 1.0)

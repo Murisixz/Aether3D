@@ -517,6 +517,19 @@ def _defs() -> dict[str, Any]:
                 },
                 ("op", "script"),
             ),
+            _obj(
+                {
+                    "op": {"const": "world"},
+                    "script": {
+                        "type": "object",
+                        "description": "an aether3d.world-script (schema: "
+                        "aether3d://schema/world-script): worlds, features, structures, blocks",
+                        "properties": {"format": {"const": "aether3d.world-script"}},
+                        "required": ["format"],
+                    },
+                },
+                ("op", "script"),
+            ),
         ]
     }
     return defs

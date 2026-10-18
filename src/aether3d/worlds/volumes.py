@@ -168,7 +168,8 @@ class Volumes:
                 has = nz.random2(nz.derive(seed, "caves", "entrance"), ci, cj) < cv["entrances"]
                 ex = ci + 0.2 + 0.6 * nz.random2(nz.derive(seed, "caves", "ex"), ci, cj)
                 ey = cj + 0.2 + 0.6 * nz.random2(nz.derive(seed, "caves", "ey"), ci, cj)
-                dist = np.hypot(x - ex * ENTRANCE_CELL, y - ey * ENTRANCE_CELL)
+                dx, dy = x - ex * ENTRANCE_CELL, y - ey * ENTRANCE_CELL
+                dist = np.sqrt(dx * dx + dy * dy)
                 f = nz.smoothstep(ENTRANCE_RADIUS, ENTRANCE_RADIUS / 3.0, dist) * has
                 out = np.maximum(out, top + f * (h + 2.0 - top))
         return np.where(wet, top, out)
@@ -199,7 +200,7 @@ class Volumes:
                 cx, cy, r = shape["circle"]
                 ground = self._anchor(f["id"], cx, cy)
                 if kind == "hole":
-                    shaft = np.hypot(x - cx, y - cy) - r0
+                    shaft = np.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) - r0
                     bottom = ground - 4.0 * r
                     shaft = np.maximum(shaft, np.maximum(bottom - z, z - ground - 5.0))
                     bulb = np.sqrt((x - cx) ** 2 + (y - cy) ** 2 + (z - bottom) ** 2) - 1.6 * r

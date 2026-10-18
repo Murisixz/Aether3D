@@ -82,3 +82,19 @@ images; otherwise rely on queries (heights, biomes, water) to check placement.
   inspect them with the `structures` and `features` queries, remove what you do not want.
 * Caves (`caves.enabled`, or `cave` features) and overhangs are volumetric near the
   camera (`streaming.volume_distance`); beyond, the ground is a heightfield.
+* A scene plan can carry a world script (plan operation `world`), so objects, materials
+  and worlds change together in one step.
+
+## Honest limits
+
+* Water is flat and coloured by depth: no waves, refraction or screen-space reflections
+  in the rasterizers (the path tracers reflect the sky and the land).
+* Distant ground is a level of detail whose error is bounded in pixels; `sample` is the
+  truth. Caves and overhangs are meshed only near the camera, plants thin with distance.
+* Shadows are a GPU rasterizer feature (`cascades` for wide views); the CPU rasterizer
+  draws none; the path tracers trace them. Fog is aerial perspective along camera rays,
+  not volumetric light.
+* Block textures and plant and building meshes are original procedural art; no game's
+  assets are included.
+* `export_scene` writes scene objects only (it reports `WORLDS_NOT_EXPORTED`); a world's
+  region exports with `aether3d world export PROJECT OUT.glb --region=X0,Y0,X1,Y1`.

@@ -828,13 +828,10 @@ def find_sites(
     x, y = x[ok], y[ok]
     if not x.size:
         return []
-    ring = [(0.0, 0.0)] + [
-        (radius * math.cos(a), radius * math.sin(a)) for a in np.linspace(0, 2 * math.pi, 9)[:-1]
-    ]
-    ring += [
-        (0.5 * radius * math.cos(a), 0.5 * radius * math.sin(a))
-        for a in np.linspace(0, 2 * math.pi, 7)[:-1]
-    ]
+    rim = [nz.cos_sin_deg(45.0 * k) for k in range(8)]
+    inner = [nz.cos_sin_deg(60.0 * k) for k in range(6)]
+    ring = [(0.0, 0.0)] + [(radius * c, radius * s) for c, s in rim]
+    ring += [(0.5 * radius * c, 0.5 * radius * s) for c, s in inner]
     ox = np.array([p[0] for p in ring])
     oy = np.array([p[1] for p in ring])
     px = (x[:, None] + ox[None]).reshape(-1)
@@ -896,6 +893,8 @@ def plan_settlement(
     seed; houses are skipped where the ground is wet or too steep or they would overlap."""
     d = model.d
     max_slope = d["structures"]["max_slope"] if max_slope is None else max_slope
+    c_slope, s_slope = nz.cos_sin_deg(min(float(max_slope), 89.0))
+    tan_slope = s_slope / c_slope
     cx, cy = at
     s = nz.derive(int(d["seed"]), "settlement", prefix, seed)
 
@@ -906,7 +905,7 @@ def plan_settlement(
     e = 6.0
     h = model.natural(np.array([cx + e, cx - e, cx, cx]), np.array([cy, cy, cy + e, cy - e]))
     gx, gy = (h[0] - h[1]) / (2 * e), (h[2] - h[3]) / (2 * e)
-    angle = math.degrees(math.atan2(gx, -gy)) if math.hypot(gx, gy) > 1e-4 else u(1, 0.0, 180.0)
+    angle = nz.atan2_deg(gx, -gy) if gx * gx + gy * gy > 1e-8 else u(1, 0.0, 180.0)
     angle = round(angle, 2)
     streets = [angle] + ([angle + 90.0] if houses > 8 else [])
     length = 26.0 + 9.0 * math.sqrt(houses)
@@ -978,9 +977,7 @@ def plan_settlement(
                 pts = np.asarray(footprint(item, 0.0))
                 hn = model.natural(pts[:, 0], pts[:, 1])
                 smp = model.evaluate(pts[:, 0], pts[:, 1])
-                if np.any(~np.isnan(smp["water"])) or hn.max() - hn.min() > max(w, dd) * math.tan(
-                    math.radians(max_slope)
-                ):
+                if np.any(~np.isnan(smp["water"])) or hn.max() - hn.min() > max(w, dd) * tan_slope:
                     continue
                 items.append(item)
                 rects.append(poly)

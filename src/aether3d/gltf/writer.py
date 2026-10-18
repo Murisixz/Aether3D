@@ -489,6 +489,18 @@ def export_gltf(
     document, binary, diagnostics, node_map = build_gltf(
         scene, bake_textures=bake_textures, animation=animation, animation_options=options
     )
+    if scene._worlds is not None and len(scene._worlds):
+        diagnostics.append(
+            Diagnostic(
+                "WORLDS_NOT_EXPORTED",
+                WARNING,
+                "procedural worlds are generated content, not scene objects, and are not "
+                "exported with the scene; export a finite region with world.export_region "
+                "(aether3d world export)",
+                "scene.worlds",
+                len(scene._worlds),
+            )
+        )
     lossy = [d for d in diagnostics if d.lossy]
     if lossy and not allow_lossy:
         raise UnsupportedFeatureError(
