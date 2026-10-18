@@ -356,9 +356,12 @@ def generate_weights(
     dq: Any = None,
     max_seconds: float | None = None,
     bind: bool = True,
+    context: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Compute skin weights for ``mesh_object`` from ``armature``'s rig and (``bind``)
-    bind it -- one undo step. See the module docstring; returns a report."""
+    bind it -- one undo step. ``context``: more mesh objects voxelized with it (a body
+    under clothing: distances run through the whole character). See the module
+    docstring; returns a report."""
     if method not in METHODS:
         raise _err("INVALID_ARGUMENT", f"method is one of {', '.join(METHODS)}", "method")
     if policy not in POLICIES:
@@ -392,8 +395,15 @@ def generate_weights(
     a_edges, b_edges = mesh_edges(ctx.mesh.triangles)
     comp, n_comp = V.mesh_components(n, ctx.mesh.triangles)
     report["parts"] = n_comp
+    extra = []
+    if context:
+        from .landmarks import gather
+
+        others = [c for c in context if system._object(c, "context")._id != ctx.obj._id]
+        if others:
+            extra = [gather(system, others)[:2]]
     if method == "geodesic":
-        dist, info = _geodesic_distances(ctx, resolution, voxel_size, deadline, timings)
+        dist, info = _geodesic_distances(ctx, resolution, voxel_size, deadline, timings, extra)
         report.update(info)
         unreached = ~np.isfinite(dist).any(axis=1)
     else:
@@ -610,12 +620,15 @@ def _sparse(dense: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
     return order.astype(np.int32), _normalize_rows(w)
 
 
-def _geodesic_distances(ctx, resolution, voxel_size, deadline, timings):
+def _geodesic_distances(ctx, resolution, voxel_size, deadline, timings, extra=()):
     t0 = time.perf_counter()
-    meshes = [(ctx.world, ctx.mesh.triangles)]
-    grid = V.voxelize(meshes[0][0], meshes[0][1], resolution=resolution, h=voxel_size)
+    pos, tri = ctx.world, np.asarray(ctx.mesh.triangles, np.int64)
+    for p2, t2 in extra:
+        tri = np.concatenate([tri, np.asarray(t2, np.int64) + len(pos)])
+        pos = np.concatenate([pos, p2])
+    grid = V.voxelize(pos, tri, resolution=resolution, h=voxel_size)
     if grid.stats["shell_only"]:  # an open mesh: close small holes and try again
-        grid = V.voxelize(meshes[0][0], meshes[0][1], resolution=resolution, h=voxel_size, close=2)
+        grid = V.voxelize(pos, tri, resolution=resolution, h=voxel_size, close=2)
     timings["voxelize_s"] = round(time.perf_counter() - t0, 4)
     deadline.check("voxelization")
     t1 = time.perf_counter()
@@ -628,7 +641,7 @@ def _geodesic_distances(ctx, resolution, voxel_size, deadline, timings):
         sources.append(src)
     vox = grid.flat(grid.voxel_of(ctx.world))
     uniq, inverse = np.unique(vox, return_inverse=True)
-    extent = float(np.max(ctx.world.max(axis=0) - ctx.world.min(axis=0)))
+    extent = float(np.max(pos.max(axis=0) - pos.min(axis=0)))
     cutoff = int(3 * math.ceil(0.5 * extent / grid.h))
     out = np.empty((uniq.size, len(sources)), np.int32)
     batch = 8

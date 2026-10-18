@@ -1167,6 +1167,27 @@ class AnimationSystem:
             "method": method,
         }
 
+    def detect_landmarks(self, meshes: Any, **options: Any) -> dict[str, Any]:
+        """Landmarks of an unrigged character (hips, knees, shoulders, wrists...) with
+        confidences, methods and diagnostics; read-only. Options: ``template``, ``up``,
+        ``forward``, ``resolution``, ``symmetry``, ``landmarks`` (overrides). See
+        :mod:`.landmarks`."""
+        from .landmarks import detect, gather
+
+        overrides = options.pop("landmarks", None)
+        pos, tris, _ = gather(self, meshes)
+        return detect(pos, tris, overrides=overrides, **options).report()
+
+    def autorig(self, meshes: Any, **options: Any) -> dict[str, Any]:
+        """Rig, control and bind an unrigged character in one undo step (see
+        :mod:`.autorig`): ``template`` (``humanoid``, ``stylized``, ``blocky``,
+        ``quadruped``), ``armature`` or ``name``, ``landmarks`` (overrides), ``parts``
+        (per mesh: ``geodesic``, ``transfer``, ``rigid``, ``attach``, ``skip``),
+        ``weights`` (generation options), ``skinning``, ``dry_run``. Returns a report."""
+        from .autorig import autorig
+
+        return autorig(self, meshes, **options)
+
     def generate_weights(self, mesh_object: Any, armature: Any, **options: Any) -> dict:
         """Automatic skin weights (``method``: ``geodesic`` voxel binding by default,
         ``envelope``, ``nearest``; ``policy``: ``organic``, ``stylized``, ``rigid``) and the
