@@ -395,8 +395,11 @@ class WorldRuntime:
     # -- reports -----------------------------------------------------------------------
 
     def stats(self) -> dict[str, Any]:
+        """Generation counters and memory accounting (all measured): ``memory`` separates
+        the world's logical size, what was generated, what the caches hold now (bytes per
+        kind), what the last frame drew, and the process's resident memory."""
         with self._lock:
-            return {
+            out = {
                 "tiles_cached": len(self._tiles),
                 "tile_bytes": int(self._tile_bytes),
                 "budget_bytes": int(self.definition["streaming"]["memory_mb"] * 2**20),
@@ -407,6 +410,28 @@ class WorldRuntime:
                 "regional_cached": len(self._regionals),
                 "last_frame": dict(self.last_frame),
             }
+            regional_bytes = sum(int(getattr(r, "nbytes", 0)) for r in self._regionals.values())
+        parts = {"tiles": out["tile_bytes"], "regional": regional_bytes}
+        if self._vegetation is not None:
+            v = self._vegetation.stats()
+            out["vegetation"] = v
+            parts["vegetation"] = int(v["bytes"])
+        if self._blocks is not None:
+            b = self._blocks.stats()
+            out["blocks"] = b
+            parts["blocks"] = int(b["bytes"])
+        if self._volumes is not None:
+            c = self._volumes.stats()
+            out["volumes"] = c
+            parts["volumes"] = int(c["bytes"])
+        out["memory"] = {
+            "logical": _logical(self.definition, self.world.extent),
+            "cached_bytes": parts,
+            "cached_total": int(sum(parts.values())),
+            "rendered": dict(self.last_frame),
+            "process_rss_bytes": _rss(),
+        }
+        return out
 
     def clear(self) -> None:
         """Forget every cached result (the next use regenerates what it needs)."""
@@ -471,3 +496,31 @@ def _footprint(cell: tuple[int, int]) -> tuple[float, float, float, float]:
 
     ci, cj = cell
     return (ci * CHUNK, cj * CHUNK, (ci + 1) * CHUNK, (cj + 1) * CHUNK)
+
+
+def _logical(d: dict, extent: Any) -> dict[str, Any]:
+    """The world's logical size: area, level-0 tiles or blocks (not generated: what it
+    describes)."""
+    if extent is None:
+        return {"bounded": False}
+    area = (extent[2] - extent[0]) * (extent[3] - extent[1])
+    out: dict[str, Any] = {"bounded": True, "area_km2": round(area / 1e6, 6)}
+    if d["mode"] == "blocks":
+        b = d["blocks"]
+        out["blocks"] = int(area / (b["size"] * b["size"]) * (b["max_height"] - b["min_height"]))
+        out["chunks"] = int(math.ceil(area / (16 * b["size"]) ** 2))
+    else:
+        out["tiles_level0"] = int(math.ceil(area / d["streaming"]["chunk"] ** 2))
+    return out
+
+
+def _rss() -> int | None:
+    """The process's resident set size in bytes (Linux /proc; None elsewhere)."""
+    try:
+        with open("/proc/self/statm", encoding="ascii") as f:
+            pages = int(f.read().split()[1])
+        import os
+
+        return pages * os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError, IndexError, AttributeError):
+        return None

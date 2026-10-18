@@ -69,6 +69,7 @@ def contribute(
         got += structure_parts(rt, view, ctx)
         rt.last_frame = {
             "parts": len(got),
+            "meshes": len({id(m) for _, _, m, _, _ in got}),
             "triangles": int(sum(m.triangle_count for _, _, m, _, _ in got)),
             "seconds": round(time.perf_counter() - t1, 4),
         }

@@ -272,6 +272,76 @@ class World:
         new = D.check_definition(new, f"{self.location}.definition")
         self._system._set(self, label, definition=new)
 
+    # -- animation ----------------------------------------------------------------------
+
+    def ground_path(
+        self, points: Any, *, spacing: float = 1.0, clearance: float = 0.0, smooth: float = 0.0
+    ) -> list[list[float]]:
+        """A polyline over the ground for characters and cameras (read-only): ``points``
+        ``[[x, y], ...]`` (on the ground) or ``[[x, y, z], ...]`` (kept, but never lower than
+        ``clearance`` above it), resampled every ``spacing`` metres; ``smooth`` metres of
+        moving-average smoothing (the clearance still holds after it). Block worlds use the
+        top of the highest solid block."""
+        self._check()
+        pts = np.asarray(points, dtype=np.float64)
+        if (
+            pts.ndim != 2
+            or pts.shape[1] not in (2, 3)
+            or len(pts) < 2
+            or not np.all(np.isfinite(pts))
+        ):
+            raise _err(
+                "INVALID_ARGUMENT",
+                "points is a list of at least two [x, y] or [x, y, z]",
+                f"{self.location}.ground_path.points",
+            )
+        for name, v in (("spacing", spacing), ("clearance", clearance), ("smooth", smooth)):
+            lo = 1e-3 if name == "spacing" else (-1e3 if name == "clearance" else 0.0)
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not lo <= v <= 1e4:
+                raise _err(
+                    "INVALID_ARGUMENT",
+                    f"{name} must be a number in [{lo}, 10000]",
+                    f"{self.location}.ground_path.{name}",
+                )
+        seg = np.linalg.norm(np.diff(pts[:, :2], axis=0), axis=1)
+        total = float(seg.sum())
+        n = int(total / spacing) + 1
+        if n > 200_000:
+            raise _err(
+                "LIMIT_EXCEEDED",
+                f"{n} points: use a larger spacing",
+                f"{self.location}.ground_path.spacing",
+            )
+        dist = np.concatenate([[0.0], np.cumsum(seg)])
+        t = np.linspace(0.0, total, max(n, 2))
+        xy = np.stack([np.interp(t, dist, pts[:, 0]), np.interp(t, dist, pts[:, 1])], axis=1)
+        floor = np.asarray(self.ground(xy[:, 0], xy[:, 1]), dtype=np.float64) + clearance
+        z = floor if pts.shape[1] == 2 else np.maximum(np.interp(t, dist, pts[:, 2]), floor)
+        k = int(round(smooth / spacing))
+        if k >= 1:
+            window = 2 * k + 1
+            padded = np.concatenate([np.full(k, z[0]), z, np.full(k, z[-1])])
+            z = np.maximum(np.convolve(padded, np.ones(window) / window, mode="valid"), floor)
+        return [[float(a), float(b), float(c)] for (a, b), c in zip(xy, z, strict=True)]
+
+    def place_on_ground(self, objects: Any, *, offset: float = 0.0) -> list[float]:
+        """Move objects (ids, names or handles) so their origin stands on the ground plus
+        ``offset``; one undo step. Returns the new heights."""
+        self._check()
+        scene = self._system.scene
+        refs = objects if isinstance(objects, (list, tuple)) else [objects]
+        objs = [o if not isinstance(o, str) else _scene_object(scene, o) for o in refs]
+        xy = np.array(
+            [[o.transform.position[0], o.transform.position[1]] for o in objs], dtype=np.float64
+        )
+        z = np.asarray(self.ground(xy[:, 0], xy[:, 1]), dtype=np.float64).reshape(-1) + float(
+            offset
+        )
+        with scene.transaction(f"Place {len(objs)} objects on world {self._name!r}"):
+            for o, (x, y), h in zip(objs, xy, z, strict=True):
+                o.transform.position = (float(x), float(y), float(h))
+        return [float(h) for h in z]
+
     # -- export -------------------------------------------------------------------------
 
     def export_region(self, path: Any, region: Any, **options: Any) -> dict[str, Any]:
@@ -754,6 +824,63 @@ class WorldSystem:
         self._set(world, f"Remove world {world._name!r}", alive=False)
         self._runtimes.pop(world.id, None)
 
+    # -- streaming -------------------------------------------------------------------------
+
+    def prepare(
+        self,
+        times: Any,
+        *,
+        camera: Any = None,
+        width: int = 1280,
+        height: int = 720,
+        should_stop: Any = None,
+        progress: Any = None,
+    ) -> dict[str, Any]:
+        """Generate, ahead of rendering, what every world draws for the camera at each of
+        ``times`` (seconds on the animation's timeline; the camera's animated position, or
+        the shot camera): terrain tiles, plants, structures, volumes, block chunks. The
+        caches keep it for the renders that follow (within the memory budgets). Read-only;
+        returns per-frame and total counts and seconds."""
+        import time as _time
+
+        from ..rendering.overlay import animation_overlay
+        from ..rendering.scene_data import extract_render_scene, resolve_camera
+        from .fields import Context
+        from .render import contribute
+
+        times = [float(t) for t in (times if isinstance(times, (list, tuple)) else [times])]
+        if not times or len(times) > 100_000:
+            raise _err("INVALID_ARGUMENT", "times is a list of 1..100000 times", "worlds.prepare")
+        scene = self.scene
+        aspect = width / height
+        ctx = Context(should_stop=should_stop)
+        frames = []
+        t_all = _time.perf_counter()
+        for k, t in enumerate(times):
+            overlay = animation_overlay(scene, t)
+            cam = camera
+            if cam is None and overlay is not None and overlay.camera is not None:
+                cam = overlay.camera
+            rs = extract_render_scene(
+                scene, resolve_camera(scene, cam), aspect=aspect, overlay=overlay
+            )
+            t0 = _time.perf_counter()
+            contribute(scene, rs, height, aspect, ctx)
+            frames.append(
+                {
+                    "time": t,
+                    "seconds": round(_time.perf_counter() - t0, 4),
+                    "worlds": {w.name: dict(w.runtime.last_frame) for w in self},
+                }
+            )
+            if progress is not None:
+                progress(k + 1, len(times))
+        return {
+            "frames": frames,
+            "seconds": round(_time.perf_counter() - t_all, 3),
+            "stats": {w.name: w.runtime.stats() for w in self},
+        }
+
     # -- generated data --------------------------------------------------------------------
 
     def _runtime(self, world: World) -> Any:
@@ -862,3 +989,12 @@ def nz_u(seed: int, k: int) -> float:
     return float(
         nz.random2(nz.derive(int(seed), "settlement-size"), np.array([k]), np.array([0]))[0]
     )
+
+
+def _scene_object(scene: Any, ref: str) -> Any:
+    from ..errors import ObjectNotFoundError
+
+    try:
+        return scene.get(ref)
+    except ObjectNotFoundError:
+        return scene.get_by_name(ref)

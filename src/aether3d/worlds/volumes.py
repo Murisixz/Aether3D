@@ -503,10 +503,21 @@ class Volumes:
 
     def stats(self) -> dict[str, Any]:
         with self._lock:
+            mesh_bytes = sum(
+                sum(
+                    a.nbytes
+                    for a in (m.positions, m.triangles, m.normals, m.colors)
+                    if a is not None
+                )
+                for m in self._cubes.values()
+                if m is not None
+            )
             return {
                 **self.counters,
                 "seconds": round(self.counters["seconds"], 4),
                 "cubes_cached": len(self._cubes),
+                "columns_cached": len(self._columns),
+                "bytes": int(mesh_bytes),
             }
 
     def clear(self) -> None:

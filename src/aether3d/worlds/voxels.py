@@ -138,6 +138,7 @@ class BlockWorld:
         self._meshes: OrderedDict[tuple, Any] = OrderedDict()
         self._coarse: OrderedDict[tuple, Any] = OrderedDict()
         self._lock = threading.RLock()
+        self._bytes = {"chunks": 0, "meshes": 0, "coarse": 0}
         self.counters = {
             "chunks_generated": 0,
             "chunks_meshed": 0,
@@ -145,6 +146,26 @@ class BlockWorld:
             "seconds_generate": 0.0,
             "seconds_mesh": 0.0,
         }
+
+    def _budget(self, share: float) -> float:
+        """Bytes a cache may hold: its share of ``streaming.memory_mb``."""
+        return share * self.rt.definition["streaming"]["memory_mb"] * 2**20
+
+    def stats(self) -> dict[str, Any]:
+        with self._lock:
+            chunk_bytes = self._bytes["chunks"]
+            mesh = self._bytes["meshes"]
+            coarse = self._bytes["coarse"]
+            return {
+                **{
+                    k: (round(v, 4) if isinstance(v, float) else v)
+                    for k, v in self.counters.items()
+                },
+                "chunks_cached": len(self._chunks),
+                "meshes_cached": len(self._meshes),
+                "coarse_cached": len(self._coarse),
+                "bytes": int(chunk_bytes + mesh + coarse),
+            }
 
     # -- keys --------------------------------------------------------------------------
 
@@ -215,8 +236,13 @@ class BlockWorld:
                 for key, data in made.items():
                     data.seconds = seconds / len(made)
                     self._chunks[key] = data
-                while len(self._chunks) > MAX_CHUNKS:
-                    self._chunks.popitem(last=False)
+                    self._bytes["chunks"] += data.nbytes
+                limit = self._budget(0.5)
+                while len(self._chunks) > MAX_CHUNKS or (
+                    self._bytes["chunks"] > limit and len(self._chunks) > len(made)
+                ):
+                    _, old = self._chunks.popitem(last=False)
+                    self._bytes["chunks"] -= old.nbytes
                 self.counters["chunks_generated"] += len(made)
                 self.counters["seconds_generate"] += seconds
             out = [made.get(key) if o is None else o for key, o in zip(keys, out, strict=True)]
@@ -725,8 +751,13 @@ class BlockWorld:
         result = mesh_chunk(self.rt.definition, got[0], nb)
         with self._lock:
             self._meshes[key] = result
-            while len(self._meshes) > MAX_CHUNKS:
-                self._meshes.popitem(last=False)
+            self._bytes["meshes"] += _pair_bytes(result)
+            limit = self._budget(0.3)
+            while len(self._meshes) > MAX_CHUNKS or (
+                self._bytes["meshes"] > limit and len(self._meshes) > 1
+            ):
+                _, old = self._meshes.popitem(last=False)
+                self._bytes["meshes"] -= _pair_bytes(old)
             self.counters["chunks_meshed"] += 1
             self.counters["seconds_mesh"] += time.perf_counter() - t0
         return result
@@ -787,13 +818,29 @@ class BlockWorld:
             with self._lock:
                 for key, result in made.items():
                     self._coarse[key] = result
-                while len(self._coarse) > MAX_CHUNKS:
-                    self._coarse.popitem(last=False)
+                    self._bytes["coarse"] += _pair_bytes(result)
+                limit = self._budget(0.2)
+                while len(self._coarse) > MAX_CHUNKS or (
+                    self._bytes["coarse"] > limit and len(self._coarse) > len(made)
+                ):
+                    _, old = self._coarse.popitem(last=False)
+                    self._bytes["coarse"] -= _pair_bytes(old)
                 self.counters["coarse_meshed"] += len(made)
             out = [
                 made.get((base, *r)) if o is None else o for r, o in zip(requests, out, strict=True)
             ]
         return out  # type: ignore[return-value]
+
+
+def _mesh_bytes(m: Any) -> int:
+    if m is None:
+        return 0
+    arrays = (m.positions, m.triangles, m.normals, m.uvs, m.groups, m.colors)
+    return int(sum(a.nbytes for a in arrays if a is not None))
+
+
+def _pair_bytes(pair: tuple) -> int:
+    return _mesh_bytes(pair[0]) + _mesh_bytes(pair[1])
 
 
 _LEAF_IDS = np.array([k for k, b in enumerate(BLOCK_LIST) if b.name.endswith("_leaves")])
