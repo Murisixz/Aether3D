@@ -1167,6 +1167,41 @@ class AnimationSystem:
             "method": method,
         }
 
+    def generate_weights(self, mesh_object: Any, armature: Any, **options: Any) -> dict:
+        """Automatic skin weights (``method``: ``geodesic`` voxel binding by default,
+        ``envelope``, ``nearest``; ``policy``: ``organic``, ``stylized``, ``rigid``) and the
+        binding, as one undo step; see :mod:`.weights`. Returns a report (technique,
+        assumptions, voxel size, fallbacks, timings)."""
+        from .weights import generate_weights
+
+        with self._op(f"Weights of {self._object(mesh_object, 'mesh_object').name!r}"):
+            return generate_weights(self, mesh_object, armature, **options)
+
+    def edit_weights(self, mesh_object: Any, operations: list[Any], **options: Any) -> dict:
+        """Numeric weight editing (selections, brushes, locks); see :mod:`.weights`."""
+        from .weights import edit_weights
+
+        return edit_weights(self, mesh_object, operations, **options)
+
+    def normalize_weights(self, mesh_object: Any) -> dict[str, Any]:
+        from .weights import normalize_weights
+
+        return normalize_weights(self, mesh_object)
+
+    def transfer_weights(self, target: Any, source: Any, **options: Any) -> dict[str, Any]:
+        """Bind ``target`` (clothing, armour) with ``source``'s weights at the closest
+        surface point; see :mod:`.weights`."""
+        from .weights import transfer_weights
+
+        with self._op(f"Transfer weights to {self._object(target, 'target').name!r}"):
+            return transfer_weights(self, target, source, **options)
+
+    def inspect_weights(self, mesh_object: Any, **options: Any) -> dict[str, Any]:
+        """A skin's weights measured (validity, coverage, leakage, cross-side weights)."""
+        from .weights import inspect_weights
+
+        return inspect_weights(self, mesh_object, **options)
+
     def unbind(self, mesh_object: Any) -> None:
         obj = self._object(mesh_object, "mesh_object")
         item = self._owned.get(("skin", obj._id))
