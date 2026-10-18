@@ -144,18 +144,40 @@ def main(argv: list[str]) -> int:
     stills["entrance"]["at"] = [ex, ey]
     stills["entrance"]["world"] = dict(world.runtime.last_frame)
     print("entrance", stills["entrance"]["seconds"], flush=True)
-    # 2. Inside a cavern, lit by lanterns (the sun does not reach it).
-    p, d = open_space(world, vol, ex, ey)
-    eye = p - 6.0 * d + np.array([0.0, 0.0, 1.5])
-    for k, off in enumerate((8.0, 20.0, 34.0)):
-        q = p + off * d + np.array([2.0 * (-1) ** k, 0.0, 1.0])
-        lamp = scene.add_point_light(f"Lantern {k}", position=tuple(q), intensity=260.0, range=60.0)
-        lamp.light.configure(color=(1.0, 0.84, 0.62), radius=0.25)
-    scene.add_point_light(
-        "Headlamp", position=tuple(eye + np.array([0.0, 0.0, 0.6])), intensity=60.0, range=40.0
+    # 2. Inside a cavern -- an authored hall (a cave feature, 60 m across) -- lit by
+    # lanterns on its floor; the sun does not reach it.
+    hx, hy, r = ex - 170.0, ey + 110.0, 30.0
+    world.add_feature(
+        {
+            "type": "cave",
+            "id": "hall",
+            "kind": "cavern",
+            "radius": r,
+            "noise": 0.35,
+            "shape": {"circle": [hx, hy, r]},
+        }
     )
+    hz = world.height(hx, hy) - 1.1 * r  # the hall's centre (see docs/WORLDS.md)
+
+    def floor(x: float, y: float) -> float:
+        """The hall's floor below (x, y): the first rock under its centre height."""
+        zs = np.arange(hz, hz - 1.2 * r, -0.5)
+        solid = vol.solid(np.column_stack([np.full(zs.size, x), np.full(zs.size, y), zs]))
+        return float(zs[np.argmax(solid)]) if solid.any() else hz - 0.6 * r
+
+    eye = np.array([hx - 0.55 * r, hy - 0.2 * r, 0.0])
+    eye[2] = floor(eye[0], eye[1]) + 2.5
+    for k, (u, v) in enumerate(((-0.15, 0.1), (0.25, -0.2), (0.5, 0.25), (0.05, 0.45))):
+        q = np.array([hx + u * r, hy + v * r, 0.0])
+        q[2] = floor(q[0], q[1]) + 1.2
+        lamp = scene.add_point_light(f"Lantern {k}", position=tuple(q), intensity=260.0, range=70.0)
+        lamp.light.configure(color=(1.0, 0.84, 0.62), radius=0.25)
     cam = scene.add_camera(
-        "Cavern", position=tuple(eye), look_at=tuple(p + 30.0 * d), fov=70, far=4000
+        "Cavern",
+        position=tuple(eye),
+        look_at=(hx + 0.5 * r, hy + 0.15 * r, hz - 6.0),
+        fov=74,
+        far=4000,
     )
     stills["cavern"] = render_still(
         scene, out / "cavern.png", camera=cam, width=w, height=h, path_tracing=spp, preset="morning"
