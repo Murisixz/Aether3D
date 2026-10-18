@@ -52,7 +52,7 @@ Contents:
 | Tags and metadata | `obj.tags = ...`, `add_tags`, `remove_tags`, `obj.metadata = ...`, `set_metadata`, `remove_metadata` (0.10.0) |
 | Scene plans | `scene.execute_plan(plan)`: the whole plan is one step, however many objects it makes or changes; a plan with `chunk_size` is one step per chunk, after a checkpoint `plan:KEY:before` ([SCENE_PLANS.md](SCENE_PLANS.md)) (0.11.0) |
 | Cameras and lights | every parameter (`obj.camera.fov = 35`, `obj.light.configure(...)`), the active camera |
-| World and settings | background, ambient light, the environment and its fields, render settings, the scene's name |
+| World and settings | background, ambient light, the environment and its fields, the outdoor atmosphere (0.18.0), render settings, the scene's name |
 | Meshes | `obj.mesh = ...`, committed edit sessions (`obj.edit_mesh()`, with `scope="shared"` too), committed sculpt sessions (`obj.sculpt()`: "Sculpt mesh of 'Head'"; 0.13.0); UV changes: `unwrap`, `project_uvs`, `edit_uvs` (0.14.0) |
 | Materials | create (presets too), every parameter, model, name, texture bindings and their options, remove, assign (whole objects and face groups), `convert_appearances` |
 | Textures | add (images, procedural graphs, painted textures), name, sampler settings, graph and node parameters, embed and extract, remove; painted textures: every layer change, mask, background and **each stroke, fill and gradient: one step**, holding only the tiles it changed (0.14.0) |
@@ -60,12 +60,13 @@ Contents:
 | Procedural geometry | parameters and rules (scene and geometry), geometry nodes, sources (and `edit_source()` commits), modifiers (add, set, move, remove), assigning nodes to objects, `bake()`, `procedural.undo()` |
 | CAD | every change of the CAD document -- adding, changing (definitions, a sketch dimension, a feature), renaming or removing an item, units and display tolerance, showing an item, `convert_to_mesh` -- with the regeneration it causes, one step; `doc.batch(label)` makes one step of several; an import (STEP, IFC, DXF) is one step ([CAD.md](CAD.md); 0.15.0) |
 | Animation | every authoring call of `scene.animation` -- timeline, markers, sections, clips and their keys, curves and modifiers, bindings, layers, strips, rigs, attachments, skins, morph targets, constraints, paths, shots, camera moves, generated motions, planting, retargeting, baking, `apply_pose` -- one step each; a generated motion with its clip, one step ([ANIMATION.md](ANIMATION.md); 0.17.0) |
-| Scripts | a scene, edit, procedural, sculpt, texture, CAD or animation script is one step |
+| Procedural worlds | creating, configuring (presets, overrides, every section), renaming and removing a world; adding, changing and removing features and structures; `build_road`, `build_settlements` (everything they add, one step); block edits (`set_blocks`, `fill_blocks`, `replace_blocks`, `revert_blocks`), holding only the 16 x 16 x 16 sections they changed ([WORLDS.md](WORLDS.md); 0.18.0) |
+| Scripts | a scene, edit, procedural, sculpt, texture, CAD, animation or world script is one step |
 | Command line | every command that changes a project, when the project keeps a history (see [Command line](#command-line)) |
 
 The history records these under stable, id-based paths: `objects[<id>].transform`,
 `objects[<id>].camera`, `materials[<id>]`, `world`, `procedural`,
-`animation.items[<id>]`, `animation.settings`, ... (`HistoryEntry.paths`).
+`animation.items[<id>]`, `animation.settings`, `worlds[<id>]`, ... (`HistoryEntry.paths`).
 
 **Not recorded:**
 - Effects outside the scene: saved projects, exported files, an image written by
@@ -83,6 +84,9 @@ The history records these under stable, id-based paths: `objects[<id>].transform
   a transaction sees the changes made in it (0.17.0).
 - Spatial queries ([SPATIAL.md](SPATIAL.md)): they only read the scene; they make
   no step and leave `scene.revision` unchanged.
+- Generated worlds (0.18.0): tiles, plants, chunks, volumes and the regional stage are
+  caches of a world's definition and edits, regenerated identically after undo; world
+  queries and renders make no step.
 - The edits inside an open edit or sculpt session. They have their own undo (see
   [Other undo systems](#other-undo-systems)); committing the session is one step.
 - Changes made while recording is disabled (see [Limits and memory](#limits-and-memory)).

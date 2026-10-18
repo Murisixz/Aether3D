@@ -35,6 +35,8 @@ $ aether3d geometry world.glb --json
 | Indexed triangle meshes | yes | yes |
 | Non-indexed triangles, triangle strips, triangle fans | n/a | yes (converted to indexed triangles) |
 | `POSITION`, `NORMAL`, `TEXCOORD_0` | yes (float) | yes (float; normalized unsigned byte/short texcoords) |
+| `COLOR_0` (0.18.0) | `Mesh.colors` as float `VEC4` (linear RGBA, multiplying the base colour, as in glTF) | float or normalized unsigned byte/short `VEC3`/`VEC4` (alpha 1 for `VEC3`); primitives without it are white when merged with ones that have it |
+| Procedural worlds (0.18.0) | a finite region's generated geometry with `world.export_region` / `aether3d world export` ([WORLDS.md](WORLDS.md#history-files-and-export)); `scene.export` itself writes scene objects only | as plain meshes and instances |
 | Mesh instancing (several nodes using one mesh) | yes | yes |
 | Several primitives per mesh | one primitive per face group, each with its group's material | merged into one mesh; primitives with different materials become face groups |
 | Materials (`pbrMetallicRoughness`, alpha modes, double-sided, normal, occlusion, emission) | yes | yes |
@@ -117,7 +119,7 @@ glTF features that Aether3D does not model fall into two groups.
 | animation channels on content Aether3D does not import (`KHR_animation_pointer` paths, nodes outside the scene, skinned mesh nodes, weights without targets) | `ANIMATION_CHANNELS_IGNORED` | info |
 | animated rotations that are not unit length (normalized) | `ROTATION_NOT_UNIT` | info |
 | optional extensions (`extensionsUsed`) | `EXTENSION_IGNORED` | info |
-| other vertex attributes (`COLOR_0`, `TANGENT`, `TEXCOORD_1`, ...) | `ATTRIBUTES_IGNORED` | info |
+| other vertex attributes (`TANGENT`, `TEXCOORD_1`, `COLOR_1`, ...) | `ATTRIBUTES_IGNORED` | info |
 | scenes other than the default scene, and nodes outside it | `OTHER_SCENES_IGNORED`, `NODES_NOT_IN_SCENE` | warning |
 
 Images are read only from buffer views, base64 `data:` URIs, or files in the
@@ -157,6 +159,7 @@ Export has the same policy. Content glTF cannot store raises
 | layers, constraints, IK or paths shape the motion but clips are exported alone | `ANIMATION_NOT_BAKED` (warning) | -- (`animation="bake"` or `"auto"` bakes them) |
 | a channel needing more keys than the budget to meet its tolerance | `KEY_BUDGET_SPENT` (warning) | the reported error exceeds the tolerance |
 | an instantaneous jump | `JUMP_APPROXIMATED` (info) | held as a 1e-4 s transition |
+| procedural worlds (generated, not scene objects; 0.18.0) | `WORLDS_NOT_EXPORTED` (warning, not lossy) | -- (export a region with `world.export_region`) |
 
 Material content glTF cannot express is reported as a warning and left out.
 It is not lossy geometry, so the export does not fail. See [Materials and

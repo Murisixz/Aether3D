@@ -438,7 +438,54 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
 | Hierarchies | Each object uses its full world matrix, including non-uniform, sheared and mirrored transforms. |
 | Objects with materials | Their material, or each face group's material. Alpha-masked samples are dropped (`stats["alpha_discarded"]`). Textures that cannot be used are reported, and the slot uses its factor. |
 | Hidden objects (`visible = False`), cameras, lights, empties | Nothing. Visibility is not inherited by children. |
+| Meshes with vertex colours (`Mesh.colors`, since 0.18.0) | The colours multiply the material's (or the object's) base colour and opacity, as glTF's `COLOR_0`, interpolated across each triangle; on every backend. |
+| Procedural worlds (`scene.worlds`, since 0.18.0) | What each world contributes for the render's camera -- terrain tiles, water, cave volumes, plants (instances), structures, or block chunks -- appended to the render scene with ids `world:<world id>:<part>`; nothing is added to the scene. See [WORLDS.md](WORLDS.md#rendering). |
 | An empty scene | The background, with `NOTHING_TO_RENDER` (warning). |
+
+## Outdoor atmosphere (0.18.0)
+
+`scene.world.atmosphere` adds what large outdoor views need: a sky with a sun glow and a
+horizon glow, exponential **height fog** with sunlight scattered toward the camera, and
+**hemisphere ambient** light. It is off by default (scenes render exactly as before) and
+saved with the project.
+
+```python
+sun = scene.add_directional_light("Sun", direction=(0.5, 0.6, -0.35), intensity=1.8)
+scene.world.environment.configure(type="sky")
+scene.world.atmosphere.configure(
+    enabled=True,
+    sun="Sun",
+    sky=True,
+    sun_glow=1.0,
+    horizon_glow=0.4,
+    fog_density=0.00015,
+    fog_height=120.0,
+    fog_falloff=0.0012,
+    fog_sun=0.6,
+    ambient="hemisphere",
+    ground_ambient=(0.36, 0.33, 0.29),
+)
+```
+
+The formulas (`rendering/atmosphere.py`; the GPU evaluates the same in
+`gpu/wgsl/atmosphere.wgsl`, and tests compare them):
+
+* **Sky** in direction `d` (`z = d.z`): the world's environment -- for `"sky"`,
+  `mix(horizon, zenith, sqrt(z))` above the horizon and `mix(horizon, ground, min(1, 4|z|))`
+  below -- plus the sun glow `glow (g^size + 0.15 g^(size/8))`, `g = max(d . sun, 0)`, plus
+  the horizon glow `horizon_glow * glow_colour * (1 - min(2.5|z|, 1))^4 (0.25 + 0.75 a^2)`
+  (`a`: the cosine between `d`'s and the sun's horizontal directions). With `sky=True` the
+  rasterizers draw it behind the geometry instead of `background`.
+* **Fog**: density `rho(z) = fog_density e^(-fog_falloff (z - fog_height))`; along a camera
+  ray from `c` in direction `d` to distance `t` its optical depth is exact,
+  `tau = rho(c.z) (1 - e^(-falloff d.z t)) / (falloff d.z)`, and a colour `L` becomes
+  `L T + F (1 - T)` with `T = e^(-tau)` and `F = fog_colour + fog_sun * sun * g^power`.
+  The sky is fogged too (infinite distance: opaque below the horizon's line of sight).
+* **Hemisphere ambient** (rasterizers): `mix(ground_ambient, ambient, 0.5 + 0.5 n.z)`.
+
+Fog applies along camera rays on every backend -- per sample on the rasterizers, to each
+camera path's first segment in the path tracers. It is an aerial-perspective model, not a
+participating medium: it does not scatter light between surfaces or cast light shafts.
 
 ## Python API
 
@@ -739,7 +786,8 @@ Diagnostics (in `result.diagnostics`):
 ## Limitations
 
 - **Lighting:** the CPU renderer draws no shadows (the GPU backend renders
-  directional-light shadow maps, see [GPU.md](GPU.md#shadows)). There are no
+  directional-light shadow maps, with cascades for wide outdoor views, see
+  [GPU.md](GPU.md#shadows)). There are no
   reflections, environment maps or indirect light. Emissive surfaces do not
   light other objects. The path tracer (`backend="path"`,
   [RENDER_QUALITY.md](RENDER_QUALITY.md)) computes all of these, more slowly.

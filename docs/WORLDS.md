@@ -17,27 +17,46 @@ overhangs](#caves-and-overhangs) - [Block worlds](#block-worlds) - [Vegetation](
 and memory](#streaming-level-of-detail-and-memory) - [Rendering](#rendering) - [Queries
 and animation](#queries-and-animation) - [History, files and export](#history-files-and-export)
 - [World scripts, MCP and the command line](#world-scripts-mcp-and-the-command-line) -
-[Limits and security](#limits-and-security) - [Performance](#performance) - [Errors](#errors)
+[Limits and security](#limits-and-security) - [Performance](#performance) -
+[Showcases](#showcases) - [Limitations](#limitations) - [Errors](#errors)
 
 ## Quick start
 
 ```python
 from aether3d import Scene
 
-scene = Scene("Valley")
-valley = scene.worlds.create("Valley", "alpine_valley", seed=7)   # nothing generated yet
-print(valley.height(0.0, 0.0))                                    # exact ground height
-valley.add_feature({"type": "lake", "id": "tarn", "shape": {"circle": [600, -300, 120]},
-                    "level": 1450.0})
-valley.build_settlements(2, houses=[6, 12])                        # villages and a road
+scene = Scene("Hills")
+hills = scene.worlds.create("Hills", "temperate", seed=4, size=2048)  # nothing generated yet
+print(hills.info()["mode"])  # terrain
+print(round(hills.height(100.0, -50.0), 3))  # 333.989 (exact; the same on every platform)
+print(hills.biome_at(100.0, -50.0))  # temperate_forest
 
-g = valley.height(-800.0, -1200.0)
-scene.add_camera("Cam", position=(-800, -1200, g + 60), look_at=(0, 0, g), far=20000)
-sun = scene.add_directional_light("Sun", direction=(0.5, 0.6, -0.35), intensity=1.8)
-scene.world.atmosphere.configure(enabled=True, sun="Sun", fog_density=0.00015,
-                                 fog_height=g, fog_falloff=0.0012, ambient="hemisphere")
-scene.render(backend="gpu", shadows={"cascades": 4}, tonemap="neutral").save("valley.png")
-scene.save("valley.aether")                                        # a few KB
+# A flat, dry site; a house on it (its foundation follows the natural ground) and a yard.
+site = hills.find_sites(1, radius=10.0, max_slope=12.0, spacing=80.0)[0]
+x, y = site["at"]
+hills.place_structure({"id": "inn", "kind": "house", "at": [x, y], "floors": 2})
+hills.add_feature({"type": "clear", "id": "yard", "shape": {"circle": [x, y, 45.0]}})
+print(len(hills.structures()), len(scene.history.entries))  # 1 3
+
+g = hills.height(x, y)
+scene.add_camera("Cam", position=(x - 24, y - 30, g + 9), look_at=(x, y, g + 3), far=4000)
+scene.add_directional_light("Sun", direction=(0.5, 0.6, -0.4), intensity=1.6)
+scene.world.atmosphere.configure(enabled=True, sun="Sun", ambient="hemisphere")
+image = scene.render(width=320, height=180, backend="cpu")  # generated here, for this view
+print(image.image.shape)  # (180, 320, 3)
+scene.save("hills.aether")  # the definition and edits, never generated geometry
+```
+
+Nothing is generated when the world is created: the first height query runs the regional
+stage (a fraction of a second for this 2 km world), and the render generates the tiles,
+plants and the house it sees. For cinematic results, render on the GPU with cascaded
+shadows and the atmosphere, as the [showcases](#showcases) do:
+
+```python
+scene.world.atmosphere.configure(fog_density=0.00015, fog_height=g, fog_falloff=0.0012)
+scene.render(
+    backend="gpu", width=1920, height=1080, shadows={"cascades": 4}, tonemap="neutral"
+).save("hills.png")
 ```
 
 The same from a JSON world script (see [World scripts](#world-scripts-mcp-and-the-command-line)):
@@ -63,10 +82,16 @@ aether3d render valley.aether -o valley.png --frame --backend gpu
 * **Determinism** -- every random decision is an integer hash of
   `(seed, stream, integer coordinates)` (a SplitMix64 finalizer): no global random state,
   so results never depend on the order tiles are generated, on threads or batches.
-  Generation uses only correctly rounded operations (`+ - * /`, `sqrt`, `floor`,
-  comparisons) and integer hashing -- no `exp`, `sin` or `pow` from the C library, no BLAS
-  -- so the same definition gives the same float64 bits on every platform, with or
-  without the native kernels. `tests/test_worlds_determinism.py` checks golden hashes.
+  Generation -- fields, the regional stage, tiles with their colours, plant placement,
+  blocks, cave volumes and structure layouts -- uses only correctly rounded operations
+  (`+ - * /`, `sqrt`, `floor`, comparisons) and integer hashing: no `exp`, `log`, `sin` or
+  `pow` from the C library (`worlds/noise.py` has exact `cos_sin_deg`, `atan2_deg` and
+  `log10`) and no BLAS (explicit ordered sums instead of matrix products), so the same
+  definition gives the same float64 bits on every platform, with or without the native
+  kernels. `tests/test_worlds_determinism.py` checks golden hashes and runs without the
+  native kernels in a subprocess. Two things are outside this guarantee: the template
+  meshes of plant species and buildings, whose shapes are drawn with the platform's
+  trigonometry (not where they stand), and query outputs in degrees (`slope`).
 * **Generator version** -- `definition["generator"]` (1). A later Aether3D that changes
   what a definition generates bumps it.
 * **Coordinates** -- metres, +Z up, float64; worlds work anywhere within +-10,000 km
@@ -165,10 +190,29 @@ sand, foliage, water), terrain modifiers (dunes, flattening, roughness), vegetat
 filler, depth, underwater). Add or change biomes declaratively:
 
 ```python
-valley.configure(biomes={"table": {"heath": {"temperature": [2, 9], "moisture": [0.2, 0.5],
-    "ground": "grass", "colors": {"grass": "#7c7a48", "soil": "#5a4632", "rock": "#7d776e",
-    "sand": "#c8bc96", "foliage": "#5c6b3a", "water": "#35677a"},
-    "vegetation": [{"species": "heather", "density": 800}, {"species": "rock", "density": 6}]}}})
+valley.configure(
+    biomes={
+        "table": {
+            "heath": {
+                "temperature": [2, 9],
+                "moisture": [0.2, 0.5],
+                "ground": "grass",
+                "colors": {
+                    "grass": "#7c7a48",
+                    "soil": "#5a4632",
+                    "rock": "#7d776e",
+                    "sand": "#c8bc96",
+                    "foliage": "#5c6b3a",
+                    "water": "#35677a",
+                },
+                "vegetation": [
+                    {"species": "heather", "density": 800},
+                    {"species": "rock", "density": 6},
+                ],
+            }
+        }
+    }
+)
 ```
 
 `biome` features force a biome locally. **Surface colours** blend the biomes' grounds
@@ -405,9 +449,9 @@ changes) and may ask read-only queries afterwards:
 ```json
 {"format": "aether3d.world-script", "version": 1, "label": "Valley with a village",
  "operations": [
-   {"op": "create", "name": "Valley", "preset": "alpine_valley", "seed": 7},
+   {"op": "create", "name": "Valley", "preset": "alpine_valley", "seed": 7, "size": 3072},
    {"op": "add_feature", "feature": {"type": "lake", "id": "tarn",
-                                     "shape": {"circle": [600, -300, 120]}, "level": 1450}},
+                                     "shape": {"circle": [600, -300, 120]}, "level": 1380}},
    {"op": "build_settlements", "count": 1, "houses": [6, 10]}
  ],
  "queries": [{"query": "structures"}, {"query": "sample", "points": [[0, 0]]}]}
@@ -448,6 +492,31 @@ before placement was batched); a first block-world frame (357 chunks, 289 meshed
 coarse) about 6 s, later frames of a moving camera reuse what they can. Profiling shows
 generation is dominated by NumPy noise evaluation and per-call overhead; batching is
 where the big wins were.
+
+## Limitations
+
+* **Water** is flat at its level (rivers follow their profile) and coloured by depth: no
+  waves, foam, refraction or screen-space reflections in the rasterizers; the path
+  tracers reflect the sky and the land. Channels narrower than the regional cell are
+  drawn at the cell's resolution.
+* **Level of detail** is not morphed: a tile switches level when its projected error
+  crosses `lod_error` pixels (3 by default), so a switch moves the silhouette by at most
+  about that much. Plants thin with distance through nested sets (nothing pops in as the
+  camera approaches) and switch their three mesh levels at hashed distances.
+* **Caves and overhangs** are meshed within `volume_distance` (400 m) of the camera; beyond,
+  the ground is the closed heightfield. Erosion and rivers do not run through caves.
+* **Unbounded worlds** have no regional stage: rivers follow noise valleys (`contour`
+  hydrology) and erosion is the derivative-damped noise only.
+* **Block worlds** span `min_height` to `max_height` (-64 to 192 blocks by default; at
+  most +-4,096); lighting is ambient occlusion plus the scene's lights (no block light
+  propagation); fluids do not flow.
+* **Shadows** come from the GPU rasterizer's (cascaded) shadow maps and the path tracers;
+  the CPU rasterizer draws none. Fog is aerial perspective along camera rays, not a
+  participating medium (no light shafts).
+* **Threads**: generation is NumPy work that holds the GIL between operations, so threads
+  help little (measured above); the heavy sequential sweeps are native.
+* **Not simulated**: physics and collisions, weather, seasons, day-night cycles (the sun
+  is the scene's light), wildlife, water flow over time.
 
 ## Errors
 

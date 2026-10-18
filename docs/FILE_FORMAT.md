@@ -1,6 +1,6 @@
 # The `.aether` project format
 
-**Current version: 9** (Aether3D 0.17.0; version 1–8 files are upgraded on load)
+**Current version: 10** (Aether3D 0.18.0; version 1–9 files are upgraded on load)
 
 An `.aether` file stores one scene:
 
@@ -17,7 +17,9 @@ An `.aether` file stores one scene:
 - its objects' tags and metadata (see [SPATIAL.md](SPATIAL.md#tags-and-metadata));
 - its CAD document (see [CAD.md](CAD.md));
 - its animation document: timeline, clips, bindings, rigs, skins, morph targets,
-  constraints, paths and shot sequences (see [ANIMATION.md](ANIMATION.md)).
+  constraints, paths and shot sequences (see [ANIMATION.md](ANIMATION.md));
+- its procedural worlds: each world's definition and block edits, never generated
+  geometry (see [WORLDS.md](WORLDS.md)), and the outdoor atmosphere.
 
 It is a UTF-8 encoded JSON document (RFC 8259), designed to be readable,
 diffable, and safely editable by people, scripts, and AI agents.
@@ -27,8 +29,8 @@ diffable, and safely editable by people, scripts, and AI agents.
 ```json
 {
   "format": "aether3d.project",
-  "format_version": 9,
-  "generator": "aether3d 0.17.0",
+  "format_version": 10,
+  "generator": "aether3d 0.18.0",
   "scene": {
     "name": "First Scene",
     "active_camera": "5b0f1c2e-…",
@@ -62,6 +64,12 @@ diffable, and safely editable by people, scripts, and AI agents.
        "wrap": ["repeat", "repeat"], "filter": "linear", "mipmaps": true, "color_space": "auto"},
       {"id": "5370919d-…", "name": "Rock roughness", "type": "procedural",
        "graph": {"nodes": {"out": {"type": "fbm", "scale": 6.0, "octaves": 4}}, "output": "out"}}
+    ],
+    "worlds": [
+      {"id": "3c7e9a10-…", "name": "Valley",
+       "definition": {"seed": 7, "generator": 1, "mode": "terrain",
+                      "extent": {"min": [-4096.0, -4096.0], "max": [4096.0, 4096.0]}, "…": "…"},
+       "edits": []}
     ],
     "objects": [
       {
@@ -160,6 +168,7 @@ diffable, and safely editable by people, scripts, and AI agents.
 | `objects` | array of objects | All scene objects (see below). |
 | `cad` | object | The CAD document (see [CAD document](#cad-document)). Since version 8. |
 | `animation` | object | The animation document (see [Animation document](#animation-document)). Since version 9. |
+| `worlds` | array | Procedural worlds (see [Worlds](#worlds)). Since version 10. |
 
 Writers emit objects in depth-first hierarchy order (each parent before its
 children). Readers accept any order. The relative order of objects that share
@@ -301,6 +310,21 @@ Cameras look along their object's local −Y axis with local +Z up.
 
 All six keys are always written. The rasterizers ignore `environment`.
 
+Since version 10, `world.atmosphere` (all keys always written; off by default, so scenes
+render as before; see [RENDERING.md](RENDERING.md)):
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `enabled` | boolean | Turn the atmosphere on. |
+| `sun` | string or `null` | Name or id of the directional light that places the sun (`null`: the brightest). |
+| `sky` | boolean | Rasterizers draw `environment`'s sky behind the geometry instead of `background`. |
+| `sun_glow`, `sun_glow_color`, `sun_glow_size` | 0–100, color, 1–65536 | The glow around the sun in the sky: strength, color, tightness (an exponent). |
+| `horizon_glow` | 0–100 | A warm band along the horizon, strongest toward the sun. |
+| `fog_density`, `fog_height`, `fog_falloff` | 0–10, ±10⁷, 0–10 | Exponential height fog: extinction per metre at `fog_height`, thinning by `e^(-fog_falloff (z - fog_height))`. |
+| `fog_color`, `fog_sun`, `fog_sun_power` | color, 0–100, 1–4096 | Fog color and sunlight scattered toward the camera. |
+| `ambient` | `"uniform"` or `"hemisphere"` | Rasterizer ambient light: uniform, or sky above and `ground_ambient` below. |
+| `ground_ambient` | color | The ambient light from below with `"hemisphere"`. |
+
 **`render`:** `width` and `height` (1–16384), `samples` (1–4; antialiasing
 is samples × samples per pixel), `exposure` (−20 to 20 EV), `cull`
 (`"none"`, `"back"` or `"front"`) and `default_lights` (boolean).
@@ -365,6 +389,7 @@ An indexed triangle mesh.
 | `normals` | array of `[x, y, z]` | no | Per-vertex normals; same length as `positions`. |
 | `uvs` | array of `[u, v]` | no | Per-vertex texture coordinates; same length as `positions`. |
 | `groups` | array of integers | no | Face group (0–65535) of each triangle; same length as `triangles`. Absent: every triangle is in group 0. Since version 4. |
+| `colors` | array of `[r, g, b, a]` | no | Per-vertex linear colors in [0, 1] (glTF `COLOR_0`: they multiply the material's base color and opacity); same length as `positions`. Since version 10. |
 
 Vertex attribute values are 32-bit floats. Writers emit the shortest decimal
 text that round-trips to the same 32-bit value (e.g. `0.1`), so geometry
@@ -471,6 +496,21 @@ numbers, key order, handle shapes, quaternion norms, acyclic joint hierarchies a
 constraint graphs, influence counts, references); a reference to a missing object or
 clip is an error.
 
+## Worlds
+
+`scene.worlds` holds procedural worlds ([WORLDS.md](WORLDS.md)) -- authored data only:
+
+| Key | Description |
+| --- | --- |
+| `id` | The world's UUID. |
+| `name` | Unique among the scene's worlds. |
+| `definition` | The complete, validated definition: every section with its defaults filled in (`seed`, `generator`, `mode`, `extent`, `sea_level`, `terrain`, `climate`, `biomes`, `surface`, `hydrology`, `caves`, `vegetation`, `structures` with its authored `items`, `blocks`, `materials`, `streaming`, `features`). It is checked on load as on any change; `generator` (1) names the generation rules it was made with. |
+| `edits` | Block worlds' edited blocks: a list of `{"section": [sx, sy, sz], "data": base64}`, one per edited 16 x 16 x 16 section, the data being zlib-compressed little-endian `uint16` pairs -- the edited cells' local indices `(lz * 16 + ly) * 16 + lx` in ascending order, then their block ids (indices into the block list, `aether3d world blocks`; `0` is air, a removed block; new kinds are only ever appended). Empty for terrain worlds. |
+
+Generated data -- tiles, plants, chunks, caches -- is never stored: a world regenerates the
+same bits from its definition and edits. A terrain world with features and structures
+takes a few kilobytes.
+
 ## History files
 
 `scene.save(path, history=True)` (and the command line, for projects that keep a
@@ -489,7 +529,7 @@ The history file is a JSON document, `"format": "aether3d.history"`,
 | `undo`, `redo` | Steps: `{"index", "parent", "label", "changes"}`, the undone ones in `redo` (the next to redo last) |
 | `checkpoints` | Names and the index of the step behind their state |
 | `max_entries`, `max_bytes`, `dropped` | The limits and how many steps were dropped |
-| `objects`, `materials`, `textures`, `cad_items`, `animation_items` | Full records of entities the steps refer to that are not in the project (removed ones, which undo can bring back; `cad_items` since 0.15.0, `animation_items` since 0.17.0) |
+| `objects`, `materials`, `textures`, `cad_items`, `animation_items`, `world_items` | Full records of entities the steps refer to that are not in the project (removed ones, which undo can bring back; `cad_items` since 0.15.0, `animation_items` since 0.17.0, `world_items` -- ids, their states being in the steps -- since 0.18.0) |
 | `meshes`, `blobs` | Meshes (as in the project's `meshes`) and embedded image bytes (base64) the states refer to by index; painted textures' states refer to their tiles (64 x 64 texels, 16-bit RGBA, zlib-compressed) as blobs, so a stroke's step stores only the tiles it changed |
 
 A change is `{"aspect", "target", "before", "after"}`:
@@ -501,8 +541,9 @@ A change is `{"aspect", "target", "before", "after"}`:
   `scene.active_camera`, `scene.world`, `scene.render`, `library.materials`,
   `library.textures`, `material`, `texture`, `procedural`, since 0.15.0
   `cad.item` (one CAD item: kind, name, definition, links, alive) and `cad.settings`,
-  and since 0.17.0 `animation.item` (one animation item: kind, name, definition, alive)
-  and `animation.settings` (the timeline).
+  since 0.17.0 `animation.item` (one animation item: kind, name, definition, alive)
+  and `animation.settings` (the timeline), and since 0.18.0 `world.item` (one world:
+  alive, name, definition, edits; `scene.world` then includes the atmosphere).
 - `target` is the id of the object, material or texture (`null` for the others).
 - The states use the project's encodings (transforms as position, rotation and
   scale arrays; cameras, lights, appearances, world and render settings as in
@@ -539,6 +580,7 @@ copy comes back to the same document.
 | 7 | 0.14.0 | Painted textures: textures of `"type": "painted"` with their layers and masks. The migration from 6 changes nothing: a version 6 document has none. |
 | 8 | 0.15.0 | The CAD document: `scene.cad` (settings and items). The migration from 7 adds an empty document with the default settings. |
 | 9 | 0.17.0 | The animation document: `scene.animation` (timeline settings and items). The migration from 8 adds an empty document with the default timeline (24 fps, 0 to 10 s), so every project loads and renders unchanged. |
+| 10 | 0.18.0 | Procedural worlds and outdoor rendering: `scene.worlds`, `scene.world.atmosphere` and optional mesh `colors`. The migration from 9 adds no worlds and the default atmosphere (off), so every project loads and renders unchanged. |
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged, and Aether3D
 0.6.0 reads and writes version 3 unchanged (GPU rendering added render

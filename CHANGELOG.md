@@ -4,6 +4,121 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.18.0: procedural worlds and massive environments
+
+Stage 16 was built after Stage 17 (0.17.0), so it ships as 0.18.0; there is no 0.16.0.
+A scene can now hold **procedural worlds** (`scene.worlds`): landscapes generated from a
+small validated JSON definition -- seed, extent, terrain recipe, climate, biomes, rivers
+and lakes, caves, vegetation, structures, streaming settings -- plus sparse edits. Worlds
+are generated lazily for what a render, query or export needs, cached within a memory
+budget, drawn by every renderer, queried exactly, edited with undo, saved in kilobytes,
+scripted by agents (world scripts, `aether3d world`, the MCP tool `inspect_world`, the
+scene-plan operation `world`) and exported to glTF ([docs/WORLDS.md](docs/WORLDS.md)).
+Generation is deterministic to the bit on every platform: only correctly rounded
+operations and integer hashing, no BLAS, no C-library transcendental functions. Each
+subsystem's language was decided before implementation (the design record:
+[research/2026-10-stage16/DESIGN.md](research/2026-10-stage16/DESIGN.md)): NumPy for
+fields, tiles, plants, blocks and volumes (batched); Rust kernels for the sequential
+hydrology sweeps (`aether3d-native` 0.18.0, ABI 5), bitwise equal to their NumPy twins.
+
+<!-- MEASURED -->
+
+### Added
+
+- **Worlds** (`scene.worlds`, `aether3d.worlds`): `create` from 11 presets (temperate,
+  alpine valley, forested mountains, archipelago, canyon desert, snowy wilderness,
+  rolling plains, biome continent, cavernous highlands, infinite highlands, blocky
+  adventure) with overrides, `configure`, `rename`, `remove`; bounded worlds up to
+  2,000 km or unbounded ones; definitions checked key by key with located errors
+  (`WorldError`: code, message, location, hint) and never mutated; one undo step per
+  change; `info()` estimates costs before anything is generated; cancellation and time
+  budgets.
+- **Terrain**: gradient noise, fBm, ridged and derivative-damped ("eroded")
+  multifractals, domain warping, monotone remapping curves, continents, mountain ranges,
+  hills, valleys, plateaus, canyons, dunes; a macro surface eroded by a regional
+  **hydrology** stage (priority flood, D8 drainage weighted by rain, implicit stream-power
+  incision, sediment transport and deposition, thermal relaxation) and detail added back
+  over it; rivers traced from their sources to their mouths with widths from their
+  drainage areas and water levels that never rise downstream; lakes with one level each;
+  `contour` rivers for unbounded worlds.
+- **Climate and biomes**: temperature with gradients and a lapse rate, moisture with
+  nearness to water and rain shadows; 16 biomes blended by temperature and moisture,
+  declared as data (ground, colours, terrain modifiers, vegetation, blocks) and
+  extensible; surface colours from biomes, slope (soil and rock), beaches, snow, wet banks
+  and beds.
+- **Features** (authored, ordered, with ids): raise, lower, scale, mountain, ridge,
+  valley, flatten, pad, road, river, lake, smooth, biome, clear and cave; each regenerates
+  only the tiles within its reach.
+- **Water**: seas, lakes and rivers as their own meshes coloured by depth; documented as
+  what it is (no waves, refraction or screen-space reflections in the rasterizers).
+- **Caves and overhangs**: near the camera the ground is a signed distance field (noise
+  tunnels and caverns, hashed entrances, exact cave features, cliffs leaning out) meshed
+  by marching cubes in 32 m cubes, joined to the heightfield tiles without cracks.
+- **Block worlds** (`mode="blocks"`): 58 block kinds with original 16 x 16 pixel-art
+  textures (nearest filtering, mipmaps), generation per 16 x 16 chunk (surface rules,
+  ores, caves, water and ice, block trees, plants, structures), greedy meshing with
+  ambient occlusion and hidden faces removed across chunk borders, coarse levels beyond 8
+  chunks, block edits (`set_blocks`, `fill_blocks`, `replace_blocks`, `revert_blocks`)
+  saved with the project.
+- **Vegetation**: 29 original low-poly species with three levels of detail, placed per
+  tile and class from integer hashes with biome densities, groves, slope, tree line,
+  snow, water, roads, pads, clearings and cave openings; stable ids; nested thinning with
+  distance, so nothing pops in; instanced draws.
+- **Structures and settlements**: houses, towers, castles, ruins, wells and bridges as
+  authored items on foundation pads that follow the natural ground; `find_sites`,
+  `place_structure`, `route`, `build_road` (A* with a grade penalty, bridges over water),
+  `build_settlements` (villages with streets, houses, wells and towers; castles on high
+  ground; roads), all frozen into the definition in one undo step.
+- **Streaming and level of detail**: a quadtree of tiles refined by screen-space error
+  within the view and shadow reach, restricted, stitched and skirted (no cracks); byte-
+  bounded LRU caches (`streaming.memory_mb`); measured memory accounting
+  (`runtime.stats()["memory"]`); `scene.worlds.prepare(times, camera=)` to generate a
+  camera path ahead; float64 coordinates with camera-relative rendering, tested a
+  thousand kilometres from the origin.
+- **Queries**: `height`, `ground`, `sample` (height, normal, slope, biome and weights,
+  temperature, moisture, water), `biome_at`, `profile`, `block_at`, `ground_path`,
+  `place_on_ground`; points outside a bounded world raise `OUTSIDE_WORLD`.
+- **Rendering**: worlds contribute tiles, water, caves, plants, structures or block
+  chunks to every backend for each frame's camera, without adding objects to the scene;
+  the **outdoor atmosphere** (`scene.world.atmosphere`: a sky with sun and horizon glows,
+  exponential height fog with its exact optical depth and sun in-scattering, hemisphere
+  ambient light; the same formulas on the CPU and in WGSL, off by default); **cascaded
+  shadow maps** (`shadows={"cascades": 4, "distance": ...}`) on the GPU rasterizer;
+  **vertex colours** (`Mesh.colors`, glTF `COLOR_0` semantics) on every backend.
+- **glTF**: `COLOR_0` import and export; `world.export_region` (`aether3d world export`)
+  writes a finite region's generated geometry (tiles, water, caves, instanced plants,
+  structures, or block chunks).
+- **World scripts** (`aether3d.world-script`, atomic, with queries, a JSON schema and an
+  agent guide), the CLI (`aether3d world run|info|sample|export|presets|blocks|schema|
+  guide`), the MCP tool `inspect_world` and `run_script` for world scripts, and the
+  scene-plan operation `world`.
+- **Showcases** (`examples/worlds_*.py`, outputs in `examples/output/worlds/`): an alpine
+  valley, a block world with a castle and a village, a streaming flight far from the
+  origin with measured memory, a continent of biomes, caves and overhangs, and Stage 17's
+  blocky character running through the block world.
+- `benchmarks/bench_worlds.py` (regional stage, tiles, vegetation, blocks, volumes,
+  queries, frames; `--numpy` compares the native kernels with their twins).
+
+### Changed
+
+- Project format 10: `scene.worlds`, `scene.world.atmosphere` and mesh `colors`. Files of
+  format 9 and older load unchanged (no worlds, the atmosphere off, no colours).
+- `Mesh` has `colors` (`(N, 4)` linear RGBA in [0, 1]) and `with_colors`; editing and UV
+  unwrapping keep them and baking reads them; procedural geometry and sculpting refuse
+  meshes with colours (`VERTEX_COLORS_UNSUPPORTED`) instead of dropping them.
+- History records worlds (the `world.item` aspect) and the atmosphere; history files
+  carry them.
+- `aether3d render --frame` and camera framing include worlds (framed by their ground).
+- The GPU device requests 17 inter-stage shader variables (WebGPU's default is 16).
+- MCP: the `check_scene_plan` tool's input schema is more compact, so the tool list stays
+  within its 40,000-byte budget with `inspect_world` added.
+
+### Compatibility
+
+- Projects written by 0.18.0 (format 10) cannot be opened by earlier versions.
+- `aether3d-native` 0.18.0 (ABI 5) adds the hydrology kernels. An older native package
+  (ABI 4) is not loaded: the NumPy implementations run, with the same results.
+
 ## 0.17.0: animation, rigging, motion curves and cinematics
 
 Stage 17 was built before Stage 16 (procedural worlds), which is postponed: there is no

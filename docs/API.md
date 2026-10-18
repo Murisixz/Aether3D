@@ -18,7 +18,7 @@ from aether3d import ProceduralError, run_procedural_script
 from aether3d import Camera, Light, Appearance, World, RenderSettings, RenderLimits
 from aether3d import RenderResult, RenderError, render, run_scene_script
 from aether3d import ShadowSettings, list_adapters, gpu_status, release_gpu
-from aether3d import PathSettings, AOSettings, Environment
+from aether3d import PathSettings, AOSettings, Environment, Atmosphere
 from aether3d import Material, MaterialLibrary, ImageTexture, ProceduralTexture
 from aether3d import TextureBinding, TextureGraph, MaterialError
 from aether3d import AetherError  # and the specific error classes below
@@ -56,7 +56,8 @@ Scene(name: str = "Untitled Scene")
 | `add_light(type="directional", name=None, *, color, intensity, range, falloff, parent, position, rotation, direction, look_at, up)`, `add_directional_light(...)`, `add_point_light(...)` | Add a light object. |
 | `cameras`, `lights` | Tuples of camera and light objects. |
 | `active_camera` | The default render camera, or `None` (settable with an object, id, name or `None`). |
-| `world`, `render_settings` | `World` (background, ambient light) and `RenderSettings` (saved output settings). Edit them in place. |
+| `world`, `render_settings` | `World` (background, ambient light, environment, outdoor atmosphere) and `RenderSettings` (saved output settings). Edit them in place. |
+| `worlds` | The scene's `WorldSystem`: procedural worlds (see [Procedural worlds](#procedural-worlds); since 0.18.0). |
 | `materials` | The scene's `MaterialLibrary`: materials and textures (see [Materials and textures](#materials-and-textures)). |
 | `cad` | The scene's `CadDocument`: precision models, buildings and drawings (see [Precision modeling and buildings](#precision-modeling-and-buildings)). Since 0.15.0. |
 | `create_material(name=None, *, model="standard", preset=None, **params)` | Create a material from parameters, or from a preset and its options. Returns the `Material`. |
@@ -161,7 +162,7 @@ Transform(position=(0, 0, 0), rotation=(0, 0, 0, 1), scale=(1, 1, 1))
 ## `Mesh`
 
 ```python
-Mesh(positions, triangles, normals=None, uvs=None, groups=None)
+Mesh(positions, triangles, normals=None, uvs=None, groups=None, colors=None)
 ```
 
 An immutable indexed triangle mesh. Inputs may be nested sequences or NumPy
@@ -175,7 +176,9 @@ arrays, `(N, 3)` or flat. Data is validated, copied, and stored read-only:
 | `uvs` | `(N, 2) float32` or `None` |
 | `groups` | `(M,) uint16` face group of every triangle (0–65535), or `None` (all in group 0) |
 | `group_ids` | The face groups used, ascending (`(0,)` without groups) |
+| `colors` | `(N, 4) float32` linear RGBA vertex colours in [0, 1] (`(N, 3)` input gets alpha 1), or `None`; like glTF's `COLOR_0` they multiply the base colour and opacity (since 0.18.0) |
 | `with_groups(groups)` | A copy sharing this mesh's arrays, with other face groups (`None` removes them) |
+| `with_colors(colors)` | A copy sharing this mesh's arrays, with other vertex colours (`None` removes them) |
 | `vertex_count`, `triangle_count` | Counts |
 | `bounds()` | `((min_x, min_y, min_z), (max_x, max_y, max_z))` in local space |
 | `==` | Exact data equality |
@@ -402,6 +405,27 @@ times are seconds; targets are objects (or ids, names), materials as `{"material
 | `aether3d.animation.FCurve`, `.tracks.RotationTrack`, `.clip.Clip`, `.time.FrameRate`, `.rotation`, `.fitting.fit_samples` | the value types (immutable) |
 | `aether3d.animation.script.run_animation_script(scene, script, ...)`, `check_script(script)`, `aether3d.animation.schema.animation_script_schema()` | animation scripts |
 
+## Procedural worlds
+
+Terrain and block worlds generated from validated JSON definitions ([WORLDS.md](WORLDS.md)).
+Since 0.18.0. Every changing call is one undo step; coordinates are metres (+Z up);
+nothing is generated until a render, query or export needs it.
+
+| Name | Description |
+| --- | --- |
+| `worlds = scene.worlds` | the `WorldSystem`: iterable, `len`, `get(ref)` (id or name), `names()`, `presets()` (name: description), `remove(ref)`, `to_json()` |
+| `worlds.create(name="World", preset=None, *, seed=None, size=None, extent="keep", mode=None, overrides=None, materials=True)` | a new world from a preset (default `"temperate"`) deep-merged with `overrides`; `size` makes a square extent, `extent=None` an unbounded world; `materials` creates the world's layer materials |
+| `worlds.prepare(times, *, camera=None, width=1280, height=720, should_stop=None, progress=None)` | generate what every world draws for a camera at those times, before rendering them |
+| `world.id`, `name`, `mode`, `seed`, `extent`, `definition` (a copy), `edits`, `alive`, `location`, `runtime` | identity and state (`runtime`: caches, `stats()`, `counters`, `last_frame`) |
+| `world.configure(patch=None, *, label=None, **sections)`, `world.rename(name)`, `world.info()` | change the definition (validated; the mode is fixed); a JSON summary with cost estimates |
+| `world.add_feature(feature)`, `update_feature(id, patch)`, `remove_feature(id)`, `features(kind=None)` | terrain features (types and shapes: [WORLDS.md](WORLDS.md#features)) |
+| `world.place_structure(item)`, `remove_structure(id)`, `structures(kind=None)`, `find_sites(count=5, **options)`, `route(a, b, *, cell=16)`, `build_road(a, b, *, name="road", cell=16)`, `build_settlements(count=None, *, houses=None, roads=None, seed=0, **options)` | structures, sites, roads and settlements |
+| `world.height(x, y)`, `ground(x, y)`, `sample(points, *, fields=None)`, `biome_at(x, y)`, `profile(points, samples=64)`, `block_at(x, y, z)` | exact queries (scalars or arrays; `OUTSIDE_WORLD` beyond a bounded extent) |
+| `world.ground_path(points, *, spacing=1, clearance=0, smooth=0)`, `place_on_ground(objects, *, offset=0)` | paths over the ground for characters and cameras; standing objects on the ground |
+| `world.set_blocks(cells, block)`, `fill_blocks(lo, hi, block)`, `replace_blocks(lo, hi, source, block)`, `revert_blocks(lo, hi)` | block edits (block worlds; block coordinates); return how many cells changed |
+| `world.export_region(path, region, *, level=0, include=("terrain", "water", "caves", "vegetation", "structures"), plant_lod=1, allow_lossy=True, bake_textures=None, max_triangles=4_000_000)` | a finite region's generated geometry as glTF (`COLOR_0` vertex colours; regions up to 8,192 m, at most 20M triangles and 200,000 plants) |
+| `aether3d.worlds.script.run_world_script(scene, script, *, label=None, should_stop=None)`, `check_script(script)`, `schema()` | world scripts |
+
 ## Procedural geometry
 
 Full guide: [PROCEDURAL.md](PROCEDURAL.md).
@@ -461,7 +485,7 @@ shading), [GPU.md](GPU.md) (the GPU backend) and
 | --- | --- |
 | `render(scene, *, camera=None, width=None, height=None, samples=None, exposure=None, cull=None, default_lights=None, frame=False, margin=0.05, limits=None, backend="cpu", adapter=None, msaa=None, supersample=None, shadows=None, path=None, ao=None, tonemap="none", progress=None, outputs=None)` | Render the scene. Arguments override `scene.render_settings` for this render only. Same as `scene.render(...)`. `camera`: a camera object, id or name, or a *virtual* camera (a `RenderCamera` without an object id: `aether3d.feedback.virtual_camera(...)`), which renders from a view that is not part of the scene (since 0.12.0). `backend`: `"cpu"` (the NumPy rasterizer, the default), `"gpu"` (wgpu; `GPU_*` error if unavailable), `"auto"` (GPU if it works, else CPU with a `BACKEND_FALLBACK` diagnostic), `"path"` (the CPU path tracer) or `"gpu_path"` (the same path tracer on a GPU adapter; `GPU_*` error if unavailable). `adapter`: GPU adapter selection (also for `"gpu_path"`) (index, `"discrete"`, `"vulkan"`, part of a name, ...). `msaa`, `supersample`: GPU antialiasing (default: `samples²` samples per pixel). `shadows`: GPU shadow maps (`True`, a dict or a `ShadowSettings`). `path`: path tracer settings (`PathSettings` or a dict). `ao`: the path tracer's ambient occlusion pass (`True`, a dict or `AOSettings`). `tonemap`: `"none"` or `"neutral"` (any backend). `progress`: path tracer callback `progress(done, total, seconds)`; return `False` to stop. `outputs`: the per-pixel outputs to return (`None`: all; or some of `"image"`, `"linear"`, `"depth"`, `"object_index"`, `"coverage"`; the image always comes); the GPU reads back only those and the others are `None`. |
 | `RenderResult` | `image` (`(h, w, 3) uint8` sRGB); `linear`, `depth`, `coverage` and `object_index` maps; `objects`, `camera`, `settings`, `stats` (counts and timings; GPU: also `gpu_timings`, `draw_calls`; path tracer: rays, rays per second, noise), `diagnostics`, `backend` (`{"name": "cpu"}`, the GPU adapter, API, antialiasing, shadow maps and resources, or the path tracer's device (`"cpu"` or `"gpu"`), processes or adapter, settings, BVH and lights), `passes` (path tracer: `beauty`, `direct`, `indirect`, `albedo`, `normal`, `depth`, `ao`, `sample_count`, `variance`), `color` (exposure and tone mapper), `output`, `status`, `width`, `height`, `pixel(x, y)`, `png_bytes(compression=6)` (zlib level; 1 encodes several times faster, a few percent larger), `save(path)` (atomic: `.png`, or `.hdr`/`.pfm` linear: `OUTPUT_NOT_RENDERED` if `linear` was not returned), `to_dict()`. |
-| `ShadowSettings(lights=None, map_size=2048, bias=0.5, normal_offset=0.5, pcf_radius=1)` | GPU shadow-map settings for one render (not saved in projects). |
+| `ShadowSettings(lights=None, map_size=2048, bias=0.5, normal_offset=0.5, pcf_radius=1, cascades=1, cascade_split=0.75, distance=0)` | GPU shadow-map settings for one render (not saved in projects). `cascades` (1–4, since 0.18.0): maps per light over slices of the view's depth; `distance`: the farthest shadowed depth (0: the far plane). |
 | `PathSettings(samples=16, bounces=4, seed=0, light_samples=1, russian_roulette=3, clamp=0, integrator="path", workers=0)` | Path tracer settings for one render (not saved in projects); see [RENDER_QUALITY.md](RENDER_QUALITY.md#python-and-cli-reference). |
 | `AOSettings(samples=4, distance=1, strength=1)` | Ambient occlusion of one path-traced render (a separate pass and the `integrator="ao"` preview). |
 | `list_adapters(*, check=False)` | Graphics adapters wgpu can use, best first: `index`, `name`, `vendor`, `type`, `backend`, `driver`, `software`, `features`, `limits`, `recommended` (with `check=True`: `usable`, `msaa`). Raises `RenderError("GPU_UNAVAILABLE")` without wgpu. |
@@ -470,7 +494,8 @@ shading), [GPU.md](GPU.md) (the GPU backend) and
 | `Camera(projection="perspective", fov=40, fov_axis="vertical", ortho_scale=10, near=0.1, far=1000, aspect_ratio=None)` | Validated camera parameters, with `configure(**changes)`, `half_extents(aspect)` and `projection_matrix(aspect)`. |
 | `Light(type="directional", color=(1, 1, 1), intensity=1, range=None, falloff="inverse_square", radius=0, angle=0)` | Validated light parameters, with `configure(**changes)`. `radius` (point) and `angle` (directional, degrees) are the light's size in the path tracer. |
 | `Appearance(color=(0.8, 0.8, 0.8), specular=0, shininess=32)` | Object color and highlight. |
-| `World(background=(0.2, 0.2, 0.2), ambient_color=(1, 1, 1), ambient_intensity=0.1, environment=None)` | Background, ambient light and the path tracer's environment. `configure(environment={...})` updates some environment fields and keeps the others. |
+| `World(background=(0.2, 0.2, 0.2), ambient_color=(1, 1, 1), ambient_intensity=0.1, environment=None, atmosphere=None)` | Background, ambient light, the path tracer's environment and the outdoor atmosphere. `configure(environment={...})` updates some environment fields and keeps the others. |
+| `Atmosphere(enabled=False, sun=None, sky=True, sun_glow=1, sun_glow_color=(1, 0.86, 0.62), sun_glow_size=32, horizon_glow=0, fog_density=0, fog_height=0, fog_falloff=0, fog_color=(0.78, 0.84, 0.92), fog_sun=0, fog_sun_power=8, ambient="uniform", ground_ambient=(0.36, 0.33, 0.29))` | `scene.world.atmosphere` (since 0.18.0): sky glows, exponential height fog with sun in-scattering, hemisphere ambient; `configure(**changes)`. Off by default. See [RENDERING.md](RENDERING.md#outdoor-atmosphere-0180). |
 | `Environment(type="ambient", color=(1, 1, 1), intensity=1, zenith_color, horizon_color, ground_color)` | What rays leaving the scene see in the path tracer: the ambient light, a uniform color or a procedural sky (`scene.world.environment`, saved). |
 | `RenderSettings(width=1280, height=720, samples=2, exposure=0, cull="none", default_lights=True)` | Saved output settings. |
 | `RenderLimits(max_dimension=16384, max_samples=40_000_000, max_triangles=20_000_000, max_gpu_memory=4 GiB, max_path_rays=10**11, max_path_memory=8 GiB)` | Resource limits, checked before allocating. |
@@ -663,6 +688,7 @@ All deliberate errors derive from `AetherError`.
 | `FeedbackError` | `ValueError` | A visual-feedback request cannot be carried out: a view, an expectations document, a vision evaluation, a correction or a loop (`INVALID_VIEW`, `UNKNOWN_KEY`, `OBSERVATION_MISMATCH`, `STALE_PROPOSALS`, `REVISION_MISMATCH`, `NOT_ALLOWED`, ...; see [FEEDBACK.md](FEEDBACK.md)); nothing changed. `.code` (stable), `.location` (a JSON pointer or argument), `.hint`, `.details`, `.issues`, `to_dict()` |
 | `CadError` | `ValueError` | A CAD definition, regeneration, measurement, script or exchange cannot be carried out (`SKETCH_CONFLICT`, `REFERENCE_LOST`, `REFERENCE_AMBIGUOUS`, `HOLE_OFF_FACE`, `FILLET_CORNER_UNSUPPORTED`, `BOOLEAN_FAILED`, `WALLS_CROSS`, `OPENING_OVERLAP`, `ROOM_NOT_ENCLOSED`, `UNSUPPORTED_STEP`, `INVALID_DXF`, `EXPECTATION_FAILED`, `LIMIT_EXCEEDED`, `CANCELLED`, ...; see [CAD.md](CAD.md)); nothing changed. `.code` (stable), `.location` (e.g. `part[Bracket].features[2](h)`), `.hint`, `.details`, `to_dict()` |
 | `AnimationError` | `ValueError` | A time, frame rate, key, curve, rotation track, clip, layer, strip, rig, skin, morph target, constraint, path, shot or animation export/import request cannot be carried out (`INVALID_KEYS`, `UNKNOWN_PROPERTY`, `INVALID_RIG`, `CONSTRAINT_CYCLE`, `ROLE_MISSING`, `RIG_MISSING`, `JOINT_MISSING`, `INVALID_RANGE`, `LIMIT_EXCEEDED`, ...; see [ANIMATION.md](ANIMATION.md)); nothing changed and no file was written. `.code` (stable), `.location`, `.hint`, `.details` |
+| `WorldError` | `ValueError` | A world definition, preset, feature, structure, block edit, query, world script, budget or export request cannot be carried out (`INVALID_DEFINITION`, `UNKNOWN_BIOME`, `OUTSIDE_WORLD`, `NO_ROUTE`, `LIMIT_EXCEEDED`, `BUDGET_EXCEEDED`, `CANCELLED`, ...; see [WORLDS.md](WORLDS.md#errors)); nothing changed and no file was written. `.code`, `.location`, `.hint`, `.details`, `to_dict()` (since 0.18.0) |
 | `AnimationScriptError` | `ValueError` | An animation script is malformed or one of its operations failed; nothing changed. `.code` (the operation's own, or `INVALID_SCRIPT`), `.location` (e.g. `operations[1].keyframe.value`), `.details`, `to_dict()` |
 | `HistoryError` | `ValueError` | An undo, redo, checkpoint or history file operation cannot be performed (`NOTHING_TO_UNDO`, `TRANSACTION_OPEN`, `HISTORY_MISMATCH`, `INVALID_HISTORY`, ...; see [HISTORY.md](HISTORY.md#errors)); nothing changed. `.code` (stable), `.location`, `.hint`, `.details` |
 
