@@ -139,17 +139,26 @@ def smooth_rows(
     n = w.shape[0]
     if iterations <= 0 or a.size == 0:
         return w
-    deg = np.bincount(a, minlength=n) + np.bincount(b, minlength=n)
+    # Neighbour sums by one bincount per column over the edges as ``a`` then as ``b``:
+    # each vertex adds its neighbours in the order an unbuffered scatter (np.add.at)
+    # would -- the same bits, several times faster -- and only for the columns that
+    # change (pinned columns are left as they are).
+    dst = np.concatenate([a, b])
+    src = np.concatenate([b, a])
+    deg = np.bincount(dst, minlength=n)
     has = deg > 0
+    pinned = pinned_cols is not None and bool(pinned_cols.any())
+    cols = np.flatnonzero(~pinned_cols) if pinned else np.arange(w.shape[1])
     out = w.copy()
     for _ in range(int(iterations)):
-        acc = np.zeros_like(out)
-        np.add.at(acc, a, out[b])
-        np.add.at(acc, b, out[a])
-        mean = np.where(has[:, None], acc / np.maximum(deg, 1)[:, None], out)
-        new = out + strength * (mean - out)
-        if pinned_cols is not None and pinned_cols.any():
-            new[:, pinned_cols] = out[:, pinned_cols]
+        part = out[:, cols]
+        acc = np.empty_like(part)
+        for k in range(part.shape[1]):
+            acc[:, k] = np.bincount(dst, weights=part[src, k], minlength=n)
+        mean = np.where(has[:, None], acc / np.maximum(deg, 1)[:, None], part)
+        new = out.copy()
+        new[:, cols] = part + strength * (mean - part)
+        if pinned:
             new = _renormalize(new, pinned_cols)
         if pinned_rows is not None:
             new[pinned_rows] = out[pinned_rows]

@@ -515,6 +515,15 @@ def autorig(
                         allowed=mask,
                         **gen,
                     )
+                    spine = [n for n in _SPINE if rig.index(n) is not None]
+                    if mask is not None and len(spine) > 1:
+                        # The spine's joints blend over the whole torso (among themselves:
+                        # other joints' weights stay), so a twist or a bend spreads along
+                        # it instead of creasing where one joint takes over.
+                        smooth = {"op": "smooth", "iterations": SPINE_SMOOTH, "joints": spine}
+                        cap = {"op": "cap", "influences": rep.get("influences", 4)}
+                        system.edit_weights(obj, [smooth, cap])
+                        rep["spine_smoothing"] = SPINE_SMOOTH
                 elif mode == "rigid":  # the whole part follows its dominant joint
                     rep = system.generate_weights(
                         obj, arm, policy="rigid", rigid_parts="all", context=body, **opts
@@ -550,17 +559,32 @@ _ACROSS = {"arm": ("Chest", "UpperArm"), "leg": ("Hips", "Thigh"), "head": ("Che
 # into the part: wide at the hips (the thigh moves the pelvis's skin: groin and buttock),
 # narrow at the shoulders (no chest skin following the arm).
 _BAND = {"arm": 1.5, "leg": 3.0, "head": 1.5}
+# The torso joints a part's junction moves with (they reach into the part), and those it
+# does not (they fade out of the torso's skin near the junction): an armpit or the base
+# of the neck follows the chest, so twisting the spine turns them with the arm and the
+# head instead of crumpling them.
+_REACH = {"arm": ("Chest",), "leg": ("Hips",), "head": ("Chest", "Shoulder.L", "Shoulder.R")}
+_UNREACHED = {"arm": ("Hips", "Spine"), "head": ("Hips", "Spine")}
+# ... over three junction bands (a torso twisted 60 degrees: 124 -> 38 flipped triangles,
+# the worst stretch 4.6 -> 2.7; one band left the armpits crumpling, four stretch more).
+_UNREACHED_BAND = 3.0
+# Extra smoothing of the spine's weights among themselves (a torso twisted 60 degrees:
+# 38 -> 15 flipped triangles, the worst stretch 2.7 -> 2.3; bending it 45: 2.2 -> 1.9;
+# the limbs' poses unchanged; 60 iterations gain nothing more).
+_SPINE = ("Hips", "Spine", "Chest")
+SPINE_SMOOTH = 20
 
 
 def _region_mask(system, det, arm, obj) -> np.ndarray | None:
     """``(vertices, deforming joints)`` factors 0..1: each body part's joints weigh fully
     on it, the torso's on the torso; across a junction the part's root joint (upper arm,
-    thigh, neck) reaches into the torso and the torso's joints into the part,
-    fading smoothly to nothing over a band of limb radii from the boundary (measured
-    inside the body; :data:`_BAND`: 1.5 at the shoulders and the neck, 3 at the hips).
-    The skin stays continuous across shoulders, hips and the neck, the thighs move the
-    groin and buttocks, and torso skin never follows an arm. ``None`` when the detection
-    has no regions."""
+    thigh, neck) reaches into the torso and the torso joints it moves with (:data:`_REACH`)
+    into the part, fading smoothly to nothing over a band of limb radii from the boundary
+    (measured inside the body; :data:`_BAND`: 1.5 at the shoulders and the neck, 3 at
+    the hips), while the lower torso joints fade out of the torso's skin over three
+    such bands (:data:`_UNREACHED`). The skin stays continuous across shoulders, hips and the neck,
+    the thighs move the groin and buttocks, armpits follow the chest, and torso skin never
+    follows an arm. ``None`` when the detection has no regions."""
     from ..rendering.scene_data import world_matrices
     from . import voxels as V
 
@@ -634,13 +658,21 @@ def _region_mask(system, det, arm, obj) -> np.ndarray | None:
         # Distances (inside the body) from the part's voxels and from the torso's.
         part_vox = np.flatnonzero(labels == i)
         torso_vox = np.flatnonzero(labels == 0)
-        d = V.geodesic(grid, [part_vox, torso_vox], uniq, cutoff=int(3 * band / h) + 3)
+        # (chamfer units: 3 per voxel step; far enough for the widest fade below)
+        reach = _UNREACHED_BAND if kind in _UNREACHED else 1.0
+        d = V.geodesic(grid, [part_vox, torso_vox], uniq, cutoff=int(3 * reach * band / h) + 3)
         d = np.where(d >= 0, d * unit, np.inf)[inverse]
         fade_in_torso = _fade(d[:, 0], band)  # the part's root joint into the torso
         fade_in_part = _fade(d[:, 1], band)  # the torso joint into the part
         if b_name in col:
             c = col[b_name]
             mask[torso, c] = np.maximum(mask[torso, c], fade_in_torso[torso])
+        if _UNREACHED.get(kind):
+            lower = _fade(d[:, 0], _UNREACHED_BAND * band)
+            for jn in _UNREACHED[kind]:
+                if jn in col:
+                    c = col[jn]
+                    mask[torso, c] = mask[torso, c] * (1.0 - lower[torso])
         if kind == "leg":
             # The crotch's midline follows the pelvis, not a thigh: the leg's joints fade
             # out toward the mirror plane (over the last fifth of a thigh's radius on each
@@ -650,10 +682,10 @@ def _region_mask(system, det, arm, obj) -> np.ndarray | None:
                 if jn in col:
                     c = col[jn]
                     mask[:, c] = mask[:, c] * (1.0 - near_plane)
-        # Every torso joint (the across one first among them) reaches into the part over
-        # the band: no seam where the part's region meets the torso's (the shoulders' tops
-        # at the neck's region).
-        for jn in (a, *_TORSO):
+        # The torso joints the junction moves with reach into the part over the band: no
+        # seam where the part's region meets the torso's (the shoulders' tops at the
+        # neck's region).
+        for jn in (a, *_REACH.get(kind, ())):
             if jn in col:
                 c = col[jn]
                 mask[mine, c] = np.maximum(mask[mine, c], fade_in_part[mine])
@@ -680,6 +712,7 @@ def _brief(rep: dict[str, Any], mode: str) -> dict[str, Any]:
         "confidence",
         "distance",
         "joint",
+        "spine_smoothing",
         "timings",
     )
     return {"mode": mode, **{k: rep[k] for k in keep if k in rep}}

@@ -374,3 +374,44 @@ def test_auto_rigged_weights_have_no_seams_at_bone_changes():
                          animation=False)  # fmt: skip
     for pose, rec in rep["poses"].items():
         assert rec["Body"]["worst_stretch"] < 5.0, (pose, rec["Body"]["worst_stretch"])
+
+
+def test_smoothing_adds_neighbours_in_scatter_order():
+    """smooth_rows' per-column bincounts give exactly the bits of the plain unbuffered
+    scatter (np.add.at) it replaced, with pinned rows and columns kept as they are."""
+    from aether3d.animation.weights import mesh_edges, smooth_rows
+
+    def reference(w, a, b, iterations, strength, rows, cols):
+        n = w.shape[0]
+        deg = np.bincount(a, minlength=n) + np.bincount(b, minlength=n)
+        out = w.copy()
+        for _ in range(iterations):
+            acc = np.zeros_like(out)
+            np.add.at(acc, a, out[b])
+            np.add.at(acc, b, out[a])
+            mean = np.where(deg[:, None] > 0, acc / np.maximum(deg, 1)[:, None], out)
+            new = out + strength * (mean - out)
+            if cols is not None:
+                new[:, cols] = out[:, cols]
+                fixed = new[:, cols].sum(axis=1)
+                free = np.clip(new[:, ~cols], 0.0, None)
+                total = free.sum(axis=1)
+                room = np.clip(1.0 - fixed, 0.0, None)
+                scale = np.where(total > 0, room / np.where(total > 0, total, 1.0), 0.0)
+                new[:, ~cols] = free * scale[:, None]
+            if rows is not None:
+                new[rows] = out[rows]
+            out = new
+        return out
+
+    rng = np.random.default_rng(5)
+    tris = rng.integers(0, 400, size=(900, 3))
+    a, b = mesh_edges(tris)
+    w = rng.random((400, 9)) * (rng.random((400, 9)) < 0.5)
+    w /= np.maximum(w.sum(axis=1, keepdims=True), 1e-12)
+    cols = np.zeros(9, bool)
+    cols[[1, 4, 6]] = True
+    rows = rng.random(400) < 0.1
+    for args in ((5, 0.5, None, None), (7, 0.3, rows, None), (9, 0.5, None, cols),
+                 (4, 0.7, rows, cols)):  # fmt: skip
+        assert np.array_equal(smooth_rows(w, a, b, *args), reference(w, a, b, *args)), args
