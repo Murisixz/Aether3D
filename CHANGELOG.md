@@ -21,7 +21,31 @@ subsystem's language was decided before implementation (the design record:
 fields, tiles, plants, blocks and volumes (batched); Rust kernels for the sequential
 hydrology sweeps (`aether3d-native` 0.18.0, ABI 5), bitwise equal to their NumPy twins.
 
-<!-- MEASURED -->
+Measured on the development machine (i9-12900H laptop, Python 3.14, NumPy 2.5, RTX 4060
+Laptop GPU; `benchmarks/bench_worlds.py`, saved as `benchmarks/results/stage16-worlds.json`;
+the tables are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md#procedural-worlds-018)):
+
+- the regional stage of `alpine_valley` (263,169 nodes, 60 erosion iterations) takes 6.5 s
+  with the native kernels and 53.7 s on NumPy alone (`temperate`, 66,049 nodes: 1.2 s and
+  7.7 s);
+- a first terrain view's contribution (tiles, water, plants) is generated in 11.2 s and
+  taken from the caches in 0.19 s; a camera flying 1.5 km needs a median 0.61 s per frame;
+- plants for a 2.5 km view: 52,003 placed in 1.6 s, 6.5 ms when cached;
+- block chunks: 5.9 ms to generate and 8.6 ms to mesh each; a first block-world view
+  6.4 s, then 34 ms per frame of a moving camera;
+- cave volumes: 6.3 ms to classify a column, 41 ms to mesh a 32 m cube;
+- queries: 64,000 heights per second (16,500 points with every field), a 4 km ground path
+  in 35 ms;
+- complete 1920x1080 GPU frames along a camera path: a median 1.1 s in `alpine_valley`
+  (2.35M triangles) and 0.54 s in `blocky_adventure`;
+- existing paths are unchanged: run interleaved with `main` (903f010) on the same machine
+  state, core, query and extraction timings differ by -5 % to +5 %, in both directions
+  (`stage16-engine-interleaved.json`).
+
+During the stage, measured on the same machine: vegetation placement for a 2.5 km view
+went from 48 s to about 1 s: placement batched per plant class across tiles (exactly the
+plants tile-by-tile placement gives, tested) and fields sampled on an 8 m lattice, with
+every survivor checked against the exact fields.
 
 ### Added
 

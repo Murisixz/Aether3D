@@ -1,0 +1,262 @@
+{
+  "label": "stage16 interleaved: main 903f010 vs Stage 16 (core, queries, extract; AETHER3D_NATIVE=0)",
+  "note": "Run back to back in the order main, HEAD, main, HEAD on the same machine state (after the full benchmark: the laptop was warmer than when stage16-baseline.json was recorded, so both versions are ~8 % slower than that file); the old code through a git worktree and PYTHONPATH, both without the native kernels (the installed package has the new ABI).",
+  "runs": [
+    {
+      "label": "main 903f010 r1",
+      "machine": {
+        "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+        "logical_cpus": 20,
+        "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+        "python": "3.14.8",
+        "numpy": "2.5.4",
+        "aether3d": "0.17.0",
+        "switches": {
+          "AETHER3D_EDITING_BULK": true,
+          "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+          "AETHER3D_MATERIAL_CACHE": true,
+          "AETHER3D_NATIVE": false,
+          "AETHER3D_RETAINED_RENDER_WORLD": true
+        },
+        "native": {
+          "available": false,
+          "enabled": false,
+          "version": null,
+          "reason": "aether3d_native 0.18.0 has ABI 5; this needs 4"
+        },
+        "git": "70e4738",
+        "wgpu": "0.32.0"
+      },
+      "groups": {
+        "core": {
+          "plan_create_10k_ms": 77.187,
+          "plan_create_per_object_us": 7.719,
+          "add_object_per_object_us": 23.794,
+          "set_position_in_transaction_us": 3.738,
+          "set_position_alone_us": 3.946,
+          "read_position_ns": 31.5,
+          "read_world_matrix_us": 11.868,
+          "world_matrices_10k_ms": 6.42,
+          "undo_redo_plan_10k_ms": 2.564,
+          "bytes_per_object_with_history": 934,
+          "peak_rss_mib": 120.2
+        },
+        "queries": {
+          "raycast_first_ms": 73.457,
+          "raycast_warm_ms": 2.651,
+          "raycast_after_edit_ms": 58.156,
+          "overlaps_first_ms": 25.436,
+          "overlaps_warm_ms": 0.385,
+          "nearest_warm_ms": 5.726,
+          "peak_rss_mib": 103.9
+        },
+        "extract": {
+          "extract_unchanged_ms": 0.241,
+          "extract_unchanged_full_ms": 49.472,
+          "extract_one_moved_ms": 0.631,
+          "extract_one_moved_full_ms": 49.119,
+          "extract_one_added_ms": 8.002,
+          "extract_one_added_full_ms": 49.202,
+          "extract_all_moved_ms": 25.102,
+          "extract_all_moved_full_ms": 51.211,
+          "extract_camera_moved_ms": 0.28,
+          "extract_camera_moved_full_ms": 49.928,
+          "retained_bytes_per_object": 1849,
+          "peak_rss_mib": 205.6
+        }
+      }
+    },
+    {
+      "label": "HEAD r1",
+      "machine": {
+        "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+        "logical_cpus": 20,
+        "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+        "python": "3.14.8",
+        "numpy": "2.5.4",
+        "aether3d": "0.18.0",
+        "switches": {
+          "AETHER3D_EDITING_BULK": true,
+          "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+          "AETHER3D_MATERIAL_CACHE": true,
+          "AETHER3D_NATIVE": false,
+          "AETHER3D_RETAINED_RENDER_WORLD": true
+        },
+        "native": {
+          "available": true,
+          "enabled": false,
+          "version": "0.18.0",
+          "reason": "loaded"
+        },
+        "git": "70e4738",
+        "wgpu": "0.32.0"
+      },
+      "groups": {
+        "core": {
+          "plan_create_10k_ms": 77.513,
+          "plan_create_per_object_us": 7.751,
+          "add_object_per_object_us": 24.846,
+          "set_position_in_transaction_us": 3.803,
+          "set_position_alone_us": 3.93,
+          "read_position_ns": 33.3,
+          "read_world_matrix_us": 11.971,
+          "world_matrices_10k_ms": 6.477,
+          "undo_redo_plan_10k_ms": 2.595,
+          "bytes_per_object_with_history": 934,
+          "peak_rss_mib": 121.5
+        },
+        "queries": {
+          "raycast_first_ms": 61.353,
+          "raycast_warm_ms": 2.88,
+          "raycast_after_edit_ms": 57.753,
+          "overlaps_first_ms": 25.186,
+          "overlaps_warm_ms": 0.385,
+          "nearest_warm_ms": 5.754,
+          "peak_rss_mib": 103.9
+        },
+        "extract": {
+          "extract_unchanged_ms": 0.229,
+          "extract_unchanged_full_ms": 50.329,
+          "extract_one_moved_ms": 0.659,
+          "extract_one_moved_full_ms": 49.88,
+          "extract_one_added_ms": 8.228,
+          "extract_one_added_full_ms": 50.284,
+          "extract_all_moved_ms": 25.223,
+          "extract_all_moved_full_ms": 51.942,
+          "extract_camera_moved_ms": 0.297,
+          "extract_camera_moved_full_ms": 50.559,
+          "retained_bytes_per_object": 1849,
+          "peak_rss_mib": 204.8
+        }
+      }
+    },
+    {
+      "label": "main 903f010 r2",
+      "machine": {
+        "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+        "logical_cpus": 20,
+        "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+        "python": "3.14.8",
+        "numpy": "2.5.4",
+        "aether3d": "0.17.0",
+        "switches": {
+          "AETHER3D_EDITING_BULK": true,
+          "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+          "AETHER3D_MATERIAL_CACHE": true,
+          "AETHER3D_NATIVE": false,
+          "AETHER3D_RETAINED_RENDER_WORLD": true
+        },
+        "native": {
+          "available": false,
+          "enabled": false,
+          "version": null,
+          "reason": "aether3d_native 0.18.0 has ABI 5; this needs 4"
+        },
+        "git": "70e4738",
+        "wgpu": "0.32.0"
+      },
+      "groups": {
+        "core": {
+          "plan_create_10k_ms": 77.336,
+          "plan_create_per_object_us": 7.734,
+          "add_object_per_object_us": 25.153,
+          "set_position_in_transaction_us": 3.8,
+          "set_position_alone_us": 3.892,
+          "read_position_ns": 32.9,
+          "read_world_matrix_us": 11.994,
+          "world_matrices_10k_ms": 6.624,
+          "undo_redo_plan_10k_ms": 2.518,
+          "bytes_per_object_with_history": 934,
+          "peak_rss_mib": 122.2
+        },
+        "queries": {
+          "raycast_first_ms": 64.086,
+          "raycast_warm_ms": 2.844,
+          "raycast_after_edit_ms": 57.929,
+          "overlaps_first_ms": 25.504,
+          "overlaps_warm_ms": 0.379,
+          "nearest_warm_ms": 5.883,
+          "peak_rss_mib": 103.8
+        },
+        "extract": {
+          "extract_unchanged_ms": 0.203,
+          "extract_unchanged_full_ms": 49.806,
+          "extract_one_moved_ms": 0.645,
+          "extract_one_moved_full_ms": 49.592,
+          "extract_one_added_ms": 8.12,
+          "extract_one_added_full_ms": 49.91,
+          "extract_all_moved_ms": 25.255,
+          "extract_all_moved_full_ms": 52.204,
+          "extract_camera_moved_ms": 0.282,
+          "extract_camera_moved_full_ms": 50.524,
+          "retained_bytes_per_object": 1849,
+          "peak_rss_mib": 205.1
+        }
+      }
+    },
+    {
+      "label": "HEAD r2",
+      "machine": {
+        "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+        "logical_cpus": 20,
+        "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+        "python": "3.14.8",
+        "numpy": "2.5.4",
+        "aether3d": "0.18.0",
+        "switches": {
+          "AETHER3D_EDITING_BULK": true,
+          "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+          "AETHER3D_MATERIAL_CACHE": true,
+          "AETHER3D_NATIVE": false,
+          "AETHER3D_RETAINED_RENDER_WORLD": true
+        },
+        "native": {
+          "available": true,
+          "enabled": false,
+          "version": "0.18.0",
+          "reason": "loaded"
+        },
+        "git": "70e4738",
+        "wgpu": "0.32.0"
+      },
+      "groups": {
+        "core": {
+          "plan_create_10k_ms": 76.055,
+          "plan_create_per_object_us": 7.606,
+          "add_object_per_object_us": 24.953,
+          "set_position_in_transaction_us": 3.762,
+          "set_position_alone_us": 4.012,
+          "read_position_ns": 31.1,
+          "read_world_matrix_us": 11.951,
+          "world_matrices_10k_ms": 6.621,
+          "undo_redo_plan_10k_ms": 2.595,
+          "bytes_per_object_with_history": 934,
+          "peak_rss_mib": 119.3
+        },
+        "queries": {
+          "raycast_first_ms": 64.11,
+          "raycast_warm_ms": 2.94,
+          "raycast_after_edit_ms": 58.988,
+          "overlaps_first_ms": 25.084,
+          "overlaps_warm_ms": 0.398,
+          "nearest_warm_ms": 5.687,
+          "peak_rss_mib": 104.0
+        },
+        "extract": {
+          "extract_unchanged_ms": 0.213,
+          "extract_unchanged_full_ms": 49.747,
+          "extract_one_moved_ms": 0.636,
+          "extract_one_moved_full_ms": 49.551,
+          "extract_one_added_ms": 8.202,
+          "extract_one_added_full_ms": 49.631,
+          "extract_all_moved_ms": 25.323,
+          "extract_all_moved_full_ms": 51.698,
+          "extract_camera_moved_ms": 0.295,
+          "extract_camera_moved_full_ms": 50.742,
+          "retained_bytes_per_object": 1849,
+          "peak_rss_mib": 206.7
+        }
+      }
+    }
+  ]
+}

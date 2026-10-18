@@ -489,14 +489,26 @@ exceed them raise `LIMIT_EXCEEDED` or `INVALID_*` errors with locations.
 
 ## Performance
 
-Measured on the reference laptop (Intel i9-12900H, RTX 4060 Laptop GPU) with the native
-kernels (`benchmarks/bench_worlds.py`; figures and methods in docs/PERFORMANCE.md):
-the regional stage of `alpine_valley` (263k nodes, 60 erosion iterations) takes about 6 s
-with the native kernels; vegetation placement for a 2.5 km view about 1 s (it was 48 s
-before placement was batched); a first block-world frame (357 chunks, 289 meshed, 472
-coarse) about 6 s, later frames of a moving camera reuse what they can. Profiling shows
-generation is dominated by NumPy noise evaluation and per-call overhead; batching is
-where the big wins were.
+Measured on the development machine (Intel i9-12900H, RTX 4060 Laptop GPU;
+`benchmarks/bench_worlds.py`, saved in `benchmarks/results/stage16-worlds.json`; methods
+and the full tables in [PERFORMANCE.md](PERFORMANCE.md#procedural-worlds-018)):
+
+| Workload | Time |
+| --- | ---: |
+| regional stage, `alpine_valley` (263,169 nodes, 60 iterations): native / NumPy | 6.5 / 53.7 s |
+| regional stage, `temperate` 4 km (66,049 nodes, 40 iterations): native / NumPy | 1.2 / 7.7 s |
+| a terrain view's contribution (tiles, water, plants): first / cached / along a 1.5 km flight (median) | 11.2 / 0.19 / 0.61 s |
+| plants for a 2.5 km view (52,003): placed / cached | 1.6 s / 6.5 ms |
+| block chunk: generate / mesh | 5.9 / 8.6 ms |
+| block world view: first / moving camera (median) | 6.4 s / 34 ms |
+| cave volumes: classify a column / mesh a 32 m cube | 6.3 / 41 ms |
+| queries: heights / every field | 64,000 / 16,500 points per second |
+| GPU frames at 1920x1080 along a path (median): `alpine_valley` / `blocky_adventure` | 1.1 / 0.54 s |
+
+Profiling shows generation dominated by NumPy noise evaluation and per-call overhead on
+mid-sized arrays; batching (plants across tiles, chunks together) is where the large wins
+were -- plant placement for a 2.5 km view took 48 s before it was batched. The sequential
+hydrology sweeps are the one place native code pays (8x).
 
 ## Showcases
 
@@ -516,7 +528,30 @@ the frames).
 | `worlds_caves.py` (E) | `cavernous_highlands`: a cave entrance, a hall lit by lanterns, a mesa whose cliffs lean out (path-traced) |
 | `worlds_character.py` (F) | Stage 17's blocky character (unchanged) running along a road through the block world, followed by a tracking camera; foot contacts measured on the road |
 
-{SHOWCASE_NUMBERS}
+Measured on the development machine (i9-12900H, RTX 4060 Laptop GPU, native kernels;
+render times include generating what each view needs; every figure is in the reports):
+
+* **A**: the regional stage takes 7.2 s (263,169 nodes, 60 erosion iterations, 26 rivers);
+  the three stills, path-traced at 256 samples per pixel, 112-227 s each; the 360-frame
+  flight a median 0.96 s per 1920x1080 frame. Its encode (CRF 14) is 40.7 dB PSNR and
+  0.979 SSIM against the frames; the master is lossless.
+* **B**: the castle, path-traced at 192 samples, 112 s; the other stills 1.2 and 3.1 s;
+  the 300-frame orbit a median 0.53 s per frame (37.8 dB, 0.955).
+* **C**: 600 frames along 5 km at (1,000 km, 2,000 km): the first frame 18.5 s (nothing
+  generated yet), then a median 0.54 s and a 95th percentile of 0.64 s; 409 tiles
+  generated. With a 128 MB budget the cached data levels off at 109 MiB (tiles and
+  plants at their 60 % and 25 % shares) after 175 tile and 1,975 plant-tile evictions;
+  the process stays under 762 MiB and the GPU mesh cache under 102 MiB (38.1 dB, 0.975).
+  Its 1080p encode came out the same size and the same PSNR, to every printed digit, as
+  an earlier run with a 768 MB budget that evicted nothing: evicted data comes back
+  identical (tested bit for bit for tiles).
+* **D**: the regional stage of the 32 km continent takes 21.1 s (1,050,625 nodes, 40
+  iterations, 27 rivers); the map 28 s; nine biome stills 3.9-14.8 s each.
+* **E**: the stills, path-traced at 384 samples, 237-1,005 s (the lantern-lit hall is the
+  slowest: every path stays underground); 816 volume cubes meshed (1.9M triangles) in
+  36 s.
+* **F**: a median 0.49 s per frame; Nova's feet slide at most 1.7 mm and sink at most
+  3.7 mm over 14 contacts each on the road (36.2 dB, 0.958).
 
 ## Limitations
 
