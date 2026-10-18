@@ -246,6 +246,35 @@ def test_motion_blur_is_the_average_of_sub_frame_renders(tmp_path):
     assert rep["motion_blur"] == {"shutter": 0.5, "samples": 4}
 
 
+def test_motion_blur_stays_inside_the_rendered_range(tmp_path):
+    # The first frame's shutter opens before the range: its samples are clamped to the
+    # range's start (no ghost of times where keys or shots may not exist). The hero keeps
+    # moving before the range (linear extrapolation), so unclamped samples would show it.
+    from aether3d.materials.images import decode_png
+    from aether3d.rendering.tonemap import display
+
+    s = animated_scene()
+    s.animation.set_channel("Hero", "transform.position.x", [(0.0, -2.0), (2.0, 2.0)],
+                            interpolation="linear", extrapolation="linear")  # fmt: skip
+    render_frames(
+        s, tmp_path, frames=[0], width=40, height=30, motion_blur={"shutter": 0.5, "samples": 4}
+    )
+    dt = s.animation.fps.frame_duration * 0.5
+
+    def blurred(clamp: bool) -> np.ndarray:
+        acc = None
+        for j in range(4):
+            t = 0.0 + ((j + 0.5) / 4 - 0.5) * dt
+            t = max(t, s.animation.start) if clamp else t
+            lin = s.render(time=t, width=40, height=30).linear.astype(np.float64)
+            acc = lin if acc is None else acc + lin
+        return display((acc / 4).astype(np.float32))
+
+    got = decode_png((tmp_path / "frame_00000.png").read_bytes()).pixels[..., :3]
+    assert np.array_equal(got, blurred(clamp=True))
+    assert not np.array_equal(got, blurred(clamp=False))  # (the clamp matters here)
+
+
 def test_frame_rendering_stops_on_request_and_checks_its_arguments(tmp_path):
     s = animated_scene()
     calls = []
