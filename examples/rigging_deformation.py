@@ -96,6 +96,16 @@ POSES = {
 }
 
 
+# Where each pose's stretch map is seen from (the posed limbs are the left ones).
+STRETCH_VIEW = {
+    "shoulder_raise_150.L": "front",
+    "hip_flex_100.L": "left",
+    "wrist_twist_90.L": "front",
+    "knee_bend_140.L": "left",
+    "elbow_bend_140.L": "left",
+    "torso_twist_60": "front",
+}
+
 # The joint whose surrounding skin each pose measures (``joint_ring``).
 MEASURED = {
     "shoulder_raise_150.L": "UpperArm.L",
@@ -113,6 +123,9 @@ def build(voxel: float) -> tuple[Scene, dict]:
     mesh = C.humanoid_mesh(voxel)
     a = scene.animation
     bodies = {key: scene.add_object(f"Body ({label})", mesh=mesh) for key, label in METHODS}
+    edges = C.tailor(scene, bodies["geodesic"])
+    for body in bodies.values():
+        body.mesh = bodies["geodesic"].mesh
     rep = a.autorig(bodies["geodesic"], name="Rig")
     arm = scene.get_by_name("Rig")
     rig = a.rig(arm)
@@ -126,11 +139,11 @@ def build(voxel: float) -> tuple[Scene, dict]:
     a.skin(bodies["dqs"], arm, weights=explicit, method="dual_quaternion")
     a.skin(bodies["blended"], arm, weights=explicit)
     for key, body in bodies.items():
-        C.dress(scene, body, arm)
+        C.dress(scene, body, arm, edges)
         body.visible = key == "geodesic"
     report = {
         "lighting": lighting,
-        "vertices": mesh.vertex_count,
+        "vertices": bodies["geodesic"].mesh.vertex_count,
         "autorig": {"joints": len(rep["joints"]), "seconds": rep["timings"]["total_s"]},
         "methods": dict(METHODS),
     }
@@ -306,7 +319,12 @@ def main(argv: list[str]) -> int:
             for k2, body in bodies.items():
                 body.visible = k2 == key
             prev = a.rig_preview(
-                arm, mode="stretch", pose=spec, view="front", width=tile // 2, height=tile * 2 // 3
+                arm,
+                mode="stretch",
+                pose=spec,
+                view=STRETCH_VIEW[pose],
+                width=tile // 2,
+                height=tile * 2 // 3,
             )
             maps.append(prev["image"])
         C.sheet(
@@ -319,6 +337,17 @@ def main(argv: list[str]) -> int:
     for k2, body in bodies.items():
         body.visible = k2 == "geodesic"
     scene.save(out / "deformation.aether")
+    report["notes"] = [
+        "keeps: joint_ring, the mean distance of the skin around the measured joint to its "
+        "pivot, posed over rest (1.00: no collapse; below 0.75 diagnose_rig reports "
+        "JOINT_COLLAPSE)",
+        "the verified blend adds dual quaternion skinning only where a measured collapse "
+        "asks for it (here the elbow; the knee keeps more than 0.75)",
+        "jagged dark patches on the twisted torso, in all four methods: the path tracer "
+        "gives no direct light to a facet facing away from the light, and skinned normals "
+        "(the rest normals transformed by the blended joint matrices) turn less than the "
+        "facets where weights change quickly; the rasterizer draws the surface smooth",
+    ]
     report["seconds"] = round(time.perf_counter() - t_all, 1)
     C.write_report(out / "report.json", report)
     print("done")

@@ -1,0 +1,420 @@
+{
+  "lighting": {
+    "lights": {
+      "key": {
+        "direction": [
+          0.45,
+          0.5,
+          -0.74
+        ],
+        "color": [
+          1.0,
+          0.92,
+          0.82
+        ],
+        "intensity": 2.6,
+        "angle_deg": 4.0
+      },
+      "fill": {
+        "direction": [
+          -0.78,
+          0.36,
+          -0.32
+        ],
+        "color": [
+          0.72,
+          0.82,
+          1.0
+        ],
+        "intensity": 0.5,
+        "angle_deg": 8.0
+      },
+      "rim": {
+        "direction": [
+          -0.22,
+          -0.72,
+          -0.66
+        ],
+        "color": [
+          0.86,
+          0.9,
+          1.0
+        ],
+        "intensity": 1.6,
+        "angle_deg": 2.0
+      }
+    },
+    "ambient": {
+      "color": [
+        0.62,
+        0.7,
+        0.85
+      ],
+      "intensity": 0.22
+    },
+    "environment": "sky (path tracer)",
+    "set": "cyclorama (a floor curving into a back wall)"
+  },
+  "vertices": 18333,
+  "autorig": {
+    "joints": 23,
+    "seconds": 0.6777
+  },
+  "methods": {
+    "envelope": "envelope LBS",
+    "geodesic": "geodesic LBS",
+    "dqs": "geodesic DQS",
+    "blended": "verified blend"
+  },
+  "backend": "gpu",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "aether3d": "0.19.0",
+    "python": "3.14.8",
+    "native": true,
+    "backend": "gpu"
+  },
+  "verified_blend": {
+    "proposed": [
+      "Blend dual quaternion skinning into 'Body (verified blend)' around 'ForeArm.L' (keeps volume under bends and twists)"
+    ],
+    "applied": 1,
+    "reverted": 0,
+    "why": null,
+    "method": "blended",
+    "dq_vertices": 1448,
+    "dq_share_max": 0.25,
+    "seconds": 2.95
+  },
+  "measurements": {
+    "shoulder_raise_150.L": {
+      "geodesic": {
+        "joint_ring": 0.9044,
+        "flipped_triangles": 62,
+        "stretched_edges": 192,
+        "worst_stretch": 5.4715,
+        "interpenetrating": 28
+      },
+      "envelope": {
+        "joint_ring": 0.7065,
+        "flipped_triangles": 104,
+        "stretched_edges": 1486,
+        "worst_stretch": 6.6678,
+        "interpenetrating": 31
+      },
+      "dqs": {
+        "joint_ring": 1.0,
+        "flipped_triangles": 69,
+        "stretched_edges": 428,
+        "worst_stretch": 8.6906,
+        "interpenetrating": 0
+      },
+      "blended": {
+        "joint_ring": 0.9226,
+        "flipped_triangles": 59,
+        "stretched_edges": 212,
+        "worst_stretch": 6.2524,
+        "interpenetrating": 23
+      }
+    },
+    "hip_flex_100.L": {
+      "geodesic": {
+        "joint_ring": 0.9015,
+        "flipped_triangles": 215,
+        "stretched_edges": 1544,
+        "worst_stretch": 8.9407,
+        "interpenetrating": 93
+      },
+      "envelope": {
+        "joint_ring": 0.8336,
+        "flipped_triangles": 113,
+        "stretched_edges": 1596,
+        "worst_stretch": 6.9976,
+        "interpenetrating": 163
+      },
+      "dqs": {
+        "joint_ring": 1.0,
+        "flipped_triangles": 240,
+        "stretched_edges": 1944,
+        "worst_stretch": 10.6381,
+        "interpenetrating": 0
+      },
+      "blended": {
+        "joint_ring": 0.9015,
+        "flipped_triangles": 215,
+        "stretched_edges": 1544,
+        "worst_stretch": 8.9407,
+        "interpenetrating": 93
+      }
+    },
+    "wrist_twist_90.L": {
+      "geodesic": {
+        "joint_ring": 0.9944,
+        "flipped_triangles": 5,
+        "stretched_edges": 4,
+        "worst_stretch": 1.7545,
+        "interpenetrating": 0
+      },
+      "envelope": {
+        "joint_ring": 0.9818,
+        "flipped_triangles": 0,
+        "stretched_edges": 0,
+        "worst_stretch": 1.4858,
+        "interpenetrating": 0
+      },
+      "dqs": {
+        "joint_ring": 1.0,
+        "flipped_triangles": 3,
+        "stretched_edges": 8,
+        "worst_stretch": 1.8415,
+        "interpenetrating": 0
+      },
+      "blended": {
+        "joint_ring": 0.9944,
+        "flipped_triangles": 5,
+        "stretched_edges": 4,
+        "worst_stretch": 1.7545,
+        "interpenetrating": 0
+      }
+    },
+    "knee_bend_140.L": {
+      "geodesic": {
+        "joint_ring": 0.7627,
+        "flipped_triangles": 88,
+        "stretched_edges": 928,
+        "worst_stretch": 5.9017,
+        "interpenetrating": 82
+      },
+      "envelope": {
+        "joint_ring": 0.8721,
+        "flipped_triangles": 31,
+        "stretched_edges": 542,
+        "worst_stretch": 3.5689,
+        "interpenetrating": 90
+      },
+      "dqs": {
+        "joint_ring": 1.0,
+        "flipped_triangles": 86,
+        "stretched_edges": 1216,
+        "worst_stretch": 6.249,
+        "interpenetrating": 90
+      },
+      "blended": {
+        "joint_ring": 0.7627,
+        "flipped_triangles": 88,
+        "stretched_edges": 928,
+        "worst_stretch": 5.9017,
+        "interpenetrating": 82
+      }
+    },
+    "elbow_bend_140.L": {
+      "geodesic": {
+        "joint_ring": 0.7459,
+        "flipped_triangles": 26,
+        "stretched_edges": 60,
+        "worst_stretch": 3.0538,
+        "interpenetrating": 31
+      },
+      "envelope": {
+        "joint_ring": 0.8068,
+        "flipped_triangles": 49,
+        "stretched_edges": 284,
+        "worst_stretch": 5.5044,
+        "interpenetrating": 38
+      },
+      "dqs": {
+        "joint_ring": 1.0,
+        "flipped_triangles": 40,
+        "stretched_edges": 178,
+        "worst_stretch": 3.2501,
+        "interpenetrating": 28
+      },
+      "blended": {
+        "joint_ring": 0.802,
+        "flipped_triangles": 28,
+        "stretched_edges": 66,
+        "worst_stretch": 3.1045,
+        "interpenetrating": 41
+      }
+    },
+    "torso_twist_60": {
+      "geodesic": {
+        "joint_ring": 0.9645,
+        "flipped_triangles": 15,
+        "stretched_edges": 128,
+        "worst_stretch": 2.305,
+        "interpenetrating": 0
+      },
+      "envelope": {
+        "joint_ring": 0.9679,
+        "flipped_triangles": 40,
+        "stretched_edges": 558,
+        "worst_stretch": 5.88,
+        "interpenetrating": 0
+      },
+      "dqs": {
+        "joint_ring": 1.0,
+        "flipped_triangles": 22,
+        "stretched_edges": 138,
+        "worst_stretch": 2.347,
+        "interpenetrating": 0
+      },
+      "blended": {
+        "joint_ring": 0.9645,
+        "flipped_triangles": 15,
+        "stretched_edges": 128,
+        "worst_stretch": 2.305,
+        "interpenetrating": 0
+      }
+    }
+  },
+  "measure_seconds": 0.84,
+  "findings": [
+    [
+      "CROSS_SIDE_WEIGHTS",
+      "Body (envelope LBS)",
+      null
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (envelope LBS)",
+      "elbow_bend_140.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (envelope LBS)",
+      "hip_flex_100.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (envelope LBS)",
+      "knee_bend_140.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (envelope LBS)",
+      "shoulder_raise_150.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (envelope LBS)",
+      "torso_twist_60"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic DQS)",
+      "elbow_bend_140.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic DQS)",
+      "hip_flex_100.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic DQS)",
+      "knee_bend_140.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic DQS)",
+      "shoulder_raise_150.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic DQS)",
+      "torso_twist_60"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic DQS)",
+      "wrist_twist_90.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic LBS)",
+      "elbow_bend_140.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic LBS)",
+      "hip_flex_100.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic LBS)",
+      "knee_bend_140.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic LBS)",
+      "shoulder_raise_150.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic LBS)",
+      "torso_twist_60"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (geodesic LBS)",
+      "wrist_twist_90.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (verified blend)",
+      "elbow_bend_140.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (verified blend)",
+      "hip_flex_100.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (verified blend)",
+      "knee_bend_140.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (verified blend)",
+      "shoulder_raise_150.L"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (verified blend)",
+      "torso_twist_60"
+    ],
+    [
+      "FLIPPED_TRIANGLES",
+      "Body (verified blend)",
+      "wrist_twist_90.L"
+    ],
+    [
+      "JOINT_COLLAPSE",
+      "Body (envelope LBS)",
+      "shoulder_raise_150.L"
+    ],
+    [
+      "JOINT_COLLAPSE",
+      "Body (geodesic LBS)",
+      "elbow_bend_140.L"
+    ]
+  ],
+  "renders": {
+    "tiles": 24,
+    "seconds": 181.0,
+    "backend": "gpu_path",
+    "samples": 96,
+    "size": [
+      720,
+      720
+    ]
+  },
+  "notes": [
+    "keeps: joint_ring, the mean distance of the skin around the measured joint to its pivot, posed over rest (1.00: no collapse; below 0.75 diagnose_rig reports JOINT_COLLAPSE)",
+    "the verified blend adds dual quaternion skinning only where a measured collapse asks for it (here the elbow; the knee keeps more than 0.75)",
+    "jagged dark patches on the twisted torso, in all four methods: the path tracer gives no direct light to a facet facing away from the light, and skinned normals (the rest normals transformed by the blended joint matrices) turn less than the facets where weights change quickly; the rasterizer draws the surface smooth"
+  ],
+  "seconds": 201.0
+}
