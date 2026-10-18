@@ -78,10 +78,10 @@ def cmd_rig_autorig(args: argparse.Namespace) -> CommandOutput:
 
 
 def cmd_rig_info(args: argparse.Namespace) -> CommandOutput:
-    from .mcp.rigging import rig_summary
+    from .animation.rig_report import rig_summary
 
     scene, _ = _load_scene(Path(args.path))
-    data = _run(rig_summary, scene, args.armature)
+    data = _run(rig_summary, scene.animation, args.armature)
     lines = [f"{data['armature']}: {len(data['joints'])} joints ({data['template'] or 'built'})"]
     lines += [f"control {c['name']} ({c['kind']})" for c in data["controls"][:40]]
     lines += [f"skin {s['mesh']}: {s['vertices']} vertices, {s['method']}" for s in data["skins"]]

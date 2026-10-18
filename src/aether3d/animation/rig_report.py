@@ -19,6 +19,7 @@ kept only if the measurement improves; ``approval``: a choice for a person or an
 :func:`apply_rig_fix` applies chosen proposals as **one undo step**, re-measures, and
 undoes everything when a ``verify`` fix does not improve what it targets or makes
 something else worse (``dry_run`` reports the after-measurements and changes nothing).
+:func:`rig_summary` lists what a rig holds (``aether3d rig info``, ``inspect_rig``).
 """
 
 from __future__ import annotations
@@ -268,6 +269,63 @@ def _joint_ring(sk: _Skinned, rig, k: int, a_world: np.ndarray) -> np.ndarray:
     r = float(np.quantile(d[near], 0.15)) if near.sum() > 10 else float(d[near].min())
     band = near & (d <= max(1.6 * r, 1e-6))
     return np.flatnonzero(band)
+
+
+# --------------------------------------------------------------------------------------- #
+# The summary
+# --------------------------------------------------------------------------------------- #
+
+
+def rig_summary(system: AnimationSystem, armature: Any) -> dict[str, Any]:
+    """``armature``'s rig as data: its joints (roles, helpers), controls, constraints,
+    correctives, attachments and landmarks, and the meshes skinned to it (read-only: the
+    summary of ``aether3d rig info`` and of the ``inspect_rig`` tool)."""
+    scene = system.scene
+    arm = system._object(armature, "armature")
+    rig = system.rig(arm)
+    if rig is None:
+        raise AnimationError("RIG_MISSING", f"{arm.name!r} has no rig", "armature",
+                             hint="autorig a mesh first")  # fmt: skip
+    item = system._owned[("rig", arm._id)]
+    skins = []
+    for (kind, oid), sk in system._owned.items():
+        if kind == "skin" and sk._definition.rig == item.id and oid in scene._objects:
+            d = sk._definition
+            skins.append({"mesh": scene._objects[oid].name, "vertices": d.vertex_count,
+                          "joints": len(d.joints), "influences": int(d.indices.shape[1]),
+                          "method": d.method})  # fmt: skip
+    return {
+        "armature": arm.name,
+        "template": rig.template,
+        "info": rig.info_dict,
+        "joints": [
+            {
+                "name": j.name,
+                "parent": None if j.parent < 0 else rig.joints[j.parent].name,
+                **({"role": j.role} if j.role else {}),
+                **({"deform": False} if not j.deform else {}),
+            }
+            for j in rig.joints
+        ],  # fmt: skip
+        "controls": [
+            {
+                "name": c.name,
+                "kind": c.kind,
+                **({"object": scene._objects[c.object].name} if c.object in scene._objects else {}),
+                **({"joint": c.joint} if c.joint else {}),
+                **({"constraint": c.constraint} if c.constraint else {}),
+            }
+            for c in rig.controls
+        ],  # fmt: skip
+        "constraints": [
+            {"name": c.name, "type": c.type, "influence": c.influence} for c in rig.constraints
+        ],
+        "correctives": [c.name for c in rig.correctives],
+        "attachments": len(rig.attachments),
+        "skins": skins,
+        "landmarks": len(rig.landmarks),
+        "enforce_limits": rig.enforce_limits,
+    }
 
 
 # --------------------------------------------------------------------------------------- #

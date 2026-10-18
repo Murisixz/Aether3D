@@ -26,55 +26,8 @@ WHAT = ("summary", "landmarks", "weights", "diagnose", "fixes", "preview", "part
 MAX_FINDINGS = 30
 
 
-def rig_summary(scene: Any, armature: Any) -> dict[str, Any]:
-    system = scene.animation
-    arm = system._object(armature, "target")
-    rig = system.rig(arm)
-    if rig is None:
-        raise ToolError("RIG_MISSING", f"{arm.name!r} has no rig", hint="autorig a mesh first")
-    item = system._owned[("rig", arm._id)]
-    skins = []
-    for (kind, oid), sk in system._owned.items():
-        if kind == "skin" and sk._definition.rig == item.id and oid in scene._objects:
-            d = sk._definition
-            skins.append({"mesh": scene._objects[oid].name, "vertices": d.vertex_count,
-                          "joints": len(d.joints), "influences": int(d.indices.shape[1]),
-                          "method": d.method})  # fmt: skip
-    return {
-        "armature": arm.name,
-        "template": rig.template,
-        "info": rig.info_dict,
-        "joints": [
-            {
-                "name": j.name,
-                "parent": None if j.parent < 0 else rig.joints[j.parent].name,
-                **({"role": j.role} if j.role else {}),
-                **({"deform": False} if not j.deform else {}),
-            }
-            for j in rig.joints
-        ],  # fmt: skip
-        "controls": [
-            {
-                "name": c.name,
-                "kind": c.kind,
-                **({"object": scene._objects[c.object].name} if c.object in scene._objects else {}),
-                **({"joint": c.joint} if c.joint else {}),
-                **({"constraint": c.constraint} if c.constraint else {}),
-            }
-            for c in rig.controls
-        ],  # fmt: skip
-        "constraints": [
-            {"name": c.name, "type": c.type, "influence": c.influence} for c in rig.constraints
-        ],
-        "correctives": [c.name for c in rig.correctives],
-        "attachments": len(rig.attachments),
-        "skins": skins,
-        "landmarks": len(rig.landmarks),
-        "enforce_limits": rig.enforce_limits,
-    }
-
-
 def inspect_rig(session: Session, args: dict, ctx: Any):
+    from ..animation.rig_report import rig_summary
     from ..animation.script import _jsonable
     from ..errors import AetherError
     from .tools import ToolOutput, scene_status
@@ -117,7 +70,7 @@ def inspect_rig(session: Session, args: dict, ctx: Any):
             if "svg" in out:
                 data["svg_bytes"] = len(out["svg"])
         else:
-            data = rig_summary(scene, _need(args, "target"))
+            data = rig_summary(system, _need(args, "target"))
     except AetherError:
         raise  # (reported by the server as a structured error)
     return ToolOutput({"what": what, **_jsonable(data), "scene": scene_status(session)},

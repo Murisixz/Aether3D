@@ -229,7 +229,7 @@ Aether3D/
 │   │   ├── autorig.py, weights.py          Automatic rigs; skin weights (generate, edit,
 │   │   │                                   transfer, inspect)
 │   │   ├── rig_edit.py, controls.py        Structural rig edits; controls, IK/FK, poses
-│   │   ├── rig_report.py, rig_preview.py   Diagnostics and verified fixes; pictures
+│   │   ├── rig_report.py, rig_preview.py   Rig summaries, diagnostics, verified fixes; pictures
 │   │   ├── rigid.py                        Rigid-part characters without bones; conversions
 │   │   ├── cinematics.py, frames.py        Paths, shots, camera moves; frame rendering
 │   │   └── script.py, schema.py, guide.md  Animation scripts, their schema, the agent guide

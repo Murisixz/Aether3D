@@ -110,3 +110,26 @@ def test_the_rig_command_line(body_mesh, tmp_path, capsys):
     assert "Rigid-part characters need no bones" in out["guide"]
     code, out = run_json("rig", "info", str(path), "--armature", "Nope")
     assert code != 0
+    code, out = run_json("rig", "info", str(path), "--armature", "Body")
+    assert code != 0 and out["error"]["code"] == "RIG_MISSING"
+
+
+def test_the_rig_commands_do_not_load_the_mcp_sdk(tmp_path):
+    """``aether3d rig`` works without the optional MCP SDK (the summary lives in the
+    engine, not in the server package)."""
+    import subprocess
+    import sys
+
+    s = Scene("Bare")
+    s.animation.add_rig(s.add_object("Arm"), [{"name": "Root", "position": [0, 0, 1]}])
+    path = tmp_path / "bare.aether"
+    s.save(path)
+    code = (
+        "import json, sys; from aether3d.cli import main; "
+        f"main(['rig', 'info', {str(path)!r}, '--armature', 'Arm', '--json']); "
+        "main(['rig', 'guide', '--json']); "
+        "print(sorted(m for m in sys.modules if m.split('.')[0] == 'mcp'), file=sys.stderr)"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stderr.strip() == "[]"
+    assert '"armature": "Arm"' in out.stdout
