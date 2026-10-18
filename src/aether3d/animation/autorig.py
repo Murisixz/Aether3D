@@ -546,15 +546,21 @@ _PART_JOINTS = {
 }
 _TORSO = ("Hips", "Spine", "Chest", "Neck", "Shoulder.L", "Shoulder.R")
 _ACROSS = {"arm": ("Chest", "UpperArm"), "leg": ("Hips", "Thigh"), "head": ("Chest", "Neck")}
+# How far (limb radii) a part's root joint reaches into the torso, and the torso's joint
+# into the part: wide at the hips (the thigh moves the pelvis's skin: groin and buttock),
+# narrow at the shoulders (no chest skin following the arm).
+_BAND = {"arm": 1.5, "leg": 3.0, "head": 1.5}
 
 
 def _region_mask(system, det, arm, obj) -> np.ndarray | None:
     """``(vertices, deforming joints)`` factors 0..1: each body part's joints weigh fully
     on it, the torso's on the torso; across a junction the part's root joint (upper arm,
-    thigh, neck) reaches into the torso and the torso's joint (chest, hips) into the part,
-    fading smoothly to nothing over a band of 1.5 limb radii from the boundary (measured
-    inside the body). The skin stays continuous across shoulders, hips and the neck, and
-    torso skin never follows an arm. ``None`` when the detection has no regions."""
+    thigh, neck) reaches into the torso and the torso's joints into the part,
+    fading smoothly to nothing over a band of limb radii from the boundary (measured
+    inside the body; :data:`_BAND`: 1.5 at the shoulders and the neck, 3 at the hips).
+    The skin stays continuous across shoulders, hips and the neck, the thighs move the
+    groin and buttocks, and torso skin never follows an arm. ``None`` when the detection
+    has no regions."""
     from ..rendering.scene_data import world_matrices
     from . import voxels as V
 
@@ -602,6 +608,7 @@ def _region_mask(system, det, arm, obj) -> np.ndarray | None:
     vlab = np.maximum(labels[vflat], 0)
     uniq, inverse = np.unique(vflat, return_inverse=True)
     mask = np.zeros((len(p), len(deform)))
+    mid_x = det.canonical(p)[:, 0]  # (distance from the mirror plane, signed)
     torso = vlab == 0
     for jn in _TORSO:
         if jn in col:
@@ -611,7 +618,7 @@ def _region_mask(system, det, arm, obj) -> np.ndarray | None:
         kind, _, side = part.partition(".")
         mine = vlab == i
         info = regions["parts"][part]
-        band = 1.5 * info["radius"] + 2.0 * h
+        band = _BAND.get(kind, 1.5) * info["radius"] + 2.0 * h
         own = (
             ("Head", "Neck")
             if kind == "head"
@@ -634,9 +641,22 @@ def _region_mask(system, det, arm, obj) -> np.ndarray | None:
         if b_name in col:
             c = col[b_name]
             mask[torso, c] = np.maximum(mask[torso, c], fade_in_torso[torso])
-        if a in col:
-            c = col[a]
-            mask[mine, c] = np.maximum(mask[mine, c], fade_in_part[mine])
+        if kind == "leg":
+            # The crotch's midline follows the pelvis, not a thigh: the leg's joints fade
+            # out toward the mirror plane (over the last fifth of a thigh's radius on each
+            # side, where the legs meet), so neither leg pulls the skin between them.
+            near_plane = _fade(np.abs(mid_x), 0.6 * info["radius"])
+            for jn in own:
+                if jn in col:
+                    c = col[jn]
+                    mask[:, c] = mask[:, c] * (1.0 - near_plane)
+        # Every torso joint (the across one first among them) reaches into the part over
+        # the band: no seam where the part's region meets the torso's (the shoulders' tops
+        # at the neck's region).
+        for jn in (a, *_TORSO):
+            if jn in col:
+                c = col[jn]
+                mask[mine, c] = np.maximum(mask[mine, c], fade_in_part[mine])
     return mask
 
 

@@ -352,3 +352,25 @@ def test_blocky_boxes_bind_part_by_part():
     p = body.mesh.positions
     assert np.all(w[p[:, 2] > 1.55, names.index("Head")] == 1.0)
     assert np.all(w[p[:, 0] > 0.3, names.index("Arm.L")] == 1.0)
+
+
+def test_auto_rigged_weights_have_no_seams_at_bone_changes():
+    """Where the nearest bone changes (armpits, the neck, the lower back) the weights stay
+    smooth: no edge between two vertices whose weights differ by more than half, and
+    twisting the torso or turning the head stretches no edge more than 5 times."""
+    from aether3d.sculpt.implicit import humanoid_shapes, implicit_surface
+
+    s = Scene("Seams")
+    body = s.add_object("Body", mesh=implicit_surface(humanoid_shapes(), 0.016))
+    a = s.animation
+    a.autorig(body, name="Rig")
+    w, _names = dense(s, body)
+    tris = np.asarray(body.mesh.triangles)
+    edges = np.unique(np.sort(np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]],
+                                              tris[:, [2, 0]]]), axis=1), axis=0)  # fmt: skip
+    jump = np.abs(w[edges[:, 0]] - w[edges[:, 1]]).sum(axis=1) / 2
+    assert np.percentile(jump, 99.9) < 0.5, np.percentile(jump, 99.9)
+    rep = a.diagnose_rig("Rig", poses=["torso_twist_45", "head_turn_60", "spine_bend_45"],
+                         animation=False)  # fmt: skip
+    for pose, rec in rep["poses"].items():
+        assert rec["Body"]["worst_stretch"] < 5.0, (pose, rec["Body"]["worst_stretch"])

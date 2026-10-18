@@ -481,6 +481,8 @@ def generate_weights(
             dense[empty] = orig[empty]
         region = factor > 0
     allowed = region
+    lasting = None if region is None else region.copy()  # (kept after smoothing too)
+    near = None
     if hops and policy != "rigid":
         near = _neighbourhood(ctx, _nearest_allowed(dense, dist, region), hops)
         allowed = near if allowed is None else allowed & near
@@ -488,6 +490,7 @@ def generate_weights(
         side_ok = _sides(ctx)
         if side_ok is not None:
             allowed = side_ok if allowed is None else allowed & side_ok
+            lasting = side_ok if lasting is None else lasting & side_ok
             report["sides"] = "left and right joints keep to their side of the mirror plane"
     if allowed is not None:
         keep = np.where(allowed, dense, 0.0)
@@ -498,8 +501,20 @@ def generate_weights(
     if iterations and policy != "rigid":
         dense = _cap(dense, k + 2)
         dense = smooth_rows(dense, a_edges, b_edges, iterations, 0.5, rigid_rows)
-        if allowed is not None:
-            dense = _normalize_rows(np.where(allowed, dense, 0.0))
+        # The skeleton-neighbourhood rule kept the raw weights from leaking; it changes
+        # abruptly where the nearest bone changes, so after smoothing only the regions and
+        # sides apply again (no seams in the skin) -- and the neighbourhood rule only for
+        # the other side's limbs, clearly off the mirror plane: a leg never takes the
+        # other leg's weights, wherever the legs touch.
+        if near is not None:
+            other = _other_side(ctx)
+            if other is not None:
+                block = other & ~near
+                lasting = ~block if lasting is None else lasting & ~block
+        if lasting is not None:
+            lost = ~np.any(lasting & (dense > 0), axis=1)
+            lasting = lasting | lost[:, None]
+            dense = _normalize_rows(np.where(lasting, dense, 0.0))
     dense = _cap(dense, k)
     deadline.check("weights")
     timings["weights_s"] = round(time.perf_counter() - t1, 4)
@@ -548,10 +563,15 @@ def _nearest_allowed(dense: np.ndarray, dist: np.ndarray, region: np.ndarray | N
     return out
 
 
+TRUNK_ROLES = ("hips", "spine", "chest")
+
+
 def _neighbourhood(ctx: _Context, nearest: np.ndarray, hops: int) -> np.ndarray:
     """``(n, m)``: which of the weighted joints may weigh on each vertex -- its nearest
     joint and those within ``hops`` steps of it in the skeleton (steps through joints that
-    are not weighted do not count)."""
+    are not weighted do not count). Along the trunk (roles ``hips``, ``spine``,
+    ``chest``: short segments) one step further, so the trunk bends and twists smoothly;
+    limbs and the head keep to ``hops``."""
     rig = ctx.rig
     m = len(ctx.joints)
     col = {k: i for i, k in enumerate(ctx.joints)}
@@ -563,13 +583,19 @@ def _neighbourhood(ctx: _Context, nearest: np.ndarray, hops: int) -> np.ndarray:
         if p >= 0:
             adj[i].add(col[p])
             adj[col[p]].add(i)
+    trunk = np.array([(rig.joints[k].role or "") in TRUNK_ROLES for k in ctx.joints])
     reach = np.eye(m, dtype=bool)
     frontier = reach.copy()
-    for _ in range(hops):
+    for step in range(hops + 1 if trunk.any() else hops):
+        extra = step == hops  # (one more step: from a trunk joint, to trunk joints only)
         nxt = np.zeros_like(reach)
         for i in range(m):
             for j in adj[i]:
+                if extra and not (trunk[i] and trunk[j]):
+                    continue
                 nxt[:, j] |= frontier[:, i]
+        if extra:
+            nxt[~trunk] = False
         frontier = nxt & ~reach
         reach |= nxt
     return reach[nearest]
@@ -616,6 +642,68 @@ def _sides(ctx: _Context) -> np.ndarray | None:
             out[:, i] = x >= -margin
         elif s_ == "R":
             out[:, i] = x <= margin
+    return out
+
+
+OTHER_SIDE_MARGIN = 0.005  # of the mesh's size: the mirror plane's band both sides share
+
+
+def _other_side(ctx: _Context) -> np.ndarray | None:
+    """``(n, m)``: the sided joints of the other side than each vertex's (a vertex within
+    :data:`OTHER_SIDE_MARGIN` of the mirror plane has no other side); ``None`` when no
+    side rule applies."""
+    rig = ctx.rig
+    inv = np.linalg.inv(ctx.a_world)
+    heads = (ctx.heads @ inv[:3, :3].T + inv[:3, 3])[:, 0]
+    sides = [_side_of(rig, k) for k in ctx.joints]
+    if not any(sides):
+        return None
+    for s_, hx in zip(sides, heads, strict=True):
+        if (s_ == "L" and hx < 0) or (s_ == "R" and hx > 0):
+            return None
+    x = (ctx.world @ inv[:3, :3].T + inv[:3, 3])[:, 0]
+    size = float(np.max(ctx.world.max(axis=0) - ctx.world.min(axis=0)))
+    margin = OTHER_SIDE_MARGIN * size
+    out = np.zeros((x.size, len(sides)), bool)
+    for i, s_ in enumerate(sides):
+        if s_ == "L":
+            out[:, i] = x < -margin
+        elif s_ == "R":
+            out[:, i] = x > margin
+    return out
+
+
+def _mid_band(ctx: _Context) -> np.ndarray | None:
+    """Vertices within the side margin of the armature's mirror plane (``None``: no side
+    rule applies: an asymmetric rest pose or no sided joints)."""
+    rig = ctx.rig
+    inv = np.linalg.inv(ctx.a_world)
+    heads = (ctx.heads @ inv[:3, :3].T + inv[:3, 3])[:, 0]
+    sides = [_side_of(rig, k) for k in ctx.joints]
+    if not any(sides):
+        return None
+    for s_, hx in zip(sides, heads, strict=True):
+        if (s_ == "L" and hx < 0) or (s_ == "R" and hx > 0):
+            return None
+    x = (ctx.world @ inv[:3, :3].T + inv[:3, 3])[:, 0]
+    size = float(np.max(ctx.world.max(axis=0) - ctx.world.min(axis=0)))
+    return np.abs(x) <= SIDE_MARGIN * size
+
+
+def _mirror_columns(ctx: _Context) -> dict[int, int]:
+    """Column -> the column of its mirror joint (``.L`` <-> ``.R``, by role, else name)."""
+    rig = ctx.rig
+    keys = {}
+    for i, k in enumerate(ctx.joints):
+        j = rig.joints[k]
+        key = j.role or j.name
+        if key[-2:] in (".L", ".R"):
+            keys[key] = i
+    out = {}
+    for key, i in keys.items():
+        other = key[:-1] + ("R" if key[-1] == "L" else "L")
+        if other in keys:
+            out[i] = keys[other]
     return out
 
 
