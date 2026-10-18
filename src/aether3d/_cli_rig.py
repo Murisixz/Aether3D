@@ -244,7 +244,9 @@ def add_rig_parsers(sub, common, writing) -> None:
     p.add_argument("--joint")
     p.add_argument("--pose")
     p.add_argument("--time", type=float)
-    p.add_argument("--view", default="front", choices=("front", "side", "back", "three_quarter"))
+    p.add_argument(
+        "--view", default="front", choices=("front", "side", "left", "back", "three_quarter")
+    )
     p.add_argument("--width", type=int, default=480)
     p.add_argument("--height", type=int, default=640)
     p.add_argument("--backend", default="cpu", choices=("cpu", "gpu", "auto"))

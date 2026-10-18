@@ -31,6 +31,12 @@ if TYPE_CHECKING:
     from .system import AnimationSystem
 
 MODES = ("pose", "weights", "stretch", "skeleton")
+# Camera directions about the character (``side``: its right side, as before ``left``)
+VIEWS = ("front", "side", "left", "back", "three_quarter")
+# The stretch ramp: log2 of the edge-length ratio drawn at full colour (x1.41 stretched,
+# x0.71 compressed), from a neutral grey (kept) that still shows the shape's shading.
+STRETCH_FULL = 0.5
+_KEPT, _STRETCHED, _COMPRESSED = (0.78, 0.78, 0.78), (0.95, 0.16, 0.1), (0.12, 0.34, 0.95)
 
 
 def _err(code: str, message: str, location: str) -> AnimationError:
@@ -101,8 +107,8 @@ def rig_preview(
 
     if mode not in MODES:
         raise _err("INVALID_ARGUMENT", f"mode is one of {', '.join(MODES)}", "mode")
-    if view not in ("front", "side", "back", "three_quarter"):
-        raise _err("INVALID_ARGUMENT", "view is front, side, back or three_quarter", "view")
+    if view not in VIEWS:
+        raise _err("INVALID_ARGUMENT", f"view is one of {', '.join(VIEWS)}", "view")
     for name, v, hi in (("width", width, 4096), ("height", height, 4096)):
         if isinstance(v, bool) or not isinstance(v, int) or not 16 <= v <= hi:
             raise _err("INVALID_ARGUMENT", f"{name} is 16..{hi} pixels", name)
@@ -152,6 +158,8 @@ def rig_preview(
         _place(obj, world)
         if colors is None:
             obj.color = src.color if hasattr(src, "color") else (0.8, 0.7, 0.6)
+        elif mode == "stretch":  # (dimmed: the grey of kept skin still shows its shading)
+            obj.color = (0.62, 0.62, 0.62)
         else:
             obj.color = (1.0, 1.0, 1.0)
         p = mesh.positions.astype(np.float64) @ world[:3, :3].T + world[:3, 3]
@@ -176,6 +184,7 @@ def rig_preview(
         "front": fwd,
         "back": -fwd,
         "side": side,
+        "left": -side,
         "three_quarter": (fwd + 0.8 * side) / np.linalg.norm(fwd + 0.8 * side),
     }[view]
     fov = 30.0
@@ -227,8 +236,9 @@ def _place(obj, world: np.ndarray) -> None:
 
 
 def _stretch_colors(rest_mesh, posed_mesh) -> np.ndarray:
-    """Per vertex: the log ratio of its edges' lengths, posed over rest, as a diverging
-    ramp (blue compressed to half, white kept, red stretched to double)."""
+    """Per vertex: the mean log2 ratio of its edges' lengths, posed over rest, as a
+    diverging ramp (grey kept, red stretched, blue compressed; full colour at
+    :data:`STRETCH_FULL`)."""
     t = np.asarray(rest_mesh.triangles, np.int64)
     e = np.concatenate([t[:, [0, 1]], t[:, [1, 2]], t[:, [2, 0]]])
     p0 = rest_mesh.positions.astype(np.float64)
@@ -244,11 +254,11 @@ def _stretch_colors(rest_mesh, posed_mesh) -> np.ndarray:
     for col in (0, 1):
         np.add.at(acc, e[ok, col], r[ok])
         np.add.at(cnt, e[ok, col], 1)
-    v = np.clip(np.where(cnt > 0, acc / np.maximum(cnt, 1), 0.0), -1.0, 1.0)
-    rgb = np.ones((n, 3))
-    pos, neg = v > 0, v < 0
-    rgb[pos] = np.stack([np.ones(pos.sum()), 1 - v[pos], 1 - v[pos]], axis=1)
-    rgb[neg] = np.stack([1 + v[neg], 1 + v[neg], np.ones(neg.sum())], axis=1)
+    v = np.where(cnt > 0, acc / np.maximum(cnt, 1), 0.0)
+    t = np.clip(np.abs(v) / STRETCH_FULL, 0.0, 1.0)[:, None]
+    kept = np.asarray(_KEPT)
+    end = np.where(v[:, None] > 0, np.asarray(_STRETCHED), np.asarray(_COMPRESSED))
+    rgb = kept + t * (end - kept)
     return np.concatenate([rgb, np.ones((n, 1))], axis=1)
 
 

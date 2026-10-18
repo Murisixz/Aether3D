@@ -150,7 +150,7 @@ def specs() -> tuple[Any, ...]:
                     "joint": text,
                     "pose": text,
                     "mode": {"enum": ["pose", "weights", "stretch", "skeleton"]},
-                    "view": {"enum": ["front", "side", "back", "three_quarter"]},
+                    "view": {"enum": ["front", "side", "left", "back", "three_quarter"]},
                     "time": {"type": "number"},
                 }
             ),
