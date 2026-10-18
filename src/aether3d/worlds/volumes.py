@@ -277,12 +277,12 @@ class Volumes:
         h = s["height"]
         wet = ~np.isnan(s["water"])
         found: dict[int, int] = {}
-        # Overhangs: cliffs (steeper than about 60 degrees) in the footprint.
+        # Overhangs: cliffs in the footprint.
         if cv["overhangs"] > 0.0:
             H = h.reshape(m, m)
             gx = np.abs(np.diff(H, axis=1)).max(initial=0.0) / LATTICE
             gy = np.abs(np.diff(H, axis=0)).max(initial=0.0) / LATTICE
-            if max(gx, gy) > 1.7:
+            if max(gx, gy) > 1.3:  # steeper than about 52 degrees somewhere
                 for ck in range(
                     math.floor((h.min() - OVERHANG_AMPLITUDE) / CHUNK),
                     math.floor((h.max() + OVERHANG_AMPLITUDE) / CHUNK) + 1,

@@ -99,11 +99,17 @@ def colors(model, sample: dict, x: np.ndarray, y: np.ndarray, normals: np.ndarra
     lo_c, _ = nz.cos_sin_deg(min(s["cliff_slope"] + 8.0, 85.0))
     hi_c, _ = nz.cos_sin_deg(max(s["cliff_slope"] - 12.0, 5.0))
     cliff_c = lo_c + cold * (hi_c - lo_c)
-    soil_lo, _ = nz.cos_sin_deg(min(s["cliff_slope"] + 8.0, 85.0) * 0.7)
-    soil_hi, _ = nz.cos_sin_deg(max(s["cliff_slope"] - 12.0, 5.0) * 0.7)
+    soil_lo, _ = nz.cos_sin_deg(min(s["cliff_slope"], 85.0))
+    soil_hi, _ = nz.cos_sin_deg(max(s["cliff_slope"] - 18.0, 5.0))
     soil_c = soil_lo + cold * (soil_hi - soil_lo)
     jitter = 0.05 * nz.gradient2(nz.derive(seed, "surface", "slope"), x / 11.0, y / 11.0)
-    soil_f = nz.smoothstep(soil_c + 0.04, soil_c - 0.06, nz_ + jitter)
+    # Soil shows through in patches just below the rock (not as bands along contours).
+    patches = nz.smoothstep(
+        -0.05,
+        0.45,
+        nz.fbm2(nz.derive(seed, "surface", "soil"), x, y, octaves=2, frequency=1.0 / 17.0),
+    )
+    soil_f = nz.smoothstep(soil_c + 0.04, soil_c - 0.08, nz_ + jitter) * patches
     rock_f = nz.smoothstep(cliff_c + 0.05, cliff_c - 0.07, nz_ + jitter)
     color = ground + soil_f[:, None] * (soil - ground)
     rock_tone = 0.85 + 0.25 * (

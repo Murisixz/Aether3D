@@ -317,7 +317,7 @@ BARK = _rgb("#5a4632")
 BARK_GREY = _rgb("#6e6a62")
 BIRCH = _rgb("#d2cec2")
 LEAF = _rgb("#4c7a2c")
-NEEDLE = _rgb("#2d5232")
+NEEDLE = _rgb("#35593a")
 
 
 def _conifer(b, rnd, lod, species):

@@ -354,7 +354,7 @@ EARTH_BIOMES: dict[str, dict] = dict(
                [_v("spruce", 220.0, cluster=0.5), _v("fir", 60.0), _v("rock", 4.0)],
                blocks={"top": "snowy_grass_block"}),
         _biome("taiga", (-2, 7), (0.35, 1.0), "grass",
-               _colors("#566f47", "#4f4130", "#77736c", "#c8bc98", "#34553a"),
+               _colors("#566f47", "#4f4130", "#6f706f", "#c8bc98", "#34553a"),
                [_v("spruce", 260.0, cluster=0.45), _v("pine", 60.0), _v("fern", 600.0),
                 _v("rock", 5.0), _v("log", 3.0)]),
         _biome("alpine_meadow", (-4, 6), (0.0, 0.35), "grass",
@@ -1065,6 +1065,7 @@ PRESETS: dict[str, dict[str, Any]] = {
             "rivers": {"threshold": 3.0e6, "width": 0.01, "max_width": 45.0},
             "lakes": {"max": 3},
         },
+        "vegetation": {"density": 0.7},
     },
     "forested_mountains": {
         "extent": {"min": [-4096.0, -4096.0], "max": [4096.0, 4096.0]},

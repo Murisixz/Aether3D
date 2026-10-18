@@ -26,7 +26,7 @@ LIGHTING = {
     #        ambient intensity, exposure)
     "midday": ((0.35, 0.55, -0.75), 2.2, (1.0, 0.95, 0.85), (0.74, 0.82, 0.92), 0.15, 0.45, 0.0),
     "morning": ((0.75, 0.45, -0.38), 2.0, (1.0, 0.86, 0.66), (0.78, 0.82, 0.88), 0.35, 0.4, 0.0),
-    "golden": ((0.82, 0.42, -0.2), 2.4, (1.0, 0.72, 0.42), (0.9, 0.78, 0.66), 0.7, 0.32, 0.1),
+    "golden": ((0.78, 0.4, -0.34), 2.4, (1.0, 0.76, 0.5), (0.88, 0.8, 0.72), 0.6, 0.34, 0.1),
     "sunset": ((0.9, 0.3, -0.09), 2.6, (1.0, 0.55, 0.28), (0.92, 0.66, 0.52), 1.2, 0.26, 0.2),
 }
 
@@ -85,7 +85,7 @@ def flight(
     a.add_path(f"{name} aim path", [list(map(float, p)) for p in aims])
     a.follow_path(cam, f"{name} path", start=start, end=end, easing=None, follow=False)
     a.follow_path(aim, f"{name} aim path", start=start, end=end, easing=None, follow=False)
-    a.add_constraint(cam, {"type": "look_at", "target": aim.id})
+    a.add_constraint(cam, {"type": "look_at", "target": {"object": aim.id}})
     return cam
 
 
