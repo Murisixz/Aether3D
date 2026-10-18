@@ -97,7 +97,7 @@ def _humanoid_joints(det: LM.Detection, twist: bool) -> list[dict[str, Any]]:
             {"name": f"ForeArm.{side}", "parent": f"UpperArm.{side}", "at": elbow,
              "role": f"lower_arm.{side}", "lean": FORWARD,
              "end": f"ForeArmTwist.{side}" if twist else f"Hand.{side}",
-             "limits": {"hinge": {"axis": "+x", "min": 0, "max": 150}}},
+             "limits": {"swing": {"x": [0, 150], "z": [-5, 5]}, "twist": [-80, 80]}},
         ]  # fmt: skip
         if twist:
             J.append(
@@ -121,7 +121,7 @@ def _humanoid_joints(det: LM.Detection, twist: bool) -> list[dict[str, Any]]:
                         "twist": [-40, 40]}},
             {"name": f"Shin.{side}", "parent": f"Thigh.{side}", "at": P(f"knee.{side}"),
              "role": f"shin.{side}", "lean": BACKWARD, "end": f"Foot.{side}",
-             "limits": {"hinge": {"axis": "+x", "min": 0, "max": 150}}},
+             "limits": {"swing": {"x": [0, 150], "z": [-5, 5]}, "twist": [-15, 15]}},
             {"name": f"Foot.{side}", "parent": f"Shin.{side}", "at": P(f"ankle.{side}"),
              "role": f"foot.{side}", "lean": UP, "end": f"Toe.{side}",
              "limits": {"swing": {"x": [-50, 30], "z": [-25, 25]}, "twist": [-15, 15]}},
@@ -525,11 +525,11 @@ def _humanoid_controls(system, arm, model, det) -> tuple[list, list, list]:
             {"name": f"arm_ik.{side}", "type": "ik", "influence": 0.0,
              "chain": [f"UpperArm.{side}", f"ForeArm.{side}", f"Hand.{side}"],
              "target": {"object": t_hand._id}, "pole": {"object": t_elbow._id},
-             "solver": "two_bone", "end": "target"},
+             "solver": "two_bone", "end": "target", "bend_axis": "+x"},
             {"name": f"leg_ik.{side}", "type": "ik", "influence": 0.0,
              "chain": [f"Thigh.{side}", f"Shin.{side}", f"Foot.{side}"],
              "target": {"object": t_foot._id}, "pole": {"object": t_knee._id},
-             "solver": "two_bone", "end": "target"},
+             "solver": "two_bone", "end": "target", "bend_axis": "+x"},
         ]  # fmt: skip
         mirror = "R" if side == "L" else "L"
         ctrl += [

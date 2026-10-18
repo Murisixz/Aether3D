@@ -12,9 +12,9 @@ A joint's ``limits`` take one of three forms:
   bone: the swing's rotation vector (degrees) must lie inside the ellipse quadrants these
   bounds span (Baerlocher and Boulic 2001; asymmetric ranges -- a shoulder lifting
   further forward than back -- are four quarter ellipses). Either part may be omitted.
-* ``{"hinge": {"axis": "+x", "min": deg, "max": deg}}`` -- only rotation about one local
-  axis, from the rest rotation, within ``min..max`` (an elbow or a knee): any swing out
-  of the hinge plane is removed.
+* ``{"hinge": {"axis": "+x", "min": deg, "max": deg, "play": deg}}`` -- only rotation
+  about one local axis, from the rest rotation, within ``min..max`` (an elbow or a knee):
+  swing out of the hinge plane beyond ``play`` (default 0) is removed.
 
 Every new-form range must contain 0 (the rest pose is allowed). Clamping is stable at
 quaternion sign changes and wraparound: ``q_rel`` is taken with ``w >= 0`` (the shorter
@@ -84,13 +84,16 @@ def check_limits(raw: Any, location: str) -> str:
             raise _err("a hinge limit has only {hinge: {axis, min, max}}", location)
         h = raw["hinge"]
         loc = f"{location}.hinge"
-        if not isinstance(h, dict) or set(h) - {"axis", "min", "max"}:
-            raise _err("hinge is {axis, min, max}", loc)
+        if not isinstance(h, dict) or set(h) - {"axis", "min", "max", "play"}:
+            raise _err("hinge is {axis, min, max, play}", loc)
         axis = h.get("axis", "+x")
         if axis not in AXES:
             raise _err(f"axis is one of {', '.join(AXES)}", f"{loc}.axis")
         lo, hi = _range([h.get("min", -180.0), h.get("max", 180.0)], loc)
-        return _canonical({"hinge": {"axis": axis, "min": lo, "max": hi}})
+        out = {"axis": axis, "min": lo, "max": hi}
+        if h.get("play", 0.0):
+            out["play"] = _deg(h["play"], f"{loc}.play", 0.0, 45.0)
+        return _canonical({"hinge": out})
     if keys - {"axis", "swing", "twist"} or not keys & {"swing", "twist"}:
         raise _err(
             "limits are {rotation: {min, max}}, {axis, swing, twist} or {hinge: {axis, min, max}}",
@@ -196,9 +199,12 @@ def clamp(limits: dict[str, Any], q_local: np.ndarray, q_rest: np.ndarray) -> np
         angle = twist_angle(q, axis)
         swing = swing_vector(q, axis)
         clamped = min(max(angle, h["min"]), h["max"])
-        if clamped == angle and float(np.linalg.norm(swing)) < 1e-9:
+        play = h.get("play", 0.0)
+        norm = float(np.linalg.norm(swing))
+        if clamped == angle and norm <= max(play, 1e-9):
             return None
-        new_rel = _axis_rotation(axis, clamped)
+        kept = swing * (play / norm) if norm > play else swing  # (the allowed play remains)
+        new_rel = R.multiply(_from_vector(kept), _axis_rotation(axis, clamped))
     else:
         axis_name = limits["axis"]
         axis = AXES[axis_name]

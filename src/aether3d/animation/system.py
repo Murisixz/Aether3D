@@ -1188,6 +1188,27 @@ class AnimationSystem:
 
         return autorig(self, meshes, **options)
 
+    def add_control(self, armature: Any, name: str, kind: str, **options: Any) -> dict:
+        """Add a control to a rig: an IK limb (``chain``, ``pole``), a pole, a gaze
+        (``joint``), an FK control or the root; one undo step. See :mod:`.controls`."""
+        from .controls import add_control
+
+        return add_control(self, armature, name, kind, **options)
+
+    def ik_fk(self, armature: Any, limb: str, mode: str, time: float, **options: Any) -> dict:
+        """Switch an IK limb to ``"ik"`` or ``"fk"`` at ``time`` with a matched pose (keys
+        on the controls or joints and the influence); reports the mismatch."""
+        from .controls import ik_fk
+
+        return ik_fk(self, armature, limb, mode, time, **options)
+
+    def pose_character(self, armature: Any, commands: list[Any], *, time: float = 0.0) -> dict:
+        """High-level posing as keys: ``reach``, ``plant_feet``, ``look_at``, ``raise_arm``,
+        ``lean``, ``crouch``, ``aim_hips``, ``rotate``; see :mod:`.controls`."""
+        from .controls import pose_character
+
+        return pose_character(self, armature, commands, time=time)
+
     def generate_weights(self, mesh_object: Any, armature: Any, **options: Any) -> dict:
         """Automatic skin weights (``method``: ``geodesic`` voxel binding by default,
         ``envelope``, ``nearest``; ``policy``: ``organic``, ``stylized``, ``rigid``) and the

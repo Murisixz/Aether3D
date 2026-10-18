@@ -18,6 +18,7 @@ Nothing here changes the scene; the result only feeds the render overlay.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -466,12 +467,19 @@ def _joint_constraint(
                 _, s = model[k][:3, :3], np.linalg.norm(model[k][:3, :3], axis=0)
                 m[:3, :3] = target_a[:3, :3] / np.linalg.norm(target_a[:3, :3], axis=0) * s
             new_model[k] = m
+        if p.get("bend_axis") and len(chain) == 3:
+            _align_bend(new_model, chain, new_pos, p["bend_axis"])
+        limited = False
         for i, k in enumerate(chain):
             if i == len(chain) - 1 and p["end"] == "keep":
                 break
             parent_m = np.eye(4) if parents[k] < 0 else new_model[parents[k]]
-            new_local[k] = np.linalg.solve(parent_m, new_model[k])
-            new_local[k] = _limit(rig, k, new_local[k])
+            free = np.linalg.solve(parent_m, new_model[k])
+            new_local[k] = _limit(rig, k, free)
+            limited |= new_local[k] is not free
+        if limited:  # the residual is where the limited chain's end really is
+            reached = forward_kinematics(new_local, rig.parents, rig.depth)[chain[-1]][:3, 3]
+            residual = float(np.linalg.norm(reached - goal))
         result.residuals[f"{arm.name}/{c.name}"] = float(residual)
     elif c.type == "twist":
         from . import limits as L
@@ -498,6 +506,37 @@ def _joint_constraint(
                 new_local[k] = blend_matrices(local[k], new_local[k], w)
     new_model = forward_kinematics(new_local, rig.parents, rig.depth)
     return new_local, new_model
+
+
+def _align_bend(model: np.ndarray, chain: list, pos: np.ndarray, axis: str) -> None:
+    """Twist the first two bones of a chain about themselves so their ``axis`` lies
+    along the bend plane's normal ``d1 x d2`` (positions unchanged): a positive rotation
+    about it then bends the chain the way it bends now."""
+    from .limits import AXES
+
+    d1 = pos[1] - pos[0]
+    d2 = pos[2] - pos[1]
+    n = np.cross(d1, d2)
+    nn = float(np.linalg.norm(n))
+    if nn < 1e-9 * float(np.linalg.norm(d1) * np.linalg.norm(d2)) or nn == 0.0:
+        return  # a straight chain: no plane
+    n /= nn
+    a_local = AXES[axis]
+    for k, d in ((chain[0], d1), (chain[1], d2)):
+        lin = model[k][:3, :3]
+        scale = np.linalg.norm(lin, axis=0)
+        rot = lin / scale
+        bone = d / np.linalg.norm(d)
+        current = rot @ a_local
+        cur = current - (current @ bone) * bone
+        want = n - (n @ bone) * bone
+        if np.linalg.norm(cur) < 1e-9 or np.linalg.norm(want) < 1e-9:
+            continue
+        cur /= np.linalg.norm(cur)
+        want /= np.linalg.norm(want)
+        angle = math.atan2(float(np.cross(cur, want) @ bone), float(cur @ want))
+        turn = R.matrices(R.axis_angle(bone, angle))[0]
+        model[k][:3, :3] = (turn @ rot) * scale
 
 
 def _limit(rig: Rig, k: int, local: np.ndarray) -> np.ndarray:

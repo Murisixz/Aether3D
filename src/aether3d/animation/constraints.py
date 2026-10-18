@@ -16,7 +16,10 @@ Types:
 * ``ik`` (joint): ``chain`` (joint names root to end), ``target``, ``pole``, ``solver``
   (``two_bone`` for three joints, ``fabrik``, ``ccd``), ``iterations``, ``tolerance``,
   ``stretch``, ``soft``, ``end`` (``keep``: the end joint keeps its local rotation;
-  ``target``: it takes the target's world rotation). The residual distance is reported.
+  ``target``: it takes the target's world rotation), ``bend_axis`` (``two_bone``: the
+  joints' local axis kept perpendicular to the bend plane by twisting each bone about
+  itself -- with hinge-like limits the middle joint then bends about that axis only). The
+  residual distance (after joint limits) is reported.
 * ``look_at`` (object or joint): point ``axis`` (``-y`` by default: cameras and lights
   look along local -Y; bones point along ``+y``) at the target, keeping ``up`` (owner
   axis, ``+z``) toward ``world_up`` (``[0, 0, 1]``); ``target_offset`` (world axes) moves
@@ -91,6 +94,7 @@ _PARAMS: dict[str, dict[str, Any]] = {
             "stretch": 1.0,
             "soft": 0.0,
             "end": "keep",
+            "bend_axis": None,
         },
     },
     "look_at": {
@@ -283,6 +287,12 @@ def parse_constraint(raw: Any, location: str, *, joints: bool) -> Constraint:
         p["soft"] = _num(p["soft"], f"{location}.soft", "soft", 0.0, 0.5)
         if p["end"] not in ("keep", "target"):
             raise _err("INVALID_CONSTRAINT", "end is 'keep' or 'target'", f"{location}.end")
+        if p["bend_axis"] is not None and p["bend_axis"] not in AXES:
+            raise _err(
+                "INVALID_CONSTRAINT",
+                f"bend_axis is one of {', '.join(AXES)} or null",
+                f"{location}.bend_axis",
+            )
     if kind in ("look_at", "follow_path"):
         for key in ("axis", "up"):
             if p[key] not in AXES:
