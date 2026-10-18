@@ -535,7 +535,7 @@ def _joint_constraint(
                 m[:3, :3] = target_a[:3, :3] / np.linalg.norm(target_a[:3, :3], axis=0) * s
             new_model[k] = m
         if p.get("bend_axis") and len(chain) == 3:
-            _align_bend(new_model, chain, new_pos, p["bend_axis"])
+            _align_bend(new_model, chain, new_pos, p["bend_axis"], rig)
         limited = False
         for i, k in enumerate(chain):
             if i == len(chain) - 1 and p["end"] == "keep":
@@ -618,11 +618,18 @@ def _quat_of(m: list) -> tuple[float, float, float, float]:
     return (c + g) / s, (f + h) / s, 0.25 * s, (d - b) / s
 
 
-def _align_bend(model: np.ndarray, chain: list, pos: np.ndarray, axis: str) -> None:
-    """Twist the first two bones of a chain about themselves so their ``axis`` lies
+def _align_bend(
+    model: np.ndarray, chain: list, pos: np.ndarray, axis: str, rig: Rig | None = None
+) -> None:
+    """Twist the first two bones of a chain about themselves toward their ``axis`` lying
     along the bend plane's normal ``d1 x d2`` (positions unchanged): a positive rotation
-    about it then bends the chain the way it bends now."""
-    from .limits import AXES
+    about it then bends the chain the way it bends now. With the middle joint's limits
+    known (``rig``), only as far as they require: a pose they already allow keeps its
+    bones' roll (switching a relaxed FK limb to IK changes nothing visible), a deep bend
+    turns as far as its limits need (the smallest fraction found by bisection)."""
+    import json as _json
+
+    from . import limits as L
 
     d1 = pos[1] - pos[0]
     d2 = pos[2] - pos[1]
@@ -631,17 +638,12 @@ def _align_bend(model: np.ndarray, chain: list, pos: np.ndarray, axis: str) -> N
     scale_len = float(np.linalg.norm(d1) * np.linalg.norm(d2))
     if nn < 1e-9 * scale_len or nn == 0.0:
         return  # a straight chain: no plane
-    # A slightly bent limb needs no alignment (its limits allow a little sideways swing),
-    # and its plane is poorly defined: the alignment fades in between 20 and 45 degrees
-    # of bend. So switching a relaxed FK limb to IK does not roll its bones (the visible
-    # pose is kept), while deep bends (crouches, reaches) bend about the bend axis.
     bend = math.degrees(math.atan2(nn, float(d1 @ d2)))
-    fade = min(1.0, max(0.0, (bend - 20.0) / 25.0))
-    fade = fade * fade * (3.0 - 2.0 * fade)
-    if fade <= 0.0:
-        return
+    if bend < 2.0:
+        return  # (nearly straight: the plane is not defined)
     n /= nn
-    a_local = AXES[axis]
+    a_local = L.AXES[axis]
+    turns = []
     for k, d in ((chain[0], d1), (chain[1], d2)):
         lin = model[k][:3, :3]
         scale = np.linalg.norm(lin, axis=0)
@@ -651,12 +653,49 @@ def _align_bend(model: np.ndarray, chain: list, pos: np.ndarray, axis: str) -> N
         cur = current - (current @ bone) * bone
         want = n - (n @ bone) * bone
         if np.linalg.norm(cur) < 1e-9 or np.linalg.norm(want) < 1e-9:
+            turns.append(None)
             continue
         cur /= np.linalg.norm(cur)
         want /= np.linalg.norm(want)
-        angle = math.atan2(float(np.cross(cur, want) @ bone), float(cur @ want)) * fade
-        turn = R.matrices(R.axis_angle(bone, angle))[0]
-        model[k][:3, :3] = (turn @ rot) * scale
+        angle = math.atan2(float(np.cross(cur, want) @ bone), float(cur @ want))
+        turns.append((k, bone, angle, rot, scale))
+
+    def rolled(frac: float) -> tuple[np.ndarray, np.ndarray]:
+        out = []
+        for t in turns:
+            if t is None:
+                out.append(None)
+                continue
+            k, bone, angle, rot, scale = t
+            turn = R.matrices(R.axis_angle(bone, angle * frac))[0]
+            out.append((turn @ rot) * scale)
+        return out
+
+    frac = 1.0
+    raw = _json.loads(rig.joints[chain[1]].limits) if rig is not None else None
+    if isinstance(raw, dict) and not L.is_euler(raw):
+        rest_q = np.asarray(rig.joints[chain[1]].rotation, np.float64)
+
+        def allowed(f: float) -> bool:
+            lin = rolled(f)
+            upper = lin[0] if lin[0] is not None else model[chain[0]][:3, :3]
+            lower = lin[1] if lin[1] is not None else model[chain[1]][:3, :3]
+            rel = np.linalg.solve(upper / np.linalg.norm(upper, axis=0),
+                                  lower / np.linalg.norm(lower, axis=0))  # fmt: skip
+            q = R.from_matrices(rel[None])[0]
+            return L.clamp(raw, q, rest_q) is None
+
+        if allowed(0.0):
+            return
+        if allowed(1.0):
+            lo, hi = 0.0, 1.0
+            for _ in range(10):
+                mid = 0.5 * (lo + hi)
+                lo, hi = (lo, mid) if allowed(mid) else (mid, hi)
+            frac = min(1.0, hi + 0.02)
+    for t, lin in zip(turns, rolled(frac), strict=True):
+        if t is not None:
+            model[t[0]][:3, :3] = lin
 
 
 def _limit(rig: Rig, k: int, local: np.ndarray) -> np.ndarray:
