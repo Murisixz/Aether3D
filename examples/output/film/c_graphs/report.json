@@ -1,7 +1,7 @@
 {
  "showcase": "C graph curves against Blender",
  "blender": "5.2.0 LTS",
- "fixture": "/home/murisi/Projects/Aether3D/tests/data/blender_curves/curves.json",
+ "fixture": "../tests/data/blender_curves/curves.json",
  "quick": false,
  "cases": {
   "AUTO_NONE_CONSTANT": {
@@ -288,10 +288,10 @@
   "samples": 62,
   "middle_frame": 100.5
  },
- "seconds": 3.38,
+ "seconds": 3.1,
  "machine": {
   "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
-  "aether3d": "0.19.1",
+  "aether3d": "0.20.0",
   "native": true,
   "python": "3.14.8"
  }
