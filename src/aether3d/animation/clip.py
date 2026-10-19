@@ -450,6 +450,9 @@ def edit_curve(curve: FCurve, op: str, args: dict[str, Any], location: str = "op
     if op == "smoothing":
         _only(args, {"smoothing"}, location)
         return curve.replace(smoothing=args.get("smoothing"), location=location)
+    if op == "extrapolation":
+        _only(args, {"extrapolation"}, location)
+        return curve.replace(extrapolation=args.get("extrapolation"), location=location)
     sel = select(curve, args.get("keys", "all"), f"{location}.keys")
     if op == "ease":
         _only(args, {"keys", "ease_in", "ease_out", "slope"}, location)
@@ -610,6 +613,7 @@ KEY_OPERATIONS = (
     "hold",
     "smooth",
     "smoothing",
+    "extrapolation",
 )
 
 

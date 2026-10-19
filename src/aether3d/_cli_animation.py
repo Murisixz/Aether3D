@@ -112,6 +112,13 @@ def cmd_animation_report(args: argparse.Namespace) -> CommandOutput:
             if not args.target:
                 raise CommandError("ValidationError", "trajectory needs --target")
             data = system.trajectory(args.target, start=args.start, end=args.end, joint=args.joint)
+        elif args.kind == "motion":
+            targets = None
+            if args.target:
+                targets = [{"object": args.target, "joint": args.joint} if args.joint
+                           else args.target]  # fmt: skip
+            data = system.motion_report(targets, start=args.start, end=args.end,
+                                        subject=args.subject, loop=args.loop)  # fmt: skip
         else:
             if not args.target or not args.feet:
                 raise CommandError(
@@ -229,12 +236,18 @@ def add_animation_parsers(sub, common, writing) -> None:
         help="measure curves and motion (read-only)",
         description="curve: one channel's exact report (continuity at every key, extrema, "
         "overshoot, velocity/acceleration/jerk); diagnose: findings over the whole animation; "
-        "trajectory: an object's (or --joint's) world motion; contacts: feet sliding.",
+        "trajectory: an object's (or --joint's) world motion; motion: world-space quality "
+        "(jumps, acceleration steps, jitter, snaps, pole flips, pauses, loop seams, framing "
+        "of a --subject); contacts: feet sliding.",
     )
     p.add_argument("path", help=".aether project or .glb/.gltf file")
     p.add_argument(
-        "--kind", choices=("curve", "diagnose", "trajectory", "contacts"), default="curve"
+        "--kind",
+        choices=("curve", "diagnose", "trajectory", "motion", "contacts"),
+        default="curve",
     )
+    p.add_argument("--subject", help="motion: the object a camera should frame")
+    p.add_argument("--loop", action="store_true", help="motion: check the loop seam")
     p.add_argument("--target", help="object (or armature) id or name")
     p.add_argument("--path", dest="path_", action="append", help="channel path")
     p.add_argument("--clip", help="a clip name (instead of the target's action)")

@@ -210,6 +210,23 @@ _ARGUMENTS: dict[str, Any] = {
     "shift": {"type": "boolean"},
     "sigma": {"type": "number", "exclusiveMinimum": 0},
     "keep_ends": {"type": "boolean"},
+    "measure": {
+        "type": "array",
+        "maxItems": 512,
+        "description": "motion: objects (names, ids) or {object, joint | joints: [...] | "
+        '"all"} or {camera: "shots"}; default: every animated object, rig and the shots',
+        "items": {"oneOf": [{"type": "string"}, {"type": "object"}]},
+    },
+    "subject": {
+        "description": "motion: what a camera should frame: an object or a point [x, y, z]",
+    },
+    "loop": {"type": "boolean", "description": "motion: compare the range's end with its start"},
+    "thresholds": {
+        "type": "object",
+        "description": "motion: thresholds to override (velocity_jump, acceleration_step, "
+        "position_jump, jitter_hz, jitter_mm, jitter_deg, snap_deg, angular_jump, pause_speed, "
+        "pause_min, pause_max, window, ground, ground_tolerance, frame_margin, drift)",
+    },
 }
 
 

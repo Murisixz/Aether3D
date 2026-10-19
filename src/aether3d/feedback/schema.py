@@ -191,6 +191,29 @@ def _check_schema(kind: str) -> dict[str, Any]:
             "(elbow_bend_120.L, shoulder_raise_150.L, ...)",
         },  # fmt: skip
         "timeline": {"type": "boolean", "default": True},
+        "loop": {"type": "boolean", "default": False},
+        "joints": {
+            "anyOf": [
+                {"const": "all"},
+                {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                    "maxItems": 512,
+                },
+            ],
+            "description": "rig joints to measure too",
+        },
+        "subject": {
+            "anyOf": [{"type": "string", "minLength": 1}, _VEC3],
+            "description": "what cameras should frame: an object or a point",
+        },
+        "level": {"enum": ["info", "warning", "error"], "default": "warning"},
+        "thresholds": {
+            "type": "object",
+            "additionalProperties": {"type": "number"},
+            "description": "motion report thresholds to override",
+        },
         "ignore": {
             "type": "array",
             "items": {"type": "string", "minLength": 1},
@@ -324,6 +347,15 @@ def action_schema() -> dict[str, Any]:
         },  # fmt: skip
         "keys": {"type": "array", "items": {"type": "integer"}, "minItems": 1},
         "handles": {"enum": ["auto_clamped", "auto"]},
+        "paths": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1,
+            "maxItems": 64,
+        },
+        "smoothing": {"enum": ["continuous", "blender", "local"]},
+        "sigma": {"type": "number", "exclusiveMinimum": 0, "maximum": 10},
+        "mode": {"enum": ["cycle", "cycle_offset"]},
         "fixes": {
             "anyOf": [
                 {"enum": ["safe", "verify"]},

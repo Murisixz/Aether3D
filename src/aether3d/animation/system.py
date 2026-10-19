@@ -1814,6 +1814,14 @@ class AnimationSystem:
 
         return diagnose(self, **options)
 
+    def motion_report(self, targets: Any = None, **options: Any) -> dict[str, Any]:
+        """World-space motion quality of objects, joints and cameras as the evaluated scene
+        moves them: jumps, acceleration steps, jitter, snaps, pauses, pole flips, loop
+        seams, ground penetration, camera framing (see :func:`.quality.motion_report`)."""
+        from .quality import motion_report
+
+        return motion_report(self, targets, **options)
+
     def simplify(
         self, target: Any, path: str, tolerance: float, *, clip: Any = None, **options: Any
     ) -> dict[str, Any]:

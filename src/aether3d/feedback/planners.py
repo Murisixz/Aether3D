@@ -994,7 +994,86 @@ def _smooth_keys(diagnosis, finding, fix, context):
     ], None
 
 
+def _motion_subject(finding) -> dict[str, Any] | None:
+    """The object a motion finding is about (none for joints and the shot camera)."""
+    if ".joints[" in str(finding.evidence.get("location", "")):
+        return None
+    return _subject(finding, "subject")
+
+
+def _curve_smoothing(diagnosis, finding, fix, context):
+    """Acceleration steps and velocity jumps of an object's own keys: continuous handles."""
+    from ..animation.curves import FCurve
+
+    subject = _motion_subject(finding)
+    if subject is None:
+        return [], "the motion belongs to joints or shots: edit their keys or constraints"
+    scene = diagnosis.scene
+    obj = scene._objects.get(subject["id"])
+    action = None if obj is None else scene.animation.action(obj)
+    curves = [] if action is None else [
+        ch for _p, ch in action.data.channels if isinstance(ch, FCurve)
+    ]  # fmt: skip
+    if not curves or all(c.smoothing == "continuous" for c in curves):
+        return [], "its curves already use continuous smoothing (or it has none)"
+    return [
+        Draft(
+            f"Continuous acceleration for {subject['name']!r}",
+            [finding],
+            [{"action": "curve_smoothing", "object": subject["id"], "smoothing": "continuous"}],
+            "verify",
+            "its automatic handles are computed so the acceleration is continuous at every "
+            "automatic key (Blender's Continuous Acceleration); keys and values do not change, "
+            "only the handles between them. Kept only if the steps shrink and nothing else "
+            "regresses.",
+            expected=_expected(finding),
+            validation=[f"re-check {finding.check!r}"],
+        )
+    ], None
+
+
+def _smooth_motion(diagnosis, finding, fix, context):
+    subject = _motion_subject(finding)
+    if subject is None:
+        return [], "the jitter belongs to joints or shots: smooth their channels"
+    return [
+        Draft(
+            f"Smooth {subject['name']!r}'s keys",
+            [finding],
+            [{"action": "smooth_motion", "object": subject["id"], "sigma": 0.05}],
+            "approval",
+            "a Gaussian average of its key values over 0.05 s removes motion above about 3 "
+            "Hz; a shake or a vibration may be wanted: approve it if not.",
+            expected=_expected(finding),
+            validation=[f"re-check {finding.check!r}"],
+        )
+    ], None
+
+
+def _make_cyclic(diagnosis, finding, fix, context):
+    subject = _motion_subject(finding)
+    if subject is None:
+        return [], "the seam belongs to joints: make their clip's channels cyclic"
+    return [
+        Draft(
+            f"Loop {subject['name']!r}'s channels",
+            [finding],
+            [{"action": "make_cyclic", "object": subject["id"], "mode": "cycle"}],
+            "verify",
+            "cyclic extrapolation makes the automatic handles of the end keys see across the "
+            "seam, so velocity continues into the next loop. Kept only if the seam shrinks.",
+            expected=_expected(finding),
+            validation=[f"re-check {finding.check!r}"],
+        )
+    ], None
+
+
 PLANNERS = {
+    "ACCELERATION_STEP": _curve_smoothing,
+    "VELOCITY_JUMP": _curve_smoothing,
+    "JITTER": _smooth_motion,
+    "CAMERA_JITTER": _smooth_motion,
+    "LOOP_SEAM": _make_cyclic,
     "FOOT_SLIDING": _plant_feet,
     "FOOT_PENETRATION": _plant_feet,
     "MOTION_DISCONTINUITY": _smooth_keys,

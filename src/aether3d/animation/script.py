@@ -112,7 +112,7 @@ _EDIT_ARGUMENTS = (
     "weighted", "side", "type", "dt", "dv", "slope", "factor", "pivot", "velocity", "fps",
     "start", "end", "map", "left", "right", "handles", "keep_shape", "smoothing", "ease_in",
     "ease_out", "amount", "at", "settle", "oscillations", "decay", "duration", "drift",
-    "shift", "sigma", "keep_ends",
+    "shift", "sigma", "keep_ends", "extrapolation",
 )  # fmt: skip
 
 OPERATIONS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...], bool]] = {
@@ -420,6 +420,12 @@ OPERATIONS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...], bool]] = {
     "report": ("curve_report", ("path",), ("target", "clip", "samples"), True),
     "trajectory": ("trajectory", ("target",), ("start", "end", "rate", "joint"), True),
     "diagnose": ("diagnose", (), ("overshoot_relative", "include_intended", "max_findings"), True),
+    "motion": (
+        "motion_report",
+        (),
+        ("measure", "start", "end", "rate", "subject", "loop", "thresholds", "max_findings"),
+        True,
+    ),
     "contacts": (
         "foot_contacts",
         ("armature", "feet"),
@@ -431,6 +437,7 @@ OPERATIONS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...], bool]] = {
 # Script argument -> method parameter (where the names differ).
 _RENAMED = {
     "edit_keys": {"edit": "op"},
+    "motion": {"measure": "targets"},
     "generate": {"motion": "kind"},
     "skin": {"mesh": "mesh_object"},
     "unbind": {"mesh": "mesh_object"},

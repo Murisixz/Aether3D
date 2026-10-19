@@ -174,6 +174,17 @@ CHECKS: dict[str, dict[str, Any]] = {
         "(planted: within height, default 0.03 m, of the ground and within speed, default "
         "0.3 m/s, of the stance's steady velocity: a skating stance is measured)",
     },
+    "motion_quality": {
+        "fields": ("objects", "joints", "subject", "loop", "level", "ignore", "thresholds"),
+        "required": ("objects",),
+        "summary": 'the selected objects (and their rigs\' joints: joints, a list or "all"; '
+        "cameras framing a subject: an object or a point) move without world-space motion "
+        "defects at or above level (default warning) over the timeline, measured on the "
+        "evaluated scene at 120 samples per second (anim.motion_report): position jumps, "
+        "velocity jumps, jitter, rotation snaps, IK pole flips, loop seams (loop), the subject "
+        "leaving the frame or hidden; ignore lists codes not to report, thresholds overrides "
+        "the report's",
+    },
     "rig": {
         "fields": ("objects", "poses", "timeline", "ignore"),
         "required": ("objects",),
@@ -569,8 +580,40 @@ def _parse_field(doc: Doc, kind: str, key: str, value: Any, ptr: str, views: dic
             return BAD
         names = [doc.string(v, join(ptr, k), max_length=128) for k, v in enumerate(value)]
         return BAD if any(n is BAD for n in names) else names
-    if key == "timeline":
+    if key in ("timeline", "loop"):
         return doc.boolean(value, ptr)
+    if key == "joints":
+        if value == "all":
+            return value
+        if not isinstance(value, list) or not 1 <= len(value) <= 512:
+            doc.issues.add("INVALID_VALUE", 'joints is "all" or a list of 1 to 512 names', ptr)
+            return BAD
+        names = [doc.string(v, join(ptr, k), max_length=128) for k, v in enumerate(value)]
+        return BAD if any(n is BAD for n in names) else names
+    if key == "subject":
+        if isinstance(value, str):
+            return doc.string(value, ptr)
+        v = doc.vector(value, ptr)
+        return BAD if v is BAD else list(v)
+    if key == "level":
+        return doc.enum(value, ptr, ("info", "warning", "error"))
+    if key == "thresholds":
+        from ..animation.quality import DEFAULTS
+
+        obj = doc.object(value, ptr, "thresholds {name: number}")
+        if obj is None:
+            return BAD
+        out = {}
+        for k, v in obj.items():
+            if k not in DEFAULTS:
+                doc.issues.add("UNKNOWN_KEY", f"unknown threshold {k!r}", join(ptr, k),
+                               hint=f"thresholds: {', '.join(DEFAULTS)}")  # fmt: skip
+                return BAD
+            n = doc.number(v, join(ptr, k))
+            if n is BAD:
+                return BAD
+            out[k] = n
+        return out
     if key == "ignore":
         if not isinstance(value, list) or not 1 <= len(value) <= 64:
             doc.issues.add("INVALID_VALUE", "ignore is a list of 1 to 64 finding codes", ptr)
