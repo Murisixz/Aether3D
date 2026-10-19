@@ -893,9 +893,12 @@ def _blender_equal(r: dict) -> bool:
         ("film_c_graphs.py",
          lambda r: _blender_equal(r) and r["smoothing"]["acceleration_steps"]["continuous"] == 0
          and r["smoothing"]["acceleration_steps"]["local"] > 0),
+        # (and the day-night timelapse keys sixteen world channels)
         pytest.param("film_d_world.py",
                      lambda r: r["camera"]["lowest_clearance_m"] >= 12.0
-                     and not {"VELOCITY_JUMP", "CAMERA_JITTER"} & set(r["camera_quality"]),
+                     and not {"VELOCITY_JUMP", "CAMERA_JITTER"} & set(r["camera_quality"])
+                     and r["daynight"]["world_channels"] == 16
+                     and r["daynight"]["video"]["frames"] == 3,
                      marks=_needs_native()),
         # (a harsh rig found, corrected by one verified change, accepted; the camera clean)
         pytest.param("film_i_mcp_agent.py",
@@ -904,9 +907,9 @@ def _blender_equal(r: dict) -> bool:
                      and not r["camera_motion"]["findings"],
                      marks=pytest.mark.skipif(importlib.util.find_spec("mcp") is None,
                                               reason="needs the MCP SDK")),
-        # (the cut: a title, five shots dissolving into each other, an end card)
+        # (the cut: a title, six shots dissolving into each other, an end card)
         ("film_h_trailer.py",
-         lambda r: not r["missing"] and len(r["shots"]) == 7 and r["fps"] == 60
+         lambda r: not r["missing"] and len(r["shots"]) == 8 and r["fps"] == 60
          and r["frames"] == round(r["duration_s"] * 60) > 60 * 15),
         # (without git history the before run is skipped; the after runs still compare)
         ("film_g_renderer.py",

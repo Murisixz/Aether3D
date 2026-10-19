@@ -18,9 +18,15 @@ clearance above the terrain is reported. It writes:
 * ``sheet.png`` -- six moments of the move;
 * a 6-second 60 fps flight (GPU rasterizer with cascaded sun shadows):
   ``flight_1080p.mp4``, ``flight_master.mkv`` and the committed ``flight_preview.mp4``;
+* an 8-second **day-night timelapse** over the lake (0.20.0's animatable world): keys on
+  the sun's direction, intensity and colour temperature, a moon fading in, and the
+  world's ambient light, sky colours, glows and fog, from midday through golden hour and
+  sunset to night -- every value shown is a key or its interpolation, nothing simulates
+  the sky (``daynight_*`` videos and ``daynight_sheet.png``);
 * ``report.json``.
 
-    .venv/bin/python examples/film_d_world.py [--quick] [--no-video] [--part all|hero|video]
+    .venv/bin/python examples/film_d_world.py [--quick] [--no-video]
+        [--part all|hero|video|daynight]
 """
 
 from __future__ import annotations
@@ -44,12 +50,34 @@ from film_common import (  # noqa: E402
     still,
     write_report,
 )
-from worlds_alpine_valley import LAKE, build  # noqa: E402
+from worlds_alpine_valley import LAKE, build, shots  # noqa: E402
 from worlds_common import exposure  # noqa: E402
 
 DURATION = 6.0
 LENS = (28.0, 40.0)
 CLEARANCE = 12.0  # metres above the terrain, everywhere along the path
+DAY = 8.0  # seconds of the timelapse
+# (time, the sun's direction of travel, its intensity, kelvins, the moon's intensity):
+# midday, golden hour, sunset, the sun just below the horizon, night
+SUN_KEYS = (
+    (0.0, (0.35, 0.55, -0.75), 2.2, 5800.0, 0.0),
+    (3.0, (0.78, 0.40, -0.34), 2.4, 4300.0, 0.0),
+    (5.5, (0.90, 0.30, -0.09), 2.6, 2900.0, 0.0),
+    (6.6, (0.92, 0.26, 0.03), 0.5, 2300.0, 0.08),
+    (8.0, (0.92, 0.22, 0.14), 0.0, 2000.0, 0.22),
+)
+# (time, ambient, sun glow, horizon glow, fog sun, glow colour, fog colour, zenith, horizon)
+# (the Stage 16 lighting presets midday, golden and sunset, then night)
+WORLD_KEYS = (
+    (0.0, 0.45, 0.7, 0.15, 0.25, (1.0, 0.95, 0.85), (0.74, 0.82, 0.92),
+     (0.22, 0.42, 0.78), (0.78, 0.85, 0.93)),
+    (3.0, 0.34, 1.2, 0.6, 0.6, (1.0, 0.76, 0.5), (0.88, 0.8, 0.72),
+     (0.24, 0.38, 0.72), (0.9, 0.8, 0.7)),
+    (5.5, 0.26, 1.2, 1.2, 0.6, (1.0, 0.55, 0.28), (0.92, 0.66, 0.52),
+     (0.18, 0.24, 0.5), (0.95, 0.62, 0.45)),
+    (8.0, 0.04, 0.0, 0.1, 0.0, (1.0, 0.45, 0.25), (0.05, 0.06, 0.11),
+     (0.012, 0.018, 0.05), (0.04, 0.045, 0.09)),
+)  # fmt: skip
 
 
 def lowest_clearance(scene, valley, cam) -> float:
@@ -112,6 +140,45 @@ def camera_rig(scene, valley, info) -> dict:
             "attempts": tries}  # fmt: skip
 
 
+def timelapse(scene, valley, info) -> dict:
+    """The day-night cycle as keys (see the module docstring), seen by a fixed camera
+    across the lake; returns what was keyed."""
+    from aether3d.math3d import look_rotation_matrix, matrix3_to_quat
+
+    a = scene.animation
+    eye, aim = shots(valley, info)["lake"]
+    with scene.transaction("Day-night timelapse"):
+        scene.add_camera("Timelapse", position=eye, look_at=aim, focal_length=30.0,
+                         far=40000.0)  # fmt: skip
+        sun = scene.get_by_name("Sun")
+        sun.light.configure(color=(1.0, 1.0, 1.0), use_temperature=True)  # (keys tint it)
+        moon = scene.add_directional_light("Moon", direction=(-0.45, -0.35, -0.82),
+                                           intensity=0.0, angle=0.5)  # fmt: skip
+        moon.light.configure(temperature=8000.0, use_temperature=True)
+        for t, travel, power, kelvin, moonlight in SUN_KEYS:
+            q = matrix3_to_quat(look_rotation_matrix(travel, (0.0, 0.0, 1.0)))
+            a.keyframe(sun, "transform.rotation", t, q)
+            a.keyframe(sun, "light.intensity", t, power)
+            a.keyframe(sun, "light.temperature", t, kelvin)
+            a.keyframe(moon, "light.intensity", t, moonlight)
+        for t, ambient, glow, horizon, fog_sun, glow_c, fog_c, zenith, sky_h in WORLD_KEYS:
+            for path, value in (
+                ("ambient_intensity", ambient),
+                ("atmosphere.sun_glow", glow),
+                ("atmosphere.horizon_glow", horizon),
+                ("atmosphere.fog_sun", fog_sun),
+                ("atmosphere.sun_glow_color", glow_c),
+                ("atmosphere.fog_color", fog_c),
+                ("environment.zenith_color", zenith),
+                ("environment.horizon_color", sky_h),
+            ):
+                a.keyframe(scene.world, path, t, value)
+    return {"duration_s": DAY, "sun_keys": len(SUN_KEYS), "world_keys": len(WORLD_KEYS),
+            "world_channels": len(a.action(scene.world).data.channels),
+            "camera": "Timelapse", "authored": "every value shown is a key or its "
+            "interpolation; nothing simulates the sky"}  # fmt: skip
+
+
 def raster_options(quick: bool) -> dict:
     # (the Stage 16 golden-hour preset's exposure and tonemap: daylight keeps its colour)
     ev = exposure("golden")
@@ -150,6 +217,20 @@ def main() -> dict:
         end = 2 / 60 if args.quick else DURATION
         report["flight"] = sequence(scene, out, "flight", start=0.0, end=end, options=options,
                                     quick=args.quick)  # fmt: skip
+    if args.part in ("all", "daynight"):
+        report["daynight"] = timelapse(scene, valley, info)
+        lapse = {**options, "camera": "Timelapse"}
+        moments = (0.0, 3.0, 5.5, 6.6, 8.0)
+        small = {**lapse, "width": lapse["width"] // 3, "height": lapse["height"] // 3}
+        images = [scene.render(**small, time=t).image for t in moments]
+        labels = ["midday", "golden hour", "sunset", "dusk", "night"]
+        report["daynight"]["sheet"] = sheet(images, [f"{n} (t = {t:g} s)" for n, t in
+                                                     zip(labels, moments, strict=True)],
+                                            out / "daynight_sheet.png", columns=5)  # fmt: skip
+        if not args.no_video:
+            end = 2 / 60 if args.quick else DAY
+            report["daynight"]["video"] = sequence(scene, out, "daynight", start=0.0, end=end,
+                                                   options=lapse, quick=args.quick)  # fmt: skip
     report["seconds"] = round(time.perf_counter() - t0, 1)
     write_report(out / "report.json", report)
     return report

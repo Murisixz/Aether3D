@@ -36,6 +36,7 @@ from aether3d.rendering.png import write_png  # noqa: E402
 DISSOLVE = 0.4  # seconds of each dissolve
 SHOTS = (  # showcase folder, sequence name, first and last second used, caption
     ("d_world", "flight", 0.0, 5.0, "a camera through a generated world"),
+    ("d_world", "daynight", 0.0, 8.0, "an authored day-night cycle"),
     ("a_rigid", "performance", 0.4, 4.6, "rigid parts, crossfaded motion"),
     ("e_studio", "orbit", 0.0, 2.5, "studio light rigs, glass, depth of field"),
     ("b_character", "greeting", 0.0, 3.6, "a skinned character, path traced"),
