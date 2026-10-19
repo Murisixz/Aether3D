@@ -854,3 +854,49 @@ def test_committed_rigging_outputs():
     kit = Scene.load(RIGGING / "e_rigid" / "kit.aether")
     assert not any(kit.animation.rig(o) is not None for o in kit.objects)
     assert not any(kind == "skin" for kind, _ in kit.animation._owned)
+
+
+# --------------------------------------------------------------------------- #
+# Film: animation, lighting, path tracing and delivery (0.20.0)
+# --------------------------------------------------------------------------- #
+
+FILM = EXAMPLES / "output" / "film"
+
+
+def _run_film(name: str, out: Path) -> dict:
+    command = [sys.executable, str(EXAMPLES / name), "--quick", "--out", str(out)]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return json.loads((out / "report.json").read_text())
+
+
+def _blender_equal(r: dict) -> bool:
+    angles = r["quaternions"]["angles_at_quarter_half_three_quarters"]
+    return (max(r["largest_relative_difference"].values()) <= 2e-6
+            and angles["Aether3D"] == angles["Blender COMBINE"]
+            and angles["Blender REPLACE"] != angles["Aether3D"])  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("name", "checks"),
+    [
+        # (crossfades leave none of the cuts' jumps and snaps at the gestures' transitions)
+        ("film_a_rigid.py",
+         lambda r: r["bones"] == 0 and r["gestures_cuts"]["count"] >= 10
+         and not r["gestures_crossfades"]["times"]
+         and r["blip"]["squash_min"] < 0.8 and r["blip"]["stretch_max"] > 1.1),
+        ("film_c_graphs.py",
+         lambda r: _blender_equal(r) and r["smoothing"]["acceleration_steps"]["continuous"] == 0
+         and r["smoothing"]["acceleration_steps"]["local"] > 0),
+        ("film_e_studio.py",
+         lambda r: all(not codes for codes in r["camera_quality"].values())
+         and r["presets"]["three_point"]["ratio"] == 4.0
+         and r["presets"]["silhouette"]["removed"] == ["Key", "Fill", "Rim"]),
+        # (the windows and lamp glass light the street on their own: off, it is black)
+        ("film_f_night.py",
+         lambda r: r["emissive_proof"]["lights_by_emission"] and not r["camera_quality"]),
+    ],
+)  # fmt: skip
+def test_film_showcases_run(tmp_path, name, checks):
+    report = _run_film(name, tmp_path)
+    assert report["quick"] and checks(report)

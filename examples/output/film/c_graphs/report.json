@@ -1,0 +1,298 @@
+{
+ "showcase": "C graph curves against Blender",
+ "blender": "5.2.0 LTS",
+ "fixture": "/home/murisi/Projects/Aether3D/tests/data/blender_curves/curves.json",
+ "quick": false,
+ "cases": {
+  "AUTO_NONE_CONSTANT": {
+   "handles": 1.5962335169206199e-06,
+   "values": 1.860905511463784e-06,
+   "scale": 6.904114723205566
+  },
+  "AUTO_NONE_LINEAR": {
+   "handles": 1.5962335169206199e-06,
+   "values": 1.860905511463784e-06,
+   "scale": 6.904114723205566
+  },
+  "AUTO_CONT_ACCEL_CONSTANT": {
+   "handles": 1.8923091325007135e-06,
+   "values": 6.167338303941783e-06,
+   "scale": 15.311193466186523
+  },
+  "AUTO_CONT_ACCEL_LINEAR": {
+   "handles": 1.9272826765615036e-06,
+   "values": 2.9013082647466604e-06,
+   "scale": 15.21269416809082
+  },
+  "AUTO_CLAMPED_NONE_CONSTANT": {
+   "handles": 1.5962335169206199e-06,
+   "values": 3.63025823180152e-07,
+   "scale": 3.0
+  },
+  "AUTO_CLAMPED_NONE_LINEAR": {
+   "handles": 1.5962335169206199e-06,
+   "values": 3.63025823180152e-07,
+   "scale": 3.0
+  },
+  "AUTO_CLAMPED_CONT_ACCEL_CONSTANT": {
+   "handles": 1.2715657575768091e-06,
+   "values": 4.76837158203125e-07,
+   "scale": 3.0
+  },
+  "AUTO_CLAMPED_CONT_ACCEL_LINEAR": {
+   "handles": 1.2715657575768091e-06,
+   "values": 4.76837158203125e-07,
+   "scale": 3.0
+  },
+  "VECTOR_NONE_CONSTANT": {
+   "handles": 1.2715657575768091e-06,
+   "values": 1.9744038581848145e-07,
+   "scale": 3.0
+  },
+  "VECTOR_NONE_LINEAR": {
+   "handles": 1.2715657575768091e-06,
+   "values": 1.9744038581848145e-07,
+   "scale": 3.0
+  },
+  "VECTOR_CONT_ACCEL_CONSTANT": {
+   "handles": 1.2715657575768091e-06,
+   "values": 1.9744038581848145e-07,
+   "scale": 3.0
+  },
+  "VECTOR_CONT_ACCEL_LINEAR": {
+   "handles": 1.2715657575768091e-06,
+   "values": 1.9744038581848145e-07,
+   "scale": 3.0
+  },
+  "scaled10_AUTO": {
+   "handles": 1.5108394080698417e-05,
+   "values": 4.293087467743817e-05,
+   "scale": 153.1119384765625
+  },
+  "timescaled2_AUTO": {
+   "handles": 2.5431315151536182e-06,
+   "values": 5.454932250348321e-06,
+   "scale": 15.311193466186523
+  },
+  "scaled10_AUTO_CLAMPED": {
+   "handles": 1.2715657575768091e-06,
+   "values": 7.62939453125e-06,
+   "scale": 30.0
+  },
+  "timescaled2_AUTO_CLAMPED": {
+   "handles": 2.5431315151536182e-06,
+   "values": 7.152557373046875e-07,
+   "scale": 3.0
+  },
+  "long_free": {
+   "handles": 0.0,
+   "values": 1.783743351913003e-07,
+   "scale": 1.0
+  },
+  "free_asym": {
+   "handles": 0.0,
+   "values": 1.30813435239574e-06,
+   "scale": 6.0
+  },
+  "cycles_REPEAT_REPEAT": {
+   "handles": 6.357828787884046e-07,
+   "values": 2.384185791015625e-07,
+   "scale": 2.0
+  },
+  "mono_AUTO_NONE_CONSTANT": {
+   "handles": 1.050851253125984e-06,
+   "values": 7.265089960739601e-07,
+   "scale": 5.283048152923584
+  },
+  "mono_AUTO_NONE_LINEAR": {
+   "handles": 1.050851253125984e-06,
+   "values": 7.265089960739601e-07,
+   "scale": 5.283048152923584
+  },
+  "mono_AUTO_CONT_ACCEL_CONSTANT": {
+   "handles": 1.2715657575768091e-06,
+   "values": 7.679068683152934e-07,
+   "scale": 5.2328996658325195
+  },
+  "mono_AUTO_CONT_ACCEL_LINEAR": {
+   "handles": 1.2715657575768091e-06,
+   "values": 9.67624717240767e-07,
+   "scale": 5.244345664978027
+  },
+  "mono_AUTO_CLAMPED_NONE_CONSTANT": {
+   "handles": 1.050851253125984e-06,
+   "values": 3.4184500297129716e-07,
+   "scale": 5.0
+  },
+  "mono_AUTO_CLAMPED_NONE_LINEAR": {
+   "handles": 1.050851253125984e-06,
+   "values": 3.4184500297129716e-07,
+   "scale": 5.0
+  },
+  "mono_AUTO_CLAMPED_CONT_ACCEL_CONSTANT": {
+   "handles": 1.2715657575768091e-06,
+   "values": 4.982354941951428e-07,
+   "scale": 5.0
+  },
+  "mono_AUTO_CLAMPED_CONT_ACCEL_LINEAR": {
+   "handles": 1.2715657575768091e-06,
+   "values": 4.4559539080779587e-07,
+   "scale": 5.0
+  },
+  "uniform_AUTO_NONE_CONSTANT": {
+   "handles": 7.005675008997514e-07,
+   "values": 4.0402003653738916e-07,
+   "scale": 3.1561646461486816
+  },
+  "uniform_AUTO_NONE_LINEAR": {
+   "handles": 7.005675008997514e-07,
+   "values": 4.0402003653738916e-07,
+   "scale": 3.1561646461486816
+  },
+  "uniform_AUTO_CONT_ACCEL_CONSTANT": {
+   "handles": 1.0881668499607144e-07,
+   "values": 2.656312410032058e-07,
+   "scale": 3.123076915740967
+  },
+  "uniform_AUTO_CONT_ACCEL_LINEAR": {
+   "handles": 1.1126200361033511e-07,
+   "values": 3.9587842781685367e-07,
+   "scale": 3.133333206176758
+  },
+  "uniform_AUTO_CLAMPED_NONE_CONSTANT": {
+   "handles": 7.005675008997514e-07,
+   "values": 3.0735700917716713e-07,
+   "scale": 3.0
+  },
+  "uniform_AUTO_CLAMPED_NONE_LINEAR": {
+   "handles": 7.005675008997514e-07,
+   "values": 3.0735700917716713e-07,
+   "scale": 3.0
+  },
+  "uniform_AUTO_CLAMPED_CONT_ACCEL_CONSTANT": {
+   "handles": 0.0,
+   "values": 5.441683308404777e-07,
+   "scale": 3.0
+  },
+  "uniform_AUTO_CLAMPED_CONT_ACCEL_LINEAR": {
+   "handles": 5.108969558520471e-08,
+   "values": 5.441683308404777e-07,
+   "scale": 3.0
+  },
+  "loop_equal_AUTO_NONE": {
+   "handles": 9.340900000154306e-07,
+   "values": 2.903973621570799e-07,
+   "scale": 1.175685167312622
+  },
+  "loop_equal_AUTO_CONT_ACCEL": {
+   "handles": 6.357828787884046e-07,
+   "values": 4.318850168605337e-07,
+   "scale": 1.23415207862854
+  },
+  "loop_equal_AUTO_CLAMPED_NONE": {
+   "handles": 9.340900000154306e-07,
+   "values": 1.5818778498211117e-07,
+   "scale": 1.0
+  },
+  "loop_equal_AUTO_CLAMPED_CONT_ACCEL": {
+   "handles": 6.357828787884046e-07,
+   "values": 9.639188647270203e-08,
+   "scale": 1.0
+  },
+  "loop_unequal_AUTO_NONE": {
+   "handles": 9.340900000154306e-07,
+   "values": 2.903973621570799e-07,
+   "scale": 1.175685167312622
+  },
+  "loop_unequal_AUTO_CONT_ACCEL": {
+   "handles": 6.357828787884046e-07,
+   "values": 4.529886141746431e-07,
+   "scale": 1.2844536304473877
+  },
+  "loop_unequal_AUTO_CLAMPED_NONE": {
+   "handles": 9.340900000154306e-07,
+   "values": 1.3020861155954577e-07,
+   "scale": 1.0
+  },
+  "loop_unequal_AUTO_CLAMPED_CONT_ACCEL": {
+   "handles": 6.357828787884046e-07,
+   "values": 8.010864249730076e-08,
+   "scale": 1.0
+  },
+  "mixed_vector_NONE": {
+   "handles": 9.340900000154306e-07,
+   "values": 5.289720483858673e-07,
+   "scale": 6.0
+  },
+  "mixed_free_NONE": {
+   "handles": 9.340900000154306e-07,
+   "values": 4.765091103919872e-07,
+   "scale": 6.0
+  },
+  "mixed_vector_CONT_ACCEL": {
+   "handles": 6.357828787884046e-07,
+   "values": 4.0619461572077853e-07,
+   "scale": 6.0
+  },
+  "mixed_free_CONT_ACCEL": {
+   "handles": 6.357828787884046e-07,
+   "values": 4.668574815624993e-07,
+   "scale": 6.0
+  },
+  "mixed_interp_NONE": {
+   "handles": 9.340900000154306e-07,
+   "values": 3.3387879216917327e-07,
+   "scale": 6.0
+  },
+  "mixed_interp_CONT_ACCEL": {
+   "handles": 6.357828787884046e-07,
+   "values": 9.93989994757527e-08,
+   "scale": 6.0
+  }
+ },
+ "largest_relative_difference": {
+  "handles": 9.340900000154306e-07,
+  "values": 4.0279931917533587e-07
+ },
+ "agreement": "Blender stores float32: every handle and value agrees within 2e-6 of the case's scale",
+ "cases_png": "output/film/c_graphs/cases.png",
+ "smoothing": {
+  "acceleration_steps": {
+   "local": 5,
+   "blender": 5,
+   "continuous": 0
+  },
+  "png": "output/film/c_graphs/smoothing.png"
+ },
+ "quaternions": {
+  "png": "output/film/c_graphs/quaternions.png",
+  "angles_at_quarter_half_three_quarters": {
+   "Aether3D": [
+    42.5,
+    85.0,
+    127.5
+   ],
+   "Blender REPLACE": [
+    35.77,
+    85.0,
+    134.23
+   ],
+   "Blender COMBINE": [
+    42.5,
+    85.0,
+    127.5
+   ]
+  },
+  "blender_replace_norm_midway": 0.737,
+  "note": "Blender's REPLACE adds quaternion components (unnormalized midway); Aether3D slerps, so a linear ramp turns at an even rate",
+  "samples": 62,
+  "middle_frame": 100.5
+ },
+ "seconds": 3.38,
+ "machine": {
+  "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+  "aether3d": "0.19.1",
+  "native": true,
+  "python": "3.14.8"
+ }
+}

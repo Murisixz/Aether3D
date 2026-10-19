@@ -202,3 +202,24 @@ def test_graphs_draw_jerk_and_the_exact_analysis():
     assert ">C1<" not in plain and "<polygon" not in plain
     image = anim.graph([(box, "transform.position.x")], plots=("value", "jerk"), format="png")
     assert image.shape[1] == 900 and image.dtype.name == "uint8"
+
+
+def test_graphs_draw_reference_samples_to_compare_with():
+    from aether3d.animation.graph import graph_png, graph_svg
+    from aether3d.errors import AnimationError
+
+    curve = FCurve.from_keys([(0.0, 0.0), (1.0, 1.0)], interpolation="linear")
+    t = np.linspace(0.0, 1.0, 11)
+    refs = {"Other program": (t, t + 5.0)}  # (far above: it widens the value range)
+    svg = graph_svg({"Ours": curve}, references=refs, plots=("value",))
+    # Eleven crosses (two strokes each) and one in the legend; the range covers them.
+    ink = 'stroke="rgb(26,26,26)" stroke-width="0.9"/>'  # (the first reference's)
+    assert svg.count(ink) == 2 * 12 and ">Other program<" in svg
+    assert ">6<" in svg
+    plain = graph_png({"Ours": curve}, plots=("value",))
+    marked = graph_png({"Ours": curve}, references=refs, plots=("value",))
+    assert plain.shape == marked.shape and (plain != marked).any()
+    for bad in ({"x": (t, t[:-1])}, {"x": (t, np.full(11, np.nan))}, {"x": 3},
+                {"x": (np.zeros(20_001), np.zeros(20_001))}):  # fmt: skip
+        with pytest.raises(AnimationError):
+            graph_svg({"Ours": curve}, references=bad)

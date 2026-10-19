@@ -11,7 +11,9 @@ tangents are clipped and marked). With ``annotate`` (default), the exact analysi
 :mod:`~aether3d.animation.report` is drawn on top: a discontinuity of order ``k`` (value
 C0, velocity C1, acceleration C2) is a dashed line on the plot of that order, labelled
 ``C0``/``C1``/``C2`` (grey when the step is intended: constant keys, jump pairs), and the
-value's extrema are triangles labelled ``max``/``min``.
+value's extrema are triangles labelled ``max``/``min``. ``references`` (0.20.0) are
+sampled points of other curves -- another program's evaluation of the same keys, captured
+motion -- drawn as crosses on the value plot to compare with.
 """
 
 from __future__ import annotations
@@ -38,6 +40,8 @@ PLOTS = ("value", "velocity", "acceleration", "jerk")
 DEFAULT_PLOTS = ("value", "velocity", "acceleration")
 ORDER_PLOT = {0: "value", 1: "velocity", 2: "acceleration"}
 MAX_CURVES = 32
+MAX_REFERENCE_POINTS = 20_000
+REFERENCE_INKS = ((0.1, 0.1, 0.1), (0.62, 0.32, 0.05), (0.12, 0.32, 0.62), (0.45, 0.1, 0.5))
 
 
 def _nice(lo: float, hi: float, count: int = 5) -> list[float]:
@@ -53,12 +57,39 @@ def _nice(lo: float, hi: float, count: int = 5) -> list[float]:
     return [first + i * step for i in range(int((hi - first) / step + 1e-9) + 1)]
 
 
+def _references(references: Any) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Checked reference samples: name -> (times, values), finite, at most
+    :data:`MAX_REFERENCE_POINTS` in all."""
+    out: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    total = 0
+    for name, pair in (references or {}).items():
+        try:
+            times, values = (np.asarray(x, np.float64).reshape(-1) for x in pair)
+        except (TypeError, ValueError):
+            raise AnimationError("INVALID_ARGUMENT", "a reference is (times, values)",
+                                 f"references.{name}") from None  # fmt: skip
+        if times.shape != values.shape or not (
+            np.isfinite(times).all() and np.isfinite(values).all()
+        ):
+            raise AnimationError("INVALID_ARGUMENT",
+                                 "a reference's times and values are finite, as many of each",
+                                 f"references.{name}")  # fmt: skip
+        total += times.size
+        out[str(name)] = (times, values)
+    if total > MAX_REFERENCE_POINTS:
+        raise AnimationError(
+            "INVALID_ARGUMENT", f"at most {MAX_REFERENCE_POINTS} reference points", "references"
+        )
+    return out  # fmt: skip
+
+
 def _layout(
     curves: dict[str, FCurve],
     start: float | None,
     end: float | None,
     plots: tuple[str, ...],
     samples: int,
+    references: dict[str, tuple[np.ndarray, np.ndarray]] | None = None,
 ) -> dict[str, Any]:
     if not curves or len(curves) > MAX_CURVES:
         raise AnimationError("INVALID_ARGUMENT", f"graph 1..{MAX_CURVES} curves", "curves")
@@ -80,6 +111,8 @@ def _layout(
     for p in plots:
         vals = np.concatenate([np.where(np.isfinite(data[n][p]), data[n][p], np.nan) for n in data])
         if p == "value":
+            for rt, rv in (references or {}).values():
+                vals = np.concatenate([vals, rv[(rt >= lo) & (rt <= hi)]])
             for c in curves.values():
                 keys = c.times
                 sel = (keys >= lo) & (keys <= hi)
@@ -107,7 +140,8 @@ def _layout(
             a, b = a - 1.0, b + 1.0
         pad = 0.08 * (b - a)
         ranges[p] = (a - pad, b + pad)
-    return {"t": t, "data": data, "ranges": ranges, "range": (lo, hi)}
+    return {"t": t, "data": data, "ranges": ranges, "range": (lo, hi),
+            "references": references or {}}  # fmt: skip
 
 
 def _shapes(
@@ -197,12 +231,23 @@ def _shapes(
                         texts.append((kx - 3, ky - 7, str(k), 8, (0.3, 0.3, 0.3)))
             if annotate:
                 _annotations(curve, p, lo, hi, x_of, y_of, y0, plot_h, color, lines, texts, marks)
+        if p == "value":
+            for ri, (rt, rv) in enumerate(layout["references"].values()):
+                ink = REFERENCE_INKS[ri % len(REFERENCE_INKS)]
+                sel = (rt >= lo) & (rt <= hi)
+                for tt, vv in zip(rt[sel].tolist(), rv[sel].tolist(), strict=True):
+                    marks.append(("ref", float(x_of(tt)), float(y_of(vv)), ink))
         if pi == 0:
             for ci, name in enumerate(curves):
                 color = PALETTE[ci % len(PALETTE)]
                 lx = left + plot_w - 180
                 ly = y0 + 14 + 13 * ci
                 lines.append((lx, ly - 3, lx + 16, ly - 3, color, 2.0))
+                texts.append((lx + 20, ly, name[:28], 9, (0.15, 0.15, 0.15)))
+            for ri, name in enumerate(layout["references"]):
+                lx = left + plot_w - 180
+                ly = y0 + 14 + 13 * (len(curves) + ri)
+                marks.append(("ref", lx + 8, ly - 3, REFERENCE_INKS[ri % len(REFERENCE_INKS)]))
                 texts.append((lx + 20, ly, name[:28], 9, (0.15, 0.15, 0.15)))
     height = top + len(plots) * (plot_h + gap)
     return {"lines": lines, "texts": texts, "marks": marks, "width": width, "height": height}
@@ -242,9 +287,11 @@ def graph_svg(
     samples: int = 600,
     title: str | None = None,
     annotate: bool = True,
+    references: dict[str, Any] | None = None,
 ) -> str:
-    """An SVG document graphing ``curves`` (name -> curve)."""
-    layout = _layout(curves, start, end, tuple(plots), samples)
+    """An SVG document graphing ``curves`` (name -> curve); ``references``: name ->
+    ``(times, values)`` drawn as crosses on the value plot."""
+    layout = _layout(curves, start, end, tuple(plots), samples, _references(references))
     sh = _shapes(curves, layout, tuple(plots), int(width), int(plot_height), title, annotate)
 
     def rgb(c):
@@ -272,6 +319,12 @@ def graph_svg(
                 f'<circle cx="{x:.2f}" cy="{y:.2f}" r="2.6" fill="white" '
                 f'stroke="{rgb(c)}" stroke-width="1"/>'
             )
+        elif kind == "ref":
+            for dx, dy in ((2.6, 2.6), (2.6, -2.6)):
+                out.append(
+                    f'<line x1="{x - dx:.2f}" y1="{y - dy:.2f}" x2="{x + dx:.2f}" '
+                    f'y2="{y + dy:.2f}" stroke="{rgb(c)}" stroke-width="0.9"/>'
+                )
         elif kind in ("max", "min"):
             dy = -4.5 if kind == "max" else 4.5
             out.append(
@@ -301,13 +354,14 @@ def graph_png(
     samples: int = 600,
     title: str | None = None,
     annotate: bool = True,
+    references: dict[str, Any] | None = None,
 ) -> np.ndarray:
     """The same graph as an RGB uint8 image, drawn by Aether3D (stroke rasterizer and
     stroke font)."""
     from ..cad.drawing.font import text_strokes
     from ..cad.drawing.raster import _stroke
 
-    layout = _layout(curves, start, end, tuple(plots), samples)
+    layout = _layout(curves, start, end, tuple(plots), samples, _references(references))
     sh = _shapes(curves, layout, tuple(plots), int(width), int(plot_height), title, annotate)
     h, w = int(sh["height"]), int(sh["width"])
     image = np.ones((h, w, 3))
@@ -315,6 +369,10 @@ def graph_png(
     for x0, y0, x1, y1, c, lw in sh["lines"]:
         groups.setdefault((c, lw), []).append((x0, y0, x1, y1))
     for kind, x, y, c in sh["marks"]:
+        if kind == "ref":  # a cross
+            for dx, dy in ((2.4, 2.4), (2.4, -2.4)):
+                groups.setdefault((c, 0.8), []).append((x - dx, y - dy, x + dx, y + dy))
+            continue
         r = (
             3.0
             if kind == "key"
