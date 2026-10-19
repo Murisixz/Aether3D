@@ -649,9 +649,15 @@ CAMERA = _Fields(
 LIGHT = _Fields(
     "light",
     "_light",
-    ("type", "color", "intensity", "range", "falloff", "radius", "angle"),
+    (
+        "type", "color", "intensity", "range", "falloff", "radius", "angle",
+        # spot and area lights, units, temperature (0.20.0)
+        "spot_size", "spot_blend", "shape", "size", "size_y", "spread", "units", "temperature",
+        "include", "exclude",
+        "use_temperature", "exposure", "shadow",
+    ),
     _light,
-)
+)  # fmt: skip
 DATA = _Data("geometry")
 MATERIALS = _Materials("material", (_LIBRARY,))
 PARENT = _Attr("parent", "_parent")

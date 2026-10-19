@@ -22,6 +22,11 @@ path                                   kind    unit                   valid valu
 ``light.intensity``                    scalar  light units            >= 0
 ``light.color.r|g|b``                  scalar  display sRGB           0 .. 1
 ``light.range`` / ``radius``/``angle`` scalar  units / degrees        >= 0
+``light.spot_size`` / ``spot_blend``   scalar  degrees / 0..1         0.1 .. 180, 0 .. 1
+``light.size`` / ``light.size_y``      scalar  metres                 > 0
+``light.spread``                       scalar  degrees                1 .. 180
+``light.temperature``                  scalar  kelvins                100 .. 100000
+``light.exposure``                     scalar  stops                  -40 .. 40
 ``appearance.color.r|g|b``             scalar  display sRGB           0 .. 1
 ``appearance.specular``                scalar  0..1                   0 .. 1
 ``appearance.shininess``               scalar  exponent               1 .. 10000
@@ -110,6 +115,13 @@ _OBJECT: dict[tuple[str, str], tuple[str, dict[str, int] | None, str, float, flo
     ("light", "range"): (SCALAR, None, "m", 0.0, _INF),
     ("light", "radius"): (SCALAR, None, "m", 0.0, _INF),
     ("light", "angle"): (SCALAR, None, "deg", 0.0, 180.0),
+    ("light", "spot_size"): (SCALAR, None, "deg", 0.1, 180.0),
+    ("light", "spot_blend"): (SCALAR, None, "1", 0.0, 1.0),
+    ("light", "spread"): (SCALAR, None, "deg", 1.0, 180.0),
+    ("light", "size"): (SCALAR, None, "m", 1e-6, 1e6),
+    ("light", "size_y"): (SCALAR, None, "m", 1e-6, 1e6),
+    ("light", "temperature"): (SCALAR, None, "K", 100.0, 100000.0),
+    ("light", "exposure"): (SCALAR, None, "EV", -40.0, 40.0),
     ("appearance", "color"): (SCALAR, _RGB, "sRGB", 0.0, 1.0),
     ("appearance", "specular"): (SCALAR, None, "1", 0.0, 1.0),
     ("appearance", "shininess"): (SCALAR, None, "1", 1.0, 10000.0),

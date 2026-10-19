@@ -96,7 +96,11 @@ _CAMERA = {
     "shift_x", "shift_y", "fstop", "focus_distance", "focus_object", "aperture_blades",
     "aperture_rotation", "aperture_ratio", "focal_length",
 }  # fmt: skip
-_LIGHT = {"color", "intensity", "range", "falloff", "radius", "angle"}
+_LIGHT = {
+    "color", "intensity", "range", "falloff", "radius", "angle", "spot_size", "spot_blend",
+    "shape", "size", "size_y", "spread", "units", "temperature", "use_temperature",
+    "exposure", "shadow",
+}  # fmt: skip
 _PLACE = {"parent", "position", "rotation_euler", "look_at", "up"}
 _SPECS: dict[str, tuple[set[str], set[str]]] = {
     "add_camera": (

@@ -30,6 +30,14 @@ shadow rays each:
 So sizing a light keeps how strongly it lights surfaces facing it and only
 softens shadows (and spreads light around a bit near the source).
 
+**Spot lights** (0.20.0) are point lights (sized or not) whose irradiance is masked by
+the cone along their axis (``RenderLight.spot_mask`` of the direction from the light's
+centre). **Area lights** are one-sided Lambertian squares, rectangles, disks and
+ellipses of radiance ``L = pi c I / A``: a uniform point ``x`` of the shape (by area) gives
+``f cos x L A cos_l / d^2`` (solid-angle density ``d^2 / (A cos_l)``), and rays the BSDF
+sends into the shape before any surface see ``L``, both strategies weighted by the power
+heuristic. A light with ``shadow`` off is never occluded (no shadow ray).
+
 Lights without size can be reached only this way. Sized lights are found
 by BSDF-sampled rays too: a ray leaving the scene inside a sun's cone, or
 entering a light's sphere before any surface, sees the light's radiance.
@@ -93,7 +101,7 @@ class Emitters:
 
 @dataclass
 class LightSet:
-    kind: np.ndarray  # (L,) 0: directional, 1: point
+    kind: np.ndarray  # (L,) 0: directional, 1: point, 2: spot, 3: area
     radiance: np.ndarray  # (L, 3) linear color x intensity
     position: np.ndarray  # (L, 3)
     to_light: np.ndarray  # (L, 3) directional: unit direction toward the light
@@ -102,12 +110,15 @@ class LightSet:
     range: np.ndarray  # (L,) inf: no range window
     inverse_square: np.ndarray  # (L,) bool
     emitters: Emitters | None
+    lights: tuple = ()  # the RenderLights (spot masks, area shapes)
+    shadow: np.ndarray | None = None  # (L,) bool: occluded by geometry
 
     @classmethod
     def build(cls, ps) -> LightSet:
         lights = ps.rs.lights
         n = len(lights)
-        kind = np.array([0 if light.type == "directional" else 1 for light in lights], dtype=int)
+        kinds = {"directional": 0, "point": 1, "spot": 2, "area": 3}
+        kind = np.array([kinds[light.type] for light in lights], dtype=int)
         radiance = np.array([light.radiance for light in lights], dtype=np.float64).reshape(n, 3)
         position = np.zeros((n, 3))
         to_light = np.zeros((n, 3))
@@ -124,6 +135,11 @@ class LightSet:
                 radius[k] = light.radius
                 rng[k] = np.inf if light.range is None else light.range
                 inverse_square[k] = light.falloff == "inverse_square"
+        for k, light in enumerate(lights):
+            if light.type == "area":
+                position[k] = light.position
+                radius[k] = 0.0
+        shadow = np.array([light.shadow for light in lights], dtype=bool)
         return cls(
             kind,
             radiance,
@@ -134,6 +150,8 @@ class LightSet:
             rng,
             inverse_square,
             _emitters(ps),
+            tuple(lights),
+            shadow,
         )
 
     @property
@@ -144,8 +162,12 @@ class LightSet:
         return {
             "lights": self.count,
             "sized_lights": int(
-                np.count_nonzero((self.radius > 0) | ((self.kind == 0) & (self.cos_max < 1.0)))
+                np.count_nonzero(
+                    (self.radius > 0) | ((self.kind == 0) & (self.cos_max < 1.0)) | (self.kind == 3)
+                )
             ),
+            "spot_lights": int(np.count_nonzero(self.kind == 2)),
+            "area_lights": int(np.count_nonzero(self.kind == 3)),
             "emissive_triangles": 0 if self.emitters is None else self.emitters.count,
         }
 
@@ -154,7 +176,11 @@ class LightSet:
     @property
     def sized(self) -> bool:
         """Whether some light has a size (and can be found by BSDF-sampled rays)."""
-        return bool(np.any((self.kind == 0) & (self.cos_max < 1.0)) or np.any(self.radius > 0.0))
+        return bool(
+            np.any((self.kind == 0) & (self.cos_max < 1.0))
+            or np.any(self.radius > 0.0)
+            or np.any(self.kind == 3)
+        )
 
     def _point_scale(self, index: int, dist: np.ndarray) -> np.ndarray:
         """Unoccluded irradiance factor of point light ``index`` at center distance ``dist``."""
@@ -177,6 +203,8 @@ class LightSet:
         """
         m = p.shape[0]
         slot = SLOT_LIGHTS + 3 * sample
+        if self.kind[index] == 3:
+            return self._sample_area(index, p, keys, vertex, slot)
         if self.kind[index] == 0:
             axis = np.broadcast_to(self.to_light[index], (m, 3))
             cos_max = self.cos_max[index]
@@ -224,10 +252,115 @@ class LightSet:
                 sphere[rows] = 2.0 * (1.0 - cmax) / sin2
                 pdf[rows] = 1.0 / (2.0 * math.pi * np.maximum(1.0 - cmax, 1e-300))
         scale = self._point_scale(index, dist) * sphere[:, None]
+        if self.kind[index] == 2:  # a spot: the cone along its axis masks it
+            light = self.lights[index]
+            scale = scale * light.spot_mask(-(axis @ light.direction))[:, None]
         return wi, target, scale, pdf
 
+    def _sample_area(self, index: int, p: np.ndarray, keys, vertex: int, slot: int):
+        """A uniform point of area light ``index``'s shape (by area), or of the part of a
+        spread light that reaches each point."""
+        from ..camera import aperture_points
+
+        light = self.lights[index]
+        u1 = uniform(keys, dimension(vertex, slot))
+        u2 = uniform(keys, dimension(vertex, slot + 1))
+        if light.spread_tan > 0.0:
+            return self._sample_spread(light, p, u1, u2)
+        if light.shape in ("disk", "ellipse"):
+            a, b = aperture_points(u1, u2, 0, 0.0, 1.0)
+        else:
+            a, b = 2.0 * u1 - 1.0, 2.0 * u2 - 1.0
+        x = light.position + a[:, None] * light.axis_x + b[:, None] * light.axis_y
+        v = x - p
+        d2 = (v * v).sum(axis=1)
+        dist = np.sqrt(d2)
+        wi = v / np.maximum(dist, 1e-300)[:, None]
+        cos_l = -(wi @ light.direction)
+        ok = (cos_l > 1e-12) & (dist > 0.0)
+        safe = np.where(ok, cos_l, 1.0)
+        pdf = np.where(ok, d2 / (light.area * safe), 0.0)
+        # f cos L / pdf = f cos x L A cos_l / d^2, L = pi c I / A.
+        scale = np.where(
+            ok[:, None], (math.pi * light.radiance)[None, :] * (safe / d2)[:, None], 0.0
+        )
+        pdf = np.where(ok, pdf, np.inf)  # (not sampleable from here: weight 1, contributes 0)
+        return wi, x, scale, pdf
+
+    @staticmethod
+    def _sample_spread(light, p: np.ndarray, u1: np.ndarray, u2: np.ndarray):
+        """A uniform point of the rectangle of a spread light that reaches ``p``
+        (``RenderLight.spread_window``; points of it outside a disk or ellipse give 0):
+        ``f cos x L g A_w cos_l / d^2`` with ``g`` the spread factor and ``A_w`` the
+        rectangle's area."""
+        u0, u1_, w0, w1_, area, reach = light.spread_window(p)
+        a = u0 + (u1_ - u0) * u1
+        b = w0 + (w1_ - w0) * u2
+        if light.shape in ("disk", "ellipse"):
+            reach = reach & (a * a + b * b <= 1.0)
+        x = light.position + a[:, None] * light.axis_x + b[:, None] * light.axis_y
+        v = x - p
+        d2 = (v * v).sum(axis=1)
+        dist = np.sqrt(d2)
+        wi = v / np.maximum(dist, 1e-300)[:, None]
+        cos_l = -(wi @ light.direction)
+        g = light.spread_factor(cos_l)
+        ok = reach & (cos_l > 1e-12) & (dist > 0.0) & (g > 0.0)
+        safe = np.where(ok, cos_l, 1.0)
+        a_w = np.where(ok, area, 1.0)
+        pdf = np.where(ok, d2 / (a_w * safe), np.inf)
+        weight = light.area_radiance[None, :] * (g * a_w * safe / np.where(ok, d2, 1.0))[:, None]
+        scale = np.where(ok[:, None], weight, 0.0)
+        return wi, x, scale, pdf
+
+    def area_pdf_hit(self, index: int, o: np.ndarray, d: np.ndarray, t_limit: np.ndarray):
+        """Where rays ``o + t d`` enter area light ``index`` before ``t_limit``:
+        ``(seen, t, pdf, factor)`` -- the rays that meet its front face inside its shape
+        (and, for spread lights, inside the part of it that reaches ``o``), their distance,
+        the light's solid-angle density there and its radiance factor (the spread
+        factor, or 1)."""
+        light = self.lights[index]
+        n = light.direction
+        denom = d @ n
+        rel = light.position - o
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t = (rel @ n) / denom
+        front = denom < 0.0  # the ray travels against the normal: toward the face
+        hit = front & (t > 0.0) & (t < t_limit)
+        q = o + d * t[:, None] - light.position
+        u = (q @ light.axis_x) / float(light.axis_x @ light.axis_x)
+        w = (q @ light.axis_y) / float(light.axis_y @ light.axis_y)
+        if light.shape in ("disk", "ellipse"):
+            inside = u * u + w * w <= 1.0
+        else:
+            inside = (np.abs(u) <= 1.0) & (np.abs(w) <= 1.0)
+        cos_l = np.maximum(-denom, 1e-300)
+        if light.spread_tan > 0.0:
+            u0, u1, w0, w1, area, reach = light.spread_window(o)
+            inside &= reach & (u >= u0) & (u <= u1) & (w >= w0) & (w <= w1)
+            seen = hit & inside
+            factor = np.where(seen, light.spread_factor(cos_l), 0.0)
+            pdf = np.where(seen, t * t / (np.where(seen, area, 1.0) * cos_l), 0.0)
+            return seen & (factor > 0.0), t, pdf, factor
+        seen = hit & inside
+        pdf = np.where(seen, t * t / (light.area * cos_l), 0.0)
+        return seen, t, pdf, np.ones(o.shape[0])
+
+    def receivers_at(self, index: int, inst: np.ndarray) -> np.ndarray | None:
+        """Light linking: whether light ``index`` lights interactions on instances ``inst``
+        (``None``: it lights them all)."""
+        light = self.lights[index] if index < len(self.lights) else None
+        if light is None or light.receivers is None:
+            return None
+        return light.receivers[np.asarray(inst, dtype=np.int64)]
+
     def hit_sized(
-        self, o: np.ndarray, d: np.ndarray, t_geometry: np.ndarray, pdf_bsdf: np.ndarray
+        self,
+        o: np.ndarray,
+        d: np.ndarray,
+        t_geometry: np.ndarray,
+        pdf_bsdf: np.ndarray,
+        inst: np.ndarray | None = None,
     ) -> np.ndarray:
         """Radiance of sized lights that BSDF-sampled rays reach, MIS-weighted (``(n, 3)``).
 
@@ -236,11 +369,30 @@ class LightSet:
         each direction with. A sun disk is reached by rays that leave the
         scene inside its cone, a sphere light by rays that enter it before
         any surface. Weighted by the power heuristic against light sampling
-        (see :meth:`sample_analytic`), so each light is counted once.
+        (see :meth:`sample_analytic`), so each light is counted once. Lights whose
+        ``shadow`` is off are reached through surfaces (light sampling does not test
+        occlusion for them either). ``inst``: the instances the rays leave -- with light
+        linking, a light counts only for rays leaving objects it lights.
         """
         out = np.zeros((o.shape[0], 3))
-        escaped = ~np.isfinite(t_geometry)
+        t_geometry = np.broadcast_to(np.asarray(t_geometry, np.float64), (o.shape[0],))
+        none = np.full(o.shape[0], np.inf)
         for index in range(self.count):
+            shadowed = self.shadow is None or bool(self.shadow[index])
+            limit = t_geometry if shadowed else none
+            escaped = ~np.isfinite(limit)
+            allow = None if inst is None else self.receivers_at(index, inst)
+            if allow is not None:
+                escaped = escaped & allow
+            if self.kind[index] == 3:
+                seen, _t, pdf_l, factor = self.area_pdf_hit(index, o, d, limit)
+                if allow is not None:
+                    seen = seen & allow
+                if seen.any():
+                    light = self.lights[index]
+                    w = power_heuristic(pdf_bsdf[seen], pdf_l[seen]) * factor[seen]
+                    out[seen] += light.area_radiance[None, :] * w[:, None]
+                continue
             if self.kind[index] == 0:
                 cos_max = self.cos_max[index]
                 if cos_max >= 1.0 or not escaped.any():
@@ -263,7 +415,9 @@ class LightSet:
             disc = proj * proj - (dist2 - r * r)
             enters = outside & (disc >= 0.0)
             t_sphere = proj - np.sqrt(np.maximum(disc, 0.0))
-            seen = enters & (t_sphere > 0.0) & (t_sphere < t_geometry)
+            seen = enters & (t_sphere > 0.0) & (t_sphere < limit)
+            if allow is not None:
+                seen = seen & allow
             if not seen.any():
                 continue
             dist = np.sqrt(dist2[seen])
@@ -272,6 +426,10 @@ class LightSet:
             pdf = 1.0 / (2.0 * math.pi * np.maximum(1.0 - cos_max, 1e-300))
             # Uniform radiance L with pi L sin^2 a equal to the point light's irradiance.
             radiance = self._point_scale(index, dist) / (math.pi * sin2)[:, None]
+            if self.kind[index] == 2:  # a spot: masked as light sampling masks it
+                light = self.lights[index]
+                away = -v[seen] / dist[:, None]  # from the light's centre to the point
+                radiance = radiance * light.spot_mask(away @ light.direction)[:, None]
             w = power_heuristic(pdf_bsdf[seen], pdf)
             out[seen] += radiance * w[:, None]
         return out

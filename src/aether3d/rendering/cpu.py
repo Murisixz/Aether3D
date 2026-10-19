@@ -587,6 +587,7 @@ def _shade(
             (pick(nx), pick(ny), pick(nz)),
             (pick(px), pick(py), pick(pz)),
             view,
+            pick(inst),
         )
         for c in range(3):
             if rows is None:
@@ -738,10 +739,11 @@ def _shade_materials(
                 (n[:, 0], n[:, 1], n[:, 2]),
                 (p[:, 0], p[:, 1], p[:, 2]),
                 (view[:, 0], view[:, 1], view[:, 2]),
+                s.inst,
             )
             out = np.stack(part, axis=1)
         else:
-            out = surface.shade_standard(rs, sv, material.specular, n, p, view)
+            out = surface.shade_standard(rs, sv, material.specular, n, p, view, s.inst)
         out = out + sv.emissive
         target = index[sel]
         for c in range(3):

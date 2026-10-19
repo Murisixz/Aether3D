@@ -22,6 +22,7 @@ def v12_document() -> dict:
     scene = Scene()
     cam = scene.add_camera("Cam", position=(0, -5, 1), look_at=(0, 0, 0))
     box = scene.add_cube("Box", size=0.5)
+    scene.add_point_light("Bulb", position=(1, -1, 2), intensity=3.0)
     anim = scene.animation
     anim.set_channel(box, "transform.position.x", [
         {"time": 0, "value": 0, "interpolation": "back", "ease": "in_out", "back": 2.0},
@@ -45,6 +46,21 @@ def v12_document() -> dict:
                 "aperture_ratio",
             ):
                 del obj["camera"][key]  # fmt: skip
+        if obj.get("light"):
+            for key in (
+                "spot_size",
+                "spot_blend",
+                "shape",
+                "size",
+                "size_y",
+                "spread",
+                "units",
+                "temperature",
+                "use_temperature",
+                "exposure",
+                "shadow",
+            ):
+                del obj["light"][key]  # fmt: skip
     # v12 curves had no smoothing field, and their back values meant 0.19's in_out.
     for item in doc["scene"]["animation"]["items"]:
         for ch in item["definition"].get("channels", {}).values():
@@ -66,6 +82,10 @@ def test_v12_documents_load_unchanged():
     scene = scene_from_dict(doc)
     cam = scene.get_by_name("Cam").camera
     assert cam.fstop == 0.0 and cam.shift_x == 0.0 and cam.sensor == 36.0
+    lights = [o["light"] for o in upgraded["scene"]["objects"] if o.get("light")]
+    assert lights[0]["units"] == "aether" and lights[0]["shadow"] is True
+    bulb = scene.get_by_name("Bulb").light
+    assert bulb.intensity_value() == 3.0 and bulb.linear_color() == (1.0, 1.0, 1.0)
     box = scene.get_by_name("Box")
     x = scene.animation.channel(box, "transform.position.x")
     t = np.linspace(0.0, 1.0, 101)

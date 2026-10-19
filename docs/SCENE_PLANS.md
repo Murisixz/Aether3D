@@ -174,8 +174,13 @@ parameter later changes them all.
 
 An object definition has at most one **kind**: `mesh`, `geometry` (a procedural node),
 `prefab`, `camera` (`{"projection", "fov", "fov_axis", "ortho_scale", "near", "far",
-"aspect_ratio"}`) or `light` (`{"type": "directional" | "point" | "ambient", "color",
-"intensity", "range", "falloff", "radius", "angle"}`). With none, the object is an empty
+"aspect_ratio", "sensor", "focal_length", "shift_x", "shift_y", "fstop", "focus_distance",
+"aperture_blades", "aperture_rotation", "aperture_ratio"}`) or `light` (`{"type":
+"directional" | "point" | "spot" | "area", "color", "intensity", "range", "falloff",
+"radius", "angle", "spot_size", "spot_blend", "shape", "size", "size_y", "spread", "units",
+"temperature", "use_temperature", "exposure", "shadow"}`; see docs/RENDERING.md). A
+camera's `focus_object` is not set in plans (set it with a scene script's `set_camera`).
+With none, the object is an empty
 group.
 
 | Key | Meaning |

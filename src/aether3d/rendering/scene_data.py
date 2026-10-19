@@ -25,7 +25,7 @@ import itertools
 import math
 import operator
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -78,18 +78,80 @@ class RenderInstance:
         return table[groups]
 
 
+MAX_LINKED_LIGHTS = 64
+"""Light linking on the GPU backends covers the first 64 lights (two words per instance)."""
+
+
 @dataclass(frozen=True)
 class RenderLight:
     object_id: str | None  # None for the built-in default light
     name: str
-    type: str  # "directional" | "point"
-    radiance: np.ndarray  # (3,) linear color x intensity
-    position: np.ndarray | None  # point lights
-    direction: np.ndarray | None  # directional lights: unit direction the light travels
+    type: str  # "directional" | "point" | "spot" | "area"
+    radiance: np.ndarray  # (3,) linear color x intensity (Aether3D units, temperature, exposure)
+    position: np.ndarray | None  # point, spot and area lights (an area light's centre)
+    direction: np.ndarray | None  # unit direction the light travels (directional, spot, area)
     range: float | None
     falloff: str
-    radius: float = 0.0  # point lights: emitting sphere (path tracer)
+    radius: float = 0.0  # point and spot lights: emitting sphere (path tracer)
     angle: float = 0.0  # directional lights: angular diameter in degrees (path tracer)
+    cos_outer: float = -1.0  # spot: cosine of the cone's half angle
+    spot_smooth: float = 0.0  # spot: (1 - cos_outer) * blend, the smoothstep's width in cos
+    axis_x: np.ndarray | None = None  # area: half extent along the light's local X (world)
+    axis_y: np.ndarray | None = None  # area: half extent along its local Z (world)
+    shape: str = "square"  # area: square | rectangle | disk | ellipse
+    area: float = 0.0  # area: emitting area (m^2, world scale)
+    shadow: bool = True  # occluded by geometry (False: shines through)
+    spread_tan: float = 0.0  # area: tan(spread / 2), 0 for 180 degrees (Lambertian)
+    spread_norm: float = 1.0  # area: 1 / (1 - h / tan h), which keeps the power
+    # Light linking: per instance of the render scene, whether this light lights it
+    # (None: every instance). Set by the extraction from the light's include / exclude.
+    receivers: np.ndarray | None = field(default=None, compare=False)
+    links: tuple[tuple[str, ...], tuple[str, ...]] = ((), ())  # (include, exclude) ids
+
+    @property
+    def area_radiance(self) -> np.ndarray:
+        """An area light's emitted radiance ``pi c I / A`` (``(3,)``)."""
+        return math.pi * self.radiance / max(self.area, 1e-300)
+
+    def spot_mask(self, cos_t: np.ndarray) -> np.ndarray:
+        """A spot light's mask at the cosines between its axis and the directions from it:
+        1 inside, a smoothstep of the cosine over ``spot_smooth`` at the edge, 0 outside."""
+        inside = cos_t > self.cos_outer
+        if self.spot_smooth > 0.0:
+            x = np.clip((cos_t - self.cos_outer) / self.spot_smooth, 0.0, 1.0)
+            return np.where(inside, x * x * (3.0 - 2.0 * x), 0.0)
+        return np.where(inside, 1.0, 0.0)
+
+    def spread_factor(self, cos_a: np.ndarray) -> np.ndarray:
+        """A spread area light's radiance factor toward directions at ``cos_a`` from its
+        normal (1 everywhere for a spread of 180 degrees)."""
+        if self.spread_tan <= 0.0:
+            return np.where(cos_a > 0.0, 1.0, 0.0)
+        c = np.maximum(cos_a, 1e-300)
+        tan_a = np.sqrt(np.maximum(1.0 - cos_a * cos_a, 0.0)) / c
+        g = np.maximum(1.0 - tan_a / self.spread_tan, 0.0) * self.spread_norm
+        return np.where(cos_a > 0.0, g, 0.0)
+
+    def spread_window(self, p: np.ndarray):
+        """The part of a spread area light that reaches points ``p`` (``(m, 3)``): the
+        rectangle ``[u0, u1] x [w0, w1]`` of its local coordinates (half extents: the
+        shape spans ``[-1, 1]^2``) around the points' feet, ``t tan(spread / 2)`` wide (``t``
+        their height in front of it), its area in square metres, and where it is not
+        empty."""
+        rel = p - self.position
+        t = rel @ self.direction
+        lx = float(np.sqrt(self.axis_x @ self.axis_x))
+        ly = float(np.sqrt(self.axis_y @ self.axis_y))
+        qu = (rel @ self.axis_x) / (lx * lx)
+        qw = (rel @ self.axis_y) / (ly * ly)
+        reach = np.maximum(t, 0.0) * self.spread_tan
+        u0 = np.maximum(qu - reach / lx, -1.0)
+        u1 = np.minimum(qu + reach / lx, 1.0)
+        w0 = np.maximum(qw - reach / ly, -1.0)
+        w1 = np.minimum(qw + reach / ly, 1.0)
+        ok = (t > 0.0) & (u1 > u0) & (w1 > w0)
+        area = np.where(ok, (u1 - u0) * lx * (w1 - w0) * ly, 0.0)
+        return u0, u1, w0, w1, area, ok
 
 
 @dataclass(frozen=True)
@@ -521,7 +583,14 @@ def _light(
     values = None if overlay is None else overlay.field_values(obj._id, "light")
     if values:
         light = _with_fields(light, values)
-    radiance = to_linear(light.color) * light.intensity
+    if (
+        light.type in ("directional", "point")
+        and light.units == "aether"
+        and not (light.use_temperature or light.exposure)
+    ):
+        radiance = to_linear(light.color) * light.intensity  # (as always: the same bits)
+    else:
+        radiance = np.array(light.linear_color()) * light.intensity_value()
     if not finite:
         raise RenderError(
             "NONFINITE_TRANSFORM", "world matrix is not finite", f"objects[{obj.name}]"
@@ -537,6 +606,8 @@ def _light(
             light.range,
             light.falloff,
             radius=light.radius,
+            shadow=light.shadow,
+            links=(light.include, light.exclude),
         )
     direction = -world[:3, 1]
     length = float(np.linalg.norm(direction))
@@ -553,16 +624,85 @@ def _light(
             )
         )
         return None
+    unit = direction / length
+    if light.type == "spot":
+        cos_outer = math.cos(math.radians(light.spot_size) / 2.0)
+        return RenderLight(
+            obj.id,
+            obj.name,
+            "spot",
+            radiance,
+            world[:3, 3].copy(),
+            unit,
+            light.range,
+            light.falloff,
+            radius=light.radius,
+            cos_outer=cos_outer,
+            spot_smooth=(1.0 - cos_outer) * light.spot_blend,
+            shadow=light.shadow,
+            links=(light.include, light.exclude),
+        )
+    if light.type == "area":
+        width = light.size
+        height = light.size if light.shape in ("square", "disk") else light.size_y
+        ax = world[:3, 0] * (width / 2.0)
+        ay = world[:3, 2] * (height / 2.0)
+        cross = float(np.linalg.norm(np.cross(ax, ay)))
+        area = (math.pi if light.shape in ("disk", "ellipse") else 4.0) * cross
+        if not area > 1e-18:
+            ordered.append(
+                (
+                    position,
+                    Diagnostic(
+                        "LIGHT_SIZE_UNDEFINED",
+                        WARNING,
+                        f"area light {obj.name!r} has no area (zero scale); it is ignored",
+                        f"objects[{obj.name}]",
+                    ),
+                )
+            )
+            return None
+        # One-sided: it emits toward its front (local -Y), the side its normal faces.
+        normal = np.cross(ay, ax)
+        normal = normal / np.linalg.norm(normal)
+        if float(normal @ unit) < 0.0:
+            normal = -normal
+        spread = {}
+        if light.spread < 180.0:
+            half = math.radians(light.spread) / 2.0
+            spread = {
+                "spread_tan": math.tan(half),
+                "spread_norm": 1.0 / (1.0 - half / math.tan(half)),
+            }
+        return RenderLight(
+            obj.id,
+            obj.name,
+            "area",
+            radiance,
+            world[:3, 3].copy(),
+            normal,
+            None,
+            "inverse_square",
+            axis_x=ax,
+            axis_y=ay,
+            shape=light.shape,
+            area=area,
+            shadow=light.shadow,
+            links=(light.include, light.exclude),
+            **spread,
+        )
     return RenderLight(
         obj.id,
         obj.name,
         "directional",
         radiance,
         None,
-        direction / length,
+        unit,
         None,
         "none",
         angle=light.angle,
+        shadow=light.shadow,
+        links=(light.include, light.exclude),
     )
 
 
@@ -796,6 +936,8 @@ def _finish(
 ) -> RenderScene:
     """The render scene: diagnostics in object order, then the scene-wide ones."""
     diagnostics += [d for _, d in sorted(ordered, key=lambda item: item[0])]
+    if any(light.links != ((), ()) for light in lights):
+        lights = _link_lights(scene, lights, instances, diagnostics)
     if not lights and default_lights:
         lights.append(default_light(camera.frame))
         diagnostics.append(
@@ -846,6 +988,64 @@ def _finish(
         arrays=arrays,
         cache=cache,
     )
+
+
+def _link_lights(
+    scene: Scene,
+    lights: list[RenderLight],
+    instances: tuple[RenderInstance, ...],
+    diagnostics: list[Diagnostic],
+) -> list[RenderLight]:
+    """Lights with their receivers: which instances each linked light lights (an object
+    named in ``include`` or ``exclude`` stands for itself and its descendants)."""
+    ancestry: list[tuple[str, ...]] = []
+    for inst in instances:
+        chain = []
+        try:
+            obj = scene.get(inst.object_id)
+        except AetherError:  # (an instance of a temporary object: only its own id)
+            obj = None
+            chain.append(inst.object_id)
+        while obj is not None:
+            chain.append(obj.id)
+            obj = obj.parent
+        ancestry.append(tuple(chain))
+    out = []
+    for light in lights:
+        include, exclude = light.links
+        if not include and not exclude:
+            out.append(light)
+            continue
+        missing = [i for i in (*include, *exclude) if not _exists(scene, i)]
+        if missing:
+            diagnostics.append(
+                Diagnostic(
+                    "LIGHT_LINK_MISSING",
+                    WARNING,
+                    f"light {light.name!r} links {len(missing)} object id(s) the scene does "
+                    f"not have: {', '.join(missing[:5])}" + (" ..." if len(missing) > 5 else ""),
+                    f"objects[{light.name}].light",
+                    count=len(missing),
+                )
+            )
+        inc, exc = set(include), set(exclude)
+        lit = np.array(
+            [
+                (not inc or any(i in inc for i in chain)) and not any(i in exc for i in chain)
+                for chain in ancestry
+            ],
+            dtype=bool,
+        )
+        out.append(replace(light, receivers=lit))
+    return out
+
+
+def _exists(scene: Scene, object_id: str) -> bool:
+    try:
+        scene.get(object_id)
+    except AetherError:
+        return False
+    return True
 
 
 def _material_cache(scene: Scene) -> MaterialCache | None:

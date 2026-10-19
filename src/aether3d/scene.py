@@ -1658,16 +1658,20 @@ class Scene:
         direction: Iterable[float] | None = None,
         look_at: ObjectRef | Iterable[float] | None = None,
         up: Iterable[float] = (0.0, 0.0, 1.0),
+        **options: Any,
     ) -> SceneObject:
         """Add a light object (see :class:`~aether3d.rendering.Light`).
 
-        Directional lights shine along their front (local -Y): give a world
-        ``direction`` (the way the light travels) or a ``look_at`` target.
-        Point lights shine from their ``position``. ``radius`` (point) and
-        ``angle`` (directional, degrees) give lights a size for the path
-        tracer's soft shadows.
+        Directional, spot and area lights shine along their front (local -Y):
+        give a world ``direction`` (the way the light travels) or a ``look_at``
+        target. Point, spot and area lights shine from their ``position``.
+        ``radius`` (point, spot) and ``angle`` (directional, degrees) give
+        lights a size for the path tracer's soft shadows. ``options``: the light's
+        other parameters (``spot_size``, ``spot_blend``, ``shape``, ``size``,
+        ``size_y``, ``units``, ``temperature``, ``use_temperature``, ``exposure``,
+        ``shadow``).
         """
-        light = Light(type, color, intensity, range, falloff, radius, angle)
+        light = Light(type, color, intensity, range, falloff, radius, angle, **options)
         if direction is not None and look_at is not None:
             raise ValidationError("give either direction= or look_at=, not both")
         if direction is not None:
@@ -1699,6 +1703,32 @@ class Scene:
     ) -> SceneObject:
         """Add a point light at ``position``."""
         return self.add_light("point", name, position=position, **options)
+
+    def add_spot_light(
+        self,
+        name: str | None = None,
+        *,
+        position: Iterable[float] = (0.0, 0.0, 5.0),
+        **options: Any,
+    ) -> SceneObject:
+        """Add a spot light at ``position`` (aim it with ``look_at`` or ``direction``;
+        ``spot_size`` its cone in degrees, ``spot_blend`` its soft edge)."""
+        if "look_at" not in options and "direction" not in options:
+            options["direction"] = (0.0, 0.0, -1.0)
+        return self.add_light("spot", name, position=position, **options)
+
+    def add_area_light(
+        self,
+        name: str | None = None,
+        *,
+        position: Iterable[float] = (0.0, 0.0, 5.0),
+        **options: Any,
+    ) -> SceneObject:
+        """Add an area light (a one-sided panel facing ``look_at`` or ``direction``;
+        ``shape``, ``size``, ``size_y``) at ``position``."""
+        if "look_at" not in options and "direction" not in options:
+            options["direction"] = (0.0, 0.0, -1.0)
+        return self.add_light("area", name, position=position, **options)
 
     def _create_with(
         self,

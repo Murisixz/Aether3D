@@ -22,6 +22,7 @@ from .framing import AUTO_VIEW_DIRECTION, compute_framing, orientation_frame, ta
 from .overlay import animation_overlay
 from .png import encode_png
 from .scene_data import (
+    MAX_LINKED_LIGHTS,
     RenderCamera,
     RenderScene,
     _with_fields,
@@ -564,6 +565,23 @@ def render(
         rs = contribute(scene, rs, settings.height, aspect)  # procedural worlds for this camera
     diagnostics += list(rs.diagnostics)
     plan = None if shadow_settings is None else plan_shadows(rs, shadow_settings, aspect)
+    if requested in ("gpu", "gpu_path", "auto") and any(
+        light.receivers is not None for light in rs.lights[MAX_LINKED_LIGHTS:]
+    ):
+        late = [
+            light.name for light in rs.lights[MAX_LINKED_LIGHTS:] if light.receivers is not None
+        ]
+        diagnostics.append(
+            Diagnostic(
+                "LIGHT_LINK_LIMIT",
+                WARNING,
+                f"the GPU links only the first {MAX_LINKED_LIGHTS} lights (put linked lights "
+                f"first, or render on the CPU); these light every object there: "
+                f"{', '.join(late[:5])}" + (" ..." if len(late) > 5 else ""),
+                "lights",
+                count=len(late),
+            )
+        )
 
     if requested in PATH_BACKENDS:
         return _finish_path(

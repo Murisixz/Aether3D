@@ -49,6 +49,8 @@ from .errors import (
     UnsupportedFeatureError,
 )
 from .gltf import export_gltf, import_gltf
+from .rendering.light import LIGHT_TYPES
+from .rendering.light import SHAPES as LIGHT_SHAPES
 from .scene import Scene, SceneObject
 from .serialization import FORMAT_VERSION, loads, save_scene, scene_from_dict
 
@@ -1208,12 +1210,17 @@ def cmd_camera_list(args: argparse.Namespace) -> CommandOutput:
 
 def _light_params(args: argparse.Namespace) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for key in ("color", "intensity", "falloff", "radius", "angle"):
+    for key in (
+        "color", "intensity", "falloff", "radius", "angle", "spot_size", "spot_blend", "shape",
+        "size", "size_y", "spread", "units", "temperature", "use_temperature", "shadow",
+    ):  # fmt: skip
         value = getattr(args, key, None)
         if value is not None:
             out[key] = value
     if getattr(args, "range", None) is not None:
         out["range"] = None if args.range == "none" else _float(args.range)
+    if getattr(args, "light_exposure", None) is not None:
+        out["exposure"] = args.light_exposure
     return out
 
 
@@ -2332,21 +2339,45 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     def light_params(p) -> None:
         p.add_argument("--color", help="light color (#rrggbb)")
         p.add_argument("--intensity", type=float, help="unitless intensity (>= 0)")
-        p.add_argument("--range", help="point lights: fade-out distance, or 'none'")
-        p.add_argument("--falloff", choices=["inverse_square", "none"], help="point light falloff")
-        p.add_argument("--direction", **vec, help="directional lights: travel direction")
+        p.add_argument("--range", help="point and spot lights: fade-out distance, or 'none'")
         p.add_argument(
-            "--radius", type=float, help="point lights: sphere radius (path tracer soft shadows)"
+            "--falloff", choices=["inverse_square", "none"], help="point and spot light falloff"
+        )
+        p.add_argument("--direction", **vec, help="directional, spot, area: travel direction")
+        p.add_argument(
+            "--radius",
+            type=float,
+            help="point and spot lights: sphere radius (path tracer soft shadows)",
         )
         p.add_argument(
             "--angle",
             type=float,
             help="directional lights: angular diameter in degrees (path tracer soft shadows)",
         )
+        p.add_argument("--spot-size", type=float, help="spot lights: cone angle in degrees")
+        p.add_argument("--spot-blend", type=float, help="spot lights: soft edge, 0..1")
+        p.add_argument("--shape", choices=list(LIGHT_SHAPES), help="area lights: the shape")
+        p.add_argument("--size", type=float, help="area lights: width (or diameter), metres")
+        p.add_argument("--size-y", type=float, help="area lights: height (rectangle, ellipse)")
+        p.add_argument("--spread", type=float, help="area lights: emission spread, degrees")
+        p.add_argument(
+            "--units",
+            choices=["aether", "watts"],
+            help="intensity units: aether (0.x behaviour) or watts (Blender's power)",
+        )
+        p.add_argument("--temperature", type=float, help="black-body colour in kelvins")
+        p.add_argument("--use-temperature", type=_bool_arg, help="tint by the temperature")
+        p.add_argument(
+            "--light-exposure",
+            type=float,
+            metavar="EV",
+            help="scales the intensity by 2^EV",
+        )
+        p.add_argument("--shadow", type=_bool_arg, help="casts shadows (true or false)")
 
     p = lights.add_parser("add", parents=[common, writing], help="add a light")
     p.add_argument("path", help="the .aether project")
-    p.add_argument("--type", choices=["directional", "point"], default="directional")
+    p.add_argument("--type", choices=list(LIGHT_TYPES), default="directional")
     p.add_argument("--name", help="object name (default: Light, Light.001, ...)")
     p.add_argument("--parent", help="parent object id or name")
     light_params(p)
@@ -2356,7 +2387,7 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p = lights.add_parser("set", parents=[common, writing], help="change a light")
     p.add_argument("path", help="the .aether project")
     p.add_argument("light", help="light object id or name")
-    p.add_argument("--type", choices=["directional", "point"])
+    p.add_argument("--type", choices=list(LIGHT_TYPES))
     light_params(p)
     placement(p)
     p.set_defaults(handler=cmd_light_set)

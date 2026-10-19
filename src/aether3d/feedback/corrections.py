@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from ..errors import AetherError, FeedbackError
+from ..rendering.light import LIGHT_TYPES
 from ._doc import BAD, Doc, join
 
 if TYPE_CHECKING:
@@ -264,7 +265,7 @@ def check_action(doc: Doc, value: Any, ptr: str) -> dict[str, Any] | None:
         elif key == "intensity":
             r = doc.number(v, p, lo=0.0, hi=1e6)
         elif key == "type":
-            r = doc.enum(v, p, ("directional", "point"))
+            r = doc.enum(v, p, LIGHT_TYPES)
         elif key == "exposure":
             r = doc.number(v, p, lo=-20.0, hi=20.0)
         elif key == "value":

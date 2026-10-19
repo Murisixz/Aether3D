@@ -32,7 +32,7 @@ import numpy as np
 
 from ...errors import RenderError
 from ..color import srgb_to_linear
-from ..scene_data import RenderMesh, RenderScene
+from ..scene_data import MAX_LINKED_LIGHTS, RenderMesh, RenderScene
 
 if TYPE_CHECKING:
     from ..shadows import ShadowPlan
@@ -42,7 +42,7 @@ DEFAULT_MESH_BUDGET = 1024 * 2**20
 CACHE_ENV = "AETHER3D_GPU_CACHE_MB"
 
 INSTANCE_FLOATS = 32  # 128 bytes, see `struct Instance` in common.wgsl
-LIGHT_FLOATS = 12  # 48 bytes, `struct Light` in scene.wgsl
+LIGHT_FLOATS = 28  # 112 bytes, `struct Light` in scene.wgsl
 SHADOW_FLOATS = 20  # 80 bytes, `struct ShadowMap` in scene.wgsl
 FRAME_FLOATS = 80  # 320 bytes, `struct Frame` in scene.wgsl (with `struct Atmo`)
 ATMO_FLOATS = 48  # `struct Atmo` in atmosphere.wgsl
@@ -825,7 +825,25 @@ def pack_instances(rs: RenderScene, order: np.ndarray, eye: np.ndarray) -> np.nd
     )
     words[:n, 30] = order
     words[:n, 31] = np.where(has_colors[mesh], color_start[mesh], 0)
+    words[:n, 15], words[:n, 19] = link_masks(rs, order)
     return data
+
+
+def link_masks(rs: RenderScene, order: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Light linking for the GPU: per instance (in ``order``), two words of bits -- bit
+    ``l`` set: light ``l`` does not light it (lights 0-31, then 32-63; lights after the
+    64th are never linked on the GPU, see ``LIGHT_LINK_LIMIT``)."""
+    low = np.zeros(len(order), dtype=np.uint32)
+    high = np.zeros(len(order), dtype=np.uint32)
+    for i, light in enumerate(rs.lights[:MAX_LINKED_LIGHTS]):
+        if light.receivers is None:
+            continue
+        off = ~light.receivers[order]
+        if i < 32:
+            low |= np.where(off, np.uint32(1 << i), np.uint32(0))
+        else:
+            high |= np.where(off, np.uint32(1 << (i - 32)), np.uint32(0))
+    return low, high
 
 
 def pack_lights(rs: RenderScene, eye: np.ndarray, plan: ShadowPlan | None) -> np.ndarray:
@@ -833,18 +851,30 @@ def pack_lights(rs: RenderScene, eye: np.ndarray, plan: ShadowPlan | None) -> np
     data = np.zeros((max(len(rs.lights), 1), LIGHT_FLOATS), dtype=np.float32)
     words = data.view(np.uint32)
     signed = data.view(np.int32)
+    kinds = {"directional": 0, "point": 1, "spot": 2, "area": 3}
     for i, light in enumerate(rs.lights):
         data[i, 0:3] = light.radiance
+        words[i, 3] = kinds[light.type]
         if light.type == "directional":
-            words[i, 3] = 0
             data[i, 4:7] = light.direction
         else:
-            words[i, 3] = 1
             data[i, 4:7] = light.position - eye
             data[i, 7] = 0.0 if light.range is None else light.range
             words[i, 8] = 1 if light.falloff == "inverse_square" else 0
         signed[i, 9] = -1 if plan is None else plan.layer_of(i)
         words[i, 10] = 0 if plan is None else plan.cascades_of(i)
+        if light.type == "spot":
+            data[i, 12:15] = light.direction
+            data[i, 15] = light.cos_outer
+            data[i, 19] = light.spot_smooth
+        elif light.type == "area":
+            words[i, 11] = 1 if light.shape in ("disk", "ellipse") else 0
+            data[i, 12:15] = light.direction  # the light's normal: it emits along it
+            data[i, 16:19] = light.axis_x
+            data[i, 20:23] = light.axis_y
+            data[i, 23] = light.area
+            data[i, 24] = light.spread_tan
+            data[i, 25] = light.spread_norm
     return data
 
 

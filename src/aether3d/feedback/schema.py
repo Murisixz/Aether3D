@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..rendering.light import LIGHT_TYPES
 from . import corrections, expectations, vision
 
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
@@ -329,7 +330,7 @@ def action_schema() -> dict[str, Any]:
         "near": {"type": "number", "exclusiveMinimum": 0},
         "far": {"type": "number", "exclusiveMinimum": 0},
         "intensity": {"type": "number", "minimum": 0, "maximum": 1e6},
-        "type": {"enum": ["directional", "point"]},
+        "type": {"enum": list(LIGHT_TYPES)},
         "exposure": {"type": "number", "minimum": -20, "maximum": 20},
         "value": {"type": ["number", "string", "boolean"]},
         "armature": {"type": "string", "minLength": 1},

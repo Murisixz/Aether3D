@@ -300,7 +300,13 @@ def test_light_sizes_and_environments_are_validated_and_saved(tmp_path):
     b = render(loaded, path={"samples": 2, "bounces": 1})
     assert np.array_equal(a.image, b.image)
     assert a.backend["environment"]["type"] == "sky"
-    assert a.backend["lights"] == {"lights": 2, "sized_lights": 2, "emissive_triangles": 0}
+    assert a.backend["lights"] == {
+        "lights": 2,
+        "sized_lights": 2,
+        "spot_lights": 0,  # (0.20.0)
+        "area_lights": 0,
+        "emissive_triangles": 0,
+    }
 
 
 def test_version_4_projects_load_with_the_ambient_environment_and_point_sized_lights():

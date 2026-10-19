@@ -573,7 +573,7 @@ class _Tracer:
                 target[m] += throughput[m] * ps.environment.radiance(direction[miss])
             if self.lights.sized:  # suns and light spheres the BSDF sample reaches
                 target[r] += throughput[r] * self.lights.hit_sized(
-                    origin, direction, hits.t, pdf[keep]
+                    origin, direction, hits.t, pdf[keep], it.inst[keep]
                 )
             if nxt is None:
                 break
@@ -594,14 +594,18 @@ class _Tracer:
         out = np.zeros((m, 3))
         ns = self.path.light_samples
         origin = ps.offset_origin(it.p, ng_side)
-        rays_o, rays_d, rays_t, rays_row, rays_c = [], [], [], [], []
+        rays_o, rays_d, rays_t, rays_row, rays_c, rays_test = [], [], [], [], [], []
         index = 0
         for light in range(lights.count):
+            occluded = lights.shadow is None or bool(lights.shadow[light])
+            receivers = lights.receivers_at(light, it.inst)  # light linking
             for _ in range(ns):
                 wi, target, scale, pdf = lights.sample_analytic(light, it.p, keys, vertex, index)
                 index += 1
                 f, pdf_bsdf, cos = bsdf.eval(wi)
                 ok = (cos > 0.0) & ((wi * ng_side).sum(axis=1) > 0.0)
+                if receivers is not None:
+                    ok &= receivers
                 # Sized lights are also found by BSDF sampling: weight both strategies.
                 finite = np.isfinite(pdf)
                 w = np.ones(pdf.shape[0])
@@ -614,6 +618,7 @@ class _Tracer:
                 rays_row.append(k)
                 rays_c.append(contrib[k])
                 rays_o.append(origin[k])
+                rays_test.append(np.full(k.size, occluded))
                 if target is None:
                     rays_d.append(wi[k])
                     rays_t.append(np.full(k.size, np.inf))
@@ -635,6 +640,7 @@ class _Tracer:
                 rays_row.append(k)
                 rays_c.append(contrib[k])
                 rays_o.append(origin[k])
+                rays_test.append(np.ones(k.size, bool))
                 rays_d.append(x[k] - origin[k])
                 rays_t.append(np.full(k.size, SHADOW_END))
         if not rays_row:
@@ -644,14 +650,18 @@ class _Tracer:
         sd = np.concatenate(rays_d)
         st = np.concatenate(rays_t)
         contrib = np.concatenate(rays_c)
-        lit = ps.visible(
-            so,
-            sd,
-            st,
-            it.inst[row].astype(np.int64),
-            it.prim[row].astype(np.int64),
-        )
-        self.counts["shadow_rays"] += row.size
+        test = np.concatenate(rays_test)
+        lit = np.ones(row.size, bool)  # lights without shadows are never occluded
+        if test.any():
+            tested = np.flatnonzero(test)
+            lit[tested] = ps.visible(
+                so[tested],
+                sd[tested],
+                st[tested],
+                it.inst[row[tested]].astype(np.int64),
+                it.prim[row[tested]].astype(np.int64),
+            )
+            self.counts["shadow_rays"] += tested.size
         np.add.at(out, row[lit], contrib[lit])
         return out
 

@@ -46,7 +46,7 @@ from ..surface import LUMINANCE
 from ..tangents import corner_tangents, meshes_needing_tangents
 from .device import GPUContext, translate_errors
 from .materials import HEADER_IMAGES, IMAGE_WORDS, image_key, pack_material_data
-from .resources import pack_instances
+from .resources import link_masks, pack_instances
 
 WORKGROUP = 8
 STACK_SIZE = 64
@@ -56,7 +56,7 @@ ACC_PLANES = 22
 COUNTER_SLOTS = 8
 HEADER_WORDS = 16
 INST_WORDS = 24
-LIGHT_WORDS = 24
+LIGHT_WORDS = 44
 EMITTER_WORDS = 12
 PARAMS_WORDS = 128  # 68 + struct Atmo (48) + lens, aperture, film (4 each)
 TILE = 512
@@ -181,14 +181,31 @@ def _light_records(rs: RenderScene, lights: LightSet, eye: np.ndarray) -> np.nda
                 f[k, 17] = 1.0 / (2.0 * math.pi * omc)
                 f[k, 18:21] = lights.radiance[k] / math.sin(half) ** 2
             f[k, 21] = 2.0 / (1.0 + lights.cos_max[k])
+        elif lights.kind[k] == 3:
+            data[k, 0] = 3
+            data[k, 1] = 1  # BSDF rays find it
+            f[k, 8:11] = light.position - eye
+            f[k, 24:27] = light.direction
+            data[k, 29] = int(light.shape in ("disk", "ellipse"))
+            f[k, 30] = light.area
+            f[k, 31:34] = light.axis_x
+            f[k, 34:37] = light.axis_y
+            f[k, 37:40] = light.area_radiance
+            f[k, 40] = light.spread_tan
+            f[k, 41] = light.spread_norm
         else:
-            data[k, 0] = 1
+            data[k, 0] = lights.kind[k]
             data[k, 1] = int(lights.radius[k] > 0.0)
             data[k, 2] = int(lights.inverse_square[k])
             data[k, 3] = int(np.isfinite(lights.range[k]))
             f[k, 7] = lights.range[k] if np.isfinite(lights.range[k]) else 0.0
             f[k, 8:11] = lights.position[k] - eye
             f[k, 11] = lights.radius[k]
+            if lights.kind[k] == 2:
+                f[k, 24:27] = light.direction
+                f[k, 27] = light.cos_outer
+                f[k, 28] = light.spot_smooth
+        data[k, 22] = 0 if lights.shadow is None or lights.shadow[k] else 1
     return data
 
 
@@ -226,6 +243,7 @@ def pack_scene_words(
         inst[:n_inst, 18] = accel.inst_root
         inst[:n_inst, 19] = mesh_tri_base[[i.mesh for i in rs.instances]]
         inst[:n_inst, 20] = ps.tri_offset[:n_inst]
+        inst[:n_inst, 21], inst[:n_inst, 22] = link_masks(rs, np.arange(n_inst))
     em = lights.emitters
     if em is not None:
         emitters = np.zeros((em.count, EMITTER_WORDS), dtype=np.uint32)
@@ -312,7 +330,7 @@ def base_params(
     pr.vec(28, env.horizon)
     pr.u(31, len(rs.instances))
     pr.vec(32, env.ground)
-    sized = bool(np.any((lights.kind == 0) & (lights.cos_max < 1.0)) or np.any(lights.radius > 0))
+    sized = lights.sized  # suns, light spheres and area lights BSDF rays can find
     flags = (
         (FLAG_PERSPECTIVE if cam.is_perspective else 0)
         | (FLAG_PASS_THROUGH if ps.pass_through else 0)

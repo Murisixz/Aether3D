@@ -29,7 +29,7 @@
 // once: D3D12's FXC inlines every call. Each path is therefore a small state machine whose
 // loop evaluates materials at exactly one place (see run_state below).
 
-const LIGHT_WORDS: u32 = 24u;
+const LIGHT_WORDS: u32 = 44u;
 const EMITTER_WORDS: u32 = 12u;
 
 // The CPU path tracer's constants (pathtrace/*.py).
@@ -601,9 +601,13 @@ fn env_camera(d: vec3<f32>) -> vec3<f32> {
 }
 
 // -- lights (pathtrace/lights.py) ------------------------------------------------------------------
-// Light record: 0 kind (0 directional, 1 point), 1 sized, 2 inverse square, 3 has range,
-// 4-6 radiance (c I), 7 range, 8-10 position (camera-relative), 11 radius, 12-14 toward
-// the light, 15 cos(half angle), 16 1 - cos, 17 cone pdf, 18-20 disk radiance, 21 disk scale.
+// Light record: 0 kind (0 directional, 1 point, 2 spot, 3 area), 1 sized, 2 inverse square,
+// 3 has range, 4-6 radiance (c I), 7 range, 8-10 position (camera-relative), 11 radius,
+// 12-14 toward the light, 15 cos(half angle), 16 1 - cos, 17 cone pdf, 18-20 disk radiance,
+// 21 disk scale, 22 casts no shadow, 24-26 spot axis / area normal (the way they shine),
+// 27 spot cos_outer, 28 spot smoothstep width, 29 area shape (1: disk or ellipse), 30 area,
+// 31-33 area half extent x, 34-36 half extent y, 37-39 area radiance (pi c I / A),
+// 40 tan(spread / 2) (0: 180 degrees), 41 the spread's normalization.
 
 fn light_base(l: u32) -> u32 {
   return pt[H_LIGHTS] + l * LIGHT_WORDS;
@@ -623,6 +627,70 @@ fn point_scale(lb: u32, dist: f32) -> vec3<f32> {
   return PI * ptv3(lb + 4u) * atten;
 }
 
+// Light linking: whether light l leaves instance inst unlit (instance words 21, 22).
+fn unlinked(inst: u32, l: u32) -> bool {
+  if (l >= 64u) {
+    return false;
+  }
+  let word = pt[inst_base(inst) + 21u + l / 32u];
+  return ((word >> (l % 32u)) & 1u) != 0u;
+}
+
+// A spot's cone mask at the cosine between its axis and the direction from it.
+fn spot_mask(lb: u32, cos_t: f32) -> f32 {
+  let cos_outer = ptf(lb + 27u);
+  if (cos_t <= cos_outer) {
+    return 0.0;
+  }
+  let smooth_w = ptf(lb + 28u);
+  if (smooth_w > 0.0) {
+    let x = clamp((cos_t - cos_outer) / smooth_w, 0.0, 1.0);
+    return x * x * (3.0 - 2.0 * x);
+  }
+  return 1.0;
+}
+
+// A spread area light's radiance factor toward cos_a from its normal (scene_data.py).
+fn spread_factor(lb: u32, cos_a: f32) -> f32 {
+  if (!(cos_a > 0.0)) {
+    return 0.0;
+  }
+  let tan_h = ptf(lb + 40u);
+  if (tan_h <= 0.0) {
+    return 1.0;
+  }
+  let tan_a = sqrt(max(1.0 - cos_a * cos_a, 0.0)) / max(cos_a, 1e-30);
+  return max(1.0 - tan_a / tan_h, 0.0) * ptf(lb + 41u);
+}
+
+// The part of spread light lb that reaches p (RenderLight.spread_window): (u0, w0, u1, w1)
+// in half extents, and its area (0: none).
+struct Window {
+  lohi: vec4<f32>,
+  area: f32,
+};
+
+fn spread_window(lb: u32, p: vec3<f32>) -> Window {
+  let rel = p - ptv3(lb + 8u);
+  let t = dot(rel, ptv3(lb + 24u));
+  let ax = ptv3(lb + 31u);
+  let ay = ptv3(lb + 34u);
+  let lx = length(ax);
+  let ly = length(ay);
+  let qu = dot(rel, ax) / (lx * lx);
+  let qw = dot(rel, ay) / (ly * ly);
+  let reach = max(t, 0.0) * ptf(lb + 40u);
+  let lohi = vec4<f32>(
+    max(qu - reach / lx, -1.0), max(qw - reach / ly, -1.0),
+    min(qu + reach / lx, 1.0), min(qw + reach / ly, 1.0)
+  );
+  var area = 0.0;
+  if (t > 0.0 && lohi.z > lohi.x && lohi.w > lohi.y) {
+    area = (lohi.z - lohi.x) * lx * (lohi.w - lohi.y) * ly;
+  }
+  return Window(lohi, area);
+}
+
 struct LightSample {
   wi: vec3<f32>,
   goal: vec3<f32>,
@@ -636,6 +704,54 @@ fn sample_analytic(l: u32, p: vec3<f32>, key: vec2<u32>, vertex: u32, index: u32
   let lb = light_base(l);
   let slot = SLOT_LIGHTS + 3u * index;
   var out: LightSample;
+  if (pt[lb] == 3u && ptf(lb + 40u) > 0.0) {  // a spread light: the part reaching p
+    let u1 = rnd(key, vertex, slot);
+    let u2 = rnd(key, vertex, slot + 1u);
+    let win = spread_window(lb, p);
+    let a = win.lohi.x + (win.lohi.z - win.lohi.x) * u1;
+    let b = win.lohi.y + (win.lohi.w - win.lohi.y) * u2;
+    var reach = win.area > 0.0;
+    if (pt[lb + 29u] != 0u) {
+      reach = reach && a * a + b * b <= 1.0;
+    }
+    let x = ptv3(lb + 8u) + a * ptv3(lb + 31u) + b * ptv3(lb + 34u);
+    let v = x - p;
+    let d2 = dot(v, v);
+    let dist = sqrt(d2);
+    let wi = v / max(dist, 1e-30);
+    let cos_l = -dot(wi, ptv3(lb + 24u));
+    let g = spread_factor(lb, cos_l);
+    let ok = reach && cos_l > 1e-12 && dist > 0.0 && g > 0.0;
+    out.wi = wi;
+    out.goal = x;
+    out.has_target = true;
+    out.delta = !ok;
+    out.pdf = select(0.0, d2 / (win.area * cos_l), ok);
+    out.scale = select(vec3<f32>(0.0), ptv3(lb + 37u) * (g * win.area * cos_l / d2), ok);
+    return out;
+  }
+  if (pt[lb] == 3u) {  // an area light: a uniform point of its shape
+    let u1 = rnd(key, vertex, slot);
+    let u2 = rnd(key, vertex, slot + 1u);
+    var ab = vec2<f32>(2.0 * u1 - 1.0, 2.0 * u2 - 1.0);
+    if (pt[lb + 29u] != 0u) {
+      ab = concentric_disk(u1, u2);
+    }
+    let x = ptv3(lb + 8u) + ab.x * ptv3(lb + 31u) + ab.y * ptv3(lb + 34u);
+    let v = x - p;
+    let d2 = dot(v, v);
+    let dist = sqrt(d2);
+    let wi = v / max(dist, 1e-30);
+    let cos_l = -dot(wi, ptv3(lb + 24u));
+    let ok = cos_l > 1e-12 && dist > 0.0;
+    out.wi = wi;
+    out.goal = x;
+    out.has_target = true;
+    out.delta = !ok;  // (not sampleable from here: weight 1, contributes 0)
+    out.pdf = select(0.0, d2 / (ptf(lb + 30u) * cos_l), ok);
+    out.scale = select(vec3<f32>(0.0), PI * ptv3(lb + 4u) * (cos_l / d2), ok);
+    return out;
+  }
   if (pt[lb] == 0u) {
     let axis = ptv3(lb + 12u);
     out.has_target = false;
@@ -680,17 +796,71 @@ fn sample_analytic(l: u32, p: vec3<f32>, key: vec2<u32>, vertex: u32, index: u32
     out.delta = false;
   }
   out.scale = point_scale(lb, dist) * sphere;
+  if (pt[lb] == 2u) {
+    out.scale = out.scale * spot_mask(lb, -dot(axis, ptv3(lb + 24u)));
+  }
   return out;
+}
+
+// Where a ray (o, unit d) enters area light lb's front face inside its shape (and, for
+// spread lights, inside the part of it that reaches o) before t_limit: the light's
+// solid-angle density there and its radiance factor, or 0s.
+fn area_hit(lb: u32, o: vec3<f32>, d: vec3<f32>, t_limit: f32) -> vec2<f32> {
+  let n = ptv3(lb + 24u);
+  let denom = dot(d, n);
+  if (!(denom < 0.0)) {
+    return vec2<f32>(0.0);
+  }
+  let c = ptv3(lb + 8u);
+  let t = dot(c - o, n) / denom;
+  if (!(t > 0.0 && t < t_limit)) {
+    return vec2<f32>(0.0);
+  }
+  let q = o + d * t - c;
+  let ax = ptv3(lb + 31u);
+  let ay = ptv3(lb + 34u);
+  let u = dot(q, ax) / dot(ax, ax);
+  let w = dot(q, ay) / dot(ay, ay);
+  var inside = abs(u) <= 1.0 && abs(w) <= 1.0;
+  if (pt[lb + 29u] != 0u) {
+    inside = u * u + w * w <= 1.0;
+  }
+  if (!inside) {
+    return vec2<f32>(0.0);
+  }
+  let cos_l = max(-denom, 1e-30);
+  if (ptf(lb + 40u) > 0.0) {
+    let win = spread_window(lb, o);
+    let in_win = win.area > 0.0 && u >= win.lohi.x && u <= win.lohi.z && w >= win.lohi.y && w <= win.lohi.w;
+    let g = spread_factor(lb, cos_l);
+    if (!in_win || !(g > 0.0)) {
+      return vec2<f32>(0.0);
+    }
+    return vec2<f32>(t * t / (win.area * cos_l), g);
+  }
+  return vec2<f32>(t * t / (ptf(lb + 30u) * cos_l), 1.0);
 }
 
 // Radiance of sized lights a BSDF ray (origin o, unit d) reaches before geometry at
 // t_geometry (PT_INF: none), weighted against light sampling.
-fn hit_sized(o: vec3<f32>, d: vec3<f32>, t_geometry: f32, pdf_bsdf: f32) -> vec3<f32> {
+fn hit_sized(o: vec3<f32>, d: vec3<f32>, t_geometry: f32, pdf_bsdf: f32, from_inst: u32) -> vec3<f32> {
   var out = vec3<f32>(0.0);
-  let escaped = t_geometry >= PT_INF;
   for (var l = 0u; l < params.light_count; l++) {
     let lb = light_base(l);
-    if (pt[lb + 1u] == 0u) {
+    if (pt[lb + 1u] == 0u || unlinked(from_inst, l)) {
+      continue;
+    }
+    // Lights without shadows are reached through surfaces (lights.py).
+    var limit = t_geometry;
+    if (pt[lb + 22u] != 0u) {
+      limit = PT_INF;
+    }
+    let escaped = limit >= PT_INF;
+    if (pt[lb] == 3u) {
+      let hit = area_hit(lb, o, d, limit);
+      if (hit.x > 0.0) {
+        out += ptv3(lb + 37u) * (power_heuristic(pdf_bsdf, hit.x) * hit.y);
+      }
       continue;
     }
     if (pt[lb] == 0u) {
@@ -711,11 +881,15 @@ fn hit_sized(o: vec3<f32>, d: vec3<f32>, t_geometry: f32, pdf_bsdf: f32) -> vec3
       continue;
     }
     let t_sphere = proj - sqrt(max(disc, 0.0));
-    if (t_sphere > 0.0 && t_sphere < t_geometry) {
+    if (t_sphere > 0.0 && t_sphere < limit) {
       let sin2 = r * r / dist2;
       let cmax = sqrt(max(0.0, 1.0 - sin2));
       let pdf = 1.0 / (2.0 * PI * max(sin2 / (1.0 + cmax), 1e-30));
-      let radiance = point_scale(lb, sqrt(dist2)) / (PI * sin2);
+      let dist = sqrt(dist2);
+      var radiance = point_scale(lb, dist) / (PI * sin2);
+      if (pt[lb] == 2u) {
+        radiance = radiance * spot_mask(lb, dot(-v / dist, ptv3(lb + 24u)));
+      }
       out += radiance * power_heuristic(pdf_bsdf, pdf);
     }
   }
@@ -882,6 +1056,21 @@ fn start_ray(st: ptr<function, State>, kind: u32, o: vec3<f32>, d: vec3<f32>, tm
 // A point of the unit aperture (camera.py's aperture_points, in float32): round (Shirley and
 // Chiu's concentric mapping) or a polygon of `blades` corners inscribed in it, a corner up,
 // turned and narrowed by the camera's rotation and ratio.
+// Shirley and Chiu's concentric map of the unit square onto the unit disk.
+fn concentric_disk(u1: f32, u2: f32) -> vec2<f32> {
+  let sx = 2.0 * u1 - 1.0;
+  let sy = 2.0 * u2 - 1.0;
+  if (sx == 0.0 && sy == 0.0) {
+    return vec2<f32>(0.0);
+  }
+  if (abs(sx) > abs(sy)) {
+    let phi = (PI / 4.0) * (sy / sx);
+    return vec2<f32>(sx * cos(phi), sx * sin(phi));
+  }
+  let phi = PI / 2.0 - (PI / 4.0) * (sx / sy);
+  return vec2<f32>(sy * cos(phi), sy * sin(phi));
+}
+
 fn aperture_point(u1: f32, u2: f32) -> vec2<f32> {
   var p: vec2<f32>;
   let blades = params.aperture.x;
@@ -895,17 +1084,7 @@ fn aperture_point(u1: f32, u2: f32) -> vec2<f32> {
     let b0 = r - b1;
     p = vec2<f32>(b0 * cos(a0) + b1 * cos(a0 + step), b0 * sin(a0) + b1 * sin(a0 + step));
   } else {
-    let sx = 2.0 * u1 - 1.0;
-    let sy = 2.0 * u2 - 1.0;
-    if (sx == 0.0 && sy == 0.0) {
-      p = vec2<f32>(0.0);
-    } else if (abs(sx) > abs(sy)) {
-      let phi = (PI / 4.0) * (sy / sx);
-      p = vec2<f32>(sx * cos(phi), sx * sin(phi));
-    } else {
-      let phi = PI / 2.0 - (PI / 4.0) * (sx / sy);
-      p = vec2<f32>(sy * cos(phi), sy * sin(phi));
-    }
+    p = concentric_disk(u1, u2);
   }
   let c = params.aperture.y;
   let s = params.aperture.z;
@@ -969,7 +1148,7 @@ fn on_miss(st: ptr<function, State>) {
       let direct = (*st).vertex == 1u;
       add_target(st, (*st).throughput * env_radiance((*st).rd), direct);
       if ((params.flags & FLAG_SIZED_LIGHTS) != 0u) {
-        add_target(st, (*st).throughput * hit_sized((*st).origin, (*st).rd, PT_INF, (*st).prev_pdf), direct);
+        add_target(st, (*st).throughput * hit_sized((*st).origin, (*st).rd, PT_INF, (*st).prev_pdf, (*st).it.inst), direct);
       }
       (*st).phase = PH_DONE;
     }
@@ -1027,7 +1206,7 @@ fn on_accept(st: ptr<function, State>) {
       if ((params.flags & FLAG_SIZED_LIGHTS) != 0u) {
         add_target(
           st,
-          (*st).throughput * hit_sized((*st).origin, (*st).rd, (*st).cand.t, (*st).prev_pdf),
+          (*st).throughput * hit_sized((*st).origin, (*st).rd, (*st).cand.t, (*st).prev_pdf, (*st).it.inst),
           (*st).vertex == 1u
         );
       }
@@ -1196,13 +1375,17 @@ fn on_nee(st: ptr<function, State>) {
       (*st).nee_k += 1u;
       let ls = sample_analytic((*st).nee_light, it.p, (*st).key, (*st).vertex, index);
       let ev = bsdf_eval((*st).bsdf, ls.wi);
-      let ok = ev.cos > 0.0 && dot(ls.wi, (*st).ng_side) > 0.0;
+      let ok = ev.cos > 0.0 && dot(ls.wi, (*st).ng_side) > 0.0 && !unlinked(it.inst, (*st).nee_light);
       var w = 1.0;
       if (!ls.delta) {
         w = power_heuristic(ls.pdf, ev.pdf);
       }
       let contrib = ev.f * ls.scale * (ev.cos * w / f32(ns));
       if (ok && any(contrib > vec3<f32>(0.0))) {
+        if (pt[light_base((*st).nee_light) + 22u] != 0u) {
+          (*st).nee_sum += contrib;  // casts no shadow: never occluded
+          continue;
+        }
         if (ls.has_target) {
           shadow_ray(st, contrib, ls.goal - (*st).leave, SHADOW_END);
         } else {
