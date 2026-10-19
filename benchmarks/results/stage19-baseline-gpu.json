@@ -1,0 +1,688 @@
+{
+  "hardware": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.19.1",
+    "wgpu": {
+      "wgpu": "0.32.0",
+      "wgpu_native": "29.0.1.1"
+    },
+    "gpu": {
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "vendor": "NVIDIA",
+      "vendor_id": 4318,
+      "device_id": 10400,
+      "type": "discrete",
+      "backend": "vulkan",
+      "driver": "615.78.08",
+      "software": false
+    },
+    "gpu_msaa": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "cpu_renderer": "single-threaded NumPy"
+  },
+  "fresh_process": {
+    "import_seconds": 0.15372496098279953,
+    "first_render_seconds": 0.8443268289556727,
+    "init_seconds": 0.6228703279630281,
+    "second_render_seconds": 0.004718433017842472
+  },
+  "cold_start": {
+    "first_render_seconds": 0.27940979500999674,
+    "device_and_shaders_seconds": 0.06732277292758226,
+    "device_seconds": 0.0628273090114817,
+    "second_render_seconds": 0.0050213009817525744
+  },
+  "scenes": {
+    "castle (procedural)": [
+      {
+        "mode": "cpu",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 6804,
+        "seconds": 0.13819035701453686,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.4050165191292763e-06,
+          "extract": 0.00024910998763516545,
+          "geometry": 0.0021619570325128734,
+          "raster": 0.04675900301663205,
+          "shade": 0.07798940903740004,
+          "output": 0.007646774989552796,
+          "total": 0.13771956303389743
+        },
+        "png_seconds": 0.00839822698617354,
+        "png_bytes": 36854,
+        "peak_host_mib": 97.20945262908936
+      },
+      {
+        "mode": "gpu",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 6804,
+        "seconds": 0.003444852016400546,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 8.93021933734417e-07,
+          "extract": 0.0002124919556081295,
+          "init": 1.1788972187787294e-05,
+          "upload": 0.0001104680122807622,
+          "prepare": 0.000279526982922107,
+          "gpu": 0.001304473029449582,
+          "readback": 0.0012987760128453374,
+          "total": 0.003407440963201225
+        },
+        "png_seconds": 0.008054099045693874,
+        "png_bytes": 38082,
+        "peak_host_mib": 5.952392578125,
+        "gpu_timings": {
+          "scene": 0.000181248,
+          "finalize": 3.6032e-05
+        },
+        "gpu_mib": 33.77244567871094,
+        "draw_calls": 10
+      },
+      {
+        "mode": "gpu-ss",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 6804,
+        "seconds": 0.0036971390363760293,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 7.09958840161562e-07,
+          "extract": 0.0001584460842423141,
+          "init": 1.087499549612403e-05,
+          "upload": 0.00010637298692017794,
+          "prepare": 0.00026497204089537263,
+          "gpu": 0.0017263829940930009,
+          "readback": 0.001231672998983413,
+          "total": 0.0036638660239987075
+        },
+        "png_seconds": 0.008097284997347742,
+        "png_bytes": 36957,
+        "peak_host_mib": 5.951377868652344,
+        "gpu_timings": {
+          "scene": 0.00041971200000000004,
+          "finalize": 3.6608e-05
+        },
+        "gpu_mib": 33.77244567871094,
+        "draw_calls": 10
+      },
+      {
+        "mode": "gpu+shadows",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 6804,
+        "seconds": 0.0037481010076589882,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 7.2503462433815e-07,
+          "extract": 0.0001832229900173843,
+          "init": 1.145701389759779e-05,
+          "upload": 0.00012451800284907222,
+          "prepare": 0.0003947459626942873,
+          "gpu": 0.0011424639960750937,
+          "readback": 0.0012141100014559925,
+          "total": 0.0037095010047778487
+        },
+        "png_seconds": 0.0082647759700194,
+        "png_bytes": 44090,
+        "peak_host_mib": 5.953520774841309,
+        "gpu_timings": {
+          "shadow": 4.9152000000000006e-05,
+          "scene": 0.00026316800000000004,
+          "finalize": 3.6960000000000005e-05
+        },
+        "gpu_mib": 49.77244567871094,
+        "draw_calls": 20
+      },
+      {
+        "mode": "cpu",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 6804,
+        "seconds": 1.0575684260111302,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.7320271581411362e-06,
+          "extract": 0.0002893529599532485,
+          "geometry": 0.0021819929825142026,
+          "raster": 0.3144900710321963,
+          "shade": 0.6470643900102004,
+          "output": 0.07552750199101865,
+          "total": 1.050509458000306
+        },
+        "png_seconds": 0.05844827299006283,
+        "png_bytes": 130723,
+        "peak_host_mib": 226.51882076263428
+      },
+      {
+        "mode": "gpu",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 6804,
+        "seconds": 0.04229223303264007,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.4309771358966827e-06,
+          "extract": 0.0002822920214384794,
+          "init": 1.93509622476995e-05,
+          "upload": 0.00014645600458607078,
+          "prepare": 0.000431046006269753,
+          "gpu": 0.025445214996580034,
+          "readback": 0.015573182026855648,
+          "total": 0.04221168695949018
+        },
+        "png_seconds": 0.05392078898148611,
+        "png_bytes": 135728,
+        "peak_host_mib": 53.41181468963623,
+        "gpu_timings": {
+          "scene": 0.0035205120000000004,
+          "finalize": 0.003636704
+        },
+        "gpu_mib": 300.95994567871094,
+        "draw_calls": 10
+      },
+      {
+        "mode": "gpu-ss",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 6804,
+        "seconds": 0.02516220702091232,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.1720112524926662e-06,
+          "extract": 0.0002707769745029509,
+          "init": 1.8332968465983868e-05,
+          "upload": 0.0001454019802622497,
+          "prepare": 0.00041798100573942065,
+          "gpu": 0.010803046985529363,
+          "readback": 0.012666472990531474,
+          "total": 0.02460668596904725
+        },
+        "png_seconds": 0.05520613701082766,
+        "png_bytes": 130837,
+        "peak_host_mib": 53.412139892578125,
+        "gpu_timings": {
+          "scene": 0.005116928000000001,
+          "finalize": 0.0004904320000000001
+        },
+        "gpu_mib": 300.95994567871094,
+        "draw_calls": 10
+      },
+      {
+        "mode": "gpu+shadows",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 6804,
+        "seconds": 0.02324040699750185,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.694017555564642e-06,
+          "extract": 0.00027411000337451696,
+          "init": 4.4760992750525475e-05,
+          "upload": 0.0001567319850437343,
+          "prepare": 0.000485375989228487,
+          "gpu": 0.0077468170202337205,
+          "readback": 0.013176237000152469,
+          "total": 0.02268293802626431
+        },
+        "png_seconds": 0.05885359598323703,
+        "png_bytes": 169646,
+        "peak_host_mib": 53.41410446166992,
+        "gpu_timings": {
+          "shadow": 8.908800000000001e-05,
+          "scene": 0.002200576,
+          "finalize": 0.00041907200000000004
+        },
+        "gpu_mib": 316.95994567871094,
+        "draw_calls": 20
+      }
+    ],
+    "10,000 instanced cubes": [
+      {
+        "mode": "cpu",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 120002,
+        "seconds": 0.6317285120021552,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 2.0551029592752457e-05,
+          "extract": 0.0003228510031476617,
+          "geometry": 0.3363783180247992,
+          "raster": 0.107850207015872,
+          "shade": 0.17025466699851677,
+          "output": 0.008001463953405619,
+          "total": 0.6278411530074663
+        },
+        "png_seconds": 0.011351308028679341,
+        "png_bytes": 156609,
+        "peak_host_mib": 164.48418140411377
+      },
+      {
+        "mode": "gpu",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 120002,
+        "seconds": 0.017922447994351387,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 2.5266956072300673e-05,
+          "extract": 0.00037058506859466434,
+          "init": 1.8304039258509874e-05,
+          "upload": 0.0010044440277852118,
+          "prepare": 0.00036569300573319197,
+          "gpu": 0.01282723800977692,
+          "readback": 0.0015011930372565985,
+          "total": 0.016406990005634725
+        },
+        "png_seconds": 0.010875870997551829,
+        "png_bytes": 154897,
+        "peak_host_mib": 7.919925689697266,
+        "gpu_timings": {
+          "scene": 0.007503872000000001,
+          "finalize": 0.00035731200000000004
+        },
+        "gpu_mib": 33.400428771972656,
+        "draw_calls": 2
+      },
+      {
+        "mode": "gpu-ss",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 120002,
+        "seconds": 0.020877200993709266,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 3.263796679675579e-05,
+          "extract": 0.00039153103716671467,
+          "init": 1.884298399090767e-05,
+          "upload": 0.000984951970167458,
+          "prepare": 0.00048615102423354983,
+          "gpu": 0.013969802006613463,
+          "readback": 0.002495313005056232,
+          "total": 0.018714411999098957
+        },
+        "png_seconds": 0.01021722995210439,
+        "png_bytes": 156690,
+        "peak_host_mib": 7.919960021972656,
+        "gpu_timings": {
+          "scene": 0.008590336,
+          "finalize": 0.00041491200000000003
+        },
+        "gpu_mib": 33.400428771972656,
+        "draw_calls": 2
+      },
+      {
+        "mode": "gpu+shadows",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 120002,
+        "seconds": 0.030847228015773,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 2.8898008167743683e-05,
+          "extract": 0.00037005095509812236,
+          "init": 2.156099071726203e-05,
+          "upload": 0.000940631958656013,
+          "prepare": 0.0029033030150458217,
+          "gpu": 0.012168649001978338,
+          "readback": 0.0013712150393985212,
+          "total": 0.02920055901631713
+        },
+        "png_seconds": 0.010175979987252504,
+        "png_bytes": 195692,
+        "peak_host_mib": 7.922125816345215,
+        "gpu_timings": {
+          "shadow": 0.0007833600000000001,
+          "scene": 0.0060416,
+          "finalize": 0.00048038400000000004
+        },
+        "gpu_mib": 49.400428771972656,
+        "draw_calls": 4
+      },
+      {
+        "mode": "cpu",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 120002,
+        "seconds": 2.215096474974416,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 2.7192989364266396e-05,
+          "extract": 0.000342681014444679,
+          "geometry": 0.33696504594990984,
+          "raster": 0.4588467639987357,
+          "shade": 1.317093839053996,
+          "output": 0.07537924300413579,
+          "total": 2.206186525989324
+        },
+        "png_seconds": 0.0885954659897834,
+        "png_bytes": 767114,
+        "peak_host_mib": 295.20876026153564
+      },
+      {
+        "mode": "gpu",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 120002,
+        "seconds": 0.05067341902758926,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 2.524594310671091e-05,
+          "extract": 0.0003667110577225685,
+          "init": 1.928600249812007e-05,
+          "upload": 0.0007811320247128606,
+          "prepare": 0.0004294309765100479,
+          "gpu": 0.030552151962183416,
+          "readback": 0.015003370004706085,
+          "total": 0.0475832829833962
+        },
+        "png_seconds": 0.08360276301391423,
+        "png_bytes": 771319,
+        "peak_host_mib": 55.48583507537842,
+        "gpu_timings": {
+          "scene": 0.006998016,
+          "finalize": 0.005097792
+        },
+        "gpu_mib": 300.58792877197266,
+        "draw_calls": 2
+      },
+      {
+        "mode": "gpu-ss",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 120002,
+        "seconds": 0.03362553799524903,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 2.4202046915888786e-05,
+          "extract": 0.000353843963239342,
+          "init": 2.0904000848531723e-05,
+          "upload": 0.0011622380116023123,
+          "prepare": 0.00047709199134260416,
+          "gpu": 0.01563108101254329,
+          "readback": 0.0134281319915317,
+          "total": 0.03143966704374179
+        },
+        "png_seconds": 0.08548681600950658,
+        "png_bytes": 767190,
+        "peak_host_mib": 55.48510551452637,
+        "gpu_timings": {
+          "scene": 0.009960448,
+          "finalize": 0.0006083200000000001
+        },
+        "gpu_mib": 300.58792877197266,
+        "draw_calls": 2
+      },
+      {
+        "mode": "gpu+shadows",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 120002,
+        "seconds": 0.043015275965444744,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 2.3611006326973438e-05,
+          "extract": 0.0003274109913036227,
+          "init": 2.38870270550251e-05,
+          "upload": 0.0009651140426285565,
+          "prepare": 0.0028598589706234634,
+          "gpu": 0.011235400976147503,
+          "readback": 0.014171680028084666,
+          "total": 0.04106291400967166
+        },
+        "png_seconds": 0.09315280301962048,
+        "png_bytes": 1249348,
+        "peak_host_mib": 55.48766803741455,
+        "gpu_timings": {
+          "shadow": 0.00022425600000000002,
+          "scene": 0.005523456,
+          "finalize": 0.0005657920000000001
+        },
+        "gpu_mib": 316.58792877197266,
+        "draw_calls": 4
+      }
+    ],
+    "sphere ~1M triangles": [
+      {
+        "mode": "cpu",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 998002,
+        "seconds": 0.4061169130145572,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.3039680197834969e-06,
+          "extract": 0.00022002204786986113,
+          "geometry": 0.15210874693002552,
+          "raster": 0.18841266201343387,
+          "shade": 0.05475388205377385,
+          "output": 0.007617648981977254,
+          "total": 0.4056599549949169
+        },
+        "png_seconds": 0.005103110976051539,
+        "png_bytes": 5787,
+        "peak_host_mib": 244.78366661071777
+      },
+      {
+        "mode": "gpu",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 998002,
+        "seconds": 0.015403044992126524,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.41095370054245e-06,
+          "extract": 0.00026694405823946,
+          "init": 2.0253995899111032e-05,
+          "upload": 0.00015298498328775167,
+          "prepare": 0.00047059101052582264,
+          "gpu": 0.01184842799557373,
+          "readback": 0.0022553259623236954,
+          "total": 0.015337236050982028
+        },
+        "png_seconds": 0.006478041992522776,
+        "png_bytes": 5930,
+        "peak_host_mib": 5.947760581970215,
+        "gpu_timings": {
+          "scene": 0.008559616,
+          "finalize": 0.000228864
+        },
+        "gpu_mib": 60.126373291015625,
+        "draw_calls": 2
+      },
+      {
+        "mode": "gpu-ss",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 998002,
+        "seconds": 0.016445463988929987,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.5799887478351593e-06,
+          "extract": 0.00029518897645175457,
+          "init": 2.172199310734868e-05,
+          "upload": 0.00016163400141522288,
+          "prepare": 0.0004973739851266146,
+          "gpu": 0.011848729976918548,
+          "readback": 0.0031912819831632078,
+          "total": 0.016368173994123936
+        },
+        "png_seconds": 0.0064898389973677695,
+        "png_bytes": 5875,
+        "peak_host_mib": 5.947911262512207,
+        "gpu_timings": {
+          "scene": 0.008359936,
+          "finalize": 0.000286624
+        },
+        "gpu_mib": 60.126373291015625,
+        "draw_calls": 2
+      },
+      {
+        "mode": "gpu+shadows",
+        "width": 640,
+        "height": 360,
+        "samples_per_pixel": 4,
+        "triangles": 998002,
+        "seconds": 0.0289264100138098,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.3810349628329277e-06,
+          "extract": 0.00023010297445580363,
+          "init": 2.044602297246456e-05,
+          "upload": 0.00011623598402366042,
+          "prepare": 0.0004740610020235181,
+          "gpu": 0.01114196004346013,
+          "readback": 0.0013245479785837233,
+          "total": 0.028868232970125973
+        },
+        "png_seconds": 0.004827755969017744,
+        "png_bytes": 6227,
+        "peak_host_mib": 5.949798583984375,
+        "gpu_timings": {
+          "shadow": 0.0015554560000000002,
+          "scene": 0.0064020480000000005,
+          "finalize": 0.00017360000000000002
+        },
+        "gpu_mib": 76.12637329101562,
+        "draw_calls": 4
+      },
+      {
+        "mode": "cpu",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 998002,
+        "seconds": 0.9711038430104963,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.3450044207274914e-06,
+          "extract": 0.00017735199071466923,
+          "geometry": 0.15624459192622453,
+          "raster": 0.27323811600217596,
+          "shade": 0.44516494701383635,
+          "output": 0.07678895798744634,
+          "total": 0.9637460919911973
+        },
+        "png_seconds": 0.045489562035072595,
+        "png_bytes": 26199,
+        "peak_host_mib": 393.16498947143555
+      },
+      {
+        "mode": "gpu",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 998002,
+        "seconds": 0.030672460969071835,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.4150282368063927e-06,
+          "extract": 0.0002394269686192274,
+          "init": 2.0141014829277992e-05,
+          "upload": 0.00010940700303763151,
+          "prepare": 0.00043508404633030295,
+          "gpu": 0.01337631099158898,
+          "readback": 0.016137463971972466,
+          "total": 0.03060734603786841
+        },
+        "png_seconds": 0.04317662201356143,
+        "png_bytes": 26256,
+        "peak_host_mib": 53.408915519714355,
+        "gpu_timings": {
+          "scene": 0.007711744,
+          "finalize": 0.00028195200000000003
+        },
+        "gpu_mib": 327.3138732910156,
+        "draw_calls": 2
+      },
+      {
+        "mode": "gpu-ss",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 998002,
+        "seconds": 0.02093623799737543,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.4510005712509155e-06,
+          "extract": 0.0002076909877359867,
+          "init": 1.7008977010846138e-05,
+          "upload": 0.00012573698768392205,
+          "prepare": 0.000388038984965533,
+          "gpu": 0.007415134983602911,
+          "readback": 0.012462679005693644,
+          "total": 0.020877743954770267
+        },
+        "png_seconds": 0.04403507197275758,
+        "png_bytes": 26288,
+        "peak_host_mib": 53.40878200531006,
+        "gpu_timings": {
+          "scene": 0.001943552,
+          "finalize": 0.00035689600000000005
+        },
+        "gpu_mib": 327.3138732910156,
+        "draw_calls": 2
+      },
+      {
+        "mode": "gpu+shadows",
+        "width": 1920,
+        "height": 1080,
+        "samples_per_pixel": 4,
+        "triangles": 998002,
+        "seconds": 0.0371781739522703,
+        "timings": {
+          "evaluate": 0.0,
+          "textures": 1.334003172814846e-06,
+          "extract": 0.0002316990285180509,
+          "init": 2.1868967451155186e-05,
+          "upload": 0.00012525299098342657,
+          "prepare": 0.0005339679773896933,
+          "gpu": 0.007784127024933696,
+          "readback": 0.012350414006505162,
+          "total": 0.03711188200395554
+        },
+        "png_seconds": 0.04364850802812725,
+        "png_bytes": 27744,
+        "peak_host_mib": 53.41086959838867,
+        "gpu_timings": {
+          "shadow": 0.000297984,
+          "scene": 0.0021452800000000003,
+          "finalize": 0.0002832
+        },
+        "gpu_mib": 343.3138732910156,
+        "draw_calls": 4
+      }
+    ]
+  }
+}

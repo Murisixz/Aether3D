@@ -6,7 +6,10 @@ An eased segment from ``(t0, v0)`` to ``(t1, v1)`` takes the value
 
 * ``in``      ``E(u) = f(u)`` (slow start),
 * ``out``     ``E(u) = 1 - f(1 - u)`` (slow end),
-* ``in_out``  ``E(u) = f(2u) / 2`` for ``u < 1/2``, else ``1 - f(2 - 2u) / 2``.
+* ``in_out``  ``E(u) = f(2u) / 2`` for ``u < 1/2``, else ``1 - f(2 - 2u) / 2`` (``back``
+  with Penner's overshoot ``1.525 s`` for the two halves, as Blender, so ``s`` means the
+  same overshoot in every mode; until 0.20.0 the halves used ``s``, and files written
+  before are migrated by dividing their ``back`` by 1.525: their curves stay the same).
 
 The base functions are Robert Penner's easing equations (BSD licence), the set animation
 tools share: ``sine``, ``quad``, ``cubic``, ``quart``, ``quint``, ``expo``, ``circ``,
@@ -33,6 +36,8 @@ from ..errors import AnimationError
 EASINGS = ("sine", "quad", "cubic", "quart", "quint", "expo", "circ", "back", "elastic", "bounce")
 MODES = ("in", "out", "in_out")
 DEFAULT_BACK = 1.70158
+BACK_IN_OUT = 1.525
+"""Penner's factor on the overshoot of ``back`` eased in and out."""
 DEFAULT_AMPLITUDE = 1.0
 DEFAULT_PERIOD = 0.3
 
@@ -191,6 +196,8 @@ def evaluate(
             out.append(sign * f[k])
             sign = -sign
         return out
+    if EASINGS[kind] == "back":
+        back = (np.full_like(u, DEFAULT_BACK) if back is None else back) * BACK_IN_OUT
     first = u < 0.5
     lo = base_in(kind, np.where(first, 2.0 * u, 0.0), order, back, amplitude, period)
     hi = base_in(kind, np.where(first, 1.0, 2.0 - 2.0 * u), order, back, amplitude, period)

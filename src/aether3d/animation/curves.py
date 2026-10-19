@@ -70,6 +70,10 @@ _FIRST_EASING = 3
 HANDLE_TYPES = ("free", "aligned", "vector", "auto", "auto_clamped")
 FREE, ALIGNED, VECTOR, AUTO, AUTO_CLAMPED = range(5)
 EXTRAPOLATIONS = ("constant", "linear", "cycle", "cycle_offset", "mirror")
+SMOOTHING = ("local", "blender", "continuous")
+"""How automatic handles are computed (:mod:`.smoothing`): Aether3D's local rule, Blender's
+automatic handles, or Blender's continuous acceleration (C2 at automatic keys)."""
+LOCAL, BLENDER_SMOOTHING, CONTINUOUS = range(3)
 
 MAX_KEYS = 1_000_000
 MAX_ABS_TIME = 1.0e9
@@ -134,7 +138,14 @@ class FCurve:
     :meth:`from_arrays`; read keys with :meth:`keys`; evaluate with :meth:`evaluate`.
     """
 
-    __slots__ = (*(f"_{f}" for f in _FIELDS), "_before", "_after", "_modifiers", "_compiled")
+    __slots__ = (
+        *(f"_{f}" for f in _FIELDS),
+        "_before",
+        "_after",
+        "_modifiers",
+        "_compiled",
+        "_smoothing",
+    )
 
     # ------------------------------------------------------------------ #
     # Construction
@@ -152,18 +163,24 @@ class FCurve:
         modifiers: tuple = (),
         location: str = "curve",
         recompute: bool = True,
+        smoothing: int = LOCAL,
     ) -> FCurve:
         self = object.__new__(cls)
         a = dict(arrays)
         _check_arrays(a, location)
         if recompute:
-            _recompute_handles(a, before, after)
+            from .modifiers import cyclic_handles
+
+            wrap = cyclic_handles(tuple(modifiers))
+            hb, ha = (before, after) if wrap is None else wrap
+            _recompute_handles(a, hb, ha, smoothing)
         for name in _FIELDS:
             object.__setattr__(self, f"_{name}", _frozen(a[name]))
         self._before = before
         self._after = after
         self._modifiers = tuple(modifiers)
         self._compiled = None
+        self._smoothing = smoothing
         if (before >= 2 or after >= 2) and not self._times[-1] > self._times[0]:
             raise _err(
                 "INVALID_EXTRAPOLATION",
@@ -173,7 +190,7 @@ class FCurve:
         return self
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name in ("_before", "_after", "_modifiers", "_compiled") or name.startswith("_"):
+        if name.startswith("_"):
             object.__setattr__(self, name, value)
         else:  # pragma: no cover
             raise AttributeError("FCurve is immutable")
@@ -189,12 +206,13 @@ class FCurve:
         modifiers: Iterable[Any] = (),
         location: str = "curve",
         ease: str = "in_out",
+        smoothing: str = "continuous",
     ) -> FCurve:
         """A curve through ``keys``: ``(time, value)`` pairs or dicts with ``time``,
         ``value`` and optionally ``interpolation``, ``ease``, ``left`` / ``right``
         (``{"type", "dt", "dv"}`` or a type name), ``weighted``, ``back``,
         ``amplitude``, ``period``. ``interpolation``, ``handles`` and ``ease`` are the
-        defaults."""
+        defaults; ``smoothing`` is how automatic handles are computed (:data:`SMOOTHING`)."""
         default_interp = _index(
             INTERPOLATIONS, interpolation, f"{location}.interpolation", "INVALID_INTERPOLATION"
         )
@@ -216,7 +234,8 @@ class FCurve:
         arrays["_slope_right"] = np.array([rows[k]["_slope_right"] for k in order], bool)
         before, after = _extrapolation(extrapolation, f"{location}.extrapolation")
         mods = _modifiers(modifiers, f"{location}.modifiers")
-        return cls._make(arrays, before, after, mods, location)
+        mode = _index(SMOOTHING, smoothing, f"{location}.smoothing", "INVALID_SMOOTHING")
+        return cls._make(arrays, before, after, mods, location, smoothing=mode)
 
     @classmethod
     def from_arrays(
@@ -229,6 +248,7 @@ class FCurve:
         extrapolation: Any = "constant",
         modifiers: Iterable[Any] = (),
         location: str = "curve",
+        smoothing: str = "continuous",
     ) -> FCurve:
         """A curve from arrays of times and values (sorted), with one interpolation and
         handle type for every key (names, or arrays of indices)."""
@@ -272,8 +292,14 @@ class FCurve:
             "period": np.full(n, _easing.DEFAULT_PERIOD),
         }
         before, after = _extrapolation(extrapolation, f"{location}.extrapolation")
+        mode = _index(SMOOTHING, smoothing, f"{location}.smoothing", "INVALID_SMOOTHING")
         return cls._make(
-            arrays, before, after, _modifiers(modifiers, f"{location}.modifiers"), location
+            arrays,
+            before,
+            after,
+            _modifiers(modifiers, f"{location}.modifiers"),
+            location,
+            smoothing=mode,
         )
 
     @classmethod
@@ -306,6 +332,11 @@ class FCurve:
     @property
     def modifiers(self) -> tuple:
         return self._modifiers
+
+    @property
+    def smoothing(self) -> str:
+        """How automatic handles are computed: ``"local"``, ``"blender"``, ``"continuous"``."""
+        return SMOOTHING[self._smoothing]
 
     @property
     def range(self) -> tuple[float, float]:
@@ -382,9 +413,10 @@ class FCurve:
         modifiers: Any = None,
         location: str = "curve",
         recompute: bool = True,
+        smoothing: Any = None,
     ) -> FCurve:
-        """A curve with some arrays, the extrapolation or the modifiers replaced (keys
-        re-sorted by time, stably; automatic handles recomputed)."""
+        """A curve with some arrays, the extrapolation, the modifiers or the smoothing
+        replaced (keys re-sorted by time, stably; automatic handles recomputed)."""
         a = self.arrays()
         if arrays:
             for name, value in arrays.items():
@@ -405,13 +437,21 @@ class FCurve:
         mods = (
             self._modifiers if modifiers is None else _modifiers(modifiers, f"{location}.modifiers")
         )
-        return FCurve._make(a, before, after, mods, location, recompute)
+        mode = (
+            self._smoothing
+            if smoothing is None
+            else _index(SMOOTHING, smoothing, f"{location}.smoothing", "INVALID_SMOOTHING")
+        )
+        return FCurve._make(a, before, after, mods, location, recompute, mode)
 
     def with_keys(self, keys: Iterable[Any], *, location: str = "curve") -> FCurve:
         """The same extrapolation and modifiers with other keys."""
         new = FCurve.from_keys(keys, location=location)
         return new.replace(
-            extrapolation=self.extrapolation, modifiers=self._modifiers, location=location
+            extrapolation=self.extrapolation,
+            modifiers=self._modifiers,
+            location=location,
+            smoothing=self.smoothing,
         )
 
     # ------------------------------------------------------------------ #
@@ -500,6 +540,8 @@ class FCurve:
             )
         if self._modifiers:
             out["modifiers"] = [m.to_json() for m in self._modifiers]
+        if self._smoothing:
+            out["smoothing"] = SMOOTHING[self._smoothing]
         del n
         return out
 
@@ -507,7 +549,7 @@ class FCurve:
     def from_json(cls, data: Any, location: str = "curve") -> FCurve:
         if not isinstance(data, dict):
             raise _err("INVALID_CURVE", "a curve must be an object", location)
-        unknown = set(data) - {"keys", "extrapolation", "modifiers"}
+        unknown = set(data) - {"keys", "extrapolation", "modifiers", "smoothing"}
         if unknown:
             raise _err("INVALID_CURVE", f"unknown curve fields {sorted(unknown)}", location)
         keys = data.get("keys")
@@ -517,6 +559,7 @@ class FCurve:
                 extrapolation=data.get("extrapolation", "constant"),
                 modifiers=data.get("modifiers", ()),
                 location=location,
+                smoothing=data.get("smoothing", "local"),
             )
         if not isinstance(keys, dict):
             raise _err(
@@ -609,7 +652,10 @@ class FCurve:
             data.get("extrapolation", "constant"), f"{location}.extrapolation"
         )
         mods = _modifiers(data.get("modifiers", ()), f"{location}.modifiers")
-        return cls._make(arrays, before, after, mods, location)
+        mode = _index(
+            SMOOTHING, data.get("smoothing", "local"), f"{location}.smoothing", "INVALID_SMOOTHING"
+        )
+        return cls._make(arrays, before, after, mods, location, smoothing=mode)
 
     # ------------------------------------------------------------------ #
     # Equality (exact) and display
@@ -621,7 +667,11 @@ class FCurve:
             return True
         if not isinstance(other, FCurve) or len(self) != len(other):
             return False
-        if (self._before, self._after) != (other._before, other._after):
+        if (self._before, self._after, self._smoothing) != (
+            other._before,
+            other._after,
+            other._smoothing,
+        ):
             return False
         if [m.to_json() for m in self._modifiers] != [m.to_json() for m in other._modifiers]:
             return False
@@ -844,13 +894,16 @@ def _check_arrays(a: dict[str, np.ndarray], location: str) -> None:
 # --------------------------------------------------------------------------------------- #
 
 
-def _recompute_handles(a: dict[str, Any], before: int = 0, after: int = 0) -> None:
+def _recompute_handles(
+    a: dict[str, Any], before: int = 0, after: int = 0, smoothing: int = LOCAL
+) -> None:
     """Fill and update handle offsets from handle types (in place).
 
     Missing (NaN) offsets are filled; ``slope``-given handles (rows of a key table) turn
     into offsets; automatic types are recomputed (cycle-aware at ends that repeat:
-    ``before``/``after`` are extrapolation codes); unweighted keys get time extents of a
-    third of their intervals (their slopes kept)."""
+    ``before``/``after`` are extrapolation codes) by the curve's ``smoothing`` rule
+    (:mod:`.smoothing` for the Blender-compatible ones); unweighted keys get time extents of
+    a third of their intervals (their slopes kept)."""
     t = a["times"].astype(np.float64)
     v = a["values"].astype(np.float64)
     n = t.shape[0]
@@ -954,6 +1007,30 @@ def _recompute_handles(a: dict[str, Any], before: int = 0, after: int = 0) -> No
         factor[:-1] = np.minimum(factor[:-1], tau)
         factor[1:] = np.minimum(factor[1:], tau)
         clamped = clamped * factor
+    auto_left, auto_right = left_len, right_len
+    vec_prev, vec_next = sec_prev, sec_next
+    if smoothing != LOCAL and n > 0:
+        from . import smoothing as _smoothing
+
+        # Blender's automatic handles: one slope per key (clamped if either side is),
+        # its own extents; vector handles of end keys mirror the neighbour they have.
+        is_clamped = (lt == AUTO_CLAMPED) | (rt == AUTO_CLAMPED)
+        slope_b, auto_left, auto_right = _smoothing.blender_auto(t, v, before, after, is_clamped)
+        parabola = clamped = slope_b
+        own_prev = np.zeros(n, bool)
+        own_next = np.zeros(n, bool)
+        if n > 1:
+            own_prev[1:] = np.diff(t) > 0
+            own_next[:-1] = np.diff(t) > 0
+        with np.errstate(divide="ignore", invalid="ignore"):
+            s_own = np.diff(v) / np.where(np.diff(t) > 0, np.diff(t), 1.0) if n > 1 else None
+        vec_prev = np.zeros(n)
+        vec_next = np.zeros(n)
+        if n > 1:
+            vec_prev[1:] = np.where(own_prev[1:], s_own, 0.0)
+            vec_next[:-1] = np.where(own_next[:-1], s_own, 0.0)
+            vec_prev = np.where(own_prev, vec_prev, np.where(own_next, vec_next, 0.0))
+            vec_next = np.where(own_next, vec_next, np.where(own_prev, vec_prev, 0.0))
 
     def fill(
         side: str,
@@ -963,15 +1040,16 @@ def _recompute_handles(a: dict[str, Any], before: int = 0, after: int = 0) -> No
         length: np.ndarray,
         sign: float,
     ) -> None:
+        auto_length = auto_left if side == "left" else auto_right
         auto = types == AUTO
-        dt[auto] = sign * length[auto]
+        dt[auto] = sign * auto_length[auto]
         dv[auto] = parabola[auto] * dt[auto]
         ac = types == AUTO_CLAMPED
-        dt[ac] = sign * length[ac]
+        dt[ac] = sign * auto_length[ac]
         dv[ac] = clamped[ac] * dt[ac]
         vec = types == VECTOR
         dt[vec] = sign * length[vec]
-        target = sec_prev if side == "left" else sec_next
+        target = vec_prev if side == "left" else vec_next
         dv[vec] = target[vec] * dt[vec]
         # Free and aligned handles without offsets: flat, a third of the interval.
         missing = ~np.isfinite(dt)
@@ -1012,6 +1090,11 @@ def _recompute_handles(a: dict[str, Any], before: int = 0, after: int = 0) -> No
     with np.errstate(divide="ignore", invalid="ignore"):
         slope_r = np.where(rdt != 0.0, rdv / np.where(rdt != 0.0, rdt, 1.0), 0.0)
     ldv[pair] = slope_r[pair] * ldt[pair]
+
+    if smoothing == CONTINUOUS:
+        from . import smoothing as _smoothing
+
+        _smoothing.continuous(t, v, lt, rt, ldt, ldv, rdt, rdv, before, after)
 
     a["left_dt"], a["left_dv"], a["right_dt"], a["right_dv"] = ldt, ldv, rdt, rdv
 

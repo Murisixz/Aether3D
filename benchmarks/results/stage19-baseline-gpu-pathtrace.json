@@ -1,0 +1,83 @@
+{
+  "aether3d": "0.19.1",
+  "cases": [
+    {
+      "scene": "cornell",
+      "width": 640,
+      "height": 640,
+      "samples": 256,
+      "bounces": 8,
+      "gpu_seconds": 12.84,
+      "rays": 616278586,
+      "mrays_per_second": 48.5,
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "cpu_seconds": 567.05,
+      "cpu_processes": 8,
+      "speedup": 44.2
+    },
+    {
+      "scene": "metals",
+      "width": 960,
+      "height": 540,
+      "samples": 128,
+      "bounces": 4,
+      "clamp": 3.0,
+      "gpu_seconds": 3.51,
+      "rays": 191128653,
+      "mrays_per_second": 56.4,
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "cpu_seconds": 198.6,
+      "cpu_processes": 8,
+      "speedup": 56.5
+    },
+    {
+      "scene": "window room",
+      "width": 960,
+      "height": 640,
+      "samples": 512,
+      "bounces": 6,
+      "gpu_seconds": 52.86,
+      "rays": 1905192147,
+      "mrays_per_second": 36.2,
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "cpu_seconds": 2400.87,
+      "cpu_processes": 8,
+      "speedup": 45.4
+    },
+    {
+      "scene": "castle",
+      "width": 1920,
+      "height": 1080,
+      "samples": 64,
+      "bounces": 4,
+      "gpu_seconds": 21.7,
+      "rays": 579632330,
+      "mrays_per_second": 28.0,
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "cpu_seconds": 935.14,
+      "cpu_processes": 8,
+      "speedup": 43.1
+    },
+    {
+      "scene": "hero",
+      "width": 1280,
+      "height": 720,
+      "samples": 64,
+      "bounces": 4,
+      "clamp": 3.0,
+      "gpu_seconds": 3.37,
+      "rays": 159098160,
+      "mrays_per_second": 53.0,
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "cpu_seconds": 142.07,
+      "cpu_processes": 8,
+      "speedup": 42.2
+    }
+  ],
+  "traversal": {
+    "scene": "castle, AO only (camera and AO rays)",
+    "seconds": 1.44,
+    "rays": 85017592,
+    "mrays_per_second": 177.2
+  }
+}

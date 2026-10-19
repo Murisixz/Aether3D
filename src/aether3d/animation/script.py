@@ -100,7 +100,7 @@ _KEY_OPTIONS = (
     "interpolation", "ease", "left", "right", "weighted", "back", "amplitude", "period",
     "handles", "path", "timing",
 )  # fmt: skip
-_CURVE_OPTIONS = ("interpolation", "handles", "extrapolation", "modifiers", "ease")
+_CURVE_OPTIONS = ("interpolation", "handles", "extrapolation", "modifiers", "ease", "smoothing")
 _STRIP_OPTIONS = (
     "name", "start", "clip_start", "clip_end", "speed", "repeat", "reverse", "blend_in",
     "blend_out", "before", "after", "weight", "weight_curve", "time_curve", "accumulate",
@@ -110,7 +110,9 @@ _LAYER_CHANGES = ("name", "mode", "weight", "weight_curve", "mask", "mute", "ind
 _EDIT_ARGUMENTS = (
     "keys", "time", "value", "interpolation", "ease", "back", "amplitude", "period",
     "weighted", "side", "type", "dt", "dv", "slope", "factor", "pivot", "velocity", "fps",
-    "start", "end", "map",
+    "start", "end", "map", "left", "right", "handles", "keep_shape", "smoothing", "ease_in",
+    "ease_out", "amount", "at", "settle", "oscillations", "decay", "duration", "drift",
+    "shift", "sigma", "keep_ends",
 )  # fmt: skip
 
 OPERATIONS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...], bool]] = {

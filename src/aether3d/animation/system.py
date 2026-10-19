@@ -759,7 +759,9 @@ class AnimationSystem:
 
     def edit_keys(self, target: Any, path: str, op: str, *, clip: Any = None, **args: Any) -> None:
         """A key operation (``set``, ``delete``, ``handle``, ``move``, ``scale_time``,
-        ``reverse``, ``quantize``, ...; see :mod:`.clip`) on a scalar channel."""
+        ``reverse``, ``quantize``, ``ease``, ``anticipate``, ``overshoot``, ...; see
+        :mod:`.clip`) on a scalar channel, or on every component of a grouped path
+        (``transform.position``: the same operation, one undo step)."""
         if clip is not None:
             item = self._clip_item(clip)
             kind = item._definition.target
@@ -769,18 +771,25 @@ class AnimationSystem:
             kind = key[0]
             if item is None:
                 raise _err("CHANNEL_MISSING", f"{self._target_name(key)!r} has no action", "target")
-        spec = P.parse(path, kind, location="path")
-        assert not isinstance(spec, list)
-        curve = item._definition.channel(spec.path)
-        if curve is None:
-            raise _err("CHANNEL_MISSING", f"no channel {spec.path}", "path")
-        if not isinstance(curve, FCurve):
-            raise _err(
-                "INVALID_CHANNEL", f"{spec.path} is a rotation track: use set_channel", "path"
-            )
-        new = edit_curve(curve, op, args, f"operations[{op}]")
-        with self._op(f"{op.replace('_', ' ').capitalize()} keys of {spec.path}"):
-            self._set(item, definition=item._definition.with_channel(spec.path, new))
+        parsed = P.parse(path, kind, grouped=True, location="path")
+        specs = parsed if isinstance(parsed, list) else [parsed]
+        definition = item._definition
+        for spec in specs:
+            curve = definition.channel(spec.path)
+            if curve is None:
+                if len(specs) > 1:
+                    continue  # a grouped path edits the components that are keyed
+                raise _err("CHANNEL_MISSING", f"no channel {spec.path}", "path")
+            if not isinstance(curve, FCurve):
+                raise _err(
+                    "INVALID_CHANNEL", f"{spec.path} is a rotation track: use set_channel", "path"
+                )
+            new = edit_curve(curve, op, args, f"operations[{op}]")
+            definition = definition.with_channel(spec.path, new)
+        if definition is item._definition:
+            raise _err("CHANNEL_MISSING", f"no keyed component of {path}", "path")
+        with self._op(f"{op.replace('_', ' ').capitalize()} keys of {path}"):
+            self._set(item, definition=definition)
 
     # ------------------------------------------------------------------ #
     # Rigs, attachments, constraints, skins
@@ -2539,6 +2548,12 @@ def _channel_from(
     if keys is None:
         return None
     if spec.kind == P.ROTATION:
+        if "smoothing" in options:
+            raise _err(
+                "INVALID_ARGUMENT",
+                "smoothing applies to scalar channels (rotation tracks interpolate on the sphere)",
+                location,
+            )
         if isinstance(keys, RotationTrack):
             return keys
         if isinstance(keys, dict):

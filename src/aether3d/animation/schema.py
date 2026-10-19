@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .curves import EXTRAPOLATIONS, HANDLE_TYPES, INTERPOLATIONS
+from .clip import KEY_OPERATIONS
+from .curves import EXTRAPOLATIONS, HANDLE_TYPES, INTERPOLATIONS, SMOOTHING
 from .easing import MODES
 from .generators import KINDS
 from .script import FORMAT_ID, LIMIT_KEYS, MAX_OPERATIONS, OPERATIONS, VERSION
@@ -189,22 +190,26 @@ _ARGUMENTS: dict[str, Any] = {
     },
     "kind": {"enum": ["ik", "pole", "gaze", "fk", "root"]},
     "skins": {"enum": ["rebind", "keep_bind"]},
-    "edit": {
-        "enum": [
-            "set",
-            "delete",
-            "handle",
-            "handle_type",
-            "interpolation",
-            "move",
-            "scale_time",
-            "scale_values",
-            "reverse",
-            "quantize",
-            "distribute",
-            "retime",
-        ],
-    },  # fmt: skip
+    "edit": {"enum": list(KEY_OPERATIONS)},
+    "smoothing": {
+        "enum": list(SMOOTHING),
+        "description": "automatic handles: continuous (Blender's Continuous Acceleration, "
+        "the default for new curves: acceleration continuous at automatic keys), blender "
+        "(Blender's handles without smoothing), local (Aether3D's own rule before 0.20.0)",
+    },
+    "keep_shape": {"type": "boolean", "description": "insert: a key that keeps the curve"},
+    "ease_in": {"type": "number", "minimum": 0, "maximum": 1},
+    "ease_out": {"type": "number", "minimum": 0, "maximum": 1},
+    "amount": {"type": "number", "minimum": 0, "maximum": 10},
+    "at": {"type": "number", "minimum": 0, "maximum": 0.9},
+    "settle": {"type": "number", "exclusiveMinimum": 0},
+    "oscillations": {"type": "integer", "minimum": 1, "maximum": 16},
+    "decay": {"type": "number", "minimum": 0, "maximum": 1},
+    "duration": {"type": "number", "exclusiveMinimum": 0},
+    "drift": {"type": "number", "minimum": 0, "maximum": 1},
+    "shift": {"type": "boolean"},
+    "sigma": {"type": "number", "exclusiveMinimum": 0},
+    "keep_ends": {"type": "boolean"},
 }
 
 
