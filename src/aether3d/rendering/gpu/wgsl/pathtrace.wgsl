@@ -64,6 +64,7 @@ const FLAG_PERSPECTIVE: u32 = 1u;
 const FLAG_PASS_THROUGH: u32 = 2u;
 const FLAG_AO: u32 = 4u;
 const FLAG_SIZED_LIGHTS: u32 = 8u;
+const FLAG_SOBOL: u32 = 16u;  // PathSettings.sampler == "sobol"
 const MODE_PATHS: u32 = 0u;
 const MODE_CENTER: u32 = 1u;
 const MODE_RNG: u32 = 2u;
@@ -203,15 +204,85 @@ fn mix64(x_in: vec2<u32>) -> vec2<u32> {
   return x ^ shr64(x, 31u);
 }
 
-fn path_key(pixel: u32, sample: u32) -> vec2<u32> {
+fn hash_key(pixel: u32, sample: u32) -> vec2<u32> {
   var key = mix64(vec2<u32>(params.seed_lo, params.seed_hi));
   key = mix64(key ^ mul64(vec2<u32>(pixel, 0u), PIXEL_MUL));
   return mix64(key ^ mul64(vec2<u32>(sample, 0u), SAMPLE_MUL));
 }
 
+fn path_key(pixel: u32, sample: u32) -> vec4<u32> {
+  return vec4<u32>(hash_key(pixel, sample), hash_key(pixel, 0u).y, sample);
+}
+
+// -- Owen-scrambled Sobol' (sampling.py: SobolKeys) ---------------------------------------
+
+fn hash32(x_in: u32) -> u32 {
+  var x = x_in;
+  x = x ^ (x >> 16u);
+  x = x * 0x7feb352du;
+  x = x ^ (x >> 15u);
+  x = x * 0x846ca68bu;
+  return x ^ (x >> 16u);
+}
+
+fn owen_scramble(x: u32, seed: u32) -> u32 {
+  var v = reverseBits(x) + seed;
+  v = v ^ (v * 0x6c50b47cu);
+  v = v ^ (v * 0xb82f1e52u);
+  v = v ^ (v * 0xc7afe638u);
+  v = v ^ (v * 0x8d22f6e6u);
+  return reverseBits(v);
+}
+
+fn sobol(index: u32, lane: u32) -> u32 {
+  let base = pt[H_SOBOL] + 32u * lane;
+  var x = 0u;
+  var i = index;
+  var j = 0u;
+  loop {
+    if (i == 0u) {
+      break;
+    }
+    if ((i & 1u) != 0u) {
+      x = x ^ pt[base + j];
+    }
+    i = i >> 1u;
+    j += 1u;
+  }
+  return x;
+}
+
+// (group, lane) of a decision slot; group PT_NONE: hashed (sampling.sobol_group).
+fn sobol_group(slot: u32) -> vec2<u32> {
+  if (slot == SLOT_PIXEL) { return vec2<u32>(0u, 0u); }
+  if (slot == SLOT_PIXEL + 1u) { return vec2<u32>(0u, 1u); }
+  if (slot == SLOT_LENS) { return vec2<u32>(0u, 2u); }
+  if (slot == SLOT_LENS + 1u) { return vec2<u32>(0u, 3u); }
+  if (slot == SLOT_BSDF) { return vec2<u32>(1u, 0u); }
+  if (slot == SLOT_BSDF + 1u) { return vec2<u32>(1u, 1u); }
+  if (slot == SLOT_LOBE) { return vec2<u32>(1u, 2u); }
+  if (slot == SLOT_RR) { return vec2<u32>(1u, 3u); }
+  if (slot >= SLOT_AO && slot < SLOT_AO + 2048u) {
+    return vec2<u32>(2u + (slot - SLOT_AO) / 2u, (slot - SLOT_AO) % 2u);
+  }
+  if (slot >= SLOT_LIGHTS) {
+    return vec2<u32>(4096u + (slot - SLOT_LIGHTS) / 3u, (slot - SLOT_LIGHTS) % 3u);
+  }
+  return vec2<u32>(PT_NONE, 0u);
+}
+
 // The uniform number in [0, 1) of decision `slot` at path vertex `vertex`.
-fn rnd(key: vec2<u32>, vertex: u32, slot: u32) -> f32 {
-  let x = mix64(key ^ add64(mul64(vec2<u32>(slot, vertex), DIM_MUL), GOLDEN));
+fn rnd(key: vec4<u32>, vertex: u32, slot: u32) -> f32 {
+  if ((params.flags & FLAG_SOBOL) != 0u) {
+    let gl = sobol_group(slot);
+    if (gl.x != PT_NONE) {
+      let seed = hash32(key.z ^ hash32(vertex * 0x9e3779b9u + gl.x * 0x85ebca6bu));
+      let index = owen_scramble(key.w, seed);
+      let x = owen_scramble(sobol(index, gl.y), hash32(seed + gl.y + 1u));
+      return f32(x >> 8u) * (1.0 / 16777216.0);
+    }
+  }
+  let x = mix64(key.xy ^ add64(mul64(vec2<u32>(slot, vertex), DIM_MUL), GOLDEN));
   return f32(x.y >> 8u) * (1.0 / 16777216.0);
 }
 
@@ -935,7 +1006,7 @@ struct LightSample {
   delta: bool,       // no size: light sampling is the only strategy
 };
 
-fn sample_analytic(l: u32, p: vec3<f32>, key: vec2<u32>, vertex: u32, index: u32) -> LightSample {
+fn sample_analytic(l: u32, p: vec3<f32>, key: vec4<u32>, vertex: u32, index: u32) -> LightSample {
   let lb = light_base(l);
   let slot = SLOT_LIGHTS + 3u * index;
   var out: LightSample;
@@ -1188,7 +1259,7 @@ const RAY_AO: u32 = 3u;
 const RAY_CENTER: u32 = 4u;
 
 struct State {
-  key: vec2<u32>,
+  key: vec4<u32>,     // hash key (lo, hi), pixel hash, sample number (sampling.py)
   phase: u32,
   // The ray in flight: its current segment, and where it started (pass-through layers).
   kind: u32,
@@ -1833,7 +1904,7 @@ fn run_state(st: ptr<function, State>) {
   }
 }
 
-fn new_state(key: vec2<u32>) -> State {
+fn new_state(key: vec4<u32>) -> State {
   var st: State;
   st.key = key;
   st.phase = PH_DONE;
@@ -1884,7 +1955,7 @@ fn path_main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invoc
       accum[plane(2u, pixel)] = rnd(key, 3u, SLOT_LIGHTS + 5u);
       accum[plane(3u, pixel)] = rnd(key, 2u, SLOT_RR);
     } else if (params.mode == MODE_CENTER) {
-      var st = new_state(vec2<u32>(0u));
+      var st = new_state(vec4<u32>(0u));
       camera_ray(&st, RAY_CENTER, x, y, 0.5, 0.5, false, 0.5, 0.5);
       st.tally.center += 1u;
       run_state(&st);

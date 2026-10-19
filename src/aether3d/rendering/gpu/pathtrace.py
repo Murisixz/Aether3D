@@ -38,6 +38,7 @@ from ...diagnostics import INFO, WARNING, Diagnostic
 from ...errors import RenderError
 from ..pathtrace.integrator import PathFrame, estimate_work
 from ..pathtrace.lights import LightSet
+from ..pathtrace.sampling import SOBOL_DIRECTIONS
 from ..pathtrace.scene import MAX_LAYERS, PathScene
 from ..raytrace.accel import KIND_INNER, _round_out
 from ..scene_data import RenderScene
@@ -64,7 +65,7 @@ TILE = 512
 MAX_PIXEL_SAMPLES_PER_DISPATCH = 1 << 20
 """Pixel samples one dispatch may trace when no progress callback asks for every pass."""
 MODE_PATHS, MODE_CENTER, MODE_RNG = 0, 1, 2
-FLAG_PERSPECTIVE, FLAG_PASS_THROUGH, FLAG_AO, FLAG_SIZED_LIGHTS = 1, 2, 4, 8
+FLAG_PERSPECTIVE, FLAG_PASS_THROUGH, FLAG_AO, FLAG_SIZED_LIGHTS, FLAG_SOBOL = 1, 2, 4, 8, 16
 ENV_KINDS = {"ambient": 0, "uniform": 1, "sky": 2, "image": 3}
 CULLS = {"none": 0, "back": 1, "front": 2}
 RAY_COUNTERS = (
@@ -273,6 +274,7 @@ def pack_scene_words(
         cdf.view(np.uint32),
         lookup,
         _environment_words(ps.environment),
+        SOBOL_DIRECTIONS.reshape(-1).astype(np.uint32),
     ]
     header = np.zeros(HEADER_WORDS, dtype=np.uint32)
     offset = HEADER_WORDS
@@ -361,6 +363,7 @@ def base_params(
         | (FLAG_PASS_THROUGH if ps.pass_through else 0)
         | (FLAG_AO if ao is not None else 0)
         | (FLAG_SIZED_LIGHTS if sized else 0)
+        | (FLAG_SOBOL if path.sampler == "sobol" else 0)
     )
     pr.u(35, flags)
     pr.u(36, path.seed & 0xFFFFFFFF)
@@ -785,7 +788,7 @@ def _frame(
 
 
 def random_numbers(
-    context: GPUContext, seed: int, width: int, height: int, sample: int
+    context: GPUContext, seed: int, width: int, height: int, sample: int, sampler: str = "random"
 ) -> np.ndarray:
     """Test hook: the kernel's random numbers for a few fixed decisions, ``(4, height, width)``.
 
@@ -800,9 +803,13 @@ def random_numbers(
         storage = wgpu.BufferUsage.STORAGE
         empty = np.zeros(64, np.uint32)  # at least one element of every binding's type
         bufs = [device.create_buffer_with_data(data=empty, usage=storage) for _ in range(4)]
-        scene = np.zeros(HEADER_WORDS + 4, np.uint32)
+        sobol = SOBOL_DIRECTIONS.reshape(-1).astype(np.uint32)
+        scene = np.zeros(HEADER_WORDS + sobol.size, np.uint32)
+        scene[11] = HEADER_WORDS  # H_SOBOL
+        scene[HEADER_WORDS:] = sobol
         bufs.append(device.create_buffer_with_data(data=scene, usage=storage))
         pr = Params()
+        pr.u(35, FLAG_SOBOL if sampler == "sobol" else 0)
         pr.u(36, seed & 0xFFFFFFFF)
         pr.u(37, seed >> 32)
         pr.u(38, width)

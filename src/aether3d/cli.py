@@ -836,6 +836,7 @@ _PATH_FLAGS = {
     "seed": "seed",
     "light_samples": "light_samples",
     "russian_roulette": "russian_roulette",
+    "sampler": "sampler",
     "clamp": "clamp",
     "workers": "workers",
 }
@@ -2242,6 +2243,12 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     )
     p_render.add_argument(
         "--russian-roulette", type=int, help="path: bounce from which dim paths may stop (3)"
+    )
+    p_render.add_argument(
+        "--sampler",
+        choices=["random", "sobol"],
+        help="path: random (hashed numbers, default) or sobol (Owen-scrambled Sobol': less "
+        "noise for the same samples)",
     )
     p_render.add_argument(
         "--clamp", type=float, help="path: clamp indirect radiance per sample (0 = off)"
