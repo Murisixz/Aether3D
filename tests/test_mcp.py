@@ -430,13 +430,23 @@ def test_render_limits_and_path_tracing_budget(tmp_path):
             "render_image",
             {"path": "small.png", "backend": "path", "width": 48, "height": 27, "spp": 2},
         )
+        out["film"] = await call(  # (0.20.0: the sampler, filter, adaptive, denoise, film)
+            client,
+            "render_image",
+            {"path": "film.png", "backend": "path", "width": 48, "height": 27, "spp": 8,
+             "sampler": "sobol", "filter": "blackman_harris", "adaptive": 0.05,
+             "denoise": True, "tonemap": "film", "exposure": 0.5},
+        )  # fmt: skip
+        out["preview"] = await call(client, "render_preview", {"width": 64, "height": 36,
+                                                               "tonemap": "film"})  # fmt: skip
         return out
 
     out = session(tmp_path, body)
     assert out["too_big"]["error"]["code"] == "LIMIT_EXCEEDED"
     assert out["budget"]["error"]["code"] == "LIMIT_EXCEEDED"
     assert out["image"]["backend"] == "path" and out["image"]["device"] == "cpu"
-    assert (tmp_path / "small.png").exists()
+    assert (tmp_path / "small.png").exists() and (tmp_path / "film.png").exists()
+    assert "DENOISED" in json.dumps(out["film"])
 
     async def no_path(client):
         await call(client, "scene_new")

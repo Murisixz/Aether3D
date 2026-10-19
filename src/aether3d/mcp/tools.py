@@ -87,6 +87,8 @@ OVERWRITE = {
     "default": False,
     "description": "replace an existing file (never done without it)",
 }
+TONEMAP = {"enum": ["none", "neutral", "film"]}
+EXPOSURE = {"type": "number", "minimum": -20, "maximum": 20}
 SELECTOR = {
     "description": "objects: an id or name, a list of them, or {ids, names, tags (all), "
     "any_tags, name_glob, kind, under (an ancestor), visible, material, expect (count or "
@@ -728,6 +730,9 @@ def render_preview(session: Session, args: dict, ctx: ToolContext) -> ToolOutput
     # and favors encoding speed: zlib level 1, a few percent larger than the default.
     if args.get("time") is not None:
         options["time"] = args["time"]
+    for key in ("tonemap", "exposure"):
+        if args.get(key) is not None:
+            options[key] = args[key]
     result = scene.render(
         width=width, height=height, backend=backend, outputs=("image",), **options
     )
@@ -767,6 +772,12 @@ def render_image(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
                 hint="lower the size or spp, or render with the GPU rasterizer",
             )
         options["path"] = {"samples": spp, "bounces": args.get("bounces", 4)}
+        for key, field in (("sampler", "sampler"), ("filter", "filter"),
+                           ("adaptive", "adaptive_threshold")):  # fmt: skip
+            if args.get(key) is not None:
+                options["path"][field] = args[key]
+        if args.get("denoise"):
+            options["denoise"] = True
 
         def stop(done: int, total: int, seconds: float) -> bool:
             if ctx.progress is not None:
@@ -785,6 +796,9 @@ def render_image(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
         options["adapter"] = config.gpu_adapter
     if args.get("time") is not None:
         options["time"] = args["time"]
+    for key in ("tonemap", "exposure"):
+        if args.get(key) is not None:
+            options[key] = args[key]
     hdr = target.suffix.lower() in (".hdr", ".pfm")  # linear light; a PNG needs the image
     outputs = ("image", "linear") if hdr else ("image",)
     result = scene.render(width=width, height=height, backend=backend, outputs=outputs, **options)
@@ -1508,6 +1522,7 @@ TOOLS: tuple[ToolSpec, ...] = (
                 "backend": {"enum": ["auto", "gpu", "cpu"], "default": "auto"},
                 "shadows": {"type": "boolean", "default": False},
                 "time": {"type": "number"},
+                "tonemap": TONEMAP,
                 "save_to": PATH,
                 "overwrite": OVERWRITE,
             }
@@ -1520,7 +1535,9 @@ TOOLS: tuple[ToolSpec, ...] = (
         "Render an image file",
         "Render to an image file in the workspace (.png, or linear .hdr/.pfm), at an animation "
         "time if given. backend: auto, gpu, cpu (rasterizers), or path / gpu_path (path "
-        "tracer: slow; spp, bounces; bounded by the server's budget). Returns the report.",
+        "tracer: slow; spp, bounces, sampler sobol: less noise, filter, adaptive: stop a "
+        "pixel below this relative error, denoise; within the server's budget). Returns the "
+        "report.",
         _schema(
             {
                 "path": PATH,
@@ -1532,6 +1549,12 @@ TOOLS: tuple[ToolSpec, ...] = (
                 "samples": {"type": "integer", "minimum": 1, "maximum": 4},
                 "spp": {"type": "integer", "minimum": 1, "maximum": 4096},
                 "bounces": {"type": "integer", "minimum": 0, "maximum": 16},
+                "sampler": {"enum": ["random", "sobol"]},
+                "filter": {"enum": ["box", "gaussian", "blackman_harris"]},
+                "adaptive": {"type": "number", "minimum": 0.0, "maximum": 0.5},
+                "denoise": {"type": "boolean"},
+                "tonemap": TONEMAP,
+                "exposure": EXPOSURE,
                 "shadows": {"type": "boolean", "default": False},
                 "time": {"type": "number"},
                 "include_image": {"type": "boolean", "default": False},
