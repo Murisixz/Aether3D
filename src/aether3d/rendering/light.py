@@ -128,7 +128,7 @@ class Light:
     * ``angle`` -- directional lights: angular diameter in degrees
       (``0..180``, default 0; the sun is about 0.53); soft shadows in the
       path tracers.
-    * ``spot_size`` -- spot lights: the cone's full angle in degrees (``1..180``,
+    * ``spot_size`` -- spot lights: the cone's full angle in degrees (``0.1..180``,
       default 45); ``spot_blend`` -- its soft edge (``0..1``, default 0.15): the
       cone fades with a smoothstep over that share of its cosine range, as in Blender.
     * ``shape`` -- area lights: ``"square"``, ``"rectangle"``, ``"disk"`` or
@@ -137,9 +137,10 @@ class Light:
       Lambertian emitters; ``spread`` (``1..180`` degrees, default 180) narrows them.
     * ``units`` -- ``"aether"`` (0.x: the radiance factor) or ``"watts"`` (Blender's
       light power: suns in W/m^2, others in W).
-    * ``temperature`` -- kelvins (``800..12000``, default 6500); with
-      ``use_temperature`` the light's colour is multiplied by the black body's
-      (:mod:`~aether3d.rendering.blackbody`, luminance 1).
+    * ``temperature`` -- kelvins (``100..100000``, default 6500; the black body is
+      computed at ``800..12000``, as Blender clamps); with ``use_temperature`` the light's
+      colour is multiplied by the black body's (:mod:`~aether3d.rendering.blackbody`,
+      luminance 1).
     * ``exposure`` -- scales the intensity by ``2^exposure``.
     * ``shadow`` -- ``False``: nothing blocks this light (path tracers trace no shadow
       rays for it; shadow maps skip it).

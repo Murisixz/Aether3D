@@ -8,9 +8,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from gpu_support import GPU_PATH
 
 from aether3d.errors import RenderError
-from aether3d.rendering.gpu import gpu_status
 from aether3d.rendering.pathtrace import integrator
 from aether3d.rendering.pathtrace.sampling import (
     SLOT_BSDF,
@@ -26,8 +26,6 @@ from aether3d.rendering.settings import PathSettings
 
 sys.path.insert(0, str(Path(__file__).parent))
 from test_lights import DATA, area_scene  # noqa: E402
-
-GPU = gpu_status().get("available", False)
 
 
 def test_the_sequence_is_sobols_and_stays_stratified_after_scrambling():
@@ -55,7 +53,7 @@ def test_pixels_and_decisions_are_decorrelated_and_uniform():
     assert abs(np.corrcoef(a, b)[0, 1]) < 0.01 and abs(np.corrcoef(a, c)[0, 1]) < 0.01
 
 
-@pytest.mark.skipif(not GPU, reason="needs a GPU")
+@pytest.mark.skipif(not GPU_PATH, reason="needs a GPU that runs the path tracer")
 def test_the_gpu_draws_the_cpus_sobol_numbers():
     from aether3d.rendering.gpu import device
     from aether3d.rendering.gpu.pathtrace import random_numbers
@@ -90,7 +88,7 @@ def test_sobol_has_less_noise_for_the_same_samples_and_no_bias():
     assert rms_error("sobol", 256, 3) < 0.003  # converges to Blender's image (no bias)
 
 
-@pytest.mark.skipif(not GPU, reason="needs a GPU")
+@pytest.mark.skipif(not GPU_PATH, reason="needs a GPU that runs the path tracer")
 def test_the_gpu_traces_the_same_sobol_paths():
     a = rms_error("sobol", 16, 1, "path")
     b = rms_error("sobol", 16, 1, "gpu_path")
@@ -131,7 +129,7 @@ def test_pixel_filters_spread_an_edge_as_their_profiles_say(name):
     u = (np.arange(100_000) + 0.5) / 100_000
     offsets = filter_offset(filter_table(name, 3.0), u)
     expect = [np.mean(offsets > 5 - k) for k in range(3, 8)]  # the edge: pixel 5's centre
-    for backend in ["path", *(["gpu_path"] if GPU else [])]:
+    for backend in ["path", *(["gpu_path"] if GPU_PATH else [])]:
         r = scene.render(width=11, height=3, backend=backend, default_lights=False, path=path)
         assert np.allclose(r.linear[1, 3:8, 0], expect, atol=2e-3), backend
     with pytest.raises(RenderError):
@@ -146,7 +144,7 @@ def adaptive_scene():
     return two_walls()
 
 
-@pytest.mark.parametrize("backend", ["path", *(["gpu_path"] if GPU else [])])
+@pytest.mark.parametrize("backend", ["path", *(["gpu_path"] if GPU_PATH else [])])
 def test_adaptive_sampling_spends_samples_where_the_noise_is(backend):
     scene = adaptive_scene()
     path = {"samples": 128, "bounces": 3, "sampler": "sobol", "adaptive_threshold": 0.03}
@@ -174,7 +172,7 @@ def test_adaptive_images_do_not_depend_on_batching_or_workers(monkeypatch):
     assert np.array_equal(a.passes["sample_count"], b.passes["sample_count"])
 
 
-@pytest.mark.skipif(not GPU, reason="needs a GPU")
+@pytest.mark.skipif(not GPU_PATH, reason="needs a GPU that runs the path tracer")
 def test_the_gpu_stops_the_pixels_the_cpu_stops():
     scene = adaptive_scene()
     path = {"samples": 64, "bounces": 2, "sampler": "sobol", "adaptive_threshold": 0.03}

@@ -9,13 +9,12 @@ import math
 
 import numpy as np
 import pytest
+from gpu_support import GPU, GPU_PATH
 
 from aether3d import Scene, export_gltf, import_gltf
-from aether3d.rendering.gpu import gpu_status
 from aether3d.rendering.pathtrace.bsdf import fresnel_dielectric, glass_eval, glass_sample
 
-GPU = gpu_status().get("available", False)
-TRACERS = ["path", *(["gpu_path"] if GPU else [])]
+TRACERS = ["path", *(["gpu_path"] if GPU_PATH else [])]
 
 
 def test_fresnel_matches_the_closed_forms():
@@ -99,7 +98,7 @@ def test_a_glass_slab_transmits_what_its_two_interfaces_let_through(backend):
     assert r.linear[..., 1].mean() == pytest.approx((1 - rr) / (1 + rr), rel=0.004)
 
 
-@pytest.mark.skipif(not GPU, reason="needs a GPU")
+@pytest.mark.skipif(not GPU_PATH, reason="needs a GPU that runs the path tracer")
 def test_the_gpu_path_tracer_traces_the_cpu_paths_through_glass():
     scene = glass_ball(0.15)
     scene.world.environment.configure(type="image", image="builtin:studio")

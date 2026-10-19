@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import os
 import struct
-import tempfile
 import zlib
 from pathlib import Path
 
 import numpy as np
 
+from .._fileio import write_atomic
 from ..errors import RenderError
 
 MAGIC = 20000630
@@ -107,16 +107,7 @@ def write_exr(
         offsets.append(pos)
         pos += len(b)
     body = header + struct.pack(f"<{len(offsets)}Q", *offsets) + b"".join(blocks)
-    target = Path(path)
-    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".tmp-", suffix=".exr")
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(body)
-        os.replace(tmp, target)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
-    return target
+    return write_atomic(path, body)
 
 
 def read_exr(path: str | os.PathLike[str]) -> dict[str, np.ndarray]:

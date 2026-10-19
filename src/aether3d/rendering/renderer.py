@@ -139,27 +139,32 @@ class RenderResult:
             )
         return encode_png(self.image, text=text, compression=compression)
 
-    def save(self, path: str | os.PathLike[str]) -> Path:
+    def save(self, path: str | os.PathLike[str], *, bits: int = 8) -> Path:
         """Write the image to a file, atomically; returns the resolved path.
 
-        ``.png`` writes the 8-bit display image; ``.hdr`` (Radiance RGBE) and
-        ``.pfm`` (float32) write :attr:`linear` -- high dynamic range, after
-        exposure and before tone mapping. The file is written to a temporary
-        sibling and renamed into place, so a failure never leaves a partial
-        or corrupted image.
+        ``.png`` writes the display image -- 8-bit, or with ``bits=16`` (0.20.0) a 16-bit
+        master of the same view transform from :attr:`linear`; ``.hdr`` (Radiance RGBE)
+        and ``.pfm`` (float32) write :attr:`linear` -- high dynamic range, after exposure
+        and before tone mapping; ``.exr`` (0.20.0) writes it as scene-linear OpenEXR (half
+        ``R``, ``G``, ``B``) with the path tracers' passes (``Z`` depth, ``normal.X/Y/Z``,
+        ``albedo``, ``direct``, ``indirect``, ``variance`` as ``.R/G/B``, before exposure;
+        ``motion.X/Y/Z/W``). The file is written to a temporary sibling and renamed into
+        place, so a failure never leaves a partial or corrupted image.
         """
         from .._fileio import write_atomic
         from .hdr import encode_hdr, encode_pfm
 
         target = Path(path)
         suffix = target.suffix.lower()
-        if suffix not in (".png", ".hdr", ".pfm"):
+        if suffix not in (".png", ".hdr", ".pfm", ".exr"):
             raise RenderError(
                 "INVALID_OUTPUT",
-                f"output must be a .png, .hdr or .pfm file, got {str(target)!r}",
+                f"output must be a .png, .hdr, .pfm or .exr file, got {str(target)!r}",
                 "output",
             )
-        if suffix != ".png" and self.linear is None:
+        if bits not in (8, 16) or (bits == 16 and suffix != ".png"):
+            raise RenderError("INVALID_OUTPUT", "bits is 8 or 16 (16: a .png master)", "bits")
+        if (suffix != ".png" or bits == 16) and self.linear is None:
             raise RenderError(
                 "OUTPUT_NOT_RENDERED",
                 f"{suffix} files hold linear light, and this render did not return it",
@@ -167,7 +172,15 @@ class RenderResult:
                 hint="render with outputs=None (all) or outputs including 'linear'",
             )
         t0 = time.perf_counter()
-        if suffix == ".png":
+        if suffix == ".exr":
+            return self._save_exr(target, t0)
+        if suffix == ".png" and bits == 16:
+            from .png import encode_png
+            from .tonemap import display
+
+            image = display(self.linear, self.color.get("tonemap", "none"), bits=16)
+            data = encode_png(image, text={"Software": f"Aether3D {__version__}"})
+        elif suffix == ".png":
             data = self.png_bytes()
         elif suffix == ".hdr":
             data = encode_hdr(self.linear)
@@ -186,6 +199,35 @@ class RenderResult:
         self.stats["timings"]["encode"] = t1 - t0
         self.stats["timings"]["write"] = time.perf_counter() - t1
         self.stats["png_bytes" if suffix == ".png" else "file_bytes"] = len(data)
+        self.output = written
+        return written
+
+    def _save_exr(self, target: Path, t0: float) -> Path:
+        from ..animation.frames import PASS_CHANNELS
+        from .exr import write_exr
+
+        lin = self.linear
+        channels = {"R": lin[..., 0], "G": lin[..., 1], "B": lin[..., 2]}
+        for name, plane in (self.passes or {}).items():
+            names = PASS_CHANNELS.get(name)
+            if names is None:
+                continue
+            if len(names) == 1:
+                channels[names[0]] = plane
+            else:
+                for k, c in enumerate(names):
+                    channels[c] = plane[..., k]
+        try:
+            written = write_exr(target, channels)
+        except OSError as exc:
+            raise RenderError(
+                "OUTPUT_ERROR",
+                f"cannot write {target}: {exc.strerror or exc}",
+                "output",
+                hint="check that the directory exists and is writable",
+            ) from None
+        self.stats["timings"]["encode"] = time.perf_counter() - t0
+        self.stats["file_bytes"] = written.stat().st_size
         self.output = written
         return written
 

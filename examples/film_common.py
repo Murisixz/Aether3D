@@ -35,9 +35,14 @@ FPS = 60
 
 
 def rel(path: Path | str) -> str:
-    """A path relative to ``examples/`` when it is inside it (reports), else absolute."""
-    path = Path(path)
-    return str(path.relative_to(HERE)) if path.is_relative_to(HERE) else str(path)
+    """A path for reports: relative to ``examples/`` inside it, to the repository inside
+    that (``../tests/...``), else absolute (``--out`` elsewhere)."""
+    path = Path(path).resolve()
+    if path.is_relative_to(HERE):
+        return path.relative_to(HERE).as_posix()
+    if path.is_relative_to(HERE.parent):
+        return "../" + path.relative_to(HERE.parent).as_posix()
+    return str(path)
 
 
 def arguments(description: str, extra: tuple[tuple[str, dict], ...] = ()) -> argparse.Namespace:
@@ -197,7 +202,8 @@ def encode(frames_dir: Path, out_dir: Path, name: str, *, quick: bool = False) -
     rate = f"{FPS}"
     out = {
         "mp4": {"path": rel(mp4), "bytes": videos["mp4"]["bytes"],
-                "command": " ".join(videos["mp4"]["command"][1:])},
+                "command": " ".join(rel(a) if Path(a).is_absolute() else a
+                                    for a in videos["mp4"]["command"][1:])},
         "master": {"path": rel(master), "bytes": videos["master"]["bytes"]},
         "preview": {"path": rel(small), "bytes": small.stat().st_size},
         "verify": verify(mp4, str(frames_dir / "frame_%05d.png"), rate),

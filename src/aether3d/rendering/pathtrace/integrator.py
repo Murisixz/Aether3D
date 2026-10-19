@@ -252,8 +252,15 @@ def converged(
 ) -> np.ndarray:
     """Pixels whose estimate -- and every 3 x 3 neighbour's -- has a relative luminance
     error below ``threshold`` (``mean``, ``variance_of_mean``: ``(n_pix, 3)``)."""
-    lum = np.maximum(mean @ LUMINANCE, ADAPTIVE_FLOOR)
-    err = np.sqrt(np.maximum(variance_of_mean @ (LUMINANCE * LUMINANCE), 0.0)) / lum
+    # (explicit sums, no BLAS: the decision changes which samples are traced)
+    w0, w1, w2 = (float(c) for c in LUMINANCE)
+    lum = np.maximum(mean[:, 0] * w0 + mean[:, 1] * w1 + mean[:, 2] * w2, ADAPTIVE_FLOOR)
+    var = (
+        variance_of_mean[:, 0] * (w0 * w0)
+        + variance_of_mean[:, 1] * (w1 * w1)
+        + variance_of_mean[:, 2] * (w2 * w2)
+    )
+    err = np.sqrt(np.maximum(var, 0.0)) / lum
     err = np.where(np.isfinite(err), err, np.inf).reshape(height, width)
     padded = np.pad(err, 1, mode="edge")
     worst = np.zeros_like(err)

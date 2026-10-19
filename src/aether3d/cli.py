@@ -940,10 +940,13 @@ def cmd_render(args: argparse.Namespace) -> CommandOutput:
     path_options, ao = _path_options(args)
     path = Path(args.path)
     output = Path(args.output) if args.output else path.with_suffix(".png")
-    if output.suffix.lower() not in (".png", ".hdr", ".pfm"):
+    if output.suffix.lower() not in (".png", ".hdr", ".pfm", ".exr"):
         raise CommandError(
-            "ValidationError", f"output must be a .png, .hdr or .pfm file, got {output}"
+            "ValidationError", f"output must be a .png, .hdr, .pfm or .exr file, got {output}"
         )
+    bits = getattr(args, "bits", 8)
+    if bits == 16 and output.suffix.lower() != ".png":
+        raise CommandError("ValidationError", "--bits 16 writes a .png master")
     _check_destination(output, args.force)
     scene, info = _load_scene(path, args.allow_lossy)
     try:
@@ -969,10 +972,13 @@ def cmd_render(args: argparse.Namespace) -> CommandOutput:
             ao=ao,
             tonemap=args.tonemap,
             denoise=True if getattr(args, "denoise", False) else None,
-            # .hdr/.pfm hold linear light; a PNG needs the image (the GPU reads back no more)
-            outputs=("image",) if output.suffix.lower() == ".png" else ("image", "linear"),
+            # .hdr/.pfm/.exr and 16-bit masters hold linear light; an 8-bit PNG needs the
+            # image only (the GPU reads back no more)
+            outputs=("image",)
+            if output.suffix.lower() == ".png" and bits == 8
+            else ("image", "linear"),
         )
-        written = result.save(output)
+        written = result.save(output, bits=bits)
     except RenderError as exc:
         raise _render_error(exc) from None
     data = {"path": str(path), **info, **result.to_dict()}
@@ -2179,8 +2185,15 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p_render.add_argument(
         "-o",
         "--output",
-        help="the image to write: .png, or .hdr/.pfm for linear high dynamic range "
-        "(default: PATH.png)",
+        help="the image to write: .png, .hdr/.pfm for linear high dynamic range, or .exr "
+        "(scene-linear OpenEXR with the path tracers' passes) (default: PATH.png)",
+    )
+    p_render.add_argument(
+        "--bits",
+        type=int,
+        choices=(8, 16),
+        default=8,
+        help="PNG bit depth: 16 writes a 16-bit master of the view transform",
     )
     p_render.add_argument("--width", type=int, help="image width in pixels")
     p_render.add_argument("--height", type=int, help="image height in pixels")

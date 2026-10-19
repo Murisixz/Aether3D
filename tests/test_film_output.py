@@ -144,3 +144,24 @@ def test_videos_assemble_with_bt709_tags(tmp_path):
     stream = json.loads(probe.stdout)["streams"][0]
     assert stream["codec_name"] == "h264" and stream["pix_fmt"] == "yuv420p"
     assert stream["color_space"] == stream["color_transfer"] == stream["color_primaries"] == "bt709"
+
+
+def test_stills_save_exr_with_passes_and_16_bit_masters(tmp_path):
+    from aether3d.rendering.exr import read_exr
+    from aether3d.rendering.tonemap import display
+
+    scene = Scene()
+    scene.add_sphere("Ball", radius=0.5)
+    scene.add_camera("Cam", position=(0, -3, 0), look_at=(0, 0, 0))
+    r = scene.render(width=24, height=16, backend="path", path={"samples": 2, "bounces": 1},
+                     tonemap="film")  # fmt: skip
+    written = r.save(tmp_path / "still.exr")
+    ch = read_exr(written)
+    assert {"R", "G", "B", "Z", "normal.X", "albedo.R", "direct.G", "variance.B"} <= set(ch)
+    assert np.allclose(ch["R"], r.linear[..., 0], rtol=1e-3, atol=1e-4)  # (half floats)
+    png16 = r.save(tmp_path / "still.png", bits=16)
+    master = np.asarray(decode_png16(png16.read_bytes()))[..., :3]
+    assert master.dtype == np.uint16
+    assert np.array_equal(master, display(r.linear, "film", bits=16)[..., :3])
+    with pytest.raises(AetherError):
+        r.save(tmp_path / "still.hdr", bits=16)

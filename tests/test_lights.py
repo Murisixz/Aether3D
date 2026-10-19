@@ -10,19 +10,18 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from gpu_support import GPU, GPU_PATH
 
 from aether3d import Scene
 from aether3d.rendering.blackbody import blackbody
-from aether3d.rendering.gpu import gpu_status
 from aether3d.rendering.scene_data import extract_render_scene, resolve_camera
 from aether3d.rendering.settings import ShadowSettings
 from aether3d.rendering.shadows import select_shadow_lights
 from aether3d.serialization import scene_from_dict, scene_to_dict
 
-GPU = gpu_status().get("available", False)
 DATA = json.loads((Path(__file__).parent / "data" / "blender_lights" / "lights.json").read_text())
 RASTERS = ["cpu", *(["gpu"] if GPU else [])]
-TRACERS = ["path", *(["gpu_path"] if GPU else [])]
+TRACERS = ["path", *(["gpu_path"] if GPU_PATH else [])]
 AREAS = [("square", 0.5, 0.5), ("rectangle", 0.5, 1.0), ("disk", 0.5, 0.5), ("ellipse", 0.5, 1.0)]
 
 
@@ -240,7 +239,7 @@ def test_lights_without_shadows_are_never_blocked():
 
     lit, blocked = (render(scene_with(s), "path", samples=16, size=5)[2, 2] for s in (False, True))
     assert blocked == 0.0 < lit
-    if GPU:
+    if GPU_PATH:
         assert render(scene_with(False), "gpu_path", samples=16, size=5)[2, 2] == pytest.approx(
             lit, rel=1e-4
         )
@@ -251,7 +250,7 @@ def test_lights_without_shadows_are_never_blocked():
     assert chosen == []
 
 
-@pytest.mark.skipif(not GPU, reason="needs a GPU")
+@pytest.mark.skipif(not GPU_PATH, reason="needs a GPU that runs the path tracer")
 def test_the_gpu_path_tracer_traces_the_cpu_paths_for_spots_and_areas():
     scene = floor_scene(4.0)
     scene.add_spot_light("Spot", position=(0.5, 0, 2), spot_size=50.0, radius=0.2,

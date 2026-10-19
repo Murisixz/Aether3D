@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from gpu_support import GPU, GPU_PATH
 
 from aether3d import Scene
 from aether3d.errors import RenderError
@@ -21,10 +22,8 @@ from aether3d.rendering.envimage import (
     decode_pfm,
     sh_ambient,
 )
-from aether3d.rendering.gpu import gpu_status
 from aether3d.serialization import scene_from_dict, scene_to_dict
 
-GPU = gpu_status().get("available", False)
 BLENDER = json.loads((Path(__file__).parent / "data" / "blender_env" / "env.json").read_text())
 DIRECTIONS = {
     "+X": (1, 0, 0), "+Y": (0, 1, 0), "-Y": (0, -1, 0), "-Z": (0, 0, -1), "XY45": (1, 1, 0),
@@ -177,7 +176,7 @@ def up_plane_exact(image: str, rotation: float = 0.0) -> np.ndarray:
     return (px * weight[:, None, None]).sum(axis=(0, 1)) / np.pi
 
 
-@pytest.mark.parametrize("backend", ["path", *(["gpu_path"] if GPU else [])])
+@pytest.mark.parametrize("backend", ["path", *(["gpu_path"] if GPU_PATH else [])])
 def test_the_path_tracers_converge_to_the_image_integral(backend):
     for image in ("builtin:overcast", "builtin:sunset"):
         r = floor(image).render(width=8, height=8, backend=backend, default_lights=False,
@@ -206,7 +205,9 @@ def test_the_gpu_rasterizer_matches_the_cpu_under_images():
     assert np.abs(a - b).max() <= 1e-3 * a.max()
 
 
-@pytest.mark.parametrize("backend", ["cpu", "path", *(["gpu", "gpu_path"] if GPU else [])])
+@pytest.mark.parametrize(
+    "backend", ["cpu", "path", *(["gpu"] if GPU else []), *(["gpu_path"] if GPU_PATH else [])]
+)
 def test_camera_rays_see_the_image_unless_it_is_hidden(backend):
     scene = Scene()
     toward = np.array([math.cos(math.radians(20)) * math.cos(math.radians(30)),

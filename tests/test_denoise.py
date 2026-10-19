@@ -5,15 +5,14 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from gpu_support import GPU_PATH
 
 from aether3d import Scene
 from aether3d.errors import RenderError
 from aether3d.rendering.color import linear_to_srgb
 from aether3d.rendering.denoise import DenoiseSettings, denoise
-from aether3d.rendering.gpu import gpu_status
 
-GPU = gpu_status().get("available", False)
-BACKEND = "gpu_path" if GPU else "path"
+BACKEND = "gpu_path" if GPU_PATH else "path"
 
 
 def two_walls() -> Scene:
@@ -41,7 +40,7 @@ def display(x):
 @pytest.fixture(scope="module")
 def reference():
     scene = two_walls()
-    samples = 2048 if GPU else 512
+    samples = 2048 if GPU_PATH else 512
     r = scene.render(width=64, height=48, backend=BACKEND, path={"samples": samples,
                      "bounces": 4, "sampler": "sobol"})  # fmt: skip
     return scene, r.linear.astype(np.float64)

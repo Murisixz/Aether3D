@@ -8,11 +8,9 @@ import math
 
 import numpy as np
 import pytest
+from gpu_support import GPU, GPU_PATH
 
 from aether3d import Scene
-from aether3d.rendering.gpu import gpu_status
-
-GPU = gpu_status().get("available", False)
 
 
 def stage(**lens):
@@ -39,7 +37,9 @@ def expected_diameter(width: int, fstop: float, d: float, focus: float) -> float
     return aperture * abs(1 / d - 1 / focus) * width / (2 * 0.36)  # tan(hfov / 2) = 18 / 50
 
 
-@pytest.mark.parametrize("backend", ["path", "cpu", *(["gpu", "gpu_path"] if GPU else [])])
+@pytest.mark.parametrize(
+    "backend", ["path", "cpu", *(["gpu"] if GPU else []), *(["gpu_path"] if GPU_PATH else [])]
+)
 def test_the_blur_disk_is_the_thin_lens_law(backend):
     scene, _cam = stage(fstop=2.0, focus_distance=0.5)
     options = {"width": 160, "height": 160, "default_lights": False}
@@ -75,7 +75,7 @@ def test_lens_shift_lands_where_the_projection_says_on_every_backend():
     ox, oy = cam.camera.ndc_offset(width / height)
     # The box's centre is on the view axis: shifted, it lands at NDC (-ox, -oy).
     expect = ((1 - ox) * width / 2, (1 + oy) * height / 2)
-    backends = ["cpu", "path", *(["gpu", "gpu_path"] if GPU else [])]
+    backends = ["cpu", "path", *(["gpu"] if GPU else []), *(["gpu_path"] if GPU_PATH else [])]
     for backend in backends:
         opts = {"path": {"samples": 4, "bounces": 0}} if "path" in backend else {}
         r = scene.render(width=width, height=height, backend=backend, **opts)

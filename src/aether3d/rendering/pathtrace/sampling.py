@@ -88,7 +88,7 @@ FILTER_TABLE = 256
 def filter_table(name: str, width: float) -> np.ndarray:
     """``(FILTER_TABLE,) float32``: the inverse CDF of a pixel filter's 1D profile, so
     ``offset(u)`` (pixels from the pixel's centre) draws positions with the filter's
-    density -- filter importance sampling (Ernst et al. 2005): each sample stays in its own
+    density -- filter importance sampling (Ernst et al. 2006): each sample stays in its own
     pixel with weight 1, so images keep not depending on batching. ``"gaussian"``: sigma =
     width / 6, cut at +-width / 2; ``"blackman_harris"``: the four-term Blackman-Harris
     window over the width. Applied to x and y separately."""
