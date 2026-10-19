@@ -178,6 +178,12 @@ OPERATIONS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...], bool]] = {
         ("easing", "ease"),
         False,
     ),  # fmt: skip
+    "frame_shot": (
+        "frame_shot",
+        ("camera", "subject"),
+        ("preset", "time", "azimuth", "elevation", "screen", "fill", "focal_length", "fstop"),
+        False,
+    ),
     "camera_orbit": (
         "camera_orbit",
         ("camera", "target", "start", "end"),

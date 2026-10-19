@@ -1903,6 +1903,18 @@ class AnimationSystem:
 
         return convert_character(self, source, to, **options)
 
+    def frame_shot(
+        self, camera: Any, subject: Any, preset: str = "medium", **options: Any
+    ) -> dict[str, Any]:
+        """Place ``camera`` for a named shot of ``subject`` -- ``extreme_wide``, ``wide``,
+        ``full``, ``medium``, ``medium_close``, ``close_up``, ``extreme_close_up``,
+        ``low_angle``, ``high_angle`` -- measured on the subject (``time``, ``azimuth``,
+        ``elevation``, ``screen``, ``fill``, ``focal_length``, ``fstop``); one undo step
+        (see :func:`.shots.frame_shot`)."""
+        from .shots import frame_shot
+
+        return frame_shot(self, camera, subject, preset, **options)
+
     def follow_camera(self, camera: Any, target: Any, **options: Any) -> dict[str, Any]:
         """Key a camera to follow a target with lag, aimed at it (see
         :func:`.generators.follow_camera`)."""

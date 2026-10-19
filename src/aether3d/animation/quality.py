@@ -788,11 +788,8 @@ def _framing(label, mats, ts, subject, system, th, findings, fov, cuts) -> dict[
 
 
 def _aspect(system: Any) -> float:
-    r = system.scene.render
-    try:
-        return float(r.width) / float(r.height)
-    except Exception:  # noqa: BLE001
-        return 16.0 / 9.0
+    r = system.scene.render_settings
+    return float(r.width) / float(r.height)
 
 
 def _pole_flips(system: Any, obj: Any, table: dict[str, np.ndarray], ts, findings) -> None:

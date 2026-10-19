@@ -215,6 +215,37 @@ _ARGUMENTS: dict[str, Any] = {
     "shift": {"type": "boolean"},
     "sigma": {"type": "number", "exclusiveMinimum": 0},
     "keep_ends": {"type": "boolean"},
+    "preset": {
+        "enum": [
+            "extreme_wide",
+            "wide",
+            "full",
+            "medium",
+            "medium_close",
+            "close_up",
+            "extreme_close_up",
+            "low_angle",
+            "high_angle",
+        ],
+        "description": "frame_shot: the shot size (default medium)",
+    },  # fmt: skip
+    "azimuth": {
+        "type": "number",
+        "minimum": -360,
+        "maximum": 360,
+        "description": "frame_shot: degrees about the up axis from the subject's front",
+    },
+    "elevation": {"type": "number", "minimum": -89, "maximum": 89},
+    "screen": {
+        "type": "array",
+        "items": {"type": "number", "minimum": -1, "maximum": 1},
+        "minItems": 2,
+        "maxItems": 2,
+        "description": "frame_shot: where the subject sits in the frame (NDC)",
+    },
+    "fill": {"type": "number", "minimum": 0.01, "maximum": 4},
+    "focal_length": {"type": "number", "minimum": 1, "maximum": 2000},
+    "fstop": {"type": "number", "minimum": 0.1},
     "measure": {
         "type": "array",
         "maxItems": 512,

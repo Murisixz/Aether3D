@@ -123,3 +123,31 @@ def test_lens_parameters_animate_and_scripts_set_them():
     assert cam.camera.focus_object == scene.get_by_name("Dot").id
     assert cam.camera.aperture_blades == 7
     assert math.isfinite(cam.camera.aperture_radius())
+
+
+def test_shot_presets_frame_the_subject_as_named():
+    scene = Scene()
+    scene.render_settings.configure(width=320, height=180)
+    body = scene.add_cube("Body", size=1.0, position=(2.0, 1.0, 0.9))
+    body.scale = (0.5, 0.3, 1.8)  # a person-sized box, 1.8 m tall, facing -Y
+    cam = scene.add_camera("Cam", position=(0, -5, 1.6))
+    anim = scene.animation
+    sizes = {}
+    for preset in ("wide", "full", "medium", "close_up"):
+        report = anim.frame_shot(cam, body, preset)
+        r = scene.render(width=320, height=180, backend="cpu", time=0.0)
+        ys, xs = np.nonzero(r.object_index >= 0)
+        sizes[preset] = (ys.max() - ys.min() + 1) / 180.0
+        assert cam.position[1] < 1.0  # in front of the subject (its -Y side)
+        if preset in ("wide", "full"):
+            assert sizes[preset] == pytest.approx(report["fill"], abs=0.08)
+        assert xs.mean() == pytest.approx(160, abs=4)  # centred by default
+    assert sizes["wide"] < sizes["full"] < 1.0
+    third = anim.frame_shot(cam, body, "full", screen=[-1 / 3, 0.0], fstop=2.8)
+    assert cam.camera.focus_object == body.id and third["depth_of_field"]
+    r = scene.render(width=320, height=180, backend="cpu", time=0.0, dof_samples=1)
+    ys, xs = np.nonzero(r.object_index >= 0)
+    assert (xs.mean() + 0.5) / 320 == pytest.approx(1 / 3, abs=0.03)  # on the left third
+    assert [c["name"] for c in anim.constraints(cam)] == ["Shot Aim"]  # replaced, not stacked
+    scene.history.undo()
+    assert cam.camera.fstop == 0.0

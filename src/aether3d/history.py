@@ -638,9 +638,14 @@ APPEARANCE = _Fields("appearance", "_appearance", ("color", "specular", "shinine
 CAMERA = _Fields(
     "camera",
     "_camera",
-    ("projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio"),
+    (
+        "projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio",
+        # the lens (0.20.0)
+        "sensor", "shift_x", "shift_y", "fstop", "focus_distance", "focus_object",
+        "aperture_blades", "aperture_rotation", "aperture_ratio",
+    ),
     _camera,
-)
+)  # fmt: skip
 LIGHT = _Fields(
     "light",
     "_light",
