@@ -915,10 +915,12 @@ def _blender_equal(r: dict) -> bool:
         ("film_g_renderer.py",
          lambda r: r["variants"]["full"]["relative_rmse"]
          < r["variants"]["after_default"]["relative_rmse"]),
-        ("film_e_studio.py",
-         lambda r: all(not codes for codes in r["camera_quality"].values())
-         and r["presets"]["three_point"]["ratio"] == 4.0
-         and r["presets"]["silhouette"]["removed"] == ["Key", "Fill", "Rim"]),
+        pytest.param("film_e_studio.py",
+                     lambda r: all(not codes for codes in r["camera_quality"].values())
+                     and r["presets"]["three_point"]["ratio"] == 4.0
+                     and r["presets"]["silhouette"]["removed"] == ["Key", "Fill", "Rim"],
+                     marks=pytest.mark.skipif(importlib.util.find_spec("manifold3d") is None,
+                                              reason="the vase is a boolean (manifold3d)")),
         # (the windows and lamp glass light the street on their own: off, it is black)
         ("film_f_night.py",
          lambda r: r["emissive_proof"]["lights_by_emission"] and not r["camera_quality"]),
