@@ -1730,6 +1730,19 @@ class Scene:
             options["direction"] = (0.0, 0.0, -1.0)
         return self.add_light("area", name, position=position, **options)
 
+    def light_rig(
+        self, subject: ObjectRef, preset: str = "three_point", **options: Any
+    ) -> dict[str, Any]:
+        """Light ``subject`` with a classical studio setup -- ``three_point``, ``loop``,
+        ``rembrandt``, ``butterfly``, ``split``, ``high_key``, ``low_key``,
+        ``silhouette`` -- from where ``camera`` (default: the active camera) sees it,
+        with solved intensities (``distance``, ``level``, ``ratio``, ``rim``,
+        ``temperature``, ``time``, ``prefix``); one undo step (see
+        :func:`aether3d.rendering.studio.light_rig`)."""
+        from .rendering.studio import light_rig
+
+        return light_rig(self, subject, preset, **options)
+
     def _create_with(
         self,
         name: str | None,

@@ -1260,6 +1260,25 @@ def cmd_light_set(args: argparse.Namespace) -> CommandOutput:
     return data, f"Updated light {args.light!r}\n{_saved(data)}", EXIT_OK
 
 
+def cmd_light_rig(args: argparse.Namespace) -> CommandOutput:
+    op: dict[str, Any] = {"op": "light_rig", "subject": args.subject, "preset": args.preset}
+    for key in ("camera", "distance", "level", "ratio", "rim", "temperature", "prefix"):
+        if getattr(args, key) is not None:
+            op[key] = getattr(args, key)
+    _, data, _ = _run_scene(args, [op], "light rig")
+    rig = data["operations"][0]
+    lines = [f"Lit {rig['subject']!r} with {rig['preset']} lighting:"]
+    for light in rig["lights"]:
+        lines.append(
+            f"  {light['name']}: {light['role']} at {light['azimuth']:g} deg, "
+            f"{light['elevation']:g} deg up, {light['distance']:.3g} m, intensity "
+            f"{light['intensity']:.4g}"
+        )
+    if "ratio" in rig:
+        lines.append(f"  lighting ratio {rig['ratio']:g}:1")
+    return data, "\n".join(lines) + f"\n{_saved(data)}", EXIT_OK
+
+
 def cmd_light_list(args: argparse.Namespace) -> CommandOutput:
     from .rendering.script import rendering_summary
 
@@ -2391,6 +2410,25 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     light_params(p)
     placement(p)
     p.set_defaults(handler=cmd_light_set)
+
+    p = lights.add_parser("rig", parents=[common, writing], help="light a subject (studio setup)")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--subject", required=True, help="object id or name to light")
+    p.add_argument(
+        "--preset",
+        default="three_point",
+        choices=["three_point", "loop", "rembrandt", "butterfly", "split", "high_key",
+                 "low_key", "silhouette"],
+        help="the setup (default three_point)",
+    )  # fmt: skip
+    p.add_argument("--camera", help="camera the setup is seen from (default: the active one)")
+    p.add_argument("--distance", type=float, help="lights' distance from the subject")
+    p.add_argument("--level", type=float, help="key + fill on the subject (1: white is white)")
+    p.add_argument("--ratio", type=float, help="lighting ratio (key + fill) : fill")
+    p.add_argument("--rim", type=float, help="rim light relative to the key")
+    p.add_argument("--temperature", type=float, help="colour temperature (kelvins)")
+    p.add_argument("--prefix", help="prefix of the lights' names")
+    p.set_defaults(handler=cmd_light_rig)
 
     p = lights.add_parser("list", parents=[common, lossy], help="list lights and ambient light")
     p.add_argument("path", help="a .aether project")
