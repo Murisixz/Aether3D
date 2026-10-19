@@ -303,8 +303,15 @@ def render(
     outputs: Any = None,
     time: float | None = None,
     dof_samples: int | None = None,
+    denoise: bool | dict[str, Any] | None = None,
 ) -> RenderResult:
     """Render ``scene`` and return a :class:`RenderResult`.
+
+    * ``denoise`` -- path tracers only: ``True`` (or settings, see
+      :class:`~aether3d.rendering.denoise.DenoiseSettings`) filters the image with the
+      edge-avoiding, variance-guided denoiser (:mod:`~aether3d.rendering.denoise`; biased).
+      ``linear`` and ``image`` are then denoised, ``passes["beauty"]`` stays the raw
+      estimate and ``backend["denoiser"]`` describes the filter.
 
     * ``dof_samples`` -- rasterizers only: how many views from points of the camera's
       aperture are averaged when it has depth of field (``fstop > 0``; default 16, ``1``:
@@ -385,6 +392,16 @@ def render(
     wanted = check_outputs(outputs)
     if tonemap != "none":
         wanted = wanted | {"linear"}  # the display image is tone mapped from linear light
+    from .denoise import DenoiseSettings
+
+    denoiser = DenoiseSettings.coerce(denoise)
+    if denoiser is not None and backend not in PATH_BACKENDS:
+        raise RenderError(
+            "INVALID_DENOISE",
+            "denoise filters the path tracers' images (their variance and feature passes)",
+            "denoise",
+            hint="use backend='path' or 'gpu_path', or render without denoise",
+        )
     shadow_settings = ShadowSettings.coerce(shadows)
     if requested not in PATH_BACKENDS:
         for name, value in (("path", path), ("ao", ao), ("progress", progress)):
@@ -601,6 +618,7 @@ def render(
             progress,
             requested,
             adapter,
+            denoiser,
         )
     lens_views = 1
     if rs.camera.camera.has_depth_of_field:
@@ -971,6 +989,7 @@ def _finish_path(
     progress: Any,
     backend: str = "path",
     adapter: Any = None,
+    denoiser: Any = None,
 ) -> RenderResult:
     gpu_info: dict[str, Any] = {}
     if backend == "gpu_path":
@@ -1041,6 +1060,22 @@ def _finish_path(
     diagnostics += data.diagnostics
     t0 = time.perf_counter()
     linear = data.linear
+    t_denoise = 0.0
+    if denoiser is not None and path.integrator == "path":
+        from .denoise import denoise as run_denoiser
+
+        t1 = time.perf_counter()
+        linear = run_denoiser(data.passes, denoiser)
+        t_denoise = time.perf_counter() - t1
+        diagnostics.append(
+            Diagnostic(
+                "DENOISED",
+                INFO,
+                "the image was denoised (an edge-avoiding filter: less noise, some bias -- fine "
+                "shadows, caustics and reflections may blur); passes['beauty'] is the raw image",
+                "denoise",
+            )
+        )
     if settings.exposure != 0.0:
         linear = linear * 2.0**settings.exposure
     if not math.isfinite(float(np.max(linear, initial=0.0))):
@@ -1054,6 +1089,8 @@ def _finish_path(
         **data.timings,
         "output": t_output,
     }
+    if denoiser is not None:
+        timings["denoise"] = t_denoise
     timings["total"] = time.perf_counter() - t_start
     counts = data.counts
     rays = sum(counts.get(k, 0) for k in ("camera_rays", "bounce_rays", "shadow_rays", "ao_rays"))
@@ -1099,6 +1136,7 @@ def _finish_path(
             "lights": data.info["lights"],
             "bvh": data.info["bvh"],
             "work_estimate": data.info["work_estimate"],
+            "denoiser": None if denoiser is None else denoiser.to_dict(),
         }
     )
     if settings.cull != "none":

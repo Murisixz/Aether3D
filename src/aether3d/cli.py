@@ -857,7 +857,7 @@ def _path_options(args: argparse.Namespace) -> tuple[dict | None, Any]:
         given += [f"--{f.replace('_', '-')}" for f in _AO_FLAGS if getattr(args, f) is not None]
         given += [
             flag
-            for flag in ("--ao", "--ao-only", "--passes")
+            for flag in ("--ao", "--ao-only", "--passes", "--denoise")
             if getattr(args, flag[2:].replace("-", "_"))
         ]
         if given:
@@ -964,6 +964,7 @@ def cmd_render(args: argparse.Namespace) -> CommandOutput:
             path=path_options,
             ao=ao,
             tonemap=args.tonemap,
+            denoise=True if getattr(args, "denoise", False) else None,
             # .hdr/.pfm hold linear light; a PNG needs the image (the GPU reads back no more)
             outputs=("image",) if output.suffix.lower() == ".png" else ("image", "linear"),
         )
@@ -2243,6 +2244,11 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     )
     p_render.add_argument(
         "--russian-roulette", type=int, help="path: bounce from which dim paths may stop (3)"
+    )
+    p_render.add_argument(
+        "--denoise",
+        action="store_true",
+        help="path: denoise the image (edge-avoiding, variance-guided filter; biased)",
     )
     p_render.add_argument(
         "--sampler",
