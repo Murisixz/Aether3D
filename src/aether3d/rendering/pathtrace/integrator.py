@@ -57,6 +57,8 @@ from .sampling import (
     SLOT_RR,
     cosine_hemisphere,
     dimension,
+    filter_offset,
+    filter_table,
     frame,
     power_heuristic,
     sampler_keys,
@@ -462,6 +464,10 @@ class _Tracer:
         row, col = np.divmod(pixel, cam.width)
         u = uniform(keys, dimension(0, SLOT_PIXEL))
         v = uniform(keys, dimension(0, SLOT_PIXEL + 1))
+        if path.filter != "box":  # filter importance sampling: offsets from the pixel's centre
+            table = filter_table(path.filter, path.filter_width)
+            u = 0.5 + filter_offset(table, u)
+            v = 0.5 + filter_offset(table, v)
         lu = lv = None
         if cam.lens > 0.0:
             lu = uniform(keys, dimension(0, SLOT_LENS))

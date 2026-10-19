@@ -837,6 +837,8 @@ _PATH_FLAGS = {
     "light_samples": "light_samples",
     "russian_roulette": "russian_roulette",
     "sampler": "sampler",
+    "filter": "filter",
+    "filter_width": "filter_width",
     "clamp": "clamp",
     "workers": "workers",
 }
@@ -2245,6 +2247,12 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p_render.add_argument(
         "--russian-roulette", type=int, help="path: bounce from which dim paths may stop (3)"
     )
+    p_render.add_argument(
+        "--filter",
+        choices=["box", "gaussian", "blackman_harris"],
+        help="path: pixel filter (box, default; blackman_harris is Blender's)",
+    )
+    p_render.add_argument("--filter-width", type=float, help="path: filter width in pixels (1.5)")
     p_render.add_argument(
         "--denoise",
         action="store_true",

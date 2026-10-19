@@ -21,6 +21,12 @@ CULL_MODES = ("none", "back", "front")
 MAX_SAMPLES_PER_AXIS = 4
 
 
+def _choice(value: Any, choices: tuple[str, ...], code: str, location: str) -> str:
+    if value not in choices:
+        raise RenderError(code, f"must be one of {', '.join(choices)}, got {value!r}", location)
+    return value
+
+
 def _number(value: Any, code: str, field: str, location: str, lo: float, hi: float) -> float:
     if (
         isinstance(value, bool)
@@ -870,6 +876,9 @@ class PathSettings(_Validated):
       traces in the calling process, ``N`` uses ``N``. Parallel tracing forks
       processes and is available on Linux; elsewhere renders use one
       process. The image does not depend on it.
+    * ``filter`` -- the pixel reconstruction filter: ``"box"`` (default: each pixel's
+      area), ``"gaussian"`` or ``"blackman_harris"`` (Blender's default) over
+      ``filter_width`` pixels (default 1.5), by filter importance sampling (0.20.0).
     * ``sampler`` -- ``"random"`` (default: independent hashed numbers) or ``"sobol"``
       (0.20.0): Owen-scrambled Sobol' points for the decisions made together (pixel and
       lens, BSDF samples, light samples, AO rays), stratified per pixel -- less noise for
@@ -886,6 +895,8 @@ class PathSettings(_Validated):
         "integrator",
         "workers",
         "sampler",
+        "filter",
+        "filter_width",
     )
     _CODE = "INVALID_PATH_SETTINGS"
     __slots__ = tuple(f"_{name}" for name in _FIELDS)
@@ -901,6 +912,8 @@ class PathSettings(_Validated):
         integrator: str = "path",
         workers: int = 0,
         sampler: str = "random",
+        filter: str = "box",
+        filter_width: float = 1.5,
     ) -> None:
         self._assign(
             self._check(
@@ -914,6 +927,8 @@ class PathSettings(_Validated):
                     "integrator": integrator,
                     "workers": workers,
                     "sampler": sampler,
+                    "filter": filter,
+                    "filter_width": filter_width,
                 },
                 "path",
             )
@@ -959,6 +974,20 @@ class PathSettings(_Validated):
             "integrator": integrator,
             "workers": _integer(values["workers"], c, "workers", f"{location}.workers", 0, 256),
             "sampler": values.get("sampler", "random"),
+            "filter": _choice(
+                values.get("filter", "box"),
+                ("box", "gaussian", "blackman_harris"),
+                c,
+                f"{location}.filter",
+            ),  # fmt: skip
+            "filter_width": _number(
+                values.get("filter_width", 1.5),
+                c,
+                "filter_width",
+                f"{location}.filter_width",
+                0.5,
+                8.0,
+            ),  # fmt: skip
         }
 
     samples = _prop("samples")
@@ -970,6 +999,8 @@ class PathSettings(_Validated):
     integrator = _prop("integrator")
     workers = _prop("workers")
     sampler = _prop("sampler")
+    filter = _prop("filter")
+    filter_width = _prop("filter_width")
 
     @classmethod
     def coerce(cls, value: Any) -> PathSettings:

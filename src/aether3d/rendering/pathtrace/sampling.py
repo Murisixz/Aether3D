@@ -80,6 +80,43 @@ def uniform(keys: np.ndarray, dim: int) -> np.ndarray:
 
 
 SAMPLERS = ("random", "sobol")
+FILTERS = ("box", "gaussian", "blackman_harris")
+FILTER_TABLE = 256
+"""Entries of a pixel filter's inverse CDF (both path tracers interpolate the same table)."""
+
+
+def filter_table(name: str, width: float) -> np.ndarray:
+    """``(FILTER_TABLE,) float32``: the inverse CDF of a pixel filter's 1D profile, so
+    ``offset(u)`` (pixels from the pixel's centre) draws positions with the filter's
+    density -- filter importance sampling (Ernst et al. 2005): each sample stays in its own
+    pixel with weight 1, so images keep not depending on batching. ``"gaussian"``: sigma =
+    width / 6, cut at +-width / 2; ``"blackman_harris"``: the four-term Blackman-Harris
+    window over the width. Applied to x and y separately."""
+    x = np.linspace(-0.5 * width, 0.5 * width, 4097)
+    if name == "gaussian":
+        sigma = width / 6.0
+        f = np.exp(-0.5 * (x / sigma) ** 2)
+    elif name == "blackman_harris":
+        t = x / width + 0.5
+        f = (0.35875 - 0.48829 * np.cos(2 * math.pi * t) + 0.14128 * np.cos(4 * math.pi * t)
+             - 0.01168 * np.cos(6 * math.pi * t))  # fmt: skip
+    else:
+        raise ValueError(name)
+    f = np.maximum(f, 0.0)
+    cdf = np.concatenate([[0.0], np.cumsum(0.5 * (f[1:] + f[:-1]) * np.diff(x))])
+    cdf /= cdf[-1]
+    u = np.linspace(0.0, 1.0, FILTER_TABLE)
+    return np.interp(u, cdf, x).astype(np.float32)
+
+
+def filter_offset(table: np.ndarray, u: np.ndarray) -> np.ndarray:
+    """Pixel offsets of uniform numbers ``u`` through a :func:`filter_table` (linear
+    interpolation; the GPU computes the same)."""
+    t = table.astype(np.float64)
+    pos = np.asarray(u, np.float64) * (t.shape[0] - 1)
+    i = np.minimum(np.floor(pos).astype(np.int64), t.shape[0] - 2)
+    f = pos - i
+    return t[i] + f * (t[i + 1] - t[i])
 
 
 def sampler_keys(sampler: str, seed: int, pixel: np.ndarray, sample: np.ndarray):

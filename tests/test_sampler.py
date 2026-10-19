@@ -111,3 +111,30 @@ def test_samplers_are_checked():
     assert PathSettings(sampler="sobol").sampler == "sobol"
     with pytest.raises(RenderError, match="sampler"):
         PathSettings(sampler="halton")
+
+
+@pytest.mark.parametrize("name", ["gaussian", "blackman_harris"])
+def test_pixel_filters_spread_an_edge_as_their_profiles_say(name):
+    from aether3d import Scene
+    from aether3d.rendering.pathtrace.sampling import filter_offset, filter_table
+
+    scene = Scene()
+    wall = scene.add_cube("Wall", size=1, position=(0.5, 0, 0))
+    wall.scale = (1, 1, 10)
+    wall.material = scene.create_material("Lamp", model="standard", base_color="#000000",
+                                          emissive="#ffffff")  # fmt: skip
+    scene.add_camera("Cam", projection="orthographic", ortho_scale=0.1, position=(0, -5, 0),
+                     look_at=(0, 0, 0))  # fmt: skip
+    scene.world.environment.configure(type="uniform", color="#000000")
+    path = {"samples": 2048, "bounces": 0, "filter": name, "filter_width": 3.0,
+            "sampler": "sobol"}  # fmt: skip
+    u = (np.arange(100_000) + 0.5) / 100_000
+    offsets = filter_offset(filter_table(name, 3.0), u)
+    expect = [np.mean(offsets > 5 - k) for k in range(3, 8)]  # the edge: pixel 5's centre
+    for backend in ["path", *(["gpu_path"] if GPU else [])]:
+        r = scene.render(width=11, height=3, backend=backend, default_lights=False, path=path)
+        assert np.allclose(r.linear[1, 3:8, 0], expect, atol=2e-3), backend
+    with pytest.raises(RenderError):
+        PathSettings(filter="lanczos")
+    with pytest.raises(RenderError):
+        PathSettings(filter="gaussian", filter_width=20.0)

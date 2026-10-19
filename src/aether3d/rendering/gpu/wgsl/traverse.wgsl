@@ -26,6 +26,7 @@ const H_CDF: u32 = 8u;       // cumulative selection probability per emitter
 const H_LOOKUP: u32 = 9u;    // global triangle -> emitter (PT_NONE: none)
 const H_ENV: u32 = 10u;      // image environment: W, H, nu, nv, pixels, marginal, conditional
 const H_SOBOL: u32 = 11u;    // the Sobol' generator matrices: 4 x 32 columns (sampling.py)
+const H_FILTER: u32 = 12u;   // the pixel filter's inverse CDF (FILTER_TABLE floats)
 const INST_WORDS: u32 = 24u;
 
 fn ptf(i: u32) -> f32 {

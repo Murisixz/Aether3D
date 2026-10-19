@@ -65,6 +65,22 @@ const FLAG_PASS_THROUGH: u32 = 2u;
 const FLAG_AO: u32 = 4u;
 const FLAG_SIZED_LIGHTS: u32 = 8u;
 const FLAG_SOBOL: u32 = 16u;  // PathSettings.sampler == "sobol"
+const FLAG_FILTER: u32 = 32u;  // a pixel filter other than the box (filter importance sampling)
+const FILTER_TABLE: u32 = 256u;
+
+// The pixel position of uniform u (sampling.filter_offset): the pixel's centre plus the
+// filter's inverse CDF.
+fn pixel_position(u: f32) -> f32 {
+  if ((params.flags & FLAG_FILTER) == 0u) {
+    return u;
+  }
+  let pos = u * f32(FILTER_TABLE - 1u);
+  let i = min(u32(floor(pos)), FILTER_TABLE - 2u);
+  let f = pos - f32(i);
+  let a = ptf(pt[H_FILTER] + i);
+  let b = ptf(pt[H_FILTER] + i + 1u);
+  return 0.5 + a + f * (b - a);
+}
 const MODE_PATHS: u32 = 0u;
 const MODE_CENTER: u32 = 1u;
 const MODE_RNG: u32 = 2u;
@@ -1972,7 +1988,7 @@ fn path_main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invoc
           lu = rnd(key, 0u, SLOT_LENS);
           lv = rnd(key, 0u, SLOT_LENS + 1u);
         }
-        camera_ray(&st, RAY_CAMERA, x, y, rnd(key, 0u, SLOT_PIXEL), rnd(key, 0u, SLOT_PIXEL + 1u), true, lu, lv);
+        camera_ray(&st, RAY_CAMERA, x, y, pixel_position(rnd(key, 0u, SLOT_PIXEL)), pixel_position(rnd(key, 0u, SLOT_PIXEL + 1u)), true, lu, lv);
         st.cam_d = st.rd;
         st.tally.camera += 1u;
         run_state(&st);

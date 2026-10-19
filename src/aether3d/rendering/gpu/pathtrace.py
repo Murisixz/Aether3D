@@ -38,7 +38,7 @@ from ...diagnostics import INFO, WARNING, Diagnostic
 from ...errors import RenderError
 from ..pathtrace.integrator import PathFrame, estimate_work
 from ..pathtrace.lights import LightSet
-from ..pathtrace.sampling import SOBOL_DIRECTIONS
+from ..pathtrace.sampling import SOBOL_DIRECTIONS, filter_table
 from ..pathtrace.scene import MAX_LAYERS, PathScene
 from ..raytrace.accel import KIND_INNER, _round_out
 from ..scene_data import RenderScene
@@ -66,6 +66,7 @@ MAX_PIXEL_SAMPLES_PER_DISPATCH = 1 << 20
 """Pixel samples one dispatch may trace when no progress callback asks for every pass."""
 MODE_PATHS, MODE_CENTER, MODE_RNG = 0, 1, 2
 FLAG_PERSPECTIVE, FLAG_PASS_THROUGH, FLAG_AO, FLAG_SIZED_LIGHTS, FLAG_SOBOL = 1, 2, 4, 8, 16
+FLAG_FILTER = 32
 ENV_KINDS = {"ambient": 0, "uniform": 1, "sky": 2, "image": 3}
 CULLS = {"none": 0, "back": 1, "front": 2}
 RAY_COUNTERS = (
@@ -211,7 +212,11 @@ def _light_records(rs: RenderScene, lights: LightSet, eye: np.ndarray) -> np.nda
 
 
 def pack_scene_words(
-    ps: PathScene, lights: LightSet, eye: np.ndarray, mesh_tri_base: np.ndarray
+    ps: PathScene,
+    lights: LightSet,
+    eye: np.ndarray,
+    mesh_tri_base: np.ndarray,
+    path_filter: tuple[str, float] | None = None,
 ) -> np.ndarray:
     """The kernel's ``pt`` words: header, BVH, instances, lights and emitters."""
     accel = ps.accel
@@ -275,6 +280,7 @@ def pack_scene_words(
         lookup,
         _environment_words(ps.environment),
         SOBOL_DIRECTIONS.reshape(-1).astype(np.uint32),
+        _filter_words(path_filter),
     ]
     header = np.zeros(HEADER_WORDS, dtype=np.uint32)
     offset = HEADER_WORDS
@@ -282,6 +288,13 @@ def pack_scene_words(
         header[k] = offset
         offset += region.shape[0]
     return np.concatenate([header, *regions]).astype(np.uint32)
+
+
+def _filter_words(path_filter) -> np.ndarray:
+    """The pixel filter's inverse CDF (float32 words), or a placeholder for the box."""
+    if path_filter is None or path_filter[0] == "box":
+        return np.zeros(4, dtype=np.uint32)
+    return filter_table(*path_filter).view(np.uint32)
 
 
 def _environment_words(env) -> np.ndarray:
@@ -364,6 +377,7 @@ def base_params(
         | (FLAG_AO if ao is not None else 0)
         | (FLAG_SIZED_LIGHTS if sized else 0)
         | (FLAG_SOBOL if path.sampler == "sobol" else 0)
+        | (FLAG_FILTER if path.filter != "box" else 0)
     )
     pr.u(35, flags)
     pr.u(36, path.seed & 0xFFFFFFFF)
@@ -501,7 +515,7 @@ def render_scene(
         instance_words.view(np.uint32)[: len(rs.instances), 29] & 16, 2 * total_vertices, 0
     )
     materials = pack_material_data(rs, order)
-    scene_words = pack_scene_words(ps, lights, eye, mesh_tri_base)
+    scene_words = pack_scene_words(ps, lights, eye, mesh_tri_base, (path.filter, path.filter_width))
     n_pix = width * height
     n_inst = len(rs.instances)
     byte_sizes = {
