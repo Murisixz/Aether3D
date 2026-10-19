@@ -8,7 +8,7 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.19.0 (advanced character rigging).** Aether3D
+> **Status: v0.19.1 (advanced character rigging, revised against Blender).** Aether3D
 > provides:
 >
 > - a scene graph with transforms and hierarchy;
@@ -92,13 +92,16 @@ graphical interface required.
 >   contacts and planting, mirroring, root motion, retargeting, camera moves and shot
 >   sequences, frame rendering with real motion blur, and glTF animation, skin and morph
 >   import/export -- all headless, from Python, JSON scripts, the CLI and MCP;
-> - **character rigging**: unrigged meshes rigged automatically (landmarks measured with
->   confidences, humanoid, stylized, blocky and quadruped templates, swing-twist limits,
->   twist helpers, IK and gaze controls), geodesic skin weights computed, edited, mirrored
->   and transferred to clothing as data, linear, dual quaternion and blended skinning
->   (native kernels) with corrective shapes, structural rig editing with undo, IK/FK
->   switching that keeps the pose, high-level pose commands, deformation diagnostics over
->   a pose suite with verified automatic fixes, and Minecraft-style characters animated by
+> - **character rigging**: unrigged meshes rigged automatically (landmarks measured on
+>   the mesh with confidences, fingers included; a Rigify-like humanoid with split twist
+>   bones, stylized, blocky and quadruped templates, swing-twist limits, IK and gaze
+>   controls), bone heat skin weights (as Blender's Automatic Weights) computed, edited,
+>   mirrored and transferred to clothing as data, linear, dual quaternion and blended
+>   skinning with surface-following normals and optional delta mush (native kernels) and
+>   corrective shapes, structural rig editing with undo, IK/FK switching that keeps the
+>   pose, pose commands (reach, the clavicle's share of a raised arm, finger curls, foot
+>   roll...), deformation diagnostics with creases and folds over everyday and stress
+>   pose suites with verified automatic fixes, and Minecraft-style characters animated by
 >   rigid object transforms with no bones at all;
 > - **procedural worlds**: landscapes generated from a small JSON definition -- eroded
 >   multiscale terrain with rivers and lakes, climate and 16 blending biomes, 29
@@ -111,14 +114,16 @@ graphical interface required.
 >   changed since the last one (a 10,000-object GPU frame in 7-8 ms when nothing
 >   changed), and the optional `aether3d-native` package (Rust) traces rays, builds
 >   transform hierarchies, skins meshes (linear, dual quaternion, blended), filters PNG
->   rows, triangulates polygons, runs the hydrology sweeps of world generation and the
->   geodesic distances of skin weighting with exactly the results of the NumPy code
+>   rows, triangulates polygons, runs the hydrology sweeps of world generation, the
+>   geodesic distances of skin weighting and delta mush with exactly the results of the
+>   NumPy code
 >   ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
 >
 > All of it is scriptable from Python and from declarative JSON on the CLI.
 > Physics is not part of this release. Procedural worlds (Stage 16) were built after
 > Stage 17 and ship as 0.18.0; there is no 0.16.0. Character rigging (Stage 18) ships as
-> 0.19.0. See the [changelog](CHANGELOG.md).
+> 0.19.0 and its revision, measured against Blender, as 0.19.1. See the
+> [changelog](CHANGELOG.md).
 
 ## Quick start
 
@@ -467,20 +472,25 @@ See [docs/ANIMATION.md](docs/ANIMATION.md) and the examples
 
 A mesh with no skeleton becomes a rigged, weighted, controllable character in one call
 (`scene.animation.autorig(body)`): landmarks measured on the mesh (each with a
-confidence and the method that placed it), a template skeleton with swing-twist limits,
-forearm twist helpers, IK targets, poles and a gaze, and geodesic weights computed inside
-the body. Weights are edited, mirrored and transferred to clothing as data; deformation
-is linear, dual quaternion or blended skinning with corrective shapes; `diagnose_rig`
-measures it over a pose suite and `apply_rig_fix` keeps only the fixes that measurably
-help; `ik_fk` switches limbs without a jump and `pose_character` turns "reach there, look
-at that, crouch" into keys. Minecraft-style characters keep their own workflow:
-`generate_rigid` animates a hierarchy of solid parts by their object transforms, with no
-armature, skin or weights.
+confidence and the method that placed it; fingers when the mesh shows them), a
+Rigify-like skeleton (a four-joint torso, clavicles, split twist bones, pelvis bones,
+three joints per finger) with swing-twist limits, IK targets, poles and a gaze, and bone
+heat weights -- which deform the test figure as Blender's Automatic Weights do, where
+v0.19.0's collapsed its elbows and knees. Weights are edited, mirrored and transferred to
+clothing as data; deformation is linear, dual quaternion or blended skinning with
+surface-following normals, optional delta mush and corrective shapes; `diagnose_rig`
+measures creases, folds, stretch and collapse over everyday and stress pose suites
+(`aether3d rig test`) and `apply_rig_fix` keeps only the fixes that measurably help;
+`ik_fk` switches limbs without a jump and `pose_character` turns "reach there, look at
+that, crouch, raise the arm, make a fist, roll onto the toes" into keys. Clothing and
+armour follow the body without moving its joints. Minecraft-style characters keep their
+own workflow: `generate_rigid` animates a hierarchy of solid parts by their object
+transforms, with no armature, skin or weights.
 
 See [docs/CHARACTER_RIGGING.md](docs/CHARACTER_RIGGING.md) and the showcases
 [`rigging_autorig.py`](examples/rigging_autorig.py) (an unrigged mesh rigged, checked and
-animated), [`rigging_deformation.py`](examples/rigging_deformation.py) (weights and
-skinning methods under demanding poses), [`rigging_ikfk.py`](examples/rigging_ikfk.py)
+animated), [`rigging_deformation.py`](examples/rigging_deformation.py) (v0.19.0, the
+revision and Blender's weights under the stress poses), [`rigging_ikfk.py`](examples/rigging_ikfk.py)
 (hands and feet on targets, switches that keep the pose),
 [`rigging_outfit.py`](examples/rigging_outfit.py) (a character of separate meshes and
 attachments), [`rigging_minecraft_rigid.py`](examples/rigging_minecraft_rigid.py) (rigid
@@ -488,9 +498,9 @@ parts, no bones), [`rigging_world.py`](examples/rigging_world.py) (both kinds in
 procedural world) and [`rigging_roundtrip.py`](examples/rigging_roundtrip.py) (`.aether`
 and GLB round trips), with outputs in `examples/output/rigging/`.
 
-![An unrigged mannequin, auto-rigged by Aether3D, walking, running, crouching and reaching](examples/output/rigging/a_autorig/motion_sheet.png)
+![An unrigged anatomical figure, auto-rigged by Aether3D, walking, running, crouching, reaching and rising onto tiptoe](examples/output/rigging/a_autorig/motion_sheet.png)
 
-![A shoulder raised 150 degrees: Stage 17's envelope weights, geodesic weights, dual quaternion skinning and a verified blend](examples/output/rigging/b_deformation/compare_shoulder_raise_150.L.png)
+![A shoulder raised 150 degrees: v0.19.0's rig, the revision's heat weights, with delta mush, and Blender's Automatic Weights](examples/output/rigging/b_deformation/compare_shoulder_raise_150.L.png)
 
 ![Kit, a rigid-part character with no bones, animated by its parts' own transforms](examples/output/rigging/e_rigid/kit_sheet.png)
 
@@ -1159,7 +1169,7 @@ see [docs/PERFORMANCE.md](docs/PERFORMANCE.md#phase-3-native-kernels-rust).
 | [docs/MODELING.md](docs/MODELING.md) | Advanced modeling and sculpting: bevels, cuts, bridges, slides, sweeps; the sculpt mesh, brushes, strokes, masks, symmetry, dynamic topology, remeshing, symmetrize, validity tiers, scripts, CLI, MCP, history, design, performance, limitations |
 | [docs/TEXTURING.md](docs/TEXTURING.md) | UV mapping, texture painting and baking: unwrapping, projections, island tools, diagnostics, MikkTSpace, painted textures and layers, brushes and strokes, baking, texture transfer, scripts, CLI, MCP, safety, performance, limitations |
 | [docs/ANIMATION.md](docs/ANIMATION.md) | Animation, rigging and cinematics: authored and evaluated state, time, paths, F-curves (interpolation, handles, easing, derivatives, extrapolation, modifiers, key operations, reports, fitting, graphs), rotations, clips and NLA, rigs, skins, IK and constraints, motion generators, contacts, retargeting, cameras, frame rendering, glTF, scripts, CLI, MCP, security, limitations |
-| [docs/CHARACTER_RIGGING.md](docs/CHARACTER_RIGGING.md) | Character rigging: three workflows, the rig document (roles, helpers, controls, correctives, swing-twist limits), automatic rigging and landmarks, skin weights (geodesic, edited, transferred, inspected), deformation (linear, dual quaternion, blended), structural editing, IK/FK controls and pose commands, diagnostics and verified correction, rigid-part characters and conversions, scripts, CLI, MCP, glTF, performance |
+| [docs/CHARACTER_RIGGING.md](docs/CHARACTER_RIGGING.md) | Character rigging: three workflows, the rig document (roles, helpers, spans, controls, correctives, swing-twist limits), automatic rigging and landmarks, skin weights (bone heat, geodesic, edited, transferred, inspected), deformation (linear, dual quaternion, blended, surface normals, delta mush), structural editing, IK/FK controls and pose commands, diagnostics (stress suite, creases, folds) and verified correction, rigid-part characters and conversions, scripts, CLI, MCP, glTF, measurements against Blender, performance |
 | [docs/WORLDS.md](docs/WORLDS.md) | Procedural worlds: definitions and determinism, terrain, hydrology, climate and biomes, features, water, caves and overhangs, block worlds, vegetation, structures and settlements, streaming, level of detail and memory, rendering, queries, history and files, glTF export, world scripts, CLI, MCP, limits and security, performance |
 | [docs/CAD.md](docs/CAD.md) | Precision modeling and CAD: the document, units and tolerances, sketches and the constraint solver, features and persistent names, the B-rep kernel and booleans, assemblies, measurements and snapping, drawings, STEP/DXF/IFC exchange, CAD scripts, CLI, MCP, limitations |
 | [docs/BUILDINGS.md](docs/BUILDINGS.md) | Architecture and BIM: buildings, levels, walls and joins, openings and families, rooms, slabs, roofs, stairs, columns, beams, quantities and schedules, plans, IFC, limitations |

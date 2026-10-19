@@ -1,7 +1,7 @@
 """Showcase G (Stage 18): a rigged, clothed, animated character through ``.aether`` and
 GLB -- skeleton, weights, rest poses and animated poses compared before and after.
 
-The character: the auto-rigged humanoid with a jacket bound by weight transfer and a
+The character: the auto-rigged figure with a jacket bound by weight transfer and a
 helmet attached to the head, a generated walk and a keyed reach (IK) with a look-at. It
 is saved as ``.aether`` and loaded back, and exported as GLB (baked animation: what the
 scene shows, sampled at the frames) and imported back; each copy is compared with the
@@ -46,31 +46,17 @@ from animation_common import validate_glb  # noqa: E402
 from aether3d import Scene, import_gltf  # noqa: E402
 from aether3d.rendering.overlay import animation_overlay  # noqa: E402
 from aether3d.rendering.scene_data import world_matrices  # noqa: E402
-from aether3d.sculpt.implicit import implicit_surface  # noqa: E402
 
 MESHES = ("Body", "Jacket")
 
 
-def build(voxel: float) -> Scene:
+def build(quick: bool) -> Scene:
     scene = Scene("Showcase G")
     C.studio(scene)
-    body = scene.add_object("Body", mesh=C.humanoid_mesh(voxel))
-    jacket = scene.add_object("Jacket", mesh=C.garment_mesh((0, 2, 3, 4, 9, 14), 0.016, voxel))
-    helmet = scene.add_object(
-        "Helmet",
-        mesh=implicit_surface(
-            [
-                {"type": "ellipsoid", "center": [0.0, 0.012, 1.665], "radii": [0.118, 0.13, 0.12]},
-                {
-                    "type": "box",
-                    "center": [0.0, -0.06, 1.56],
-                    "size": [0.4, 0.3, 0.16],
-                    "subtract": True,
-                },
-            ],
-            voxel,
-        ),
-    )
+    body = scene.add_object("Body", mesh=C.character_mesh(quick))
+    jacket = scene.add_object("Jacket", mesh=C.garment(("torso", "upper_arm", "forearm"), 0.014,
+                                                       quick, bottom=C.waist() - 0.05))  # fmt: skip
+    helmet = scene.add_object("Helmet", mesh=C.armour(body.mesh, quick)["Helmet"])
     body.material = scene.create_material("Skin", base_color=(0.8, 0.62, 0.5), roughness=0.55)
     jacket.material = scene.create_material("Jacket", base_color=(0.16, 0.36, 0.62), roughness=0.6)
     helmet.material = scene.create_material(
@@ -183,7 +169,7 @@ def main(argv: list[str]) -> int:
     out.mkdir(parents=True, exist_ok=True)
     backend = C.set_backend(args.backend)
     t_all = time.perf_counter()
-    scene = build(0.02 if args.quick else 0.012)
+    scene = build(args.quick)
     report: dict = {"backend": backend, "machine": C.machine()}
     fps = scene.animation.fps.fps
     times = [k / fps for k in (0, 7, 12, 19, 24, 31, 36)]

@@ -162,6 +162,8 @@ def rig_diagnostics(scene: Scene, rigging: Rigging, diagnostics: list[Diagnostic
             kept.add("joint limits")
         if any(not j.deform for j in rig.joints):
             kept.add("helper joints")
+        if any(j.span != (0.0, 1.0) for j in rig.joints):
+            kept.add("joint spans")
         if rig.controls:
             dropped.add("control definitions (their objects are exported as nodes)")
         if rig.correctives:

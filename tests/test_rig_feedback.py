@@ -132,6 +132,18 @@ def test_rig_fix_actions_and_proposals_are_checked_data(body_mesh):
     assert len(s.history) == steps
 
 
+def test_a_rig_check_can_measure_the_stress_suite(body_mesh):
+    """``poses: "stress"`` (0.19.1) measures the extremes: the findings name its poses."""
+    from aether3d.animation.rig_report import pose_suite
+
+    s = rigged(body_mesh)
+    fs = FeedbackSession(s, expectations({**RIG, "poses": "stress"}), width=48, height=48)
+    findings = fs.diagnose().to_dict()["findings"]
+    poses = {f["evidence"]["rig"].get("pose") for f in findings} - {None}
+    stress = {p["name"] for p in pose_suite(s.animation.rig(s.get_by_name("Rig")), "stress")}
+    assert poses and poses <= stress and "shoulder_raise_150.L" in poses
+
+
 def test_a_rig_check_on_an_unrigged_object_says_so(body_mesh):
     s = Scene("Plain")
     s.add_object("Body", mesh=body_mesh)

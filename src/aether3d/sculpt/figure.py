@@ -44,7 +44,11 @@ FIGURE_DEFAULTS: dict[str, float] = {
     "knee_bend": 4.0,  # degrees the shin bends back at rest (the knee comes forward)
     "finger_curl": 12.0,  # degrees each finger joint bends toward the palm at rest
     "finger_spread": 6.0,  # degrees between neighbouring fingers
-    "stance": 0.0,  # extra distance between the feet (metres)
+    # Extra distance between the feet (metres): a little apart, as a rigging rest pose
+    # stands, so the thighs part below the groin instead of pressing together (with the
+    # feet under the hips they fuse down to mid-thigh, and the cut between them leaves
+    # flat inner thighs that show in every stride).
+    "stance": 0.08,
     "fingers": 1.0,  # 1: separate fingers; 0: a mitten (fingers fused into one paddle)
 }
 
@@ -383,11 +387,11 @@ def _figure_shapes(
             axis=th,
         )
         ell(
-            along(hip, knee, 0.42) + np.array([sx * -0.018 * H, 0.010 * H, 0]),
+            along(hip, knee, 0.42) + np.array([sx * -0.004 * H, 0.010 * H, 0]),
             [0.034 * H, 0.034 * H, 0.10 * H],
             0.025 * H,
             axis=th,
-        )  # adductors
+        )  # adductors (kept off the mirror plane: the inner thighs stay round)
         ell(
             along(hip, knee, 0.48) + np.array([0, 0.022 * H, 0]),
             [0.034 * H, 0.030 * H * m**0.5, 0.10 * H],
@@ -432,11 +436,12 @@ def _figure_shapes(
     # The legs apart below the crotch: thighs that touch (most do) are two surfaces, not a
     # web the other leg would drag along (a 100-degree hip flexion stretched it 11 times).
     crotch = hip_z - CROTCH_BELOW_HIP * H
-    mark("cut")
+    mark("cut.gap")
     shapes.append({"type": "box", "center": [0.0, 0.0, 0.5 * crotch - 0.25 * H],
                    "size": [max(LEG_GAP * H, min_gap), H, crotch + 0.5 * H],
                    "blend": 0.004 * H, "subtract": True})  # fmt: skip
     # Flat soles: everything below the floor is cut away (last: it subtracts from all).
+    mark("cut.floor")
     shapes.append({"type": "box", "center": [0.0, 0.0, -0.5 * H], "size": [4 * H, 4 * H, H],
                    "blend": 0.004 * H, "subtract": True})  # fmt: skip
     if tags is not None:
@@ -446,13 +451,29 @@ def _figure_shapes(
     return shapes
 
 
-def figure_garment(parts: Any, inflate: float, voxel_size: float = 0.008, **options: Any) -> Any:
+LEGS = ("thigh", "knee", "shin", "foot")
+
+
+def figure_garment(
+    parts: Any,
+    inflate: float,
+    voxel_size: float = 0.008,
+    *,
+    top: float | None = None,
+    bottom: float | None = None,
+    **options: Any,
+) -> Any:
     """A garment (or armour) shell over some of the figure's ``parts`` (:data:`PARTS`, a
     limb's with or without its side: ``"upper_arm"`` is both, ``"upper_arm.L"`` one): their
-    shapes inflated by ``inflate`` metres and meshed like the figure, legs apart below the
-    crotch and flat at the floor."""
+    shapes inflated by ``inflate`` metres and meshed like the figure, flat at the floor and
+    cut flat above ``top`` and below ``bottom`` (heights in metres: a jacket ends below
+    the waist, trousers start above it). A garment over the legs is meshed a side at a
+    time, each clipped to its own half (the trousers' legs meet on the mirror plane): the
+    figure's legs are apart below the crotch by a gap of its own voxels, which a coarser
+    garment could not cut as finely -- its inner faces would lie inside the thighs."""
     import copy
 
+    from ..mesh import Mesh
     from .implicit import implicit_surface
 
     wanted = {parts} if isinstance(parts, str) else set(parts)
@@ -461,22 +482,64 @@ def figure_garment(parts: Any, inflate: float, voxel_size: float = 0.008, **opti
             raise ValidationError(f"unknown figure part {p_!r}; one of {', '.join(PARTS)}")
     if isinstance(inflate, bool) or not isinstance(inflate, (int, float)) or inflate < 0:
         raise ValidationError("inflate is a non-negative number of metres")
+    for name, value in (("top", top), ("bottom", bottom)):
+        if value is not None and (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+        ):
+            raise ValidationError(f"{name} is a height in metres")
     tags: list[str] = []
     shapes = _figure_shapes(options, 2.2 * float(voxel_size), tags)
-    out = []
-    for sh, tag in zip(shapes, tags, strict=True):
-        keep = tag == "cut" or tag in wanted or tag.split(".")[0] in wanted
-        if not keep or (sh.get("subtract") and tag != "cut"):
-            continue
-        sh = copy.deepcopy(sh)
-        if tag != "cut":
+    H = _options(options)["height"]
+    cuts = []  # (flat: what lies above the top, below the bottom)
+    if top is not None:
+        cuts.append({"type": "box", "center": [0.0, 0.0, float(top) + 2.0 * H],
+                     "size": [4.0 * H, 4.0 * H, 4.0 * H], "subtract": True})  # fmt: skip
+    if bottom is not None:
+        cuts.append({"type": "box", "center": [0.0, 0.0, float(bottom) - 2.0 * H],
+                     "size": [4.0 * H, 4.0 * H, 4.0 * H], "subtract": True})  # fmt: skip
+
+    def dressed(side: str | None) -> list[dict[str, Any]]:
+        out = []
+        for sh, tag in zip(shapes, tags, strict=True):
+            if tag.startswith("cut"):
+                if tag == "cut.floor" or side is None:
+                    out.append(copy.deepcopy(sh))
+                continue
+            sided = "." in tag
+            if side is not None and sided and not tag.endswith(f".{side}"):
+                continue
+            if sh.get("subtract") or not (tag in wanted or tag.split(".")[0] in wanted):
+                continue
+            sh = copy.deepcopy(sh)
             for key in ("radius", "radius_b"):
                 if key in sh:
                     sh[key] += inflate
             if "radii" in sh:
                 sh["radii"] = [r + inflate for r in sh["radii"]]
-        out.append(sh)
-    return implicit_surface(out, voxel_size)
+            out.append(sh)
+        if side is not None:  # (everything across the mirror plane cut away)
+            sign = 1.0 if side == "L" else -1.0
+            out.append({"type": "box", "center": [-sign * 2.0 * H, 0.0, 0.5 * H],
+                        "size": [4.0 * H, 4.0 * H, 4.0 * H], "subtract": True})  # fmt: skip
+        return out + [dict(c) for c in cuts]
+
+    if not any(p_.split(".")[0] in LEGS for p_ in wanted):
+        return implicit_surface(dressed(None), voxel_size)
+    halves = []
+    for side in ("L", "R"):
+        chosen = dressed(side)
+        if any(not sh.get("subtract") for sh in chosen):
+            halves.append(implicit_surface(chosen, voxel_size))
+    if len(halves) == 1:
+        return halves[0]
+    a, b = halves
+    return Mesh(
+        np.concatenate([a.positions, b.positions]),
+        np.concatenate([a.triangles, b.triangles + a.vertex_count]),
+        normals=np.concatenate([a.normals, b.normals]),
+    )
 
 
 def _quat(axis: np.ndarray, side: np.ndarray | None = None) -> list[float]:

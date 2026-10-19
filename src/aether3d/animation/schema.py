@@ -109,7 +109,8 @@ _ARGUMENTS: dict[str, Any] = {
         "type": "object",
         "description": "per mesh name, how it binds: generate (weights.method, default heat), "
         "heat or geodesic (that method), transfer (from the first generated part), rigid, "
-        "attach (parented to its nearest joint) or skip",
+        "attach (parented to its nearest joint) or skip; the joints are measured on the "
+        "generated parts only (the body: clothing and props do not move them)",
         "additionalProperties": {
             "enum": ["generate", "heat", "geodesic", "transfer", "rigid", "attach", "skip"]
         },

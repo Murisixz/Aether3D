@@ -27,12 +27,12 @@ difference 0.0013).
 
 ## Case 2: the revision's figure
 
-The anatomical figure (`aether3d.sculpt.figure.figure_mesh(0.007, remesh=0.007)`, 42,850
+The anatomical figure (`aether3d.sculpt.figure.figure_mesh(0.007, remesh=0.007)`, 42,878
 vertices) auto-rigged by the revision (60 joints, fingers included); every joint becomes a
 Blender bone along its weighting segment with its exact frame (deviation 5e-6). Blender
 computes Automatic Weights; each stress pose is set bone by bone to the rigid transform
 Aether3D's pose gives the joint (`T @ rest`, parents first), so Blender's LBS of Blender's
-weights equals Aether3D's LBS of the same weights (measured: within 1e-6 m). Variants:
+weights equals Aether3D's LBS of the same weights (measured: within 3e-6 m). Variants:
 Blender LBS, DQS (Preserve Volume), LBS + Corrective Smooth (defaults: 5 iterations) and
 LBS + Corrective Smooth with 12 iterations; v0.19.0's own rig and weights on the same mesh
 (made with the v0.19.0 sources); the revision's heat weights (LBS) and with delta mush.

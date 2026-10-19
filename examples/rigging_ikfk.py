@@ -2,7 +2,7 @@
 explicit targets, and switching between IK and FK keeps the visible pose, checked at every
 switch and at every keyframe.
 
-The auto-rigged humanoid (``autorig``: two-bone IK limbs with poles, influence 0 so the
+The auto-rigged figure (``autorig``: two-bone IK limbs with poles, influence 0 so the
 rig starts in FK) is driven by four target objects:
 
 * 0.0 s -- the rest pose, FK;
@@ -103,7 +103,7 @@ def main(argv: list[str]) -> int:
     t_all = time.perf_counter()
     scene = Scene("Showcase C")
     report: dict = {"backend": backend, "machine": C.machine(), "lighting": C.studio(scene)}
-    body = scene.add_object("Body", mesh=C.humanoid_mesh(0.02 if args.quick else 0.012))
+    body = scene.add_object("Body", mesh=C.character_mesh(args.quick))
     a = scene.animation
     edges = C.tailor(scene, body)
     a.autorig(body, name="Rig")

@@ -1488,23 +1488,43 @@ def surface_normals(
     smallest rotation taking the vertex's rest area-weighted normal ``rest_frame`` (unit)
     to its posed one. Identity at rest (the authored normals stay), and a crease or a
     twist shades as the facets around it are shaped; a vertex whose surface turned over
-    (an antiparallel normal) takes the posed area-weighted normal itself."""
-    b = face_normal_sums(posed, triangles)
-    length = np.sqrt(np.sum(b * b, axis=1))
-    b = np.where(length[:, None] > 0, b / np.where(length > 0, length, 1.0)[:, None], rest_frame)
-    a = rest_frame
-    x = np.asarray(normals, np.float64)
-    c = np.sum(a * b, axis=1)
-    v = np.cross(a, b)
-    # R x = c x + v x x + v (v . x) / (1 + c)   (the rotation about a x b taking a to b)
-    turned = (
-        c[:, None] * x
-        + np.cross(v, x)
-        + v * (np.sum(v * x, axis=1) / np.maximum(1.0 + c, 1e-12))[:, None]
+    (an antiparallel normal) takes the posed area-weighted normal itself. The NumPy
+    reference of the native kernel (``native/src/normals.rs``: the same operations in the
+    same order, every sum written out -- bitwise the same result)."""
+    from .. import _native
+
+    f = np.ascontiguousarray(rest_frame, np.float64)
+    q = np.ascontiguousarray(posed, np.float64)
+    t = np.ascontiguousarray(triangles, np.int64)
+    native = _native.module()
+    if native is not None and hasattr(native, "surface_normals"):
+        out = np.empty((len(q), 3), np.float32)
+        native.surface_normals(f, q, t, np.ascontiguousarray(normals, np.float32), out)
+        return out
+    b = face_normal_sums(q, t)
+    bx, by, bz = b[:, 0], b[:, 1], b[:, 2]
+    length = np.sqrt((bx * bx + by * by) + bz * bz)
+    ax, ay, az = f[:, 0], f[:, 1], f[:, 2]
+    ok = length > 0
+    safe = np.where(ok, length, 1.0)
+    bx, by, bz = (
+        np.where(ok, bx / safe, ax),
+        np.where(ok, by / safe, ay),
+        np.where(ok, bz / safe, az),
     )
-    out = np.where((c > -0.95)[:, None], turned, b)
-    norm = np.sqrt(np.sum(out * out, axis=1))
-    return (out / np.where(norm > 0, norm, 1.0)[:, None]).astype(np.float32)
+    x = np.asarray(normals, np.float32).astype(np.float64)
+    xx, xy, xz = x[:, 0], x[:, 1], x[:, 2]
+    c = (ax * bx + ay * by) + az * bz
+    vx, vy, vz = ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx
+    # R x = c x + v x x + v (v . x) / (1 + c)   (the rotation about a x b taking a to b)
+    s = ((vx * xx + vy * xy) + vz * xz) / np.maximum(1.0 + c, 1e-12)
+    keep = c > -0.95
+    ox = np.where(keep, (c * xx + (vy * xz - vz * xy)) + vx * s, bx)
+    oy = np.where(keep, (c * xy + (vz * xx - vx * xz)) + vy * s, by)
+    oz = np.where(keep, (c * xz + (vx * xy - vy * xx)) + vz * s, bz)
+    norm = np.sqrt((ox * ox + oy * oy) + oz * oz)
+    div = np.where(norm > 0, norm, 1.0)
+    return np.stack([ox / div, oy / div, oz / div], axis=1).astype(np.float32)
 
 
 # --------------------------------------------------------------------------------------- #

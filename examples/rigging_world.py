@@ -112,7 +112,7 @@ def main(argv: list[str]) -> int:
     world = scene.worlds.create("Plains", "rolling_plains", seed=7, size=4096.0)
     a = scene.animation
     print("1. characters")
-    body = scene.add_object("Walker", mesh=C.humanoid_mesh(0.02 if args.quick else 0.012))
+    body = scene.add_object("Walker", mesh=C.character_mesh(args.quick))
     edges = C.tailor(scene, body)
     a.autorig(body, name="Walker Rig")
     walker = scene.get_by_name("Walker Rig")

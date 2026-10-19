@@ -4,6 +4,68 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.19.1: character rigging, revised against Blender
+
+Stage 18's rigging passed its tests but looked poor in practice. 0.19.1 revises it after
+measuring it against Blender 5.2 (headless `bpy`, a development-time reference only:
+nothing in the package imports it, no Blender code is copied, every image is Aether3D's).
+The gap analysis, the experiments and the outcome:
+[research/2026-10-stage18-revision/DESIGN.md](research/2026-10-stage18-revision/DESIGN.md).
+
+- **Weights: bone heat** (`generate_weights(method="heat")`, the new default; Baran and
+  Popovic 2007, Blender's Automatic Weights): one symmetric sparse system per mesh, solved
+  by the existing nested-dissection LDL^T and made visible by the existing watertight
+  rays; up to **eight influences** (capped at four, a twisted torso creased: 114 new
+  creases and 23 folds, against none). On a case shared with Blender the dominant joint
+  agrees on 99.8 % of the vertices (v0.19.0's geodesic weights: 82.6 %). The geodesic
+  binding stays as a method; auto-rig part mode `generate` (`heat`, `geodesic` per part).
+- **An anatomical test figure** (`aether3d.sculpt.figure`: pelvis, ribcage, muscles, knees,
+  feet with toes, hands with fingers, a face; builds, rest poses, `figure_garment`) with
+  known joint centres, standing as a rigging rest pose does: feet a little apart, so the
+  thighs part below the groin (pressed together, their separation left flat inner thighs). **Landmarks measured on the mesh** (probes, sections, the crotch,
+  armpits, wrists, fingers): major joints within 2.6 % of the height over 27 cases and
+  three resolutions, fingers within 2.3 % or none (`FINGERS_UNCERTAIN`: hands that do
+  not mirror each other, a hand without its pair, fingers named one off).
+- **A Rigify-like humanoid**: a four-joint torso along the back, clavicles, pelvis bones,
+  upper arms, forearms and thighs split for twist (joint `span`), three joints per finger
+  and thumb -- about 60 joints.
+- **Clothing and armour no longer move the skeleton**: auto-rig measures the landmarks on
+  the generated parts only (the report's `measured`); measured with the body, as in
+  0.19.0, the outfit showcase's helmet raised the skull's pivot 8 cm, its trousers lowered
+  the hips 6 cm and its gloves hid the fingers. Attached pieces take the nearest bone, a
+  tie (a plate over the shoulder, where the clavicle ends and the upper arm starts) going
+  to the bone nearest the root, so mirrored pieces attach alike. A blocky character's
+  flat-shaded blocks (a corner copy per face) count as one piece each and are attached,
+  as documented.
+- **Garments** (`figure_garment`): legs meshed a side at a time (trousers' inner faces
+  cover the thighs at any voxel size) and flat cuts (`top`, `bottom`) for overlapping
+  jackets and trousers.
+- **Skins**: surface-following normals (`normals="surface"`, the default for new skins)
+  and optional **delta mush** (`smooth`, `corrective`; cotangent smoothing, per-corner
+  frames), each with a Rust kernel bitwise equal to NumPy: 0.95 and 9.6 ms a frame at
+  41,000 vertices (NumPy 8.3 and 41 ms). Twist constraints defer the forward kinematics
+  (`AETHER3D_RIG_LAZY_FK`). 50 auto-rigged walkers evaluate in 34 ms a frame (0.19.0's
+  smaller rigs: 17 ms; before the normals kernel: 88 ms).
+- **Poses**: `raise_arm` lifts the clavicle with the arm (the arm exactly where asked),
+  `curl_fingers` (curl, fist, point, spread), `roll_foot` (heel, ball, toe tip; absolute).
+- **Diagnostics**: creases and folds from the geometry alone, a `stress` suite (elbows and
+  knees 140 degrees, hips 100, shoulders 150, torso 60), corrective smoothing proposed as
+  an `approval` trade-off whose dry run reports every pose measure.
+- **Interfaces**: `aether3d rig test` (a labelled stress sheet, exit code 3), `rig
+  create`, `edit`, `bind`, `transfer`, `pose`, `ikfk`; MCP `inspect_rig` `suite`; export
+  diagnostics over MCP say which are lossy; glTF reports `SKIN_SMOOTHING_LOSSY` and
+  `SKIN_NORMALS_DIFFER` and keeps joint spans as extras.
+- **Project format 12** (joint `span`, skin `normals` and `smooth`; the migration from 11
+  changes nothing). `aether3d-native` 0.19.1, ABI 8 (the delta mush and surface normals
+  kernels).
+
+Measured on the figure (42,878 vertices) under the stress suite, totals over 13 poses:
+v0.19.0's rig of the same mesh 280 new creases, 16 folds, worst stretch 5.88, elbows and
+knees keeping 0.73 of their size; 0.19.1 158, 10, 4.24 and 0.88; Blender's Automatic
+Weights 136, 6, 4.24 and 0.88 (`docs/CHARACTER_RIGGING.md#measured-against-blender`).
+Showcases A-D, F and G are rebuilt on the figure; B compares v0.19.0, the revision and
+Blender's weights side by side.
+
 ## 0.19.0: advanced character rigging
 
 Stage 18 ships as 0.19.0. It extends Stage 17's animation system -- the same `Rig`,

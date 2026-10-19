@@ -5,7 +5,9 @@ on the landmarks, orients every bone, adds limits, IK/FK controls and twist help
 binds every mesh with automatic weights (:mod:`.weights`) -- as **one undo step**, with
 a report of every landmark's confidence and every decision. Everything it makes is
 ordinary, editable data: joints (:mod:`.rig_edit` edits them), constraints, control
-objects, skins.
+objects, skins. The landmarks are measured on the **body** (:func:`_measured`): the
+clothing, armour and other pieces ``parts`` binds otherwise follow the body and do not
+move its joints.
 
 Templates:
 
@@ -60,7 +62,8 @@ PART_MODES = ("generate", "heat", "geodesic", "transfer", "rigid", "attach", "sk
 default: bone heat; ``heat`` or ``geodesic`` choose the method for one part), weights
 transferred from the first generated part (clothing), one joint for the whole part as a
 skin (``rigid``) or as a rigid attachment to the nearest joint (``attach``), or not at
-all (``skip``)."""
+all (``skip``). Only the generated parts are measured for the landmarks
+(:func:`_measured`)."""
 GENERATED = ("generate", "heat", "geodesic")
 FORWARD = np.array([0.0, -1.0, 0.0])
 BACKWARD = np.array([0.0, 1.0, 0.0])
@@ -449,6 +452,10 @@ def autorig(
             raise _err("INVALID_ARGUMENT", f"{key} is true or false", key)
     t0 = time.perf_counter()
     pos, tris, objs = LM.gather(system, meshes)
+    part_modes = _part_modes(system, objs, parts, template)
+    measured = _measured(part_modes, parts)
+    if len(measured) < len(objs):
+        pos, tris, _ = LM.gather(system, measured)
     detect_template = "humanoid" if template == "stylized" else template
     det = LM.detect(
         pos,
@@ -480,8 +487,8 @@ def autorig(
         }
         for j in joints
     ]
-    part_modes = _part_modes(system, objs, parts, template)
     report["parts"] = {o.name: m for o, m in part_modes}
+    report["measured"] = [o.name for o in measured]
     if dry_run:
         report["dry_run"] = True
         return report
@@ -755,7 +762,12 @@ def _part_modes(system, objs, parts, template) -> list[tuple[Any, str]]:
     for obj in objs:
         default = "generate"
         if template == "blocky" and len(objs) > 1:
-            _, count = mesh_components(obj.mesh.vertex_count, obj.mesh.triangles)
+            # (one piece once coincident vertices are welded: a flat-shaded block keeps
+            # a copy of each corner per face)
+            p = np.asarray(obj.mesh.positions)
+            _, weld = np.unique(p, axis=0, return_inverse=True)
+            tris = weld.reshape(-1)[np.asarray(obj.mesh.triangles, np.int64)]
+            _, count = mesh_components(int(weld.max()) + 1, tris)
             if count == 1:
                 default = "attach"
         mode = parts.pop(obj.name, parts.pop(obj._id, default))
@@ -771,6 +783,22 @@ def _part_modes(system, objs, parts, template) -> list[tuple[Any, str]]:
     return out
 
 
+def _measured(part_modes: list[tuple[Any, str]], parts: dict[str, str] | None) -> list[Any]:
+    """The meshes the landmarks are measured on: the body -- the parts whose weights are
+    generated, and a blocky character's blocks, attached by default -- or, without any,
+    every part not skipped. Clothing (``transfer``) and the pieces ``parts`` attaches or
+    binds rigidly follow the body; measured with it (as up to 0.19.0), the outfit
+    showcase's helmet raised the skull's pivot 8 cm and its trousers lowered the hips
+    6 cm."""
+    given = set(parts or {})
+    body = [
+        o
+        for o, m in part_modes
+        if m in GENERATED or (m == "attach" and o.name not in given and o._id not in given)
+    ]
+    return body or [o for o, m in part_modes if m != "skip"] or [o for o, _ in part_modes]
+
+
 def _attach_part(system, obj, arm) -> dict[str, Any]:
     from ..rendering.scene_data import world_matrices
 
@@ -780,16 +808,27 @@ def _attach_part(system, obj, arm) -> dict[str, Any]:
     c = (worlds[obj._id] @ np.append(c, 1.0))[:3]
     model = worlds[arm._id] @ rig.rest_model()
     tails = rig.tails()
-    best, joint = np.inf, rig.joints[0].name
+    found = []
     for k, j in enumerate(rig.joints):
         if not j.deform:
             continue
         a = model[k][:3, 3]
         b = (model[k] @ np.append(tails[k], 1.0))[:3]
         t = np.clip((c - a) @ (b - a) / max(float((b - a) @ (b - a)), 1e-12), 0, 1)
-        d = float(np.linalg.norm(c - (a + t * (b - a))))
-        if d < best:
-            best, joint = d, j.name
+        found.append((float(np.linalg.norm(c - (a + t * (b - a)))), k))
+
+    def depth(k: int) -> int:
+        n = 0
+        while rig.joints[k].parent >= 0:
+            k, n = rig.joints[k].parent, n + 1
+        return n
+
+    # Nearest where several bones meet (a shoulder plate over the shoulder: the clavicle
+    # ends there, the upper arm starts there) is a tie: the bone nearest the root takes
+    # it, so mirrored pieces attach alike (rounding had sent them to different bones).
+    nearest = min(d for d, _ in found) if found else 0.0
+    tied = [k for d, k in found if d <= nearest + 1e-6]
+    joint = rig.joints[min(tied, key=lambda k: (depth(k), k))].name if tied else rig.joints[0].name
     # Parented to the armature (where it is): an attachment follows its joint relative to
     # the authored armature, so the character can then be placed or turned as a whole.
     ancestor, parented = obj.parent, False

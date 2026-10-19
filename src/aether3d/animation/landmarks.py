@@ -723,13 +723,18 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame, mesh_c) 
 
 
 FINGER_AGREE = 0.015  # of the height: a symmetric body's hands find each finger this close
+# Of the height: the middle finger's tip lies within this of the hand's tip (the longest
+# finger; measured within 1.9 % on resolved hands, 4 % where fused fingers were misnamed).
+MIDDLE_AT_TIP = 0.03
 
 
 def _fingers(det, mesh_c, H) -> None:
     """Fingers and thumbs (:func:`.anatomy.hand_fingers`) as landmarks: ``thumb.1.L`` ..
     ``thumb.tip.L``, ``index.1.L`` (the knuckle) .. ``index.tip.L``, likewise ``middle``,
     ``ring``, ``pinky``; a hand whose fingers do not part (a mitten) gets none, and the
-    detection says so."""
+    detection says so. All or none: the fingers are kept only when confirmed -- the
+    middle finger's tip at the hand's tip, and on a symmetric body both hands found and
+    each finger matching its mirror image (``FINGERS_UNCERTAIN`` otherwise)."""
     from .anatomy import hand_fingers
 
     found: dict[str, Any] = {}
@@ -751,9 +756,22 @@ def _fingers(det, mesh_c, H) -> None:
     # mirror image is not resolved by the mesh (too coarse for its width; measured: such
     # fingers were 2 to 8 % of the height off) and is left out of both.
     mirror = np.array([-1.0, 1.0, 1.0])
-    pair = {"L", "R"} <= set(found) and bool(det.info.get("_symmetric"))
+    symmetric = bool(det.info.get("_symmetric"))
+    pair = {"L", "R"} <= set(found) and symmetric
     dropped = []
-    if pair and hands:
+    # The fingers are named by their order across the hand; the middle finger's tip must
+    # then be the hand's tip (where fused fingers are told apart wrongly, it is not).
+    for side, fingers in hands.items():
+        middle, tip = fingers.get("middle"), det.landmarks.get(f"hand_tip.{side}")
+        if middle is not None and tip is not None:
+            off = float(np.linalg.norm(np.asarray(middle[-1]) - tip.position))
+            found[side]["middle_tip_off"] = round(off / H, 5)
+            if not off < MIDDLE_AT_TIP * H:
+                dropped.append(f"middle.{side}")
+    if symmetric and hands and not pair:
+        # (one hand found: its fingers cannot be checked against the other's)
+        dropped.extend(f"{n}.{side}" for side in hands for n in sorted(hands[side]))
+    if pair and hands and not dropped:
         names = sorted({n for h in hands.values() for n in h if h[n] is not None})
         for name in names:
             a = hands.get("L", {}).get(name)
@@ -769,19 +787,21 @@ def _fingers(det, mesh_c, H) -> None:
             found.setdefault("mirror_gaps", {})[name] = round(gap / H, 5)
             if not gap < FINGER_AGREE * H:
                 dropped.append(name)
-        if dropped:
-            # (all or none: a hand whose other fingers bend while these cannot is worse
-            # than one without finger joints, which landmarks can complete)
-            hands = {}
-            det.diag(
-                "FINGERS_UNCERTAIN",
-                "warning",
-                f"the hands' {', '.join(dropped)} do not match their mirror images (the "
-                "mesh is too coarse for their width): the hands have no finger landmarks",
-                fingers=dropped,
-                hint="remesh finer (fingers need edges about as short as their radius), "
-                "or give finger landmarks",
-            )
+    if dropped:
+        # (all or none: a hand whose other fingers bend while these cannot is worse
+        # than one without finger joints, which landmarks can complete)
+        hands = {}
+        det.diag(
+            "FINGERS_UNCERTAIN",
+            "warning",
+            f"the hands' {', '.join(dropped)} could not be confirmed (a finger that does "
+            "not match its mirror image, a middle finger whose tip is not the hand's, or "
+            "a hand without its pair: the mesh is too coarse for them, or a hand is "
+            "against the body): the hands have no finger landmarks",
+            fingers=dropped,
+            hint="remesh finer (fingers need edges about as short as their radius), move "
+            "the hands away from the body, or give finger landmarks",
+        )
     for side, fingers in hands.items():
         for name, pts in fingers.items():
             if pts is None:
@@ -1088,6 +1108,19 @@ def _column(probe, x: np.ndarray, zs: np.ndarray, H: float) -> dict[str, np.ndar
 CROTCH_TO_HIP = 0.8
 
 
+def _crotch(probe, top, H: float) -> float | None:
+    """The crotch's height on the exact mesh: a ray up the mirror plane from between the
+    legs, just under where the voxels part them, enters the body at the crotch. ``None``
+    when that start is inside the body (the legs fused there: the voxels' parting is the
+    crotch) or the ray meets nothing."""
+    start = np.array([[0.0, float(top[1]), float(top[2]) - 0.01 * H]])
+    up = np.array([[0.0, 0.0, 1.0]])
+    hits = probe.accel.closest_hit(start, up, 0.0, 0.25 * H)
+    if int(hits.inst[0]) < 0 or float(probe.normals[int(hits.prim[0])] @ up[0]) >= 0.0:
+        return None
+    return float(start[0, 2] + hits.t[0])
+
+
 def _hip(det, top, slope: float, side, sign, probe, H, r_thigh: float = 0.0):
     """The hip joint, from up to three measured cues: the height of the buttock's most
     prominent part (the gluteal mass covers the femoral head); just under where the hip
@@ -1120,7 +1153,11 @@ def _hip(det, top, slope: float, side, sign, probe, H, r_thigh: float = 0.0):
         if top2.size:
             cues["trochanter"] = float(zs[top2].min()) - 0.01 * H
     if float(top[2]) > 0.40 * H and r_thigh > 0:
-        cues["crotch"] = float(top[2]) + CROTCH_TO_HIP * r_thigh
+        # (the voxels part the legs only where the gap between them exceeds a voxel --
+        # lower than the crotch when the thighs nearly touch -- so it is measured)
+        z_crotch = _crotch(probe, top, H)
+        z0 = float(top[2]) if z_crotch is None else max(float(top[2]), z_crotch)
+        cues["crotch"] = z0 + CROTCH_TO_HIP * r_thigh
     if "buttock" in cues:
         z = cues["buttock"]
         conf, method = 0.75, "buttock"

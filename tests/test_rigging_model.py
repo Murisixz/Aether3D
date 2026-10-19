@@ -340,6 +340,39 @@ def test_twist_distribution_takes_a_share_of_the_source_twist():
                                "target": {"object": "Armature"}})  # fmt: skip
 
 
+def test_twists_wait_for_one_forward_kinematics_pass(monkeypatch):
+    """A rig's twist constraints change local rotations only: the forward kinematics runs
+    once after them, or before a constraint that reads the joints' model (an IK switched
+    on here) -- the same joints, skins and normals, bit for bit, as running it after every
+    constraint (``AETHER3D_RIG_LAZY_FK=0``, the path it replaced)."""
+    from aether3d.rendering.overlay import animation_overlay
+    from aether3d.sculpt.implicit import humanoid_shapes, implicit_surface
+
+    mesh = implicit_surface(humanoid_shapes(), 0.03)
+
+    def run():
+        s = Scene("Twists")
+        body = s.add_object("Body", mesh=mesh)
+        a = s.animation
+        a.autorig(body, name="Rig")
+        a.generate("Rig", "walk", forward="-y")
+        a.ik_fk("Rig", "arm_ik.L", "ik", 0.4)
+        assert sum(c.type == "twist" for c in a.rig("Rig").constraints) >= 4
+        out = []
+        for t in (0.0, 0.3, 0.55, 0.9):
+            m = animation_overlay(s, t).meshes[body.id]
+            joints = a.pose_joints("Rig", t, space="armature")
+            out.append((joints, m.positions.copy(), m.normals.copy()))
+        return out
+
+    lazy = run()
+    monkeypatch.setenv("AETHER3D_RIG_LAZY_FK", "0")
+    eager = run()
+    for (j1, p1, n1), (j2, p2, n2) in zip(lazy, eager, strict=True):
+        assert j1.keys() == j2.keys() and all(np.array_equal(j1[k], j2[k]) for k in j1)
+        assert np.array_equal(p1, p2) and np.array_equal(n1, n2)
+
+
 # --------------------------------------------------------------------------------------- #
 # Blended skinning and files
 # --------------------------------------------------------------------------------------- #
@@ -450,3 +483,43 @@ def test_corrective_smoothing_and_surface_normals_are_skin_data(tmp_path):
     s.history.undo()
     back = a._owned[("skin", leg.id)]._definition
     assert back.smooth == "null" and back.normals == "joints"
+
+
+def test_joint_spans_are_rig_data(tmp_path):
+    """A joint's weighting span (format 12): the part of its bone, head to tail, its heat
+    weights use; checked, saved and loaded, kept through glTF as an extra, and the whole
+    bone when absent (a version 11 document)."""
+    s, arm = chain_scene()
+    a = s.animation
+    raw = a.rig(arm).to_json()
+    raw["joints"][0]["span"] = [0.5, 1.0]
+    a.set_rig(arm, raw)
+    rig = a.rig(arm)
+    assert rig.joints[0].span == (0.5, 1.0) and rig.joints[1].span == (0.0, 1.0)
+    starts, ends = rig.deform_segments()
+    model, tails = rig.rest_model(), rig.tails()
+    half = (model[0] @ np.append(0.5 * tails[0], 1.0))[:3]
+    tip = (model[0] @ np.append(tails[0], 1.0))[:3]
+    assert np.allclose(starts[0], half) and np.allclose(ends[0], tip)
+    assert "span" not in rig.to_json()["joints"][1]  # (the default is not written)
+    for bad in ([0.6, 0.2], [0.0, 2.0], [0.5, 0.52], "half"):
+        broken = a.rig(arm).to_json()
+        broken["joints"][0]["span"] = bad
+        with pytest.raises(AnimationError) as e:
+            a.set_rig(arm, broken)
+        assert e.value.code == "INVALID_RIG"
+    doc = json.loads(json.dumps(scene_to_dict(s)))
+    assert scene_from_dict(doc).animation.rig(arm.id).joints[0].span == (0.5, 1.0)
+    old = json.loads(json.dumps(doc))
+    old["format_version"] = 11
+    for item in old["scene"]["animation"]["items"]:
+        for j in item["definition"].get("joints", []):
+            j.pop("span", None)
+    assert all(j.span == (0.0, 1.0) for j in scene_from_dict(old).animation.rig(arm.id).joints)
+    from aether3d import import_gltf
+
+    s.export(tmp_path / "chain.glb")
+    back = import_gltf(tmp_path / "chain.glb").scene
+    arm2 = next(o for o in back.objects if back.animation.rig(o) is not None)
+    joints = {j.name: j.span for j in back.animation.rig(arm2).joints}
+    assert joints["Hip"] == (0.5, 1.0) and joints["Knee"] == (0.0, 1.0)

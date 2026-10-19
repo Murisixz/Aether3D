@@ -803,6 +803,52 @@ def test_delta_mush_rejects_bad_tables():
         native.delta_mush(**dict(good, iterations=5000))
 
 
+@pytest.mark.parametrize("seed", range(4))
+def test_surface_normals_are_numpys(seed, monkeypatch):
+    """Surface-following normals (0.19.1): the native kernel's normals are the NumPy
+    reference's bit for bit -- a bent bumpy surface with a degenerate triangle, a vertex no
+    triangle uses, zero normals, and vertices whose surface turned over (the posed area
+    normal taken instead)."""
+    from aether3d.animation.rig import face_normal_sums, surface_normals
+
+    posed, rest = _mush_inputs(seed, "all", "uniform")
+    t = rest["triangles"]
+    rng = np.random.default_rng(seed)
+    # (a unit rest frame near the posed surface's, any will do: the kernel turns normals)
+    f = face_normal_sums(posed, t) + rng.normal(0.0, 1e-3, (len(posed), 3))
+    f /= np.linalg.norm(f, axis=1, keepdims=True)
+    normals = (f + rng.normal(0.0, 0.05, f.shape)).astype(np.float32)
+    normals[::17] = 0.0  # (no normal)
+    f[::13] = -f[::13]  # (turned over: the posed area normal)
+    fast = surface_normals(f, posed, t, normals)
+    monkeypatch.setattr(_native, "module", lambda: None)
+    slow = surface_normals(f, posed, t, normals)
+    assert_bitwise(fast, slow, "normals")
+    assert np.isfinite(slow).all()
+    # (no triangle: the frame stays, the rotation is the identity, the normal its own)
+    own = normals[-1].astype(np.float64)
+    assert np.allclose(slow[-1], own / max(float(np.linalg.norm(own)), 1e-300), atol=1e-7)
+
+
+def test_surface_normals_rejects_bad_tables():
+    _, rest = _mush_inputs(0, "all", "uniform")
+    t = rest["triangles"]
+    n = int(t.max()) + 2
+    good = dict(frame=np.zeros((n, 3)), posed=np.zeros((n, 3)), tris=t.copy(),
+                normals=np.zeros((n, 3), np.float32), out=np.empty((n, 3), np.float32))  # fmt: skip
+    native.surface_normals(**good)
+    for key, bad in (
+        ("tris", lambda a: np.where(np.arange(a.size).reshape(a.shape) == 7, n, a)),
+        ("tris", lambda a: a.reshape(-1)[:-1].copy()),
+        ("frame", lambda a: a[:-1].copy()),
+        ("normals", lambda a: a.astype(np.float64)),
+        ("out", lambda a: a[:-1].copy()),
+    ):
+        args = dict(good, **{key: bad(good[key])})
+        with pytest.raises((ValueError, TypeError)):
+            native.surface_normals(**args)
+
+
 def test_geodesic_voxel_distances_are_numpys(monkeypatch):
     """Geodesic voxel distances (0.19): the native kernel's integers equal the NumPy
     bucket queue's, on any thread count, with and without a cutoff."""

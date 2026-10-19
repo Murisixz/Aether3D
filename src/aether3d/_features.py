@@ -96,3 +96,11 @@ EDITING_BULK = register(
     "build an EditableMesh's faces, edges and corners from a Mesh in bulk with NumPy "
     "(editing/core.py, MeshCore._bulk_faces); 0 adds one face at a time",
 )
+
+RIG_LAZY_FK = register(
+    "AETHER3D_RIG_LAZY_FK",
+    True,
+    "run a rig's twist constraints on its local rotations and its forward kinematics once "
+    "after them (animation/rigging.py, _run_rig); 0 runs the kinematics after every "
+    "constraint",
+)

@@ -128,8 +128,8 @@ needs a clean mesh and length-weighted smoothing -- noted for the design below.
 
 | Subsystem | Before (v0.19.0) | After (the revision) |
 | --- | --- | --- |
-| Test character | capsules and ellipsoids, mitten hands | `aether3d.sculpt.figure`: an original anatomical figure (pelvis, glutes, ribcage, pectorals, deltoids, biceps and triceps, forearm muscles, knees, calves, feet with five toes, hands with knuckles, fingers and a thumb, a face) whose joint centres are known; nine builds and three rest poses, meshed and optionally remeshed |
-| Landmarks | voxel chains and proportions; errors to 6 cm depending on the mesh resolution | measured on the exact mesh: ray probes, sections, limb axes, the crotch and buttock cues, the armpit rule for shoulders, the palm-to-forearm minimum for wrists, fingers from surface distances; all major joints within 2.5 % of the height over 27 figure cases and 3 resolutions; fingers within 2.3 % or, when the two hands disagree (a mesh too coarse for them), none and `FINGERS_UNCERTAIN` |
+| Test character | capsules and ellipsoids, mitten hands | `aether3d.sculpt.figure`: an original anatomical figure (pelvis, glutes, ribcage, pectorals, deltoids, biceps and triceps, forearm muscles, knees, calves, feet with five toes, hands with knuckles, fingers and a thumb, a face) whose joint centres are known; nine builds and three rest poses, standing with the feet a little apart (the thighs part below the groin), meshed and optionally remeshed |
+| Landmarks | voxel chains and proportions; errors to 6 cm depending on the mesh resolution | measured on the exact mesh: ray probes, sections, limb axes, the crotch and buttock cues, the armpit rule for shoulders, the palm-to-forearm minimum for wrists, fingers from surface distances; all major joints within 2.6 % of the height (at most 2.52 %) over 27 figure cases and 3 resolutions; fingers within 2.3 % or, when the two hands disagree (a mesh too coarse for them), a hand lacks its pair or the middle finger's tip is not the hand's (fused fingers named one off), none and `FINGERS_UNCERTAIN` |
 | Weights | geodesic voxel distances (default), 4 influences | **bone heat** (default): one symmetric system per mesh, Aether3D's sparse LDL^T, visibility by its watertight rays; **eight influences**; left and right faded across the mirror plane; the geodesic method kept |
 | Template | 23 joints | about 60: Hips, Spine, Chest, UpperChest, Neck, Head; Pelvis.L/R; clavicles, upper arms and forearms split for twist (joint `span`, format 12), hands, three joints per finger and thumb; thighs split for twist, shins, feet, toes |
 | Skinning | LBS, DQS, blended | the same, plus **surface normals** (default for new skins) and **delta mush** (opt-in; cotangent smoothing weights, Blender's per-corner frames; a Rust kernel bitwise equal to NumPy) |
@@ -139,23 +139,32 @@ needs a clean mesh and length-weighted smoothing -- noted for the design below.
 
 ### 3.2 Measured results
 
-The revision's figure (42,850 vertices), the 13 stress poses, geometry-only measures, all
+The revision's figure (42,878 vertices), the 13 stress poses, geometry-only measures, all
 deformations computed by Aether3D except Blender's own (`blender/metrics_figure.json`).
 Totals over the suite and the bent joints' kept size:
 
 | Binding | New creases | Folds | Worst stretch | Elbows and knees keep |
 | --- | --- | --- | --- | --- |
-| v0.19.0 (its own rig and weights) | 212 | 10 | 6.32 | 0.73-0.74 |
-| revision: heat weights, LBS (the default) | 174 | 9 | 3.83 | 0.88-0.89 |
-| revision: heat weights + delta mush (8 iterations) | 170 | 9 | 3.82 | 0.87-0.89 |
-| Blender 5.2 Automatic Weights, LBS | 160 | 7 | 3.83 | 0.88-0.89 |
-| Blender, DQS | 142 | 7 | 6.25 | 1.00 |
-| Blender, LBS + Corrective Smooth (defaults) | 154 | 8 | 3.69 | 0.87-0.89 |
-| Blender, LBS + Corrective Smooth (12 iterations) | 165 | 6 | 3.58 | 0.86-0.89 |
+| v0.19.0 (its own rig and weights) | 280 | 16 | 5.88 | 0.73-0.74 |
+| revision: heat weights, LBS (the default) | 158 | 10 | 4.24 | 0.87-0.89 |
+| revision: heat weights + delta mush (8 iterations) | 159 | 12 | 3.78 | 0.87-0.89 |
+| Blender 5.2 Automatic Weights, LBS | 136 | 6 | 4.24 | 0.87-0.89 |
+| Blender, DQS | 135 | 8 | 6.38 | 1.00 |
+| Blender, LBS + Corrective Smooth (defaults) | 150 | 11 | 3.72 | 0.87-0.89 |
+| Blender, LBS + Corrective Smooth (12 iterations) | 175 | 11 | 3.59 | 0.86-0.89 |
 
-Weights against Blender's: the dominant joint agrees on 99.98 % of the figure's vertices
+Weights against Blender's: the dominant joint agrees on 99.97 % of the figure's vertices
 and on 99.8 % of case 1's (mean difference 0.0013 there; v0.19.0: 82.6 % and 0.194).
-Blender's weights skinned by Aether3D equal Blender's own LBS within 1e-6 m.
+Blender's weights skinned by Aether3D equal Blender's own LBS within 3e-6 m. The largest
+remaining difference is at the hips: a hip flexed 100 degrees gets 43-44 new creases from
+the revision's weights and 30-37 from Blender's (the elbows, knees, shoulders, wrists,
+torso, spine and head match within a few creases).
+
+(These are the figure as committed: standing with its feet 8 cm apart beyond the hips. The
+figure first stood with its feet under its hips; its thighs then pressed together down to
+mid-thigh and the cut separating them left flat inner thighs, visible in every stride and
+on clothing -- found in the outfit showcase's run. On that figure the same bindings
+measured v0.19.0 212 / 10 / 6.32, the revision 174 / 9 / 3.83, Blender 160 / 7 / 3.83.)
 
 ### 3.3 What did not work, and what the measurements changed
 
@@ -167,9 +176,9 @@ Blender's weights skinned by Aether3D equal Blender's own LBS within 1e-6 m.
   Smooth averages a frame per triangle corner; that alone barely helped. Cotangent
   smoothing weights (no drift on flat regions: the detail is small and normal) fixed it.
 * **The four-influence cap**, not the smoothing, was what creased twisted torsos: with
-  four influences, heat weights gave a twisted torso 118 new creases and 24 folds where
-  Blender's weights gave 2 and 0, although the dominant joints agreed on 99.98 % of the
-  vertices; with eight (Blender gives 12 % of the vertices more than four), 2 and 0. Delta
+  four influences, heat weights gave a twisted torso 114 new creases and 23 folds where
+  Blender's weights gave none, although the dominant joints agreed on 99.97 % of the
+  vertices; with eight (Blender gives 12 % of the vertices more than four), none. Delta
   mush had been hiding it. With good weights, delta mush lowers the stretch at bent joints
   a little and changes creases and folds hardly at all, while glTF cannot carry it: it is
   **opt-in** (and proposed for skins capped at four influences, such as most glTF
@@ -177,35 +186,53 @@ Blender's weights skinned by Aether3D equal Blender's own LBS within 1e-6 m.
 * **A midline rule** handing the crotch's weights to the hips made a hip flexion worse
   (99 -> 185 creases): the stretch it targeted came from the figure's thighs being fused
   into one surface down to mid-thigh. The figure now keeps a gap between the legs below
-  the crotch (`LEG_GAP`, at least two voxels); the rule was dropped.
+  the crotch (`LEG_GAP`, at least two voxels); the rule was dropped. (The cut that keeps
+  the gap left the pressed thighs flat on the inside; the figure now stands with its feet
+  8 cm apart beyond the hips and its adductors off the mirror plane, so the flat cut
+  shrank from 476 to 71 cm^2 on a 9 mm mesh, all within 10 cm of the crotch.)
 * **Fingers at coarse resolutions** came out 5-8 % of the height wrong with the same
   confidence as good ones. The two hands of a symmetric body must now agree within 1.5 %
   of the height (measured: good detections agree within 0.5 %, bad ones disagree by 1.6
   to 7.5 %), or neither gets fingers.
+* **Clothing measured as anatomy.** The outfit showcase's first full render had its
+  helmet attached to the neck: auto-rig measured the landmarks on every mesh it was
+  given (as 0.19.0 did; its mannequin's simpler head hid it), so the helmet's rim read as
+  the chin (the skull's pivot 8 cm high, the neck
+  bone 21 cm long), the trousers moved the crotch (the hips 6 cm low) and the gloves hid
+  the fingers (54 joints instead of 60). The landmarks are now measured on the generated
+  parts only -- the body, as a Rigify metarig is fitted to the body, not the costume --
+  and a dressed figure's joints equal the bare figure's bit for bit
+  (`test_clothing_and_armour_do_not_move_the_skeleton`). Its trousers also showed skin
+  at the inner thighs: a garment meshed coarser than the figure cannot cut the figure's
+  leg gap, so its inner faces lay inside the thighs; garments over the legs are now
+  meshed a side at a time and meet on the mirror plane.
 
 ### 3.4 Languages, as decided and as measured
 
 | Subsystem | Language | Measured |
 | --- | --- | --- |
-| Bone heat (assembly, visibility, solve) | NumPy + the native ray traversal and sparse LDL^T | 42,850 vertices, 60 joints: about 1 s inside a 2.2 s auto-rig |
-| Delta mush (per frame) | Rust, bitwise equal to the NumPy reference | 11.7 ms per frame (NumPy: 53 ms) at 41k vertices |
-| Surface normals (per frame) | NumPy | about 10 ms per frame at 41k vertices: not worth a kernel yet |
+| Bone heat (assembly, visibility, solve) | NumPy + the native ray traversal and sparse LDL^T | 41,080 vertices, 60 joints: 1.08 s (the solve 0.77 s) inside a 1.9 s auto-rig |
+| Delta mush (per frame) | Rust, bitwise equal to the NumPy reference | 9.6 ms per frame (NumPy: 41 ms) at 41k vertices |
+| Surface normals (per frame) | Rust, bitwise equal to the NumPy reference (decided as NumPy; changed after measuring) | 0.95 ms per frame (NumPy: 8.3 ms) at 41k vertices. Planned in NumPy ("not worth a kernel"); the crowd benchmark then found them 59 % of a walking character's frame -- 50 characters 88 ms a frame against 0.19.0's 17 -- and the kernel and deferred kinematics brought that to 34 ms (the rest is the richer rig: twice the influences, 30 joints, six twist constraints) |
 | Landmarks, template, poses, diagnostics, CLI, MCP | Python / NumPy | detection 1-2 s; the stress suite 1.5-2 s |
 
 ### 3.5 REA
 
 Not used. The headless `bpy` experiments and Blender's source answered every question the
-revision raised: the reference weights were reproduced to 99.98 % dominant agreement,
+revision raised: the reference weights were reproduced to 99.97 % dominant agreement,
 which says more about the shipped binary's behaviour than disassembling it would have.
 
 ### 3.6 Remaining limits
 
-* Extreme poses still crease and stretch: a hip flexed 100 degrees makes 45-55 new
-  creases and stretches some groin edges 3.5 times -- as much as Blender's Automatic
-  Weights do. Real fixes there are corrective shapes or muscle-like deformation, which
+* Extreme poses still crease and stretch: a hip flexed 100 degrees makes 43-44 new
+  creases and stretches some groin edges 3.4-3.5 times, where Blender's Automatic Weights
+  make 30-37 and 2.6-2.8 -- the hips are where the revision's weights still differ from
+  Blender's. Real fixes there are corrective shapes or muscle-like deformation, which
   Aether3D does not simulate.
 * Finger knuckles are the least accurate landmarks (up to 2.3 % of the height); the
-  thumb's base is placed from the wrist by a proportion of its measured length.
+  thumb's base is placed from the wrist by a proportion of its measured length. A hand
+  hanging against the thigh (the arms-down build) can go unfound: that arm is placed by
+  proportions and mirrored at low confidence, without fingers.
 * Delta mush and surface normals do not travel through glTF (reported:
   `SKIN_SMOOTHING_LOSSY`, `SKIN_NORMALS_DIFFER`).
 * Foot roll is a pose command (keys), not a live control with its own channel.

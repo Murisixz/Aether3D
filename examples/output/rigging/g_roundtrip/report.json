@@ -2,15 +2,15 @@
   "backend": "gpu",
   "machine": {
     "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
-    "aether3d": "0.19.0",
+    "aether3d": "0.19.1",
     "python": "3.14.8",
     "native": true,
     "backend": "gpu"
   },
   "aether": {
-    "seconds": 1.56,
-    "bytes": 7891731,
-    "joints": 23,
+    "seconds": 4.0,
+    "bytes": 17674023,
+    "joints": 60,
     "same_joints": true,
     "same_parents": true,
     "rest_max_m": 0.0,
@@ -27,8 +27,8 @@
     "meshes": {
       "Body": {
         "vertices": [
-          18008,
-          18008
+          42878,
+          42878
         ],
         "unmatched": 0,
         "weights_max": 2.220446049250313e-16,
@@ -46,8 +46,8 @@
       },
       "Jacket": {
         "vertices": [
-          10128,
-          10128
+          15280,
+          15280
         ],
         "unmatched": 0,
         "weights_max": 2.220446049250313e-16,
@@ -68,12 +68,20 @@
     "exact": true
   },
   "glb": {
-    "seconds": 0.21,
-    "bytes": 1778504,
+    "seconds": 0.95,
+    "bytes": 4670292,
     "export_diagnostics": [
       {
+        "code": "SKIN_NORMALS_DIFFER",
+        "message": "'Body' shades with normals that follow its deformed surface; glTF viewers carry the rest normals with the joints (the geometry is the same)"
+      },
+      {
+        "code": "SKIN_NORMALS_DIFFER",
+        "message": "'Jacket' shades with normals that follow its deformed surface; glTF viewers carry the rest normals with the joints (the geometry is the same)"
+      },
+      {
         "code": "RIG_AUTHORING_DATA",
-        "message": "kept as Aether3D extras on the joint nodes: joint limits, joint roles; not exported: constraints (their effect is baked), control definitions (their objects are exported as nodes), landmarks and template"
+        "message": "kept as Aether3D extras on the joint nodes: joint limits, joint roles, joint spans; not exported: constraints (their effect is baked), control definitions (their objects are exported as nodes), landmarks and template"
       }
     ],
     "validator": {
@@ -83,66 +91,66 @@
       "infos": 0,
       "version": "2.0.0-dev.3.10"
     },
-    "joints": 23,
+    "joints": 60,
     "same_joints": true,
     "same_parents": true,
     "rest_max_m": 0.0,
     "same_semantics": true,
     "posed_joints_max_m": {
-      "0.0": 2.349545569213518e-08,
-      "0.2917": 5.043785916507282e-05,
-      "0.5": 7.543206523297208e-08,
-      "0.7917": 1.0759399043935858e-07,
-      "1.0": 4.414194509916314e-08,
-      "1.2917": 8.839578830022177e-08,
-      "1.5": 3.6055218227692976e-08
+      "0.0": 4.44128518961584e-08,
+      "0.2917": 4.708042948040059e-05,
+      "0.5": 4.872481440543197e-08,
+      "0.7917": 5.7452597929108506e-08,
+      "1.0": 4.332208958235384e-08,
+      "1.2917": 6.306899107133557e-08,
+      "1.5": 5.783163875561215e-08
     },
     "meshes": {
       "Body": {
         "vertices": [
-          18008,
-          18008
+          42878,
+          42878
         ],
         "unmatched": 0,
-        "weights_max": 3.5548886001546265e-08,
-        "inverse_bind_max": 5.695925353599307e-08,
+        "weights_max": 3.5452746960373815e-08,
+        "inverse_bind_max": 3.800366821238299e-08,
         "rest_positions_max_m": 0.0,
         "posed_max_m": {
-          "0.0": 1.2644054553268208e-07,
-          "0.2917": 6.548612107852782e-05,
-          "0.5": 1.4555472445820762e-07,
-          "0.7917": 1.3075715880680267e-07,
-          "1.0": 1.3333208984265686e-07,
-          "1.2917": 1.3580714265673e-07,
-          "1.5": 1.2936000158862966e-07
+          "0.0": 1.3348812510944096e-07,
+          "0.2917": 5.9512560836867116e-05,
+          "0.5": 8.409534877556507e-06,
+          "0.7917": 1.5895135768312543e-05,
+          "1.0": 7.57501668823436e-06,
+          "1.2917": 1.4803756185151268e-05,
+          "1.5": 8.53421537086695e-06
         }
       },
       "Jacket": {
         "vertices": [
-          10128,
-          10128
+          15280,
+          15280
         ],
         "unmatched": 0,
-        "weights_max": 3.593923220135409e-08,
-        "inverse_bind_max": 5.695925353599307e-08,
+        "weights_max": 3.622371008704661e-08,
+        "inverse_bind_max": 3.800366821238299e-08,
         "rest_positions_max_m": 0.0,
         "posed_max_m": {
-          "0.0": 1.2644054553268208e-07,
-          "0.2917": 4.9257712163705184e-05,
-          "0.5": 1.284009809763289e-07,
-          "0.7917": 1.2644054553268208e-07,
-          "1.0": 1.2489448945403256e-07,
-          "1.2917": 1.3514129182113002e-07,
-          "1.5": 1.2489448945403256e-07
+          "0.0": 1.341104507446289e-07,
+          "0.2917": 5.052284410302555e-05,
+          "0.5": 4.954837762700946e-06,
+          "0.7917": 9.329870370708431e-06,
+          "1.0": 4.449649913673845e-06,
+          "1.2917": 8.725456975128657e-06,
+          "1.5": 5.007384675515342e-06
         }
       }
     },
-    "worst_posed_m": 6.548612107852782e-05
+    "worst_posed_m": 5.9512560836867116e-05
   },
   "difference_image": {
     "time": 0.2917,
-    "max_m": 6.602167610727527e-05,
+    "max_m": 5.985751195194741e-05,
     "colors": "blue 0 .. red max"
   },
-  "seconds": 6.7
+  "seconds": 42.9
 }

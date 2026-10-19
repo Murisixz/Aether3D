@@ -68,10 +68,10 @@ def stress(mesh, **weights):
 
 # The figure under the stress suite, auto-rigged with the defaults (heat weights, eight
 # influences, linear blend skinning): per pose kind, the least share of its size the skin
-# around the joint keeps, the
-# most new creases and the worst edge stretch. v0.19 measured: elbows and knees 0.70 to
-# 0.74 kept and 37 to 69 creases; shoulders 90 to 109 creases and a stretch of 10.7; hips
-# 117 to 144 creases; the head turn 103.
+# around the joint keeps, the most new creases and the worst edge stretch. v0.19 measured
+# (its own rig of this mesh): elbows and knees 0.73 to 0.75 kept and 44 to 91 creases;
+# shoulders 96 and 97 creases and a stretch up to 12.3; hips 133 to 273 creases; the head
+# turn 0.91 kept and 79 creases.
 BOUNDS = {
     "elbow_bend": (0.85, 20, 2.5),
     "knee_bend": (0.85, 20, 2.5),
@@ -94,16 +94,17 @@ def test_the_figure_deforms_within_measured_bounds(figure):
         assert rec["new_creases"] <= creases, (pose, rec)
         assert rec["worst_stretch"] <= stretch, (pose, rec)
     folds = sum(r["folded_triangles"] for r in poses.values())
-    assert folds <= 25, folds  # (v0.19: 133 over the suite)
+    assert folds <= 25, folds  # (v0.19: 209 over the suite)
     codes = {f["code"] for f in rep["findings"]}
-    assert "JOINT_COLLAPSE" not in codes  # (v0.19: four)
+    assert "JOINT_COLLAPSE" not in codes  # (v0.19: at its elbows and knees)
 
 
 def test_eight_influences_keep_the_torso_smooth_and_smoothing_rescues_four(figure):
     """Heat weights keep up to eight influences. Capped at four (as most imported skins
-    are), the twisted torso creases -- 57 new creases and 18 folds measured, 1 and 0 with
-    eight -- and so does the bent spine (109; 0); corrective smoothing relaxes a
-    four-influence skin (0 and 2) and halves its worst stretch at a raised shoulder."""
+    are), the twisted torso creases -- 65 new creases and 15 folds measured, 1 and 0 with
+    eight -- and so does the bent spine (107; 0); corrective smoothing relaxes a
+    four-influence skin (0 and 2) and more than halves its worst stretch at a raised
+    shoulder (9.1 to 3.6)."""
     default, _ = stress(figure)
     four, _ = stress(figure, influences=4)
     smoothed, _ = stress(figure, influences=4, corrective=True)
@@ -120,6 +121,12 @@ FIGURES = {
     "t": {"arm_angle": 88},
     "heavy": {"muscle": 1.4, "belly": 1.5, "limbs": 1.2, "chest": 1.2, "height": 1.68},
     "stylized": {"head": 1.7, "legs": 0.8, "limbs": 1.3, "arm_angle": 45},
+    # (thighs that nearly touch: the voxels part the legs 9 cm under the crotch, so the
+    # crotch is measured on the mesh -- the hip was 5 % of the height off)
+    "slim": {"muscle": 0.7, "legs": 1.08, "hips": 0.9, "height": 1.85},
+    # (a hand against the thigh is not found: the other's fingers go too -- one hand
+    # had kept them unchecked)
+    "arms_down": {"arm_angle": 8, "elbow_bend": 4},
 }
 MAJOR = ("hip.L", "knee.L", "ankle.L", "shoulder.L", "elbow.L", "wrist.L", "neck")
 FINGER_KEYS = tuple(f"{f}.{k}" for f in ("thumb", "index", "middle", "ring", "pinky")
@@ -128,7 +135,7 @@ FINGER_KEYS = tuple(f"{f}.{k}" for f in ("thumb", "index", "middle", "ring", "pi
 
 @pytest.mark.parametrize("name", list(FIGURES))
 def test_landmarks_find_the_figures_joints(name):
-    """Major joints within 2.6 % of the height (measured at most 2.5 % over nine body
+    """Major joints within 2.6 % of the height (measured at most 2.52 % over nine body
     types and three resolutions); the fingers, when the mesh shows them, within 2.5 %."""
     from aether3d.sculpt.figure import figure_joints, figure_mesh
 
@@ -148,6 +155,21 @@ def test_landmarks_find_the_figures_joints(name):
     assert len(present) in (0, 2 * len(FINGER_KEYS))  # (all the fingers or none)
     for k in present:
         assert err(k) < 0.025, (k, err(k))
+
+
+def test_misnamed_fingers_are_left_out():
+    """At 12 mm a stylized figure's fused fingers were found on both hands alike -- but
+    named one off (the middle finger's tip 4 % of the height from the hand's tip, its
+    joints 2.5 to 4.3 % off): a middle finger whose tip is not the hand's tip drops them."""
+    from aether3d.sculpt.figure import figure_mesh
+
+    s = Scene("Fused")
+    o = {"head": 1.7, "legs": 0.8, "limbs": 1.3, "arm_angle": 45}
+    body = s.add_object("Body", mesh=figure_mesh(0.012, **o))
+    rep = s.animation.detect_landmarks(body)
+    assert not any(k.startswith(("index.", "middle.", "thumb.")) for k in rep["landmarks"])
+    warn = [d for d in rep["diagnostics"] if d["code"] == "FINGERS_UNCERTAIN"]
+    assert warn and "middle.L" in warn[0]["fingers"]
 
 
 def test_unresolved_fingers_are_left_out_and_said_so():

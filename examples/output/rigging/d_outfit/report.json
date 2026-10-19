@@ -2,7 +2,7 @@
   "backend": "gpu",
   "machine": {
     "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
-    "aether3d": "0.19.0",
+    "aether3d": "0.19.1",
     "python": "3.14.8",
     "native": true,
     "backend": "gpu"
@@ -65,92 +65,96 @@
   },
   "meshes": {
     "Body": {
-      "vertices": 21430,
-      "triangles": 42856
+      "vertices": 42878,
+      "triangles": 85752
     },
     "Jacket": {
-      "vertices": 13970,
-      "triangles": 27936
+      "vertices": 15280,
+      "triangles": 30556
     },
     "Trousers": {
-      "vertices": 10868,
-      "triangles": 21732
+      "vertices": 19274,
+      "triangles": 38540
     },
     "Boots": {
-      "vertices": 1982,
-      "triangles": 3956
+      "vertices": 3288,
+      "triangles": 6568
     },
     "Gloves": {
-      "vertices": 1286,
-      "triangles": 2564
+      "vertices": 2046,
+      "triangles": 4088
     },
     "Helmet": {
-      "vertices": 1954,
-      "triangles": 3904
+      "vertices": 2254,
+      "triangles": 4504
     },
     "Shoulder plate.L": {
-      "vertices": 852,
-      "triangles": 1700
+      "vertices": 1042,
+      "triangles": 2080
     },
     "Shoulder plate.R": {
-      "vertices": 852,
-      "triangles": 1700
+      "vertices": 1042,
+      "triangles": 2080
     },
     "Backpack": {
-      "vertices": 3392,
-      "triangles": 6780
+      "vertices": 4872,
+      "triangles": 9740
     }
   },
   "autorig": {
-    "seconds": 5.0,
-    "joints": 23,
+    "seconds": 9.18,
+    "joints": 60,
     "parts": {
       "Body": {
-        "mode": "geodesic",
-        "method": "geodesic",
+        "mode": "generate",
+        "method": "heat",
         "policy": "organic",
-        "technique": "geodesic voxel binding: chamfer (3-4-5) shortest paths inside the voxelized solid, inverse-distance falloff, mesh smoothing",
-        "voxel_size": 0.013718580197746633,
+        "technique": "bone heat: cotangent-Laplacian diffusion from the nearest visible bone (Baran and Popovic 2007), one sparse LDL^T for all bones",
+        "diffusion": 1.0,
+        "rays": 44600,
+        "vertices_without_source": 101,
+        "parts_without_bone": 0,
         "unreached_vertices": 0,
         "rigid_parts": 0,
-        "joints_used": 23,
-        "influences": 4,
-        "spine_smoothing": 20,
+        "joints_used": 60,
+        "influences": 8,
         "timings": {
-          "voxelize_s": 0.0424,
-          "geodesic_s": 0.0343,
-          "weights_s": 0.0988,
-          "total_s": 0.2406
+          "heat_s": 0.9087,
+          "distances_s": 0.1997,
+          "visibility_s": 0.2733,
+          "solve_s": 0.4134,
+          "weights_s": 0.0572,
+          "total_s": 1.242
         }
       },
       "Jacket": {
         "mode": "transfer",
-        "far_vertices": 0,
+        "far_vertices": 78,
         "unmatched_parts": [],
         "confidence": {
-          "mean": 0.937,
-          "min": 0.2706,
-          "low_vertices": 203
+          "mean": 0.9374,
+          "min": 0.104,
+          "low_vertices": 688
         },
         "distance": {
-          "median": 0.01628203203463014,
-          "p95": 0.02712264369593719,
-          "max": 0.07711976919485429
+          "median": 0.014136374677479215,
+          "p95": 0.018298530335061083,
+          "max": 0.11176752914932271
         }
       },
       "Trousers": {
         "mode": "transfer",
-        "far_vertices": 122,
+        "far_vertices": 191,
         "unmatched_parts": [],
         "confidence": {
-          "mean": 0.9392,
-          "min": 0.0513,
-          "low_vertices": 319
+          "mean": 0.9159,
+          "min": 0.0915,
+          "low_vertices": 1589
         },
         "distance": {
-          "median": 0.013151721979207859,
-          "p95": 0.03273294259013945,
-          "max": 0.13360181486117875
+          "median": 0.01208171748719619,
+          "p95": 0.034660479060859,
+          "max": 0.11416039310180177
         }
       },
       "Boots": {
@@ -158,14 +162,14 @@
         "far_vertices": 0,
         "unmatched_parts": [],
         "confidence": {
-          "mean": 0.9633,
-          "min": 0.476,
-          "low_vertices": 1
+          "mean": 0.9718,
+          "min": 0.4526,
+          "low_vertices": 4
         },
         "distance": {
-          "median": 0.012343205629833352,
-          "p95": 0.012995294569932868,
-          "max": 0.03326169326429628
+          "median": 0.010004754750653199,
+          "p95": 0.011146824799816137,
+          "max": 0.03178874188599063
         }
       },
       "Gloves": {
@@ -173,14 +177,14 @@
         "far_vertices": 0,
         "unmatched_parts": [],
         "confidence": {
-          "mean": 0.9759,
-          "min": 0.4912,
+          "mean": 0.9764,
+          "min": 0.4916,
           "low_vertices": 1
         },
         "distance": {
-          "median": 0.006401976044737311,
-          "p95": 0.008374809833393929,
-          "max": 0.02709321037649025
+          "median": 0.005249830847991755,
+          "p95": 0.007863616494003071,
+          "max": 0.020879854934191804
         }
       },
       "Helmet": {
@@ -204,77 +208,78 @@
       "Backpack": {
         "mode": "attach",
         "method": "attachment",
-        "joint": "Spine",
+        "joint": "Chest",
         "parented": true
       }
     },
-    "confidence": 0.5
+    "confidence": 0.6
   },
   "attachments": {
     "Helmet": "Head",
     "Shoulder plate.L": "Shoulder.L",
     "Shoulder plate.R": "Shoulder.R",
-    "Backpack": "Spine"
+    "Backpack": "Chest"
   },
   "motions": {
     "walk": {
-      "speed": 0.7235483927447974,
+      "speed": 1.0162053975689431,
       "period": 1.1111111111111112,
-      "keys": 624,
-      "ik_residual": 6.938893903907228e-17
+      "keys": 762,
+      "ik_residual": 7.850462293418876e-17
     },
     "run": {
-      "speed": 2.5973532047249135,
+      "speed": 3.647916811785949,
       "period": 0.7142857142857143,
-      "keys": 647,
+      "keys": 672,
       "ik_residual": 7.850462293418876e-17
     }
   },
   "clearance": {
     "Jacket": {
-      "rest_p5_m": 0.0069,
-      "rest_median_m": 0.01677,
-      "motion_p5_m": 0.00674,
-      "motion_min_m": 0.00071,
-      "motion_median_m": 0.01668
+      "rest_p5_m": 0.00839,
+      "rest_median_m": 0.0144,
+      "motion_p5_m": 0.00611,
+      "motion_min_m": 0.00013,
+      "motion_median_m": 0.01432
     },
     "Trousers": {
-      "rest_p5_m": 0.00707,
-      "rest_median_m": 0.01382,
-      "motion_p5_m": 0.00702,
-      "motion_min_m": 0.00232,
-      "motion_median_m": 0.01371
+      "rest_p5_m": 0.00841,
+      "rest_median_m": 0.01237,
+      "motion_p5_m": 0.00817,
+      "motion_min_m": 0.00044,
+      "motion_median_m": 0.01233
     },
     "Boots": {
-      "rest_p5_m": 0.00708,
-      "rest_median_m": 0.01294,
-      "motion_p5_m": 0.00704,
-      "motion_min_m": 0.0021,
-      "motion_median_m": 0.01293
+      "rest_p5_m": 0.0034,
+      "rest_median_m": 0.01018,
+      "motion_p5_m": 0.00338,
+      "motion_min_m": 0.00062,
+      "motion_median_m": 0.01016
     },
     "Gloves": {
-      "rest_p5_m": 0.00573,
-      "rest_median_m": 0.00721,
-      "motion_p5_m": 0.00573,
-      "motion_min_m": 0.00171,
-      "motion_median_m": 0.00721
+      "rest_p5_m": 0.00333,
+      "rest_median_m": 0.0058,
+      "motion_p5_m": 0.00333,
+      "motion_min_m": 0.00051,
+      "motion_median_m": 0.0058
     }
   },
   "contacts": {
     "Foot.L": {
-      "sliding_m": 0.00149,
+      "sliding_m": 0.00137,
       "penetration_m": 0.0
     },
     "Foot.R": {
-      "sliding_m": 0.00199,
+      "sliding_m": 0.00129,
       "penetration_m": 0.0
     }
   },
   "gltf": {
-    "bytes": 3224172,
+    "bytes": 6856904,
     "skins": 5,
     "diagnostics": [
-      "RIG_AUTHORING_DATA"
+      "RIG_AUTHORING_DATA",
+      "SKIN_NORMALS_DIFFER"
     ],
     "validator": {
       "ran": true,
@@ -292,8 +297,8 @@
         "fps": 60,
         "start": 0.0,
         "end": 3.0,
-        "seconds": 61.8,
-        "seconds_per_frame_median": 0.342,
+        "seconds": 65.5,
+        "seconds_per_frame_median": 0.363,
         "size": [
           1920,
           1080
@@ -306,8 +311,8 @@
         "fps": 60,
         "start": 0.0,
         "end": 2.4,
-        "seconds": 50.8,
-        "seconds_per_frame_median": 0.349,
+        "seconds": 53.8,
+        "seconds_per_frame_median": 0.373,
         "size": [
           1920,
           1080
@@ -330,27 +335,27 @@
     },
     "mp4": {
       "path": "examples/output/rigging/d_outfit/outfit_1080p.mp4",
-      "bytes": 2520343,
+      "bytes": 3082259,
       "seconds": 2.5
     },
     "preview": {
       "path": "examples/output/rigging/d_outfit/outfit_preview.mp4",
-      "bytes": 260362,
+      "bytes": 308217,
       "seconds": 1.2
     },
     "master": {
       "path": "examples/output/rigging/d_outfit/outfit_master.mkv",
-      "bytes": 50105415,
+      "bytes": 53565012,
       "seconds": 1.8
     },
     "verify": {
-      "psnr": "PSNR r:44.836171 g:43.895475 b:42.085102 average:43.452129 min:43.151882 max:43.664348",
-      "ssim": "SSIM R:0.995849 (23.818110) G:0.997819 (26.613767) B:0.993837 (22.102012) All:0.995835 (23.803753)"
+      "psnr": "PSNR r:44.977106 g:43.863468 b:41.902887 average:43.391516 min:43.065106 max:43.695535",
+      "ssim": "SSIM R:0.995557 (23.523570) G:0.997763 (26.502660) B:0.993640 (21.965210) All:0.995653 (23.618327)"
     },
     "verify_master": {
       "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
       "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
     }
   },
-  "seconds": 420.1
+  "seconds": 619.1
 }

@@ -156,7 +156,9 @@ Export has the same policy. Content glTF cannot store raises
 | non-unit normals | `NORMALS_RENORMALIZED` (warning, not lossy) | always renormalized; direction is kept |
 | animated properties glTF cannot carry (visibility, camera, light, material channels; constraint influences only when clips are exported alone -- baked, their effect is in the keys) | `ANIMATED_PROPERTY_NOT_EXPORTED` (lossy) | the channels are left out |
 | skins deforming by dual quaternion or blended skinning (glTF skins are linear blend; 0.19.0) | `SKINNING_METHOD_LOSSY` (lossy) | exported with the same weights: they bend with less volume at twisting and bending joints |
-| rig authoring data (0.19.0) | `RIG_AUTHORING_DATA` (info) | joint roles, helper flags and limits ride as extras; control definitions, corrective drivers, landmarks and constraints are not exported (their effect is baked) |
+| skins with corrective smoothing (delta mush; 0.19.1) | `SKIN_SMOOTHING_LOSSY` (lossy) | exported with the same weights: the folds and pinches it relaxes come back |
+| skins shading with surface-following normals (0.19.1) | `SKIN_NORMALS_DIFFER` (info) | glTF viewers turn the rest normals with the joints; the geometry is the same |
+| rig authoring data (0.19.0) | `RIG_AUTHORING_DATA` (info) | joint roles, helper flags, limits and (0.19.1) weighting spans ride as extras; control definitions, corrective drivers, landmarks and constraints are not exported (their effect is baked) |
 | animation before time 0 (glTF times start at 0) | `NEGATIVE_TIMES_CLIPPED` (lossy) | the timeline before 0 is left out |
 | layers, constraints, IK, paths or corrective shapes shape the motion but clips are exported alone | `ANIMATION_NOT_BAKED` (warning) | -- (`animation="bake"` or `"auto"` bakes them) |
 | a channel needing more keys than the budget to meet its tolerance | `KEY_BUDGET_SPENT` (warning) | the reported error exceeds the tolerance |
@@ -263,10 +265,12 @@ The full model is in [ANIMATION.md](ANIMATION.md#gltf-interchange). In short:
   (`ExportResult.animations`). Extras record each animation's actions and each channel's
   extrapolation, so a round trip keeps them.
 - **Character rigs** (0.19.0, [CHARACTER_RIGGING.md](CHARACTER_RIGGING.md#gltf)): joint
-  nodes carry `extras.aether3d` `role`, `deform` (`false` for helpers), `tail` and
-  `limits`, read back on import (each checked as the rig checks it; an invalid one is
-  reported `JOINT_EXTRAS_IGNORED` and left out); every mesh of a character has its own
-  skin; baking adds corrective shapes' weights to the animated morph weights.
+  nodes carry `extras.aether3d` `role`, `deform` (`false` for helpers), `tail`, `limits`
+  and (0.19.1) `span`, read back on import (each checked as the rig checks it; an invalid
+  one is reported `JOINT_EXTRAS_IGNORED` and left out); every mesh of a character has its
+  own skin, with up to eight influences per vertex (`JOINTS_0`/`WEIGHTS_0` and
+  `JOINTS_1`/`WEIGHTS_1`); baking adds corrective shapes' weights to the animated morph
+  weights.
 - **Import**: skins, their joints and the nodes between them make a rig; `STEP` becomes
   constant keys, `LINEAR` linear keys or slerped rotations, `CUBICSPLINE` Bezier keys
   with the tangents as slopes (rotations: `cubic` tracks) -- the same curves. Morph

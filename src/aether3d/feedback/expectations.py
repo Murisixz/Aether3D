@@ -180,7 +180,8 @@ CHECKS: dict[str, dict[str, Any]] = {
         "summary": "the selected armatures' rigs pass the rig diagnostics (diagnose_rig): the "
         "skeleton, the weights and binding of every skinned mesh, and the deformation in "
         "poses (default: the diagnostic suite -- elbows and knees bent 120 degrees, hips "
-        "flexed 90, shoulders raised, wrists and torso twisted, the head turned) and, with "
+        'flexed 90, shoulders raised, wrists and torso twisted, the head turned; "stress": '
+        "the extremes -- 140, 100, 150 degrees) and, with "
         "timeline (default true), over the animation (IK flips, unreachable targets, "
         "sliding feet); errors and warnings fail, codes in ignore are skipped (numeric "
         "measurements of the mesh, not judgments of anatomy)",
@@ -559,10 +560,11 @@ def _parse_field(doc: Doc, kind: str, key: str, value: Any, ptr: str, views: dic
     if key == "height" and kind == "foot_contacts":
         return doc.number(value, ptr, lo=0.0, hi=10.0)
     if key == "poses":
-        if value == "suite":
+        if value in ("suite", "stress"):
             return value
         if not isinstance(value, list) or not 1 <= len(value) <= 32:
-            doc.issues.add("INVALID_VALUE", 'poses is "suite" or a list of 1 to 32 pose names',
+            doc.issues.add("INVALID_VALUE",
+                           'poses is "suite", "stress" or a list of 1 to 32 pose names',
                            ptr)  # fmt: skip
             return BAD
         names = [doc.string(v, join(ptr, k), max_length=128) for k, v in enumerate(value)]

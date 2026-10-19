@@ -2,9 +2,10 @@
 a jacket, trousers, boots and gloves bound by weight transfer, a helmet, shoulder plates
 and a backpack attached rigidly -- walking, running and turning.
 
-Every mesh is an implicit surface (``aether3d.sculpt.implicit``: the humanoid recipe's
-shapes, inflated for the clothes) meshed separately, with its own vertices and triangles.
-``autorig`` rigs the body and binds each part as asked (``parts``): the body by geodesic
+The body is the anatomical figure (``aether3d.sculpt.figure``); the clothes are its parts'
+shapes inflated (``figure_garment``: jacket over the torso and arms, trousers over the
+hips and legs, boots, gloves), each meshed separately with its own vertices and triangles.
+``autorig`` rigs the body and binds each part as asked (``parts``): the body by bone heat
 weights, the clothes by **transfer** (each vertex takes the weights of the nearest point
 of the body's surface, then a light smoothing; per-part distances and confidence are
 reported), the hard pieces by **attachment** (rigid, to the joint they sit on: no skin,
@@ -42,70 +43,35 @@ from aether3d.animation.weights import nearest_points  # noqa: E402
 from aether3d.rendering.overlay import animation_overlay  # noqa: E402
 from aether3d.rendering.scene_data import world_matrices  # noqa: E402
 
-# Shapes of the humanoid recipe (by index) each garment covers, and how much it adds.
+# The figure's parts each garment covers, how much it adds (metres) and where it is cut:
+# the jacket ends 5 cm below the waist, over the trousers, which start 2 cm above it.
 GARMENTS = {
-    "Jacket": ((0, 2, 3, 4, 9, 10, 14, 15), 0.016, (0.42, 0.13, 0.12), 0.55),
-    "Trousers": ((1, 19, 20, 23, 24), 0.013, (0.17, 0.2, 0.27), 0.7),
-    "Boots": ((21, 22, 25, 26), 0.012, (0.24, 0.16, 0.1), 0.4),
-    "Gloves": ((11, 12, 13, 16, 17, 18), 0.006, (0.12, 0.12, 0.13), 0.5),
-}
+    "Jacket": (("torso", "upper_arm", "forearm"), 0.014, (0.42, 0.13, 0.12), 0.55,
+               {"bottom": -0.05}),
+    "Trousers": (("torso", "hips", "thigh", "knee", "shin"), 0.012, (0.17, 0.2, 0.27), 0.7,
+                 {"top": 0.02}),
+    "Boots": (("foot",), 0.010, (0.24, 0.16, 0.1), 0.4, {}),
+    "Gloves": (("hand",), 0.005, (0.12, 0.12, 0.13), 0.5, {}),
+}  # fmt: skip
 
 
-def outfit(scene: Scene, voxel: float) -> dict[str, object]:
-    from aether3d.sculpt.implicit import implicit_surface
-
-    body = scene.add_object("Body", mesh=C.humanoid_mesh(voxel))
+def outfit(scene: Scene, quick: bool) -> dict[str, object]:
+    body = scene.add_object("Body", mesh=C.character_mesh(quick))
     body.material = scene.create_material("Skin", base_color=(0.8, 0.62, 0.5), roughness=0.55)
     parts = {"Body": body}
-    for name, (idx, by, color, rough) in GARMENTS.items():
-        obj = scene.add_object(name, mesh=C.garment_mesh(idx, by, voxel))
+    for name, (covers, by, color, rough, cut) in GARMENTS.items():
+        cut = {k: C.waist() + v for k, v in cut.items()}  # (relative to the waist)
+        obj = scene.add_object(name, mesh=C.garment(covers, by, quick, **cut))
         obj.material = scene.create_material(name, base_color=color, roughness=rough)
         parts[name] = obj
     metal = scene.create_material(
         "Steel", base_color=(0.72, 0.74, 0.78), metallic=0.9, roughness=0.28
     )
-    helmet = scene.add_object(
-        "Helmet",
-        mesh=implicit_surface(
-            [
-                {"type": "ellipsoid", "center": [0.0, 0.012, 1.665], "radii": [0.118, 0.13, 0.12]},
-                {
-                    "type": "box",
-                    "center": [0.0, -0.06, 1.56],
-                    "size": [0.4, 0.3, 0.16],
-                    "subtract": True,
-                },
-            ],
-            voxel,
-        ),
-    )
-    helmet.material = metal
-    parts["Helmet"] = helmet
-    for side, x in (("L", 1.0), ("R", -1.0)):
-        plate = scene.add_object(
-            f"Shoulder plate.{side}",
-            mesh=implicit_surface(
-                [
-                    {
-                        "type": "ellipsoid",
-                        "center": [0.19 * x, 0.0, 1.43],
-                        "radii": [0.085, 0.09, 0.05],
-                    }
-                ],
-                voxel,
-            ),
-        )
-        plate.material = metal
-        parts[plate.name] = plate
-    pack = scene.add_object(
-        "Backpack",
-        mesh=implicit_surface(
-            [{"type": "box", "center": [0.0, 0.2, 1.22], "size": [0.3, 0.14, 0.38], "blend": 0.04}],
-            voxel,
-        ),
-    )
-    pack.material = scene.create_material("Canvas", base_color=(0.35, 0.33, 0.22), roughness=0.85)
-    parts["Backpack"] = pack
+    canvas = scene.create_material("Canvas", base_color=(0.35, 0.33, 0.22), roughness=0.85)
+    for name, mesh in C.armour(body.mesh, quick).items():
+        obj = scene.add_object(name, mesh=mesh)
+        obj.material = canvas if name == "Backpack" else metal
+        parts[name] = obj
     return parts
 
 
@@ -150,11 +116,10 @@ def main(argv: list[str]) -> int:
     backend = C.set_backend(args.backend)
     size = (320, 180) if args.quick else (1920, 1080)
     fps = 10 if args.quick else args.fps
-    voxel = 0.02 if args.quick else 0.011
     t_all = time.perf_counter()
     scene = Scene("Showcase D")
     report: dict = {"backend": backend, "machine": C.machine(), "lighting": C.studio(scene)}
-    parts = outfit(scene, voxel)
+    parts = outfit(scene, args.quick)
     report["meshes"] = {
         n: {"vertices": o.mesh.vertex_count, "triangles": o.mesh.triangle_count}
         for n, o in parts.items()

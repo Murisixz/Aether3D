@@ -330,9 +330,10 @@ apply to agents too.
   - **No fake cinematography.** No renderer simulates depth of field and nothing claims
     it; motion blur is real temporal sampling; every frame is rendered by Aether3D.
 
-- Character rigging (`animation/autorig.py`, `landmarks.py`, `voxels.py`, `weights.py`,
-  `rig_edit.py`, `controls.py`, `limits.py`, `rig_report.py`, `rig_preview.py`,
-  `rigid.py`; `native/src/dqs.rs`, `geodesic.rs`):
+- Character rigging (`animation/autorig.py`, `landmarks.py`, `anatomy.py`, `voxels.py`,
+  `heat.py`, `weights.py`, `rig_edit.py`, `controls.py`, `limits.py`, `rig_report.py`,
+  `rig_preview.py`, `rigid.py`; `sculpt/figure.py`; `native/src/dqs.rs`, `geodesic.rs`,
+  `mush.rs`, `normals.rs`):
   - **Extend Stage 17, never fork it.** One `Rig`, one skin representation, one set of
     solvers and timelines: new joint, control or corrective data goes into the immutable
     rig document with its validation (`parse_rig`), `to_json`, a file-format migration if
@@ -341,8 +342,22 @@ apply to agents too.
     proposals coming back from agents are checked call by call (`_check_fix`) before
     anything changes; nothing is evaluated as code.
   - **Twins.** `rig.skin_dual_quaternion` and `native/src/dqs.rs`, `voxels.geodesic` and
-    `native/src/geodesic.rs` give the same bits (`tests/test_native.py`); change both or
-    neither, and bump `ABI` for a signature change.
+    `native/src/geodesic.rs`, `rig.delta_mush` and `native/src/mush.rs`,
+    `rig.surface_normals` and `native/src/normals.rs` give the same bits
+    (`tests/test_native.py`); change both or neither, and bump `ABI` for a signature
+    change. A rig's twist constraints defer its forward kinematics
+    (`AETHER3D_RIG_LAZY_FK`): a constraint that reads the joints' model gets it fresh.
+  - **Measured against references, never loosened blind.** Bone heat is checked against
+    Blender's Automatic Weights (`tests/data/blender_heat`), landmarks against the
+    figure's known joints, and the figure's deformation under the stress suite against
+    bounds v0.19.0 fails (`tests/test_rig_quality.py`); showcase B uses v0.19.0's and
+    Blender's results as data (`examples/data/rigging/figure_reference_*.npz`). Each
+    fixture carries its mesh's hash: if the humanoid recipe or the figure changes,
+    regenerate them with `research/2026-10-stage18-revision/blender/` (Blender headless;
+    nothing in the package may import it). Change a bound only with a measurement of why.
+  - **Skins stay exact through glTF unless asked.** Heat weights keep up to eight
+    influences (two joint sets); delta mush is opt-in (`SKIN_SMOOTHING_LOSSY` when
+    exported) and offered as an `approval` fix, never applied silently.
   - **Measure and say how.** Landmarks report `confidence` and `method`; diagnostics are
     numeric; a fix is kept only when re-measurement shows it helped and nothing got worse.
     Never claim anatomical correctness, physically based deformation or GPU execution.
@@ -484,11 +499,14 @@ apply to agents too.
 - **Rig characters with scripts, then measure before fixing.** Look first
   (`inspect_rig` `landmarks`, or `aether3d rig landmarks`); rig with an animation script
   (`autorig`, with `parts` for clothes and hard pieces and `landmarks` overrides); pose
-  with `pose_character`, switch with `ik_fk`; check with `inspect_rig` `diagnose` and
-  previews (`stretch`, `weights`, `skeleton`); apply `fixes` with `apply_rig_fix` and read
-  what was `applied` and `reverted`. Joint rotation channels are absolute (rest
-  included). Minecraft-style characters need no bones: `generate_rigid`. Guide:
-  `aether3d://rigging/guide`.
+  with `pose_character` (`raise_arm`, `curl_fingers`, `roll_foot`, `reach`...), switch
+  with `ik_fk`; check with `inspect_rig` `diagnose` (`suite: "stress"` for the extremes)
+  or `aether3d rig test PROJECT --armature A --sheet stress.png`, and previews (`stretch`,
+  `weights`, `skeleton`); apply `fixes` with `apply_rig_fix` and read what was `applied`
+  and `reverted` (dry-run `approval` fixes first and read `changes`). Joint rotation
+  channels are absolute (rest included). Clothing and props given in `parts` do not move
+  the joints (only the generated parts are measured). Minecraft-style characters need no
+  bones: `generate_rigid`. Guide: `aether3d://rigging/guide`.
 - **Build worlds with world scripts and query them.** Write an `aether3d.world-script`
   (`aether3d world run PROJECT script.json --json`, MCP `run_script`, or the scene-plan
   operation `world`; schema: `aether3d world schema`, guide: `aether3d world guide` or

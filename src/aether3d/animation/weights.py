@@ -63,8 +63,8 @@ if TYPE_CHECKING:
 METHODS = ("heat", "geodesic", "envelope", "nearest")
 # Bone heat keeps up to eight influences per vertex (Blender's Automatic Weights give 12 %
 # of a figure's vertices more than four, at most seven): capped at four, the torso's weights
-# jump where a fifth joint takes over -- a twisted torso showed 118 new creases and 24
-# folds, two and none with eight (measured; glTF carries eight in two joint sets).
+# jump where a fifth joint takes over -- a twisted torso showed 114 new creases and 23
+# folds, none with eight (measured; glTF carries eight in two joint sets).
 HEAT_INFLUENCES = 8
 POLICIES = {
     # heat: ``diffusion`` scales the Laplacian (1: Blender's balance; the stylized policy

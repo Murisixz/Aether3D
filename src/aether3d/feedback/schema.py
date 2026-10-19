@@ -178,7 +178,7 @@ def _check_schema(kind: str) -> dict[str, Any]:
         "speed": {"type": "number", "minimum": 0, "default": 0.3},
         "poses": {
             "anyOf": [
-                {"const": "suite"},
+                {"enum": ["suite", "stress"]},
                 {
                     "type": "array",
                     "items": {"type": "string", "minLength": 1},
@@ -187,7 +187,8 @@ def _check_schema(kind: str) -> dict[str, Any]:
                 },
             ],
             "default": "suite",
-            "description": "diagnostic poses (pose_suite names: elbow_bend_120.L, ...)",
+            "description": "diagnostic poses: suite, stress (the extremes) or pose names "
+            "(elbow_bend_120.L, shoulder_raise_150.L, ...)",
         },  # fmt: skip
         "timeline": {"type": "boolean", "default": True},
         "ignore": {

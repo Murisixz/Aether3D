@@ -3,9 +3,11 @@
 :func:`diagnose_rig` measures a rig and everything bound to it -- the skeleton (bone
 lengths, frames, symmetry, IK poles), the skins (normalization, leakage, cross-side
 weights, helper joints, the bind against the current rest) and the deformation under a
-**diagnostic pose suite** (elbows and knees bent 120 degrees, hips flexed 90, arms raised
-90 to the side, the torso and the wrists twisted, the head turned): the collapse of each
-bent joint's cross-section, interpenetration of the child segment into the parent's,
+**diagnostic pose suite** (``suite``: elbows and knees bent 120 degrees, hips flexed 90,
+arms raised 90 to the side, the torso and the wrists twisted, the head turned; ``stress``,
+0.19.1: elbows and knees 140, hips 100, arms raised 150 with the clavicle's share, the
+torso twisted 60): the collapse of each bent joint's cross-section, interpenetration of
+the child segment into the parent's, new creases and folds (from the geometry alone),
 stretched, compressed, collapsed and flipped triangles, the volume of closed meshes --
 and, over the timeline, IK residuals, knee and elbow flips and foot sliding. Every finding
 has a ``code``, a ``severity``, a ``basis`` (``numeric``: measured; nothing here is a
@@ -13,9 +15,10 @@ judgment of taste), the joints, meshes, poses or times, sample vertex ids and a
 magnitude. Nothing is changed.
 
 :func:`propose_rig_fix` turns findings into proposals: concrete operations (weight
-edits, a rebind, blended skinning on a collapsing joint, smoothing, pole moves, joint
-mirroring, foot planting...) with a safety class (``safe``: exact repairs; ``verify``:
-kept only if the measurement improves; ``approval``: a choice for a person or an agent).
+edits, a rebind, blended skinning on a collapsing joint, smoothing, corrective smoothing
+of a skin, pole moves, joint mirroring, foot planting...) with a safety class (``safe``:
+exact repairs; ``verify``: kept only if the measurement improves; ``approval``: a choice
+for a person or an agent -- a trade-off a dry run measures).
 :func:`apply_rig_fix` applies chosen proposals as **one undo step**, re-measures, and
 undoes everything when a ``verify`` fix does not improve what it targets or makes
 something else worse (``dry_run`` reports the after-measurements and changes nothing).

@@ -44,6 +44,8 @@ def test_an_agent_rigs_animates_verifies_and_exports(tmp_path):
         out["weights"] = await call(client, "inspect_rig", {"what": "weights", "target": "Body"})
         out["diagnose"] = await call(client, "inspect_rig", {
             "what": "diagnose", "target": "Hero Rig", "pose": "elbow_bend_120.L"})  # fmt: skip
+        out["stress"] = await call(client, "inspect_rig", {
+            "what": "diagnose", "target": "Hero Rig", "suite": "stress"})  # fmt: skip
         out["fixes"] = await call(client, "inspect_rig", {"what": "fixes", "target": "Hero Rig"})
         out["apply"] = await call(client, "run_script", {"script": script(
             {"op": "apply_rig_fix", "armature": "Hero Rig", "fixes": "safe"})})  # fmt: skip
@@ -74,6 +76,8 @@ def test_an_agent_rigs_animates_verifies_and_exports(tmp_path):
     assert any(c["kind"] == "ik_target" for c in summary["controls"])
     assert out["weights"]["valid"]
     assert "elbow_bend_120.L" in out["diagnose"]["poses"]
+    stress = out["stress"]["poses"]  # (the extremes: 140, 100 and 150 degrees)
+    assert "shoulder_raise_150.L" in stress and "elbow_bend_120.L" not in stress
     assert isinstance(out["fixes"]["proposals"], list)
     assert len(out["preview"]) == 1 and out["preview"][0].mime_type == "image/png"
     assert out["export"]["path"].endswith("hero.glb")

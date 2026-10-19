@@ -14,8 +14,11 @@
   whose bones were twisted otherwise turns that far about the bones).
 * :func:`pose_character` turns commands into keys on controls and joints -- ``reach``
   (a hand to a point or object, leaning the spine when out of reach), ``plant_feet``,
-  ``look_at``, ``raise_arm``, ``lean``, ``crouch``, ``aim_hips``, ``rotate`` (any joint,
-  relative to its rest) -- and reports reachability, IK residuals and the limits hit.
+  ``look_at``, ``raise_arm`` (the arm exactly where asked, the clavicle elevating with
+  it: :func:`shoulder_share`), ``lean``, ``crouch``, ``aim_hips``, ``rotate`` (any joint,
+  relative to its rest), ``curl_fingers`` (curl, fist, point, spread) and ``roll_foot``
+  (about the heel, the ball or the toe tip; absolute) -- and reports reachability, IK
+  residuals and the limits hit.
 
 Joint rotation channels hold **absolute** local rotations (the rest rotation included),
 as glTF and Stage 17 do; ``rotate`` and the other commands compose with the rest
@@ -59,6 +62,7 @@ CLAVICLE_MOST = 25.0
 # A finger curled fully: knuckle, middle and last joint (degrees); the thumb's.
 CURL = (75.0, 95.0, 70.0)
 THUMB_CURL = (25.0, 45.0, 60.0)
+FIST_THUMB = (40.0, 50.0, 55.0)  # (the thumb over the curled fingers)
 FINGER_KEYS = ("thumb", "index", "middle", "ring", "pinky")
 
 
@@ -871,7 +875,7 @@ def _cmd_curl_fingers(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
             a = 0.0 if f == "index" else amount
         curls = THUMB_CURL if f == "thumb" else CURL
         if shape == "fist" and f == "thumb":
-            curls = (40.0, 50.0, 55.0)
+            curls = FIST_THUMB
         fan = {"index": 1.5, "middle": 0.5, "ring": -0.5, "pinky": -1.5}.get(f, 0.0)
         for i in range(3):
             k = rig.role_index(f"{f}.{i + 1}.{side}")

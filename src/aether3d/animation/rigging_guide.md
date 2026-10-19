@@ -20,9 +20,11 @@ fingers' knuckles, joints and tips when the mesh shows them) in world space, eac
 `HAND_NOT_FOUND`, `LEGS_FUSED`, `ARM_AGAINST_BODY`, `FINGERS_UNCERTAIN`...). Landmarks are
 measured on the mesh surface (sections, ray probes, surface distances); a landmark from a
 `proportion` prior was not measured: check it, and pass a corrected point in `landmarks`
-when you rig. A symmetric body's hands must find the same fingers: when they do not (the
-mesh is too coarse for fingers that thin), the hands get no finger landmarks and
-`FINGERS_UNCERTAIN` says so -- remesh finer or give finger landmarks.
+when you rig. Fingers are kept only when confirmed -- a symmetric body's two hands find
+the same fingers, and each hand's middle finger ends at the hand's tip: otherwise (a mesh
+too coarse for fingers that thin, a hand hanging against a thigh) the hands get no finger
+landmarks and `FINGERS_UNCERTAIN` says so -- remesh finer, rig in an A-pose, or give
+finger landmarks.
 
 ## 2. Rig and bind in one step
 
@@ -39,8 +41,10 @@ blocks bound rigidly), `quadruped`. Parts: `generate` (the default: weights by
 `weights.method`, bone heat unless you ask otherwise; `heat` or `geodesic` choose the
 method for one part), `transfer` (the first generated part's weights at the closest
 surface point: clothing), `rigid` (one joint for the whole part), `attach` (parented to
-its nearest joint), `skip`. The result names the armature, the joints, the control
-objects and the weights of every part.
+its nearest joint), `skip`. Only the body -- the generated parts -- is measured for the
+joints: clothing, armour and props do not move them (`measured` in the result names the
+meshes). The result names the armature, the joints, the control objects and the weights
+of every part.
 
 What you get (humanoid): Hips, Spine, Chest, UpperChest, Neck, Head; Pelvis.L/R (keep the
 flank on the hips); Shoulder (clavicle), UpperArm, UpperArmTwist, ForeArm, ForeArmTwist,
