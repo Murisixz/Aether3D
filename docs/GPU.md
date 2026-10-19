@@ -507,7 +507,8 @@ layouts and the shared constants):
   ambient harmonics are 36 more floats of the frame uniform (116 floats in all:
   `FRAME_FLOATS`; a flag word says when they apply); the CPU then composites the image
   behind the geometry exactly (`(1 − coverage)` times the image) and applies the view
-  transform. CPU and GPU agree within 3.4·10⁻⁴ under images.
+  transform. Under the built-in studio image CPU and GPU agree within 1.5·10⁻⁴ of the
+  image's peak (median 9·10⁻⁸; `tests/test_environment_image.py` allows 10⁻³).
 - **Glass**: transmission removes the diffuse part (`c_diff (1 − transmission)`), as on
   the CPU; nothing is refracted.
 - **Depth of field**: `dof_samples` pinhole views from points of the aperture, averaged in

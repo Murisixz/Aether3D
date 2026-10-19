@@ -336,8 +336,9 @@ mixture, and a sample that lands on the wrong side of the surface is rejected (w
 not bent back: no bias). Paths keep track of the side they are on, so rays leave a
 surface on the side they continue to.
 
-Measured (`tests/test_glass.py`): a smooth glass ball in a white furnace returns 0.9991 of
-the light (energy is kept), a rough one (roughness 0.3) 0.947 -- what single-scattering
+Measured (`tests/test_glass.py`; the CPU path tracer, 32 samples, 32 bounces): a smooth
+glass ball in a white furnace returns 0.9988 of the light (energy is kept, within the
+noise and the bounce limit), a rough one (roughness 0.3) 0.946 -- what single-scattering
 microfacets lose; a glass slab transmits `(1 − R) / (1 + R)` with `R = 0.04` (every
 internal reflection counted) within 0.4 %; the Fresnel terms match their closed forms and
 the sampled lobes integrate to their quadratures. The rasterizers draw glass's reflection
@@ -464,9 +465,9 @@ luminance of it and its neighbours (bilinear lookups never see light a zero-prob
 cell would miss) times its solid angle; marginal and conditional CDFs give directions
 with the density `pdf_uv / (2 pi^2 cos(elevation))` per steradian, and BSDF rays that
 leave the scene are weighted against it by the power heuristic. Both path tracers hold
-the same tables (float32), and converge to the exact integrals of the images (overcast
-−0.3 %, studio −0.6 %, sunset +0.1 % at the samples tested;
-`tests/test_environment_image.py`). With `visible=False` camera rays see
+the same tables (float32), and converge to the exact integrals of the images (an upward
+plane at 512 samples on the CPU: overcast −0.26 %, studio −0.26 %, sunset −0.02 %, night
+−0.41 % of the luminance; `tests/test_environment_image.py` checks 1 %). With `visible=False` camera rays see
 `world.background` while the image still lights the scene.
 
 ```python

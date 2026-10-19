@@ -53,7 +53,7 @@ into Aether3D. The design record:
   silhouette) are placed from the camera and solved on the subject.
 - **Image environments** (`type: "image"`: `.hdr`/`.pfm` files in the project's folder
   or four built-ins) with Blender's mapping, importance-sampled with MIS in the path
-  tracers (convergence to the images' integrals within 0.6 %), and approximated on the
+  tracers (convergence to the images' integrals within 0.5 %), and approximated on the
   rasterizers by nine spherical harmonics and an extracted sun (labelled so).
 - **Glass**: `transmission` and `ior` (presets `glass`, `frosted_glass`, `water`): a
   rough dielectric BSDF with the exact Fresnel term and total internal reflection (a
@@ -85,7 +85,8 @@ into Aether3D. The design record:
   options, `inspect_animation` `motion`, the lighting check) and scene plans; the MCP tool
   list stays under 40,000 bytes.
 - **Showcases A-I** (`examples/film_*.py`): a Minecraft-style rigid character, a skinned
-  character, curve graphs against Blender, a camera through a generated world, a studio
+  character, curve graphs against Blender, a camera through a generated world and a
+  day-night timelapse over it, a studio
   product shot, a night street lit by emission, the path tracer before and after
   (against the real v0.19.1), a 1080p60 trailer, and an agent working over MCP.
 - **Project format 13** (lens, light, environment and material fields; curve

@@ -460,7 +460,7 @@ the CPU and the GPU alike (within 3.4·10⁻⁴). Measured against the exact int
 overcast sky within 0.5 %, a sunset within 2.0 % with its sun extracted. The background is
 the image itself, composited exactly behind the geometry. The **path tracers** integrate
 the image, importance-sampled ([RENDER_QUALITY.md](RENDER_QUALITY.md)): they converge to
-the exact integrals (overcast −0.3 %, studio −0.6 %, sunset +0.1 % at the samples tested).
+the exact integrals (an upward plane at 512 samples: overcast −0.26 %, studio −0.26 %, sunset −0.02 %, night −0.41 % of the luminance).
 CLI: `aether3d scene set PROJECT --environment image --environment-image builtin:studio
 --environment-rotation 30 --environment-visible false`.
 
