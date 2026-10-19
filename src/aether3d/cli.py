@@ -2206,10 +2206,10 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     )
     p_render.add_argument(
         "--tonemap",
-        choices=["none", "neutral"],
+        choices=["none", "neutral", "film"],
         default="none",
-        help="map linear light to the PNG: none (clip, default) or neutral (Khronos PBR "
-        "Neutral: compresses highlights)",
+        help="map linear light to the PNG: none (clip, default), neutral (Khronos PBR "
+        "Neutral: compresses highlights) or film (a filmic curve with a path to white)",
     )
     p_render.add_argument(
         "--adapter",
