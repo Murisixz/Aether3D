@@ -180,3 +180,25 @@ def test_timing_operations_through_the_system_and_scripts():
     )
     z = anim.channel(box, "transform.position.z")
     assert z.smoothing == "blender" and len(z) == 6
+
+
+def test_graphs_draw_jerk_and_the_exact_analysis():
+    from aether3d import Scene
+
+    scene = Scene()
+    box = scene.add_cube("B")
+    anim = scene.animation
+    anim.set_channel(box, "transform.position.x", [
+        {"time": 0, "value": 0, "interpolation": "linear"},
+        {"time": 1, "value": 2, "interpolation": "back", "ease": "out", "back": 2.5},
+        {"time": 2, "value": 1},
+    ])  # fmt: skip
+    plots = ("value", "velocity", "acceleration", "jerk")
+    svg = anim.graph([(box, "transform.position.x")], plots=plots)
+    assert ">jerk<" in svg and ">C1<" in svg  # the linear segment's corner
+    assert "<polygon" in svg and (">max<" in svg or ">min<" in svg)  # the back overshoot
+    assert ">0<" in svg and ">2<" in svg  # keys are numbered
+    plain = anim.graph([(box, "transform.position.x")], plots=plots, annotate=False)
+    assert ">C1<" not in plain and "<polygon" not in plain
+    image = anim.graph([(box, "transform.position.x")], plots=("value", "jerk"), format="png")
+    assert image.shape[1] == 900 and image.dtype.name == "uint8"

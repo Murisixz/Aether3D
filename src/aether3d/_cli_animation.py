@@ -144,7 +144,14 @@ def cmd_animation_graph(args: argparse.Namespace) -> CommandOutput:
     _check_destination(out, args.force)
     scene, _ = _load_scene(path)
     system = scene.animation
-    options = {"start": args.start, "end": args.end, "width": args.width, "title": args.title}
+    options = {
+        "start": args.start,
+        "end": args.end,
+        "width": args.width,
+        "title": args.title,
+        "plots": tuple(p.strip() for p in args.plots.split(",") if p.strip()),
+        "annotate": not args.no_annotate,
+    }
     try:
         if args.path_:
             if not args.target and not args.clip:
@@ -295,6 +302,16 @@ def add_animation_parsers(sub, common, writing) -> None:
     p.add_argument("--end", type=float)
     p.add_argument("--width", type=int, default=900)
     p.add_argument("--title")
+    p.add_argument(
+        "--plots",
+        default="value,velocity,acceleration",
+        help="plots, comma-separated: value, velocity, acceleration, jerk",
+    )
+    p.add_argument(
+        "--no-annotate",
+        action="store_true",
+        help="leave out the discontinuity and extremum marks",
+    )
     p.add_argument("--force", action="store_true", help="overwrite an existing file")
     p.set_defaults(handler=cmd_animation_graph)
     p = an.add_parser("render", parents=[common], help="render frames (PNG), a sheet, a video")
