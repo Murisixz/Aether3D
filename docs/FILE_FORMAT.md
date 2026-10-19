@@ -508,7 +508,7 @@ settings and the items, each with an immutable JSON definition.
 | Key | Description |
 | --- | --- |
 | `settings` | The timeline: `fps` (an integer or an exact rational `"num/den"`), `start` and `end` (seconds), `markers` (`{time, name, data?}`), `sections`, `enabled`. |
-| `items` | Every item: `id`, `kind` (`clip`, `binding`, `rig`, `skin`, `constraints`, `morph`, `path`, `sequence`), `name`, `definition` (plain JSON: clips hold channels by property path as structure-of-arrays keys, rotation tracks, modifiers and events; bindings reference an object or material and clips by id; rigs, skins, morph targets and constraints reference scene objects by id). |
+| `items` | Every item: `id`, `kind` (`clip`, `binding`, `rig`, `skin`, `constraints`, `morph`, `path`, `sequence`), `name`, `definition` (plain JSON: clips hold channels by property path as structure-of-arrays keys, rotation tracks, modifiers and events; bindings reference an object or material (or, since version 13, the world: `{"world": "world"}`) and clips by id; rigs, skins, morph targets and constraints reference scene objects by id). |
 
 Since version 11 (0.19.0) rig and skin definitions may carry the character-rigging data
 ([CHARACTER_RIGGING.md](CHARACTER_RIGGING.md)), all optional: joints `role` and
@@ -623,7 +623,7 @@ copy comes back to the same document.
 | 10 | 0.18.0 | Procedural worlds and outdoor rendering: `scene.worlds`, `scene.world.atmosphere` and optional mesh `colors`. The migration from 9 adds no worlds and the default atmosphere (off), so every project loads and renders unchanged. |
 | 11 | 0.19.0 | Character rigging: optional joint `role` and `deform`, swing-twist and hinge limits, rig `controls`, `correctives`, `landmarks`, `template`, `info`, `enforce_limits`, `twist` constraints and IK `bend_axis`, blended skins (`method: "blended"`, `dq`) and weight locks. The migration from 10 changes nothing: a version 10 document has none of them. |
 | 12 | 0.19.1 | The rigging revision: optional joint `span`, skin `normals` and `smooth`. The migration from 11 changes nothing: a version 11 document has none of them (its skins keep joint normals and no smoothing). |
-| 13 | 0.20.0 | Animation, lighting and film: camera lens keys; spot and area lights, light `units`, `temperature`, `exposure`, `shadow`, `include`/`exclude`; image environments; material `transmission` and `ior`; curve `smoothing`, new modifiers, strip `blend_curve`. The migration from 12 writes the lens and light defaults (every camera a pinhole, every light as before), the environment's image keys, and divides the `back` of `in_out` back-eased keys by 1.525 (their curves keep their shapes); curves without `smoothing` keep the local automatic handles. Every project loads and renders unchanged. |
+| 13 | 0.20.0 | Animation, lighting and film: camera lens keys; spot and area lights, light `units`, `temperature`, `exposure`, `shadow`, `include`/`exclude`; image environments; material `transmission` and `ior`; curve `smoothing`, new modifiers, strip `blend_curve`, world bindings. The migration from 12 writes the lens and light defaults (every camera a pinhole, every light as before), the environment's image keys, and divides the `back` of `in_out` back-eased keys by 1.525 (their curves keep their shapes); curves without `smoothing` keep the local automatic handles. Every project loads and renders unchanged. |
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged, and Aether3D
 0.6.0 reads and writes version 3 unchanged (GPU rendering added render

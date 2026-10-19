@@ -123,6 +123,18 @@ def render_scene_fingerprint(rs) -> dict[str, Any]:
                 light.falloff,
                 light.radius,
                 light.angle,
+                # (0.20.0: spot and area lights, shadows, spread, linking)
+                light.cos_outer,
+                light.spot_smooth,
+                array_bytes(light.axis_x),
+                array_bytes(light.axis_y),
+                light.shape,
+                light.area,
+                light.shadow,
+                light.spread_tan,
+                light.spread_norm,
+                light.links,
+                array_bytes(light.receivers),
             )
             for light in rs.lights
         ],
@@ -134,6 +146,18 @@ def render_scene_fingerprint(rs) -> dict[str, Any]:
         ),
         "background": array_bytes(rs.background),
         "ambient": array_bytes(rs.ambient),
+        "environment": None
+        if rs.environment is None
+        else json.dumps(rs.environment.to_dict(), sort_keys=True),
+        "atmosphere": None
+        if rs.atmosphere is None
+        else json.dumps(
+            {
+                "settings": rs.atmosphere["settings"].to_dict(),
+                "ambient_intensity": rs.atmosphere["ambient_intensity"],
+            },
+            sort_keys=True,
+        ),
         "diagnostics": _diagnostics(rs.diagnostics),
         "materials": [
             (
@@ -158,9 +182,6 @@ def render_scene_fingerprint(rs) -> dict[str, Any]:
             for m in rs.materials
         ],
         "instance_arrays": _instance_arrays(rs),
-        "environment": None
-        if rs.environment is None
-        else json.dumps(rs.environment.to_dict(), sort_keys=True),
     }
 
 

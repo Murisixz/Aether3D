@@ -140,7 +140,9 @@ by name, ever (a path such as `__class__.__init__` is an unknown property, not c
 | `transform.scale.x\|y\|z` | scalar | factor | finite (0 hides) |
 | `visible` | bool | on above 0.5 | -- |
 | `camera.fov`, `camera.ortho_scale`, `camera.near`, `camera.far` | scalar | degrees, units | `0.01..179.9`, `> 0`, `near < far` |
+| `camera.focus_distance`, `camera.fstop`, `camera.shift_x\|y`, `camera.aperture_rotation` (0.20.0) | scalar | metres, f-number, frame, degrees | `> 0`, `0` or `0.1..`, `-10..10`, `-360..360` |
 | `light.intensity`, `light.color.r\|g\|b`, `light.range`, `light.radius`, `light.angle` | scalar | light units, sRGB, units, degrees | `>= 0`, `0..1` |
+| `light.spot_size`, `light.spot_blend`, `light.size`, `light.size_y`, `light.spread`, `light.temperature`, `light.exposure` (0.20.0) | scalar | degrees, 0..1, metres, degrees, kelvins, stops | `0.1..180`, `0..1`, `> 0`, `1..180`, `100..100000`, `-40..40` |
 | `appearance.color.r\|g\|b`, `appearance.specular`, `appearance.shininess` | scalar | sRGB, 0..1, exponent | `0..1`, `1..10000` |
 | `joints["NAME"].position.x\|y\|z`, `.rotation`, `.rotation_euler.x\|y\|z`, `.scale.x\|y\|z` | joint channels | armature space | as above |
 | `morph["NAME"]` | scalar | weight | finite |
@@ -148,11 +150,49 @@ by name, ever (a path such as `__class__.__init__` is an unknown property, not c
 
 Material clips (bound to `{"material": NAME}`) animate `base_color.r|g|b`, `opacity`,
 `metallic`, `roughness`, `specular`, `shininess`, `emissive.r|g|b`,
-`emissive_strength`, `normal_strength`, `occlusion_strength`. Grouped paths
-(`transform.position`, `transform.rotation_euler`, `transform.scale`, `light.color`,
-`appearance.color`, `base_color`, `emissive` and their joint forms) name all their
-components at once in authoring calls. An evaluated value outside its property's range
-is clamped and reported (`VALUE_CLAMPED`), never written into the scene.
+`emissive_strength`, `normal_strength`, `occlusion_strength`.
+
+**The world** (0.20.0; the target `{"world": true}`, or `scene.world` in Python) animates
+`background.r|g|b`, `ambient_color.r|g|b`, `ambient_intensity`, `environment.intensity`,
+`environment.rotation` (degrees about +Z: turns an image environment), the sky's
+`environment.color`, `environment.zenith_color`, `environment.horizon_color` and
+`environment.ground_color`, and the atmosphere's `atmosphere.sun_glow`,
+`atmosphere.sun_glow_color`, `atmosphere.sun_glow_size`, `atmosphere.horizon_glow`,
+`atmosphere.fog_density`, `atmosphere.fog_height`, `atmosphere.fog_falloff`,
+`atmosphere.fog_color`, `atmosphere.fog_sun`, `atmosphere.fog_sun_power` and
+`atmosphere.ground_ambient`, within the world's own ranges. Switches and references (the
+environment's `type` and `image`, the atmosphere's `enabled`, `sky`, `sun`, `ambient`) are
+authored, not animated. With the sun light's rotation, intensity and temperature, these
+keys author a **day-night cycle** -- nothing simulates the sky: every value shown is a key
+or its interpolation, on every backend:
+
+```python
+anim = scene.animation
+sun = scene.get_by_name("Sun")  # the atmosphere's sun: {"sun": "Sun"}
+sun.light.use_temperature = True
+NOON, DUSK = 0.0, 8.0  # seconds
+for path, a, b in (
+    ("transform.rotation_euler.x", 10.0, 85.0),  # high in the sky ... to the horizon
+    ("light.temperature", 5600.0, 2200.0),
+    ("light.intensity", 3.0, 0.4),
+):
+    anim.keyframe(sun, path, NOON, a)
+    anim.keyframe(sun, path, DUSK, b)
+for path, a, b in (
+    ("ambient_intensity", 0.3, 0.03),
+    ("environment.zenith_color", (0.2, 0.45, 0.9), (0.05, 0.05, 0.16)),
+    ("atmosphere.fog_color", (0.78, 0.84, 0.92), (0.85, 0.5, 0.35)),
+):
+    anim.keyframe(scene.world, path, NOON, a)
+    anim.keyframe(scene.world, path, DUSK, b)
+```
+
+Grouped paths (`transform.position`, `transform.rotation_euler`, `transform.scale`,
+`light.color`, `appearance.color`, `base_color`, `emissive`, the world's colours and their
+joint forms) name all their components at once in authoring calls. An evaluated value
+outside its property's range is clamped and reported (`VALUE_CLAMPED`), never written into
+the scene; values that are valid alone but not together are dropped for that evaluation
+and reported (`ANIMATED_VALUE_INVALID`).
 
 ## F-curves: the graph editor as mathematics
 
@@ -701,7 +741,9 @@ imported glTF cubics. Everything else (easings, weighted handles, Euler rotation
 timing curves, modifiers) is **fitted** within the tolerances, with the largest error
 reported per animation; an instantaneous jump becomes a 1e-4 s transition; values are
 float32. Visibility, camera, light, material and constraint channels have no glTF
-equivalent (no `KHR_animation_pointer`): lossy diagnostics.
+equivalent (no `KHR_animation_pointer`), nor does the world: lossy diagnostics
+(`ANIMATED_PROPERTY_NOT_EXPORTED`; since 0.20.0 also when material or world clips are
+left out in `"clips"` and `"actions"` modes).
 
 **Import**: skin joints (and the nodes between them) become a rig on their common parent
 node or a new `Armature`; nodes below joints become attached parts; skins bind with the
@@ -740,7 +782,8 @@ Operations: `timeline`, `set_time`, `markers`, `add_marker`, `sections`, `add_cl
 `extract_root_motion`, `plant_feet`, `retarget`, `apply_pose`, and the character-rigging
 operations of [CHARACTER_RIGGING.md](CHARACTER_RIGGING.md); read-only: `report`,
 `trajectory`, `diagnose`, `motion` (0.20.0: `motion_report`), `contacts`, `sample`.
-Objects are named or `{"object": ID}`, materials `{"material": NAME}`. A script runs as
+Objects are named or `{"object": ID}`, materials `{"material": NAME}`, the world
+`{"world": true}`. A script runs as
 one transaction within `limits` (defaults: 300 s, 5,000,000 keys; cooperative
 cancellation); a failure names the argument that failed (`operations[1].keyframe.value`)
 and changes nothing. Schema: `aether3d animation schema` (or the MCP resource

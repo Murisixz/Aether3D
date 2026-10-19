@@ -216,3 +216,18 @@ def test_added_spot_and_area_lights_aim_where_asked():
         forward = -np.asarray(light.world_matrix[:3, 1])  # lights look along local -Y
         toward = np.array([0, 0, 1.0]) - np.asarray(at, float)
         assert forward @ toward / np.linalg.norm(toward) == pytest.approx(1.0)
+
+
+def test_an_animated_light_is_not_corrected_through_its_authored_intensity():
+    # The fill's intensity is keyed: renders show the keyed value, so scaling the
+    # authored one would change nothing. The planner leaves it alone and proposes another
+    # change (here: a fill added for approval).
+    scene = head_scene("low_key")
+    fill = scene.get_by_name("Fill")
+    scene.animation.keyframe(fill, "light.intensity", 0.0, fill.light.intensity)
+    fs = session(scene, lighting(scene, ratio={"min": 2, "max": 6}))
+    assert [f.code for f in fs.diagnose().findings] == ["LIGHTING_RATIO_HIGH"]
+    proposals = fs.propose().to_dict()["proposals"]
+    assert all(
+        a.get("light") != fill.id for p in proposals for a in p["actions"]
+    ), proposals  # fmt: skip

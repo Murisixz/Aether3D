@@ -34,6 +34,11 @@ into Aether3D. The design record:
   feedback `motion_quality`): jumps, acceleration steps, jitter, snaps, pauses, pole flips,
   loop seams, ground penetration, framing and focus for objects, joints and cameras --
   sampled and labelled so -- with verified corrections.
+- **The world is animatable** (target `{"world": true}` or `scene.world`): background,
+  ambient light, the environment's intensity, rotation and sky colours, and the
+  atmosphere's glows and fog -- with the sun light's keys, an authored day-night cycle, on
+  every backend (rendering at a time equals applying the pose). glTF has no world: such
+  clips, and material clips, are now reported as lossy when an export leaves them out.
 - **Cameras.** Lenses (focal length, sensor, shift, f-stop, focus distance or object,
   aperture blades, rotation and ratio), depth of field on every backend (aperture samples
   on the rasterizers, the thin lens in the path tracers), animatable `focus_distance`,

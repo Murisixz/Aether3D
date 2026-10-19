@@ -19,7 +19,8 @@ from .script import FORMAT_ID, LIMIT_KEYS, MAX_OPERATIONS, OPERATIONS, VERSION
 _NUMBER = {"type": "number"}
 _TIME = {"type": "number", "description": "seconds"}
 _REF = {
-    "description": "an object by name, or {object: name or id} / {material: name or id}",
+    "description": "an object by name, or {object: name or id} / {material: name or id} / "
+    "{world: true} (the background, ambient light, environment and atmosphere)",
     "oneOf": [
         {"type": "string", "minLength": 1},
         {
@@ -29,6 +30,7 @@ _REF = {
             "properties": {
                 "object": {"type": "string"},
                 "material": {"type": "string"},
+                "world": {"const": True},
                 "id": {"type": "string"},
                 "name": {"type": "string"},
             },
@@ -41,6 +43,7 @@ _PATH = {
     "description": "an animatable path: transform.position(.x), transform.rotation, "
     'transform.rotation_euler.z, joints["NAME"].rotation, morph["NAME"], camera.fov, '
     "light.intensity, appearance.color, material.roughness, visible, "
+    "the world's ambient_intensity, environment.rotation, atmosphere.fog_density, "
     'constraints["NAME"].influence, ...',
 }
 _KEYS = {

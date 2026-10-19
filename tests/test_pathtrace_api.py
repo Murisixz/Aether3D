@@ -263,7 +263,7 @@ def test_hdr_and_pfm_files_hold_the_unclipped_linear_image(tmp_path):
     pixels = np.frombuffer(rest, dtype="<f4").reshape(18, 32, 3)[::-1]
     assert np.array_equal(pixels, r.linear)
     with pytest.raises(RenderError):
-        r.save(tmp_path / "image.exr")
+        r.save(tmp_path / "image.tif")  # (.exr is a master since 0.20.0)
     narrow = render(small_scene(), width=4, height=3)  # too narrow for run-length scanlines
     flat = read_hdr(narrow.save(tmp_path / "narrow.hdr").read_bytes())
     assert np.all(np.abs(flat - narrow.linear) <= narrow.linear.max(axis=2, keepdims=True) / 128)

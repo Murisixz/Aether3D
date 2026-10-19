@@ -184,3 +184,34 @@ def test_the_gpu_stops_the_pixels_the_cpu_stops():
     for r, counts in ((rc, c), (rg, g)):
         assert r.stats["samples_mean"] == pytest.approx(counts.mean())
         assert r.stats["pixels_converged_early"] == int((counts < 64).sum())
+
+
+def test_every_new_feature_together_does_not_depend_on_batching_or_workers(monkeypatch):
+    # Spot and area lights (spread), glass, an image environment, depth of field, Sobol',
+    # a Blackman-Harris filter and adaptive sampling at once: the same bits for any batch
+    # size and number of processes.
+    from aether3d import Scene
+
+    def scene():
+        s = Scene()
+        s.add_plane("Floor", size=6)
+        s.add_sphere("Ball", radius=0.5, position=(0, 0, 0.5))
+        glass = s.add_sphere("Glass", radius=0.3, position=(0.7, -0.4, 0.3))
+        glass.material = s.create_material("Glass", preset="glass")
+        s.add_spot_light("Spot", position=(1.5, -1.5, 2.5), look_at=(0, 0, 0), spot_size=50,
+                         radius=0.1, intensity=30)  # fmt: skip
+        s.add_area_light("Area", position=(-1.5, -1, 2), look_at=(0, 0, 0.3), shape="ellipse",
+                         size=0.8, size_y=0.4, spread=60, intensity=8)  # fmt: skip
+        s.world.environment.configure(type="image", image="builtin:studio", intensity=0.5)
+        cam = s.add_camera("Cam", position=(0, -4, 1.5), look_at=(0, 0, 0.4))
+        cam.camera.configure(fstop=2.8, focus_distance=4.0)
+        return s
+
+    path = {"samples": 8, "bounces": 4, "sampler": "sobol", "filter": "blackman_harris",
+            "adaptive_threshold": 0.05, "workers": 1}  # fmt: skip
+    opts = {"width": 40, "height": 30, "backend": "path", "path": path}
+    a = scene().render(**opts)
+    monkeypatch.setattr(integrator, "BATCH", 37)
+    b = scene().render(**{**opts, "path": {**path, "workers": 3}})
+    assert np.array_equal(a.linear, b.linear)
+    assert np.array_equal(a.passes["sample_count"], b.passes["sample_count"])

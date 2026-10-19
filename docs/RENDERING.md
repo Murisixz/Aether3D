@@ -565,7 +565,10 @@ CLI: `aether3d scene set PROJECT --environment image --environment-image builtin
 `scene.world.atmosphere` adds what large outdoor views need: a sky with a sun glow and a
 horizon glow, exponential **height fog** with sunlight scattered toward the camera, and
 **hemisphere ambient** light. It is off by default (scenes render exactly as before) and
-saved with the project.
+saved with the project. Its numeric fields -- like the world's background and ambient
+light and the environment's intensity, rotation and sky colours -- can be keyed since
+0.20.0, so a day-night cycle is the sun light's keys plus the world's
+([ANIMATION.md](ANIMATION.md#animatable-properties)).
 
 ```python
 sun = scene.add_directional_light("Sun", direction=(0.5, 0.6, -0.35), intensity=1.8)

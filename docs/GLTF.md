@@ -377,7 +377,9 @@ The full model is in [ANIMATION.md](ANIMATION.md#gltf-interchange). In short:
 ## Limitations
 
 - Animations carry node transforms and morph weights only: no
-  `KHR_animation_pointer` (camera, light, material and visibility channels are lossy);
+  `KHR_animation_pointer` (camera, light, material, world and visibility channels are
+  lossy; since 0.20.0 material and world clips left out of `"clips"` and `"actions"`
+  exports are reported as such too);
   values are float32; jumps become 1e-4 s transitions; easings, weighted handles, Euler
   rotations, squad and modifiers are fitted within the stated tolerances (see the
   tables above).

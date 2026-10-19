@@ -975,6 +975,8 @@ def build_animations(
             "(animation='bake' exports what the scene shows)",
             "/animations",
         ))  # fmt: skip
+    if mode in ("clips", "actions"):  # (baking reports every channel it cannot represent)
+        _check_bound_properties(system, diagnostics)
     animations: list[dict[str, Any]] = []
     if mode == "bake":
         t0, t1 = system.start, system.end
@@ -1083,6 +1085,28 @@ def _check_property_channels(scene, system, clip, diagnostics) -> None:
             "glTF animates node transforms and morph weights only; not exported: "
             + ", ".join(sorted(lost)[:8]),
             "/animations", count=len(lost), lossy=True,
+        ))  # fmt: skip
+
+
+def _check_bound_properties(system, diagnostics) -> None:
+    """Bindings of the world and of materials (0.20.0: reported, not dropped silently):
+    glTF has no world, and animates no material property here."""
+    from ..animation import paths as P
+
+    counts = {P.WORLD: 0, P.MATERIAL: 0}
+    for item in system._binding_items():
+        kind = item._definition.target[0]
+        if kind in counts and not item._definition.mute and item._definition.clips():
+            counts[kind] += 1
+    lost = (["the world (background, ambient light, environment, atmosphere)"]
+            if counts[P.WORLD] else []) + (
+        [f"{counts[P.MATERIAL]} material(s)"] if counts[P.MATERIAL] else [])  # fmt: skip
+    if lost:
+        diagnostics.append(_diag(
+            "ANIMATED_PROPERTY_NOT_EXPORTED", WARNING,
+            "glTF animates node transforms and morph weights only; the animation of "
+            + " and ".join(lost) + " is not exported",
+            "/animations", count=counts[P.WORLD] + counts[P.MATERIAL], lossy=True,
         ))  # fmt: skip
 
 

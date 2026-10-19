@@ -916,6 +916,7 @@ def _extract_full(
         evaluate_time=evaluate_time,
         texture_time=material_table.texture_seconds,
         start=start,
+        overlay=overlay,
     )
 
 
@@ -935,12 +936,19 @@ def _finish(
     texture_time: float,
     start: float,
     cache: dict[str, Any] | None = None,
+    overlay: Any = None,
 ) -> RenderScene:
-    """The render scene: diagnostics in object order, then the scene-wide ones."""
+    """The render scene: diagnostics in object order, then the scene-wide ones (the world
+    as ``overlay`` animates it, when it does)."""
     diagnostics += [d for _, d in sorted(ordered, key=lambda item: item[0])]
     if any(light.links != ((), ()) for light in lights):
         lights = _link_lights(scene, lights, instances, diagnostics)
-    lit_by_image = scene.world.environment.type == "image"  # (no built-in key light then)
+    world_settings = scene.world
+    if overlay is not None and overlay.world:  # (checked valid when the overlay was made)
+        world_settings = scene.world.copy()
+        world_settings._owner = None
+        world_settings.configure(**overlay.world)
+    lit_by_image = world_settings.environment.type == "image"  # (no built-in key light then)
     if not lights and default_lights and not lit_by_image:
         lights.append(default_light(camera.frame))
         diagnostics.append(
@@ -967,7 +975,6 @@ def _finish(
                 "no visible mesh objects; the image shows only the background",
             )
         )
-    world_settings = scene.world
     environment = world_settings.environment.copy()
     environment_image = None
     if environment.type == "image":

@@ -45,9 +45,19 @@ Paths of a **material**: ``base_color.r|g|b``, ``opacity``, ``metallic``, ``roug
 outside a property's range are clamped and reported (``VALUE_CLAMPED``), never written
 into the scene.
 
+Paths of the **world** (0.20.0; the target ``{"world": true}``, or ``scene.world``):
+``background.r|g|b``, ``ambient_color.r|g|b``, ``ambient_intensity``;
+``environment.intensity``, ``environment.rotation`` (degrees), ``environment.color``,
+``environment.zenith_color``, ``environment.horizon_color``, ``environment.ground_color``;
+``atmosphere.sun_glow``, ``sun_glow_color``, ``sun_glow_size``, ``horizon_glow``,
+``fog_density``, ``fog_height``, ``fog_falloff``, ``fog_color``, ``fog_sun``,
+``fog_sun_power``, ``ground_ambient`` (each ``atmosphere.``-prefixed; the world's own
+ranges). With the sun light's rotation, intensity and temperature they author a day-night
+cycle; the environment's type and image, and the atmosphere's switches, are not animated.
+
 Grouped paths (``transform.position``, ``transform.rotation_euler``, ``transform.scale``,
-``light.color``, ``appearance.color``, ``base_color``, ``emissive`` and their joint
-forms) name all their components at once in authoring calls.
+``light.color``, ``appearance.color``, ``base_color``, ``emissive``, the world's colours
+and their joint forms) name all their components at once in authoring calls.
 """
 
 from __future__ import annotations
@@ -60,7 +70,9 @@ from typing import Any
 from ..errors import AnimationError
 
 SCALAR, ROTATION, BOOL = "scalar", "rotation", "bool"
-OBJECT, MATERIAL = "object", "material"
+OBJECT, MATERIAL, WORLD = "object", "material", "world"
+WORLD_ID = "world"
+"""The id of a world target: ``("world", "world")`` (a scene has one world)."""
 MAX_NAME = 128
 
 _INF = math.inf
@@ -71,9 +83,10 @@ class PathSpec:
     """A resolved channel path."""
 
     path: str  # canonical text
-    target: str  # OBJECT | MATERIAL
+    target: str  # OBJECT | MATERIAL | WORLD
     kind: str  # SCALAR | ROTATION | BOOL
-    group: str  # transform, visible, camera, light, appearance, joint, morph, constraint, material
+    group: str  # transform, visible, camera, light, appearance, joint, morph, constraint,
+    # material; world, environment, atmosphere (world targets)
     field: str  # position, rotation, rotation_euler, scale, fov, color, ...
     component: int | None  # 0..2 for vector and colour components
     name: str | None  # the joint, morph target or constraint named in brackets
@@ -145,6 +158,31 @@ _MATERIAL: dict[str, tuple[str, dict[str, int] | None, str, float, float]] = {
     "occlusion_strength": (SCALAR, None, "1", 0.0, 1.0),
 }
 
+# (group, field) of the world -> (kind, components table or None, unit, lo, hi): the ranges
+# of rendering.settings.World, Environment and Atmosphere
+_WORLD: dict[tuple[str, str], tuple[str, dict[str, int] | None, str, float, float]] = {
+    ("world", "background"): (SCALAR, _RGB, "sRGB", 0.0, 1.0),
+    ("world", "ambient_color"): (SCALAR, _RGB, "sRGB", 0.0, 1.0),
+    ("world", "ambient_intensity"): (SCALAR, None, "1", 0.0, 1e6),
+    ("environment", "color"): (SCALAR, _RGB, "sRGB", 0.0, 1.0),
+    ("environment", "intensity"): (SCALAR, None, "1", 0.0, 1e6),
+    ("environment", "rotation"): (SCALAR, None, "deg", -1e6, 1e6),
+    ("environment", "zenith_color"): (SCALAR, _RGB, "sRGB", 0.0, 1.0),
+    ("environment", "horizon_color"): (SCALAR, _RGB, "sRGB", 0.0, 1.0),
+    ("environment", "ground_color"): (SCALAR, _RGB, "sRGB", 0.0, 1.0),
+    ("atmosphere", "sun_glow"): (SCALAR, None, "1", 0.0, 100.0),
+    ("atmosphere", "sun_glow_color"): (SCALAR, _RGB, "sRGB", 0.0, 1.0),
+    ("atmosphere", "sun_glow_size"): (SCALAR, None, "1", 1.0, 65536.0),
+    ("atmosphere", "horizon_glow"): (SCALAR, None, "1", 0.0, 100.0),
+    ("atmosphere", "fog_density"): (SCALAR, None, "1/m", 0.0, 10.0),
+    ("atmosphere", "fog_height"): (SCALAR, None, "m", -1e7, 1e7),
+    ("atmosphere", "fog_falloff"): (SCALAR, None, "1/m", 0.0, 10.0),
+    ("atmosphere", "fog_color"): (SCALAR, _RGB, "sRGB", 0.0, 1.0),
+    ("atmosphere", "fog_sun"): (SCALAR, None, "1", 0.0, 100.0),
+    ("atmosphere", "fog_sun_power"): (SCALAR, None, "1", 1.0, 4096.0),
+    ("atmosphere", "ground_ambient"): (SCALAR, _RGB, "sRGB", 0.0, 1.0),
+}
+
 _TOKEN = re.compile(r'([a-z_]+)(?:\["([^"\\]{1,' + str(MAX_NAME) + r'})"\])?')
 
 
@@ -181,7 +219,7 @@ def _tokens(path: str, location: str) -> list[tuple[str, str | None]]:
 def parse(
     path: str, target: str = OBJECT, *, grouped: bool = False, location: str = "path"
 ) -> PathSpec | list[PathSpec]:
-    """Resolve ``path`` for a ``target`` kind (``object`` or ``material``).
+    """Resolve ``path`` for a ``target`` kind (``object``, ``material`` or ``world``).
 
     With ``grouped=True``, a group path (``transform.position``) returns its component
     specs (a list); a single property returns a one-element list."""
@@ -209,6 +247,19 @@ def _resolve(
         return _finish(
             path, MATERIAL, kind, "material", field, comps, names[1:], None, unit, lo, hi, location
         )
+    if target == WORLD:
+        if any(subs):
+            raise _bad(path, "world paths have no [names]", location)
+        group = names[0] if names[0] in ("environment", "atmosphere") else "world"
+        rest = names[1:] if group == "world" else names[2:]
+        field = names[0] if group == "world" else (names[1] if len(names) > 1 else "")
+        if (group, field) not in _WORLD:
+            fields = sorted(
+                f if g == "world" else f"{g}.{f}" for g, f in _WORLD
+            )  # (a stable, readable list)
+            raise _bad(path, f"the world animates {', '.join(fields)}", location)
+        kind, comps, unit, lo, hi = _WORLD[(group, field)]
+        return _finish(path, WORLD, kind, group, field, comps, rest, None, unit, lo, hi, location)
     if target != OBJECT:
         raise AnimationError("INVALID_TARGET", f"unknown target kind {target!r}", location)
     head, sub = toks[0]
@@ -274,7 +325,7 @@ def _resolve(
 
 def _finish(path, target, kind, group, field, comps, rest, name, unit, lo, hi, location):
     prefix = (f'joints["{name}"].' if group == "joint" else "") + (
-        "" if group in ("material", "joint") else f"{group}."
+        "" if group in ("material", "joint", "world") else f"{group}."
     )
     base = f"{prefix}{field}"
     if comps is None:

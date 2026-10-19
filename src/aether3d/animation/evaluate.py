@@ -109,7 +109,9 @@ class AnimationPose:
     * ``materials``: material id -> ``{parameter: value}``,
     * ``joints``: rig object id -> joint name -> ``(position, rotation, scale)``,
     * ``morphs``: object id -> ``{target name: weight}``,
-    * ``influences``: object id -> ``{constraint name: influence}``.
+    * ``influences``: object id -> ``{constraint name: influence}``,
+    * ``world``: ``"world" | "environment" | "atmosphere"`` -> ``{field: value}`` (the
+      scene's world, 0.20.0).
     """
 
     time: float
@@ -125,6 +127,7 @@ class AnimationPose:
     morphs: dict[str, dict[str, float]]
     influences: dict[str, dict[str, float]]
     diagnostics: tuple[Diagnostic, ...] = ()
+    world: dict[str, dict[str, Any]] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     @property
@@ -142,7 +145,7 @@ class AnimationPose:
     def empty(self) -> bool:
         return not (
             self.ids or self.visible or self.fields or self.materials or self.joints
-            or self.morphs or self.extra.get("local")
+            or self.morphs or self.world or self.extra.get("local")
         )  # fmt: skip
 
 
@@ -386,6 +389,9 @@ def _rest_scalar(
         if spec.component is not None:
             return float(value[spec.component])
         return float(value) if value is not None else None
+    if kind == P.WORLD:
+        value = getattr(world_part(scene.world, spec.group), spec.field)
+        return float(value[spec.component]) if spec.component is not None else float(value)
     obj = scene._objects[tid]
     g = spec.group
     if g == "transform":
@@ -675,6 +681,7 @@ def evaluate(system: AnimationSystem, t: float, prog: Program | None = None) -> 
     visible: dict[str, bool] = {}
     fields: dict[tuple[str, str], dict[str, Any]] = {}
     materials: dict[str, dict[str, Any]] = {}
+    world: dict[str, dict[str, Any]] = {}
     joints: dict[str, dict[str, list]] = {}
     morphs: dict[str, dict[str, float]] = {}
     influences: dict[str, dict[str, float]] = {}
@@ -729,6 +736,11 @@ def evaluate(system: AnimationSystem, t: float, prog: Program | None = None) -> 
             entry = materials.setdefault(tid, {})
             material = scene.materials.find_material(tid)
             _set_component(entry, spec, v, lambda m=material, f=spec.field: list(m.params[f]))
+            continue
+        if kind == P.WORLD:
+            part = world_part(scene.world, g)
+            entry = world.setdefault(g, {})
+            _set_component(entry, spec, v, lambda h=part, f=spec.field: list(getattr(h, f)))
             continue
         if g == "visible":
             visible[tid] = v > 0.5
@@ -809,6 +821,7 @@ def evaluate(system: AnimationSystem, t: float, prog: Program | None = None) -> 
         morphs,
         influences,
         tuple(diags),
+        world,
     )
 
 
@@ -900,6 +913,26 @@ def _transform_base(prog: Program, plan: dict[str, Any], system: AnimationSystem
     if key is not None:
         prog.rest_cache["transform_base"] = (key, base)
     return base
+
+
+def world_part(world: Any, group: str) -> Any:
+    """The part of ``scene.world`` a world path's group names: the world itself, its
+    ``environment`` or its ``atmosphere``."""
+    return world if group == "world" else getattr(world, group)
+
+
+def world_changes(values: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """A pose's world values as ``World.configure`` arguments (colours as tuples; the
+    environment's and atmosphere's as partial dicts)."""
+
+    def plain(entry: dict[str, Any]) -> dict[str, Any]:
+        return {k: (tuple(v) if isinstance(v, list) else v) for k, v in entry.items()}
+
+    out = plain(values.get("world", {}))
+    for part in ("environment", "atmosphere"):
+        if values.get(part):
+            out[part] = plain(values[part])
+    return out
 
 
 def _set_component(entry: dict[str, Any], spec: P.PathSpec, value: float, current) -> None:

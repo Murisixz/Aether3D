@@ -1099,13 +1099,32 @@ def _lighting_of(diagnosis, finding):
     return check, measure(obs, objs, min_separation=sep)
 
 
-def _scene_lights(diagnosis, lighting):
-    """``(column, light object)`` of the measured lights that are scene objects."""
+def _pose_of(diagnosis, finding):
+    """The animation's pose at the time the finding's observation shows (``None``: not
+    animated): a value it sets is not corrected by changing the authored one."""
+    scene = diagnosis.scene
+    anim = getattr(scene, "_animation", None)
+    obs = diagnosis.observed.get(finding.view)
+    if anim is None or obs is None or not anim.enabled:
+        return None
+    try:
+        return anim.evaluate(obs.time)
+    except AetherError:
+        return None
+
+
+def _scene_lights(diagnosis, lighting, pose=None):
+    """``(column, light object)`` of the measured lights that are scene objects whose
+    authored intensity shows (not animated at the observation's time)."""
     out = []
     for k, info in enumerate(lighting.lights):
         obj = diagnosis.scene._objects.get(info.get("id") or "")
-        if obj is not None and obj.light is not None and obj.light.intensity > 0.0:
-            out.append((k, obj))
+        if obj is None or obj.light is None or not obj.light.intensity > 0.0:
+            continue
+        animated = {} if pose is None else pose.fields.get((obj.id, "light"), {})
+        if "intensity" in animated or "exposure" in animated:
+            continue
+        out.append((k, obj))
     return out
 
 
@@ -1181,7 +1200,8 @@ def _lighting_ratio(diagnosis, finding, fix, context):
     # Each light's (and the ambient's) direct contribution scales with its intensity: the
     # ratio after a change is predicted from the measured contributions.
     best = None
-    for k, obj in _scene_lights(diagnosis, lighting):
+    pose = _pose_of(diagnosis, finding)
+    for k, obj in _scene_lights(diagnosis, lighting, pose):
         c = lighting.contribution[:, k]
         if not (c > 0.0).any():
             continue
@@ -1191,7 +1211,11 @@ def _lighting_ratio(diagnosis, finding, fix, context):
             if best is None or here < best[0]:
                 best = (here, obj, float(f), r)
     scene = diagnosis.scene
-    ambient_ok = scene.world.environment.type != "image" and scene.world.ambient_intensity > 0
+    ambient_ok = (
+        scene.world.environment.type != "image"
+        and scene.world.ambient_intensity > 0
+        and (pose is None or "ambient_intensity" not in pose.world.get("world", {}))
+    )
     ambient = None
     if ambient_ok and (lighting.ambient > 0.0).any():
         for f in LIGHT_STEPS:
@@ -1366,7 +1390,7 @@ def _separation(diagnosis, finding, fix, context):
     else:
         lit_out = np.zeros_like(lit_in)  # fmt: skip
     best = None
-    for k, obj in _scene_lights(diagnosis, lighting):
+    for k, obj in _scene_lights(diagnosis, lighting, _pose_of(diagnosis, finding)):
         for f in LIGHT_STEPS:
             m = _predicted_merged(rows, (f - 1.0) * lit_in[:, k], (f - 1.0) * lit_out[:, k],
                                   min_sep)  # fmt: skip

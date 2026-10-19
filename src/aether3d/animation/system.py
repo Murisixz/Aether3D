@@ -365,11 +365,21 @@ class AnimationSystem:
 
     def _target(self, ref: Any, location: str = "target") -> tuple[str, str]:
         """``("object" | "material", id)`` of a scene object, material, id or name; a
-        ``{"material": ...}`` dict names a material explicitly."""
+        ``{"material": ...}`` dict names a material explicitly; the scene's world
+        (``scene.world`` or ``{"world": true}``) is ``("world", "world")``."""
         from ..materials import Material
+        from ..rendering.settings import World
         from ..scene import SceneObject
 
         scene = self.scene
+        if isinstance(ref, World):
+            if ref is not scene.world:
+                raise _err("TARGET_MISSING", "that is not this scene's world", location)
+            return (P.WORLD, P.WORLD_ID)
+        if isinstance(ref, dict) and set(ref) == {"world"}:
+            if ref["world"] not in (True, P.WORLD_ID):
+                raise _err("TARGET_MISSING", 'the world is {"world": true}', location)
+            return (P.WORLD, P.WORLD_ID)
         if isinstance(ref, SceneObject):
             if ref.scene is not scene:
                 raise _err("TARGET_MISSING", f"object {ref.name!r} is not in this scene", location)
@@ -389,6 +399,8 @@ class AnimationSystem:
             )
         if isinstance(ref, (list, tuple)) and len(ref) == 2 and ref[0] in (P.OBJECT, P.MATERIAL):
             return self._target({ref[0]: ref[1]}, location)
+        if isinstance(ref, (list, tuple)) and tuple(ref) == (P.WORLD, P.WORLD_ID):
+            return (P.WORLD, P.WORLD_ID)
         if isinstance(ref, str):
             obj = scene._objects.get(ref) or scene._by_name.get(ref)
             if obj is not None:
@@ -397,7 +409,7 @@ class AnimationSystem:
                 "TARGET_MISSING",
                 f"no object {ref!r} (by id or name)",
                 location,
-                hint='name a material as {"material": NAME}',
+                hint='name a material as {"material": NAME}, the world as {"world": true}',
             )
         raise _err("TARGET_MISSING", f"cannot animate {ref!r}", location)
 
@@ -498,6 +510,8 @@ class AnimationSystem:
         kind, tid = key
         if kind == P.OBJECT:
             return self.scene._objects[tid].name
+        if kind == P.WORLD:
+            return "World"
         m = self.scene.materials.find_material(tid)
         return m.name if m is not None else tid
 
@@ -2052,6 +2066,10 @@ class AnimationSystem:
                     m.configure(
                         **{k: (tuple(v) if isinstance(v, list) else v) for k, v in values.items()}
                     )
+            if pose.world:
+                from .evaluate import world_changes
+
+                scene.world.configure(**world_changes(pose.world))
         return count
 
     # ------------------------------------------------------------------ #
@@ -2443,6 +2461,26 @@ def _overlay_of(pose: AnimationPose, scene: Any) -> Any:
             dropped.append((oid, group, str(exc)))
             continue
         fields[(oid, group)] = values
+    world: dict[str, Any] = {}
+    if pose.world:
+        from .evaluate import world_changes
+
+        world = world_changes(pose.world)
+        try:  # the combination must be valid, as for the objects' fields
+            trial = scene.world.copy()
+            trial._owner = None
+            trial.configure(**world)
+        except Exception as exc:  # noqa: BLE001 - reported, not raised: renders go on
+            world = {}
+            pose.extra.setdefault("overlay_diagnostics", []).append(
+                Diagnostic(
+                    "ANIMATED_VALUE_INVALID",
+                    WARNING,
+                    f"the animated world values are invalid together ({exc}); this "
+                    "evaluation uses the authored ones",
+                    "world",
+                )
+            )
     if dropped:
         extra = pose.extra.setdefault("overlay_diagnostics", [])
         for oid, group, why in dropped:
@@ -2462,6 +2500,7 @@ def _overlay_of(pose: AnimationPose, scene: Any) -> Any:
         fields=fields,
         materials=dict(pose.materials),
         meshes=dict(rigging.meshes),
+        world=world,
         time=pose.time,
     )
     if ("sequence", "sequence") in system._owned:
@@ -2477,6 +2516,7 @@ def _overlay_of(pose: AnimationPose, scene: Any) -> Any:
                 fields=fields,
                 materials=overlay.materials,
                 meshes=overlay.meshes,
+                world=overlay.world,
                 camera=camera,
                 time=pose.time,
             )
@@ -2485,8 +2525,10 @@ def _overlay_of(pose: AnimationPose, scene: Any) -> Any:
 
 def _clip_from(data: Any, target: str, location: str) -> Clip:
     if data is None:
-        if target not in (P.OBJECT, P.MATERIAL):
-            raise _err("INVALID_CLIP", "target is 'object' or 'material'", f"{location}.target")
+        if target not in (P.OBJECT, P.MATERIAL, P.WORLD):
+            raise _err(
+                "INVALID_CLIP", "target is 'object', 'material' or 'world'", f"{location}.target"
+            )
         return Clip(target)
     if isinstance(data, Clip):
         return data

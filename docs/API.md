@@ -386,7 +386,8 @@ lengths are in the document's unit or quantities (`"80 mm"`).
 
 Keyframes, curves, clips, layers, rigs, skins, IK, constraints, generators and cameras
 ([ANIMATION.md](ANIMATION.md)). Since 0.17.0. Every changing call is one undo step;
-times are seconds; targets are objects (or ids, names), materials as `{"material": ...}`.
+times are seconds; targets are objects (or ids, names), materials as `{"material": ...}`,
+the world as `scene.world` or `{"world": True}` (0.20.0).
 
 | Name | Description |
 | --- | --- |

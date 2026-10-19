@@ -505,8 +505,11 @@ def _ref(value: Any, loc: str) -> None:
         ((key, inner),) = value.items()
         if key in ("object", "material", "id", "name") and isinstance(inner, str) and inner.strip():
             return
+        if key == "world" and inner is True:
+            return
     raise AnimationScriptError(
-        'expected a name, or {"object": name or id} / {"material": name or id}', loc
+        'expected a name, or {"object": name or id} / {"material": name or id} / {"world": true}',
+        loc,
     )
 
 

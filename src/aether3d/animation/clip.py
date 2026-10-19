@@ -234,8 +234,10 @@ class Clip:
         if unknown:
             raise _err("INVALID_CLIP", f"unknown clip fields {sorted(unknown)}", location)
         target = data.get("target", P.OBJECT)
-        if target not in (P.OBJECT, P.MATERIAL):
-            raise _err("INVALID_CLIP", "target is 'object' or 'material'", f"{location}.target")
+        if target not in (P.OBJECT, P.MATERIAL, P.WORLD):
+            raise _err(
+                "INVALID_CLIP", "target is 'object', 'material' or 'world'", f"{location}.target"
+            )
         clip = Clip(target)
         channels = data.get("channels", {})
         if not isinstance(channels, dict):

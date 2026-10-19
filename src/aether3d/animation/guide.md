@@ -28,6 +28,7 @@ authored transforms (one undo step).
 | `visible` | true/false (stepped) |
 | `camera.fov`, `camera.near`, `light.intensity`, `light.color.r`, `appearance.color.g` | object fields |
 | `material.roughness` ... (target `{"material": NAME}`) | material parameters |
+| `ambient_intensity`, `background.r`, `environment.rotation`, `atmosphere.fog_density` ... (target `{"world": true}`) | the world (0.20.0): a day-night cycle with the sun light's keys |
 | `joints["NAME"].rotation` / `.position.x` / `.rotation_euler.z` | rig joints (on the armature) |
 | `morph["NAME"]` | morph target weight |
 | `constraints["NAME"].influence`, `.offset` | constraint mix, path fraction |

@@ -318,7 +318,8 @@ def parse_layer(raw: Any, location: str, clip_ids: Any = None) -> Layer:
 
 @dataclass(frozen=True)
 class Binding:
-    """What animates one target: ``target`` is ``("object" | "material", id)``."""
+    """What animates one target: ``target`` is ``("object" | "material", id)``, or
+    ``("world", "world")`` for the scene's world (0.20.0)."""
 
     target: tuple[str, str]
     action: str | None = None  # clip item id
@@ -347,14 +348,19 @@ def parse_binding(raw: Any, location: str, clip_ids: Any = None) -> Binding:
         return raw
     if not isinstance(raw, dict):
         raise _err("INVALID_BINDING", "a binding is an object", location)
-    unknown = set(raw) - {"object", "material", "action", "layers", "mute"}
+    unknown = set(raw) - {"object", "material", "world", "action", "layers", "mute"}
     if unknown:
         raise _err("INVALID_BINDING", f"unknown binding fields {sorted(unknown)}", location)
-    if ("object" in raw) == ("material" in raw):
-        raise _err("INVALID_BINDING", "a binding has an object or a material", location)
-    kind = "object" if "object" in raw else "material"
+    kinds = [k for k in ("object", "material", "world") if k in raw]
+    if len(kinds) != 1:
+        raise _err("INVALID_BINDING", "a binding has an object, a material or the world", location)
+    kind = kinds[0]
     tid = raw[kind]
-    if not isinstance(tid, str) or not tid:
+    if kind == "world":
+        if tid != "world":
+            raise _err("INVALID_BINDING", 'the world\'s binding is {"world": "world"}',
+                       f"{location}.world")  # fmt: skip
+    elif not isinstance(tid, str) or not tid:
         raise _err("INVALID_BINDING", f"{kind} is an id", f"{location}.{kind}")
     action = raw.get("action")
     if action is not None:

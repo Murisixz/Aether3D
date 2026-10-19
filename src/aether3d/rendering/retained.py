@@ -893,6 +893,7 @@ class RenderWorld:
             texture_time=texture_time,
             start=start,
             cache=shared,
+            overlay=overlay,
         )
 
     def _order(self, valid_rows: np.ndarray) -> _Tables:

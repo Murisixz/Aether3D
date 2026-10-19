@@ -3,7 +3,8 @@
 An animated scene renders at a time: its authored state is the rest pose, and the
 animation's evaluation at that time replaces some values *for that render only* --
 objects' local transforms, visibility, camera/light/appearance fields, material
-parameters, deformed (skinned, morphed) meshes and the shot camera. A
+parameters, the world's background, ambient light, environment and atmosphere (0.20.0),
+deformed (skinned, morphed) meshes and the shot camera. A
 :class:`RenderOverlay` carries them; ``extract_render_scene(..., overlay=...)`` (and the
 spatial index, world matrices and framing) apply it without touching the scene.
 
@@ -36,6 +37,7 @@ class RenderOverlay:
     fields: Mapping[tuple[str, str], Mapping[str, Any]] = field(default_factory=dict)
     materials: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     meshes: Mapping[str, Mesh] = field(default_factory=dict)
+    world: Mapping[str, Any] = field(default_factory=dict)  # World.configure arguments
     camera: str | None = None
     time: float | None = None
     index: dict[str, int] = field(default_factory=dict, compare=False, repr=False)
@@ -52,7 +54,7 @@ class RenderOverlay:
     def empty(self) -> bool:
         return not (
             self.ids or self.visible or self.fields or self.materials or self.meshes
-            or self.camera is not None
+            or self.world or self.camera is not None
         )  # fmt: skip
 
     def is_visible(self, obj: Any) -> bool:
