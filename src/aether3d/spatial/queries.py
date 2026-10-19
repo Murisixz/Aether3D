@@ -1198,13 +1198,14 @@ class View:
         self.right = np.asarray(frame.right, dtype=np.float64)
         self.up = np.asarray(frame.up, dtype=np.float64)
         self.hx, self.hy = hx, hy
+        self.ox, self.oy = cam.ndc_offset(self.width / self.height)
         self.perspective = cam.is_perspective
         self.near, self.far = cam.near, cam.far
 
     def rays(self, x: np.ndarray, y: np.ndarray):
         """Rays through image points (the path tracer's arithmetic): ``o, d, tmin, tmax``."""
-        xn = x * (2.0 / self.width) - 1.0
-        yn = 1.0 - y * (2.0 / self.height)
+        xn = x * (2.0 / self.width) - 1.0 + self.ox
+        yn = 1.0 - y * (2.0 / self.height) + self.oy
         sx = (xn * self.hx)[:, None]
         sy = (yn * self.hy)[:, None]
         n = xn.shape[0]
@@ -1224,9 +1225,8 @@ class View:
             scale = depth if self.perspective else 1.0
             center = self.eye + self.forward * depth
             for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
-                out.append(
-                    center + sx * self.hx * scale * self.right + sy * self.hy * scale * self.up
-                )
+                ax, ay = (sx + self.ox) * self.hx, (sy + self.oy) * self.hy
+                out.append(center + ax * scale * self.right + ay * scale * self.up)
         return np.array(out)
 
     def planes(self) -> tuple[np.ndarray, np.ndarray]:

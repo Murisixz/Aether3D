@@ -98,6 +98,12 @@ class RenderCamera:
     name: str
     camera: Camera
     frame: CameraFrame
+    focus: float | None = None  # the focus distance of this render (its focus_object's)
+
+    @property
+    def focus_distance(self) -> float:
+        """Metres along the view axis to the plane in focus for this render."""
+        return self.camera.focus_distance if self.focus is None else self.focus
 
     def to_dict(self, aspect: float | None = None) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -454,17 +460,39 @@ def extract_render_scene(
 
 
 def _render_camera(
-    camera: SceneObject, world: np.ndarray, aspect: float, overlay: Any = None
+    camera: SceneObject,
+    world: np.ndarray,
+    aspect: float,
+    overlay: Any = None,
+    world_of: Any = None,
 ) -> tuple[RenderCamera, list[Diagnostic]]:
     """The render camera of the camera object ``camera`` with world matrix ``world`` (an
-    ``overlay``'s camera fields replace its own: an animated lens)."""
+    ``overlay``'s camera fields replace its own: an animated lens). ``world_of`` gives an
+    object's world matrix by id (the focus object's)."""
     frame, frame_diags = frame_from_matrix(world, f"objects[{camera.name}]")
     diagnostics = list(frame_diags)
     lens = camera.camera
     values = None if overlay is None else overlay.field_values(camera.id, "camera")
     if values:
         lens = _with_fields(lens, values)
-    render_camera = RenderCamera(camera.id, camera.name, lens, frame)
+    focus = None
+    if lens.has_depth_of_field and lens.focus_object is not None:
+        m = None if world_of is None else world_of(lens.focus_object)
+        if m is not None:
+            d = float(np.dot(np.asarray(m)[:3, 3] - frame.position, frame.forward))
+            if d > 0.0:
+                focus = d
+        if focus is None:
+            diagnostics.append(
+                Diagnostic(
+                    "FOCUS_OBJECT_UNUSABLE",
+                    INFO,
+                    f"the focus object of {camera.name!r} is missing or behind the camera; "
+                    f"its focus_distance ({lens.focus_distance:g} m) is used",
+                    f"objects[{camera.name}].camera.focus_object",
+                )
+            )
+    render_camera = RenderCamera(camera.id, camera.name, lens, frame, focus)
     if lens.aspect_ratio is not None and not math.isclose(lens.aspect_ratio, aspect, rel_tol=1e-3):
         diagnostics.append(
             Diagnostic(
@@ -616,8 +644,13 @@ def _extract_full(
     if isinstance(camera, RenderCamera):
         render_camera = camera
     else:
+        rows = {o._id: i for i, o in enumerate(objects)}
         render_camera, camera_diags = _render_camera(
-            camera, stack[objects.index(camera)], aspect, overlay
+            camera,
+            stack[objects.index(camera)],
+            aspect,
+            overlay,
+            lambda oid: stack[rows[oid]] if oid in rows else None,
         )
         diagnostics += camera_diags
 

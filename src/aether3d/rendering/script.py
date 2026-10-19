@@ -91,7 +91,11 @@ FORMAT_ID = "aether3d.scene-script"
 VERSION = 1
 MAX_OPERATIONS = 10_000
 
-_CAMERA = {"projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio"}
+_CAMERA = {
+    "projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio", "sensor",
+    "shift_x", "shift_y", "fstop", "focus_distance", "focus_object", "aperture_blades",
+    "aperture_rotation", "aperture_ratio", "focal_length",
+}  # fmt: skip
 _LIGHT = {"color", "intensity", "range", "falloff", "radius", "angle"}
 _PLACE = {"parent", "position", "rotation_euler", "look_at", "up"}
 _SPECS: dict[str, tuple[set[str], set[str]]] = {
@@ -281,13 +285,20 @@ def _ref(obj: SceneObject) -> dict[str, str]:
     return {"id": obj.id, "name": obj.name}
 
 
+def _lens(scene: Scene, params: dict[str, Any]) -> dict[str, Any]:
+    """Camera parameters with ``focus_object`` given by name or id resolved to its id."""
+    if params.get("focus_object") is not None:
+        params = {**params, "focus_object": _obj(scene, params["focus_object"]).id}
+    return params
+
+
 def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> dict[str, Any]:
     if op == "query":
         from ..spatial import run_query
 
         return run_query(scene, {k: v for k, v in s.items() if k != "op"})
     if op == "add_camera":
-        params = {k: s[k] for k in _CAMERA if k in s}
+        params = _lens(scene, {k: s[k] for k in _CAMERA if k in s})
         obj = scene.add_camera(
             s.get("name"),
             parent=_obj(scene, s["parent"]) if "parent" in s else None,
@@ -328,7 +339,7 @@ def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> di
         obj = _obj(scene, s["camera"])
         if obj.camera is None:
             raise ScriptError(f"object {obj.name!r} is not a camera", "camera", "NOT_A_CAMERA")
-        obj.camera.configure(**{k: s[k] for k in _CAMERA if k in s})
+        obj.camera.configure(**_lens(scene, {k: s[k] for k in _CAMERA if k in s}))
         return {"object": _ref(obj), "camera": obj.camera.to_dict()}
     if op == "set_light":
         obj = _obj(scene, s["light"])

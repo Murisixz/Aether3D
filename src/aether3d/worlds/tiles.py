@@ -103,6 +103,7 @@ def view_from_camera(
     frustum (side planes widened by ``margin`` metres, so tiles casting shadows into view
     keep their detail) bounds where tiles are refined."""
     hx, hy = camera.half_extents(aspect)
+    ox, oy = camera.ndc_offset(aspect)
     eye = np.asarray(frame.position, dtype=np.float64)
     f = np.asarray(frame.forward, dtype=np.float64)
     r = np.asarray(frame.right, dtype=np.float64)
@@ -110,8 +111,12 @@ def view_from_camera(
     if camera.is_perspective:
         fov = 2.0 * math.atan(hy)
         ppr = height / max(fov, 1e-6)
-        # Inward plane normals of the four side planes through the eye.
-        normals = [f * hx + r, f * hx - r, f * hy + u, f * hy - u]
+        # Inward plane normals of the four side planes through the eye (an edge along
+        # f + c r has the inward normal r - c f on the left, c f - r on the right; a lens
+        # shift moves the edges: c = (-1 + ox) hx and (1 + ox) hx).
+        cl, cr = (-1.0 + ox) * hx, (1.0 + ox) * hx
+        cb, ct = (-1.0 + oy) * hy, (1.0 + oy) * hy
+        normals = [r - cl * f, cr * f - r, u - cb * f, ct * f - u]
         planes = []
         for nrm in normals:
             nrm = nrm / np.linalg.norm(nrm)

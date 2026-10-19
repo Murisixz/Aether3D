@@ -937,7 +937,11 @@ def pack_finalize(
     data[7] = 2.0**exposure
     frame = rs.camera.frame
     hx, hy = camera.half_extents(width / height)
-    data[8:11] = frame.forward
+    ox, oy = camera.ndc_offset(width / height)
+    # The background rays d = forward + (xn hx) right + (yn hy) up are normalized in the
+    # shader: a lens shift adds (ox hx) right + (oy hy) up to forward (perspective).
+    shifted = frame.forward + (ox * hx) * frame.right + (oy * hy) * frame.up
+    data[8:11] = shifted if camera.is_perspective else frame.forward
     data[11] = 1.0 if camera.is_perspective else 0.0
     data[12:15] = frame.right
     data[15] = hx

@@ -58,7 +58,7 @@ HEADER_WORDS = 16
 INST_WORDS = 24
 LIGHT_WORDS = 24
 EMITTER_WORDS = 12
-PARAMS_WORDS = 116  # 68 + struct Atmo (48)
+PARAMS_WORDS = 128  # 68 + struct Atmo (48) + lens, aperture, film (4 each)
 TILE = 512
 """Largest tile side of one dispatch (bounds the work and the 32-bit counters per dispatch)."""
 MAX_PIXEL_SAMPLES_PER_DISPATCH = 1 << 20
@@ -344,6 +344,15 @@ def base_params(
     from .resources import pack_atmosphere
 
     pr.words[68:116] = pack_atmosphere(rs).view(np.uint32)
+    ox, oy = cam.ndc_offset(width / height)
+    pr.floats[116:120] = (ox, oy, cam.aperture_radius(), rs.camera.focus_distance)
+    rot = math.radians(cam.aperture_rotation)
+    pr.floats[120:124] = (
+        float(cam.aperture_blades),
+        math.cos(rot),
+        math.sin(rot),
+        1.0 / cam.aperture_ratio,
+    )
     return pr
 
 

@@ -55,6 +55,7 @@ const SLOT_PIXEL: u32 = 0u;
 const SLOT_LOBE: u32 = 2u;
 const SLOT_BSDF: u32 = 3u;
 const SLOT_RR: u32 = 5u;
+const SLOT_LENS: u32 = 6u;
 const SLOT_AO: u32 = 16u;
 const SLOT_LIGHTS: u32 = 4096u;
 
@@ -137,6 +138,9 @@ struct Params {
   root_lo: vec3<f32>, _pad1: f32,
   root_hi: vec3<f32>, _pad2: f32,
   atmo: Atmo,  // scene.world.atmosphere (atmosphere.wgsl): sky glows, fog on camera paths
+  lens: vec4<f32>,      // lens shift (NDC offsets x, y), aperture radius (m; 0: pinhole), focus
+  aperture: vec4<f32>,  // blades (0: round), cos and sin of the rotation, 1 / ratio
+  film: vec4<f32>,      // (reserved)
 };
 
 @group(0) @binding(8) var<storage, read> pt: array<u32>;
@@ -875,11 +879,45 @@ fn start_ray(st: ptr<function, State>, kind: u32, o: vec3<f32>, d: vec3<f32>, tm
   (*st).phase = PH_TRACE;
 }
 
-fn camera_ray(st: ptr<function, State>, kind: u32, x: u32, y: u32, u: f32, v: f32, with_diff: bool) {
+// A point of the unit aperture (camera.py's aperture_points, in float32): round (Shirley and
+// Chiu's concentric mapping) or a polygon of `blades` corners inscribed in it, a corner up,
+// turned and narrowed by the camera's rotation and ratio.
+fn aperture_point(u1: f32, u2: f32) -> vec2<f32> {
+  var p: vec2<f32>;
+  let blades = params.aperture.x;
+  if (blades >= 3.0) {
+    let k = min(floor(u1 * blades), blades - 1.0);
+    let a = u1 * blades - k;
+    let step = 2.0 * PI / blades;
+    let a0 = PI * 0.5 + k * step;
+    let r = sqrt(a);
+    let b1 = u2 * r;
+    let b0 = r - b1;
+    p = vec2<f32>(b0 * cos(a0) + b1 * cos(a0 + step), b0 * sin(a0) + b1 * sin(a0 + step));
+  } else {
+    let sx = 2.0 * u1 - 1.0;
+    let sy = 2.0 * u2 - 1.0;
+    if (sx == 0.0 && sy == 0.0) {
+      p = vec2<f32>(0.0);
+    } else if (abs(sx) > abs(sy)) {
+      let phi = (PI / 4.0) * (sy / sx);
+      p = vec2<f32>(sx * cos(phi), sx * sin(phi));
+    } else {
+      let phi = PI / 2.0 - (PI / 4.0) * (sx / sy);
+      p = vec2<f32>(sy * cos(phi), sy * sin(phi));
+    }
+  }
+  let c = params.aperture.y;
+  let s = params.aperture.z;
+  p = vec2<f32>(c * p.x - s * p.y, s * p.x + c * p.y);
+  return vec2<f32>(p.x * params.aperture.w, p.y);
+}
+
+fn camera_ray(st: ptr<function, State>, kind: u32, x: u32, y: u32, u: f32, v: f32, with_diff: bool, lu: f32, lv: f32) {
   let w = f32(params.width);
   let h = f32(params.height);
-  let xn = (f32(x) + u) * (2.0 / w) - 1.0;
-  let yn = 1.0 - (f32(y) + v) * (2.0 / h);
+  let xn = (f32(x) + u) * (2.0 / w) - 1.0 + params.lens.x;
+  let yn = 1.0 - (f32(y) + v) * (2.0 / h) + params.lens.y;
   let sx = xn * params.hx;
   let sy = yn * params.hy;
   let step_x = (2.0 / w) * params.hx * params.diff_scale;
@@ -888,7 +926,18 @@ fn camera_ray(st: ptr<function, State>, kind: u32, x: u32, y: u32, u: f32, v: f3
     let raw = params.forward + sx * params.right + sy * params.up;
     let len = length(raw);
     let unit = raw / len;
-    start_ray(st, kind, vec3<f32>(0.0), unit, params.near * len, params.far * len, PT_NONE, PT_NONE);
+    if (params.lens.z > 0.0 && kind == RAY_CAMERA) {
+      // A thin lens: from a point of the aperture toward where the pinhole ray meets the
+      // plane in focus (raw has a unit forward component); differentials stay the pinhole's.
+      let a = aperture_point(lu, lv) * params.lens.z;
+      let offset = a.x * params.right + a.y * params.up;
+      let lens_d = raw * params.lens.w - offset;
+      let lens_unit = lens_d / length(lens_d);
+      let along = dot(lens_unit, params.forward);
+      start_ray(st, kind, offset, lens_unit, params.near / along, params.far / along, PT_NONE, PT_NONE);
+    } else {
+      start_ray(st, kind, vec3<f32>(0.0), unit, params.near * len, params.far * len, PT_NONE, PT_NONE);
+    }
     let vx = params.right * step_x;
     let vy = params.up * step_y;
     (*st).do_dx = vec3<f32>(0.0);
@@ -1373,7 +1422,7 @@ fn path_main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invoc
       accum[plane(3u, pixel)] = rnd(key, 2u, SLOT_RR);
     } else if (params.mode == MODE_CENTER) {
       var st = new_state(vec2<u32>(0u));
-      camera_ray(&st, RAY_CENTER, x, y, 0.5, 0.5, false);
+      camera_ray(&st, RAY_CENTER, x, y, 0.5, 0.5, false, 0.5, 0.5);
       st.tally.center += 1u;
       run_state(&st);
       accum[plane(ACC_DEPTH, pixel)] = st.depth;
@@ -1383,7 +1432,13 @@ fn path_main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invoc
       for (var s = params.sample_first; s < params.sample_first + params.sample_count; s++) {
         let key = path_key(pixel, s);
         var st = new_state(key);
-        camera_ray(&st, RAY_CAMERA, x, y, rnd(key, 0u, SLOT_PIXEL), rnd(key, 0u, SLOT_PIXEL + 1u), true);
+        var lu = 0.5;
+        var lv = 0.5;
+        if (params.lens.z > 0.0) {
+          lu = rnd(key, 0u, SLOT_LENS);
+          lv = rnd(key, 0u, SLOT_LENS + 1u);
+        }
+        camera_ray(&st, RAY_CAMERA, x, y, rnd(key, 0u, SLOT_PIXEL), rnd(key, 0u, SLOT_PIXEL + 1u), true, lu, lv);
         st.cam_d = st.rd;
         st.tally.camera += 1u;
         run_state(&st);

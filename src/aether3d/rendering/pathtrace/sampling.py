@@ -75,6 +75,7 @@ SLOT_PIXEL = 0  # 2: pixel position (vertex 0 only)
 SLOT_LOBE = 2  # 1: BSDF lobe choice
 SLOT_BSDF = 3  # 2: BSDF direction
 SLOT_RR = 5  # 1: Russian roulette
+SLOT_LENS = 6  # 2: the point on the camera's aperture (vertex 0 only; depth of field)
 SLOT_AO = 16  # 2 per AO ray (vertex 0 only; at most 1024 rays)
 SLOT_LIGHTS = 4096  # 3 per light sample: the analytic lights first, then the emitters
 

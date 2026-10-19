@@ -50,6 +50,7 @@ from .lights import SHADOW_END, LightSet, mis_weight_emission
 from .sampling import (
     SLOT_AO,
     SLOT_BSDF,
+    SLOT_LENS,
     SLOT_LOBE,
     SLOT_PIXEL,
     SLOT_RR,
@@ -114,12 +115,22 @@ class _Camera:
     width: int
     height: int
     scale: float  # ray-differential scale (1 / sqrt(samples))
+    ox: float = 0.0  # lens shift (NDC offset of the view's centre)
+    oy: float = 0.0
+    lens: float = 0.0  # aperture radius (m); 0: a pinhole
+    focus: float = 10.0  # view depth of the plane in focus (m)
+    blades: int = 0
+    rotation: float = 0.0  # degrees
+    ratio: float = 1.0
 
-    def rays(self, col, row, u, v):
-        """Unit camera rays through ``(col + u, row + v)``; ``(o, d, tmin, tmax, diff)``."""
+    def rays(self, col, row, u, v, lu=None, lv=None):
+        """Unit camera rays through ``(col + u, row + v)``; ``(o, d, tmin, tmax, diff)``.
+        With an aperture (``lens > 0``) and its uniform numbers ``lu, lv``, a ray leaves
+        a point of the thin lens toward where the pinhole ray meets the plane in focus
+        (the ray differentials stay the pinhole's)."""
         w, h = self.width, self.height
-        xn = (col + u) * (2.0 / w) - 1.0
-        yn = 1.0 - (row + v) * (2.0 / h)
+        xn = (col + u) * (2.0 / w) - 1.0 + self.ox
+        yn = 1.0 - (row + v) * (2.0 / h) + self.oy
         sx = (xn * self.hx)[:, None]
         sy = (yn * self.hy)[:, None]
         n = xn.shape[0]
@@ -127,6 +138,28 @@ class _Camera:
         step_y = -(2.0 / h) * self.hy * self.scale
         if self.perspective:
             d = self.forward + sx * self.right + sy * self.up
+            if self.lens > 0.0 and lu is not None:
+                from ..camera import aperture_points
+
+                ax, ay = aperture_points(lu, lv, self.blades, self.rotation, self.ratio)
+                offset = (ax * self.lens)[:, None] * self.right + (ay * self.lens)[
+                    :, None
+                ] * self.up
+                # (d has a unit forward component: d * focus lies on the plane in focus)
+                lens_d = d * self.focus - offset
+                length = np.linalg.norm(lens_d, axis=1, keepdims=True)
+                unit = lens_d / length
+                along = (unit @ self.forward)[:, None]  # cosine to the view axis
+                o = self.eye + offset
+                length_p = np.linalg.norm(d, axis=1, keepdims=True)
+                unit_p = d / length_p
+                dd = []
+                for vec in (self.right * step_x, self.up * step_y):
+                    raw = np.broadcast_to(vec, (n, 3))
+                    dd.append((raw - unit_p * (unit_p @ vec)[:, None]) / length_p)
+                zero = np.zeros(3)
+                diff = (zero, zero, dd[0], dd[1])
+                return o, unit, self.near / along[:, 0], self.far / along[:, 0], diff
             length = np.linalg.norm(d, axis=1, keepdims=True)
             unit = d / length
             o = np.broadcast_to(self.eye, (n, 3)).copy()
@@ -151,6 +184,7 @@ def _camera(rs: RenderScene, width: int, height: int, samples: int) -> _Camera:
     cam = rs.camera.camera
     frame_ = rs.camera.frame
     hx, hy = cam.half_extents(width / height)
+    ox, oy = cam.ndc_offset(width / height)
     return _Camera(
         np.asarray(frame_.position, dtype=np.float64),
         np.asarray(frame_.forward, dtype=np.float64),
@@ -164,6 +198,13 @@ def _camera(rs: RenderScene, width: int, height: int, samples: int) -> _Camera:
         width,
         height,
         1.0 / math.sqrt(samples),
+        ox,
+        oy,
+        cam.aperture_radius(),
+        rs.camera.focus_distance,
+        cam.aperture_blades,
+        cam.aperture_rotation,
+        cam.aperture_ratio,
     )
 
 
@@ -420,8 +461,12 @@ class _Tracer:
         row, col = np.divmod(pixel, cam.width)
         u = uniform(keys, dimension(0, SLOT_PIXEL))
         v = uniform(keys, dimension(0, SLOT_PIXEL + 1))
+        lu = lv = None
+        if cam.lens > 0.0:
+            lu = uniform(keys, dimension(0, SLOT_LENS))
+            lv = uniform(keys, dimension(0, SLOT_LENS + 1))
         t0 = time.perf_counter()
-        o, d, tmin, tmax, diff = cam.rays(col, row, u, v)
+        o, d, tmin, tmax, diff = cam.rays(col, row, u, v, lu, lv)
         hits, it = ps.trace(o, d, tmin, tmax, cull=self.cull, diff=diff)
         self.counts["camera_rays"] += n
         self.timings["camera"] += time.perf_counter() - t0

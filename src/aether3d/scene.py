@@ -1614,16 +1614,22 @@ class Scene:
         look_at: ObjectRef | Iterable[float] | None = None,
         up: Iterable[float] = (0.0, 0.0, 1.0),
         active: bool | None = None,
+        **lens: Any,
     ) -> SceneObject:
         """Add a camera object (see :class:`~aether3d.rendering.Camera`).
 
         A camera looks along its local -Y axis with +Z up; ``look_at`` aims it
         at a point or object after placing it. The new camera becomes the
         scene's active camera if ``active`` is true, or if it is ``None`` and
-        there is no active camera yet. Everything is validated before the
-        scene changes.
+        there is no active camera yet. ``lens`` takes the lens parameters
+        (``focal_length``, ``sensor``, ``shift_x``, ``shift_y``, ``fstop``,
+        ``focus_distance``, ``focus_object`` -- an object, id or name --, the
+        aperture's ``blades``, ``rotation`` and ``ratio``). Everything is
+        validated before the scene changes.
         """
-        camera = Camera(projection, fov, fov_axis, ortho_scale, near, far, aspect_ratio)
+        if lens.get("focus_object") is not None:
+            lens["focus_object"] = self._resolve(lens["focus_object"]).id
+        camera = Camera(projection, fov, fov_axis, ortho_scale, near, far, aspect_ratio, **lens)
         if active is not None and not isinstance(active, bool):
             raise ValidationError(f"active must be True, False or None, got {active!r}")
         label = "Add camera" if name is None else f"Add camera {name!r}"

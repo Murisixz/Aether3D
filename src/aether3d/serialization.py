@@ -36,7 +36,7 @@ from .transform import Transform
 FORMAT_ID = "aether3d.project"
 """Value of the top-level ``format`` field identifying an Aether3D project."""
 
-FORMAT_VERSION = 12
+FORMAT_VERSION = 13
 """Version written by this release. Files with a higher version are rejected.
 
 * Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
@@ -65,6 +65,10 @@ FORMAT_VERSION = 12
 * Version 12 (Aether3D 0.19.1, the Stage 18 revision) adds a joint's weighting ``span``
   (the part of its bone its skin weights cover) and skins' surface-following normals and
   corrective smoothing.
+* Version 13 (Aether3D 0.20.0) adds the camera's lens (sensor, shift, f-stop, focus,
+  aperture), curves' ``smoothing`` of automatic handles, the curve modifiers ``cycles``,
+  ``generator`` and ``function``, strips' ``blend_curve``, and Penner's in-and-out
+  overshoot for ``back`` easing (v12 keys are rescaled: their curves keep their shapes).
 
 Older files are upgraded on load by the functions in :data:`MIGRATIONS`.
 """
@@ -231,6 +235,85 @@ def _migrate_v11_to_v12(document: dict[str, Any]) -> dict[str, Any]:
     return dict(document)
 
 
+def _migrate_v12_to_v13(document: dict[str, Any]) -> dict[str, Any]:
+    """v12 -> v13 (0.20.0): cameras get the lens (a pinhole: every render as before); back
+    easing in and out uses Penner's 1.525 x overshoot, so keys of v12 documents get their
+    ``back`` divided by 1.525 (their curves keep their shapes); curves without a
+    ``smoothing`` keep Aether3D's local automatic handles (nothing to write)."""
+    import copy
+
+    from .animation.easing import BACK_IN_OUT, DEFAULT_BACK
+    from .rendering.camera import LENS_DEFAULTS
+
+    doc = copy.deepcopy(document)
+    scene = doc.get("scene")
+    if not isinstance(scene, dict):
+        return doc
+    for obj in scene.get("objects", []) if isinstance(scene.get("objects"), list) else []:
+        cam = obj.get("camera") if isinstance(obj, dict) else None
+        if isinstance(cam, dict):
+            for key, value in LENS_DEFAULTS.items():
+                cam.setdefault(key, value)
+
+    def column(keys: dict[str, Any], name: str, n: int, default: Any) -> list[Any]:
+        value = keys.get(name, default)
+        return list(value) if isinstance(value, list) else [value] * n
+
+    def fix_curve(curve: dict[str, Any]) -> None:
+        keys = curve.get("keys")
+        if not isinstance(keys, dict) or not isinstance(keys.get("time"), list):
+            return
+        n = len(keys["time"])
+        interp = column(keys, "interpolation", n, "bezier")
+        ease = column(keys, "ease", n, "in_out")
+        back = column(keys, "back", n, DEFAULT_BACK)
+        if len(interp) != n or len(ease) != n or len(back) != n:
+            return  # (malformed: the reader reports it)
+        hit = False
+        for i in range(n):
+            if interp[i] == "back" and ease[i] == "in_out" and isinstance(back[i], (int, float)):
+                back[i] = back[i] / BACK_IN_OUT
+                hit = True
+        if hit:
+            keys["back"] = back[0] if all(b == back[0] for b in back) else back
+
+    def fix_timing(track: dict[str, Any]) -> None:
+        keys = track.get("keys")
+        timing = keys.get("timing") if isinstance(keys, dict) else None
+        if not isinstance(timing, list):
+            return
+        for t in timing:
+            if (
+                isinstance(t, dict)
+                and t.get("easing") == "back"
+                and t.get("ease", "in_out") == "in_out"
+            ):
+                t["back"] = t.get("back", DEFAULT_BACK) / BACK_IN_OUT
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            keys = value.get("keys")
+            if isinstance(keys, dict) and isinstance(keys.get("time"), list):
+                if "rotation" in keys:
+                    fix_timing(value)
+                else:
+                    fix_curve(value)
+                return
+            for k, v in value.items():
+                if k != "events":  # event data is the user's own JSON
+                    walk(v)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v)
+
+    animation = scene.get("animation")
+    if isinstance(animation, dict):
+        for item in animation.get("items", []) if isinstance(animation.get("items"), list) else []:
+            if isinstance(item, dict):
+                walk(item.get("definition"))
+    return doc
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -243,6 +326,7 @@ MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     9: _migrate_v9_to_v10,
     10: _migrate_v10_to_v11,
     11: _migrate_v11_to_v12,
+    12: _migrate_v12_to_v13,
 }
 """``MIGRATIONS[n]`` upgrades a version-``n`` document to version ``n + 1``."""
 

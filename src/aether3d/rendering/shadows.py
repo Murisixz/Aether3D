@@ -225,17 +225,7 @@ def instance_corners(rs: RenderScene, bounds: np.ndarray | None = None) -> np.nd
 
 def _frustum_corners(rs: RenderScene, aspect: float, far: float) -> np.ndarray:
     """Camera-relative corners of the view frustum between the near plane and ``far``."""
-    cam = rs.camera
-    hx, hy = cam.camera.half_extents(aspect)
-    f, r, u = cam.frame.forward, cam.frame.right, cam.frame.up
-    near = cam.camera.near
-    points = []
-    for depth in (near, far):
-        sx, sy = (hx * depth, hy * depth) if cam.camera.is_perspective else (hx, hy)
-        for a in (-1.0, 1.0):
-            for b in (-1.0, 1.0):
-                points.append(depth * f + a * sx * r + b * sy * u)
-    return np.array(points)
+    return _frustum_slice(rs, aspect, rs.camera.camera.near, far)
 
 
 def cascade_splits(near: float, far: float, count: int, blend: float) -> list[float]:
@@ -300,13 +290,14 @@ def _frustum_slice(rs: RenderScene, aspect: float, near: float, far: float) -> n
     """Camera-relative corners of the view frustum between view depths ``near`` and ``far``."""
     cam = rs.camera
     hx, hy = cam.camera.half_extents(aspect)
+    ox, oy = cam.camera.ndc_offset(aspect)  # a shifted lens: an off-centre frustum
     f, r, u = cam.frame.forward, cam.frame.right, cam.frame.up
     points = []
     for depth in (near, far):
         sx, sy = (hx * depth, hy * depth) if cam.camera.is_perspective else (hx, hy)
         for a in (-1.0, 1.0):
             for b in (-1.0, 1.0):
-                points.append(depth * f + a * sx * r + b * sy * u)
+                points.append(depth * f + (a + ox) * sx * r + (b + oy) * sy * u)
     return np.array(points)
 
 

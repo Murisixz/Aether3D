@@ -15,6 +15,10 @@ path                                   kind    unit                   valid valu
 ``camera.fov``                         scalar  degrees                0.01 .. 179.9
 ``camera.ortho_scale``                 scalar  scene units            > 0
 ``camera.near`` / ``camera.far``       scalar  scene units            > 0, near < far
+``camera.focus_distance``              scalar  metres                 > 0 (rack focus)
+``camera.fstop``                       scalar  f-number               0 (pinhole), 0.1 ..
+``camera.shift_x`` / ``shift_y``       scalar  larger frame dimension -10 .. 10
+``camera.aperture_rotation``           scalar  degrees                -360 .. 360
 ``light.intensity``                    scalar  light units            >= 0
 ``light.color.r|g|b``                  scalar  display sRGB           0 .. 1
 ``light.range`` / ``radius``/``angle`` scalar  units / degrees        >= 0
@@ -96,6 +100,11 @@ _OBJECT: dict[tuple[str, str], tuple[str, dict[str, int] | None, str, float, flo
     ("camera", "ortho_scale"): (SCALAR, None, "m", 1e-9, _INF),
     ("camera", "near"): (SCALAR, None, "m", 1e-9, _INF),
     ("camera", "far"): (SCALAR, None, "m", 1e-9, _INF),
+    ("camera", "focus_distance"): (SCALAR, None, "m", 1e-6, 1e12),
+    ("camera", "fstop"): (SCALAR, None, "f-number", 0.0, 1e4),
+    ("camera", "shift_x"): (SCALAR, None, "frame", -10.0, 10.0),
+    ("camera", "shift_y"): (SCALAR, None, "frame", -10.0, 10.0),
+    ("camera", "aperture_rotation"): (SCALAR, None, "deg", -360.0, 360.0),
     ("light", "intensity"): (SCALAR, None, "1", 0.0, _INF),
     ("light", "color"): (SCALAR, _RGB, "sRGB", 0.0, 1.0),
     ("light", "range"): (SCALAR, None, "m", 0.0, _INF),

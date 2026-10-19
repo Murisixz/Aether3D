@@ -300,8 +300,15 @@ def render(
     progress: Any = None,
     outputs: Any = None,
     time: float | None = None,
+    dof_samples: int | None = None,
 ) -> RenderResult:
     """Render ``scene`` and return a :class:`RenderResult`.
+
+    * ``dof_samples`` -- rasterizers only: how many views from points of the camera's
+      aperture are averaged when it has depth of field (``fstop > 0``; default 16, ``1``:
+      a pinhole view). Each view is a real render from a lens point, its frustum sheared
+      so the plane in focus stays fixed (an accumulation buffer, Haeberli and Akeley
+      1990); the path tracers sample the lens with every path instead.
 
     * ``time`` -- for an animated scene, the time in seconds to render (default: the
       animation's current time, ``scene.animation.time``); the animation's evaluation
@@ -388,6 +395,24 @@ def render(
                     hint="use backend='path' or 'gpu_path', or remove the option",
                 )
     path_settings = ao_settings = None
+    if dof_samples is not None and (
+        isinstance(dof_samples, bool)
+        or not isinstance(dof_samples, int)
+        or not 1 <= dof_samples <= MAX_DOF_SAMPLES
+    ):
+        raise RenderError(
+            "INVALID_SETTINGS",
+            f"dof_samples is an integer 1..{MAX_DOF_SAMPLES}, got {dof_samples!r}",
+            "dof_samples",
+        )
+    if requested in PATH_BACKENDS and dof_samples is not None:
+        raise RenderError(
+            "INVALID_SETTINGS",
+            "dof_samples applies to the rasterizers; the path tracer samples the lens with "
+            "every path (its samples)",
+            "dof_samples",
+            hint="remove dof_samples, or raise path={'samples': N}",
+        )
     if requested in PATH_BACKENDS:
         ignored = [("msaa", msaa), ("supersample", supersample), ("samples", samples)]
         if requested == "path":
@@ -556,6 +581,97 @@ def render(
             requested,
             adapter,
         )
+    lens_views = 1
+    if rs.camera.camera.has_depth_of_field:
+        lens_views = DOF_SAMPLES if dof_samples is None else dof_samples
+    if lens_views > 1:
+        return _lens_views(
+            rs, lens_views, aspect, settings, tonemap, wanted, diagnostics,
+            lambda rs_k, wanted_k, diags: _finish_raster(
+                rs_k, settings, antialiasing, plan, adapter, limits, requested, diags,
+                frame, aspect, t_start, tonemap, wanted_k, msaa, supersample,
+            ),
+        )  # fmt: skip
+    return _finish_raster(
+        rs, settings, antialiasing, plan, adapter, limits, requested, diagnostics, frame,
+        aspect, t_start, tonemap, wanted, msaa, supersample,
+    )  # fmt: skip
+
+
+DOF_SAMPLES = 16
+"""Aperture views a rasterized render with depth of field averages by default."""
+MAX_DOF_SAMPLES = 1024
+
+
+def _lens_points(n: int) -> np.ndarray:
+    """``n`` well-spread uniform points of the unit square (Hammersley: (k + 1/2) / n and
+    the base-2 radical inverse of k), the same for every render."""
+    k = np.arange(n)
+    inv = np.zeros(n)
+    bit = 0.5
+    rest = k.copy()
+    while np.any(rest):
+        inv += bit * (rest & 1)
+        rest >>= 1
+        bit *= 0.5
+    return np.stack([(k + 0.5) / n, inv], 1)
+
+
+def _lens_views(rs, n, aspect, settings, tonemap, wanted, diagnostics, finish) -> RenderResult:
+    """A rasterized render with depth of field: the pinhole view (depth, objects and the
+    statistics) and ``n`` views from points of the aperture, averaged in linear light."""
+    from dataclasses import replace
+
+    from .camera import aperture_points
+    from .tonemap import display
+
+    base = finish(rs, wanted, list(diagnostics))
+    cam = rs.camera.camera
+    frame = rs.camera.frame
+    radius = cam.aperture_radius()
+    focus = rs.camera.focus_distance
+    hx, hy = cam.half_extents(aspect)
+    pts = _lens_points(n)
+    ax, ay = aperture_points(pts[:, 0], pts[:, 1], cam.aperture_blades,
+                             cam.aperture_rotation, cam.aperture_ratio)  # fmt: skip
+    total = None
+    for lx, ly in zip((ax * radius).tolist(), (ay * radius).tolist(), strict=True):
+        moved = CameraFrame(
+            frame.position + lx * frame.right + ly * frame.up, frame.forward, frame.up, frame.right
+        )
+        # The plane in focus stays put: shear the frustum by the lens offset over the focus.
+        sheared = cam.copy()
+        sheared._owner = None
+        sheared.configure(
+            shift_x=cam.shift_x - lx / (focus * hx) / (2.0 * max(1.0, 1.0 / aspect)),
+            shift_y=cam.shift_y - ly / (focus * hy) / (2.0 * max(1.0, aspect)),
+        )
+        view = replace(rs, camera=replace(rs.camera, camera=sheared, frame=moved))
+        out = finish(view, frozenset({"image", "linear"}), [])
+        lin = out.linear.astype(np.float64)
+        total = lin if total is None else total + lin
+    linear = (total / n).astype(np.float32)
+    base.linear = linear if base.linear is not None or "linear" in wanted else None
+    base.image = display(linear, tonemap)
+    base.stats = {**base.stats, "dof_samples": n}
+    base.diagnostics = [
+        *base.diagnostics,
+        Diagnostic(
+            "DEPTH_OF_FIELD",
+            INFO,
+            f"{n} views from points of the aperture (radius {radius * 1000:.3g} mm, focus "
+            f"{focus:.4g} m) were averaged; depth and objects are the pinhole view's",
+            "dof_samples",
+        ),
+    ]
+    return base
+
+
+def _finish_raster(
+    rs, settings, antialiasing, plan, adapter, limits, requested, diagnostics, frame,
+    aspect, t_start, tonemap, wanted, msaa, supersample,
+) -> RenderResult:  # fmt: skip
+    """The rasterizers' finish: the GPU (``gpu``, ``auto``) or the CPU renderer."""
     if requested in ("gpu", "auto"):
         try:
             return _finish_gpu(
