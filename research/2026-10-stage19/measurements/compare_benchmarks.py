@@ -19,7 +19,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 RESULTS = ROOT / "benchmarks" / "results"
 NAMES = ("animation", "engine", "gpu", "gpu-pathtrace", "pathtrace", "raytrace", "render")
-SKIP = ("machine", "hardware", "label", "aether3d", "adapter", "platform", "python", "numpy")
+SKIP = ("machine", "hardware", "label", "aether3d", "adapter", "platform", "python", "numpy",
+        # bench_gpu_pathtrace.py reads its CPU times from earlier stages' render records
+        # (examples/output/*.json): not measured by either run, so not compared
+        "cpu_seconds", "cpu_processes", "speedup")  # fmt: skip
 LABELS = ("scene", "name", "case", "mode", "label")
 
 
