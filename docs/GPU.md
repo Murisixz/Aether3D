@@ -485,6 +485,42 @@ Disagreement is allowed only within the documented boundary band (the filter
 width plus one pixel). On the castle at 240×135, 0 of 5,921 compared pixels
 disagree with the default settings, on both the RTX 4060 and llvmpipe.
 
+## Lights, environments and lenses on the GPU rasterizer (0.20.0)
+
+The GPU rasterizer draws everything 0.20.0 added to the CPU one, with the same formulas
+in `wgsl/scene.wgsl` (the CPU's are in `rendering/surface.py`; `tests/test_lights.py`
+compares them with each other and with Blender, `tests/test_gpu_data.py` checks the byte
+layouts and the shared constants):
+
+- **Spot lights**: the cone mask (a smoothstep of the cosine) on the point light's term.
+- **Area lights**: the exact polygon irradiance -- a rectangle's four corners, or a disk or
+  ellipse as `AREA_POLYGON` (16) corners scaled by `AREA_SCALE` to the shape's area --
+  clipped at the horizon, and the representative-point GGX highlight; with `spread`, the
+  12 × 12 midpoint rule over the reached part of the light (`SPREAD_QUADRATURE`). A light
+  is 28 floats (`LIGHT_FLOATS`): colour times intensity, position, direction, range,
+  falloff, the cone, the area's half-extent axes, shape and spread.
+- **Light linking**: each instance carries a 64-bit mask of the first 64 lights in two
+  spare words of its normal rows; a light whose links are not empty lights an instance only
+  when its bit is set. Linked lights after the 64th light every object
+  (`LIGHT_LINK_LIMIT`, warning). Lights with `shadow` off are left out of the shadow maps.
+- **Image environments**: the environment's sun is one more directional light and its
+  ambient harmonics are 36 more floats of the frame uniform (116 floats in all:
+  `FRAME_FLOATS`; a flag word says when they apply); the CPU then composites the image
+  behind the geometry exactly (`(1 − coverage)` times the image) and applies the view
+  transform. CPU and GPU agree within 3.4·10⁻⁴ under images.
+- **Glass**: transmission removes the diffuse part (`c_diff (1 − transmission)`), as on
+  the CPU; nothing is refracted.
+- **Depth of field**: `dof_samples` pinhole views from points of the aperture, averaged in
+  linear light (`DEPTH_OF_FIELD`).
+- **View transforms**: `none` is encoded on the GPU (exact 8-bit sRGB thresholds, above);
+  `neutral` and `film`, and any render with an image behind the geometry, are encoded on
+  the CPU from the linear read-back (`aether3d.rendering.tonemap.display`), so every
+  backend shows the same transform.
+
+The GPU path tracer's share of 0.20.0 (glass, spot and area lights, linking, image
+environments, Sobol', filters, adaptive sampling) is in
+[RENDER_QUALITY.md](RENDER_QUALITY.md#on-the-gpu-backendgpu_path).
+
 ## Texturing on the GPU (0.14.0)
 
 - **MikkTSpace tangents** ([TEXTURING.md](TEXTURING.md#tangent-space)) are uploaded per
@@ -813,8 +849,8 @@ Verified on the development machine:
 ## Limitations
 
 - **Shadows:**
-  - directional lights only (no point-light cube maps yet), at most 4 per
-    render;
+  - directional lights only (point, spot and area lights cast no shadow maps:
+    `POINT_LIGHT_SHADOWS_UNSUPPORTED`, info, names them), at most 4 per render;
   - one map per light, without cascades, so wide views of large scenes get
     coarse shadows;
   - filtering is PCF only.
@@ -855,8 +891,8 @@ Verified on the development machine:
     the test machine.
 - **Materials** have the limitations listed in
   [MATERIALS.md](MATERIALS.md#limitations): alpha masks but no blended
-  transparency, no reflections or global illumination, and no
-  post-processing (Stages 8 and 26).
+  transparency, no refraction (glass draws its reflection only), no reflections of the
+  scene or global illumination, and no post-processing (Stages 8 and 26).
 
 ## Toward later stages
 

@@ -8,8 +8,8 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.19.1 (advanced character rigging, revised against Blender).** Aether3D
-> provides:
+> **Status: v0.20.0 (animation, cameras, lighting, path tracing and film output).**
+> Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -35,9 +35,12 @@ graphical interface required.
 >   subdivision, bevel, solid booleans), typed parameters with safe
 >   expressions and rules, dependency tracking, caching, and undo;
 > - **cameras, lights and Aether3D's own CPU renderer**: perspective and
->   orthographic cameras, directional, point and ambient light, solid colors,
->   clipping, depth testing, antialiasing, and PNG output, all without
->   Blender, a GPU or a GUI;
+>   orthographic cameras with lenses (focal length, sensor, shift, f-stop, focus, aperture
+>   blades), directional, point, spot and area lights (squares, rectangles, disks,
+>   ellipses, spread) in Aether3D's units or Blender's watts, colour temperatures, light
+>   linking, image environments (HDR files and built-ins), studio light rigs solved on a
+>   subject, solid colors, clipping, depth testing, antialiasing, depth of field, and
+>   PNG output, all without Blender, a GPU or a GUI;
 > - a **GPU rendering backend** (optional): real, headless GPU rasterization
 >   through wgpu on Vulkan, Metal or Direct3D 12, with MSAA, directional
 >   shadow maps, adapter discovery and selection, and automatic CPU fallback;
@@ -48,10 +51,18 @@ graphical interface required.
 >   presets, several materials per mesh (face groups), and glTF material
 >   import and export;
 > - a **path tracer** (`backend="path"` on the CPU, `backend="gpu_path"` on
->   the GPU): global illumination, ray-traced shadows and reflections,
->   emissive area lights, sky environments, ambient occlusion, render passes
->   and linear HDR output, on a BVH ray tracing core, with reproducible
->   seeds;
+>   the GPU, which traces the same paths): global illumination, ray-traced shadows and
+>   reflections, glass (rough dielectrics, total internal reflection), emissive surfaces
+>   that light the scene, spot and area lights with MIS, importance-sampled HDR
+>   environments, Owen-scrambled Sobol' samples, pixel filters, adaptive sampling, an
+>   opt-in denoiser that says it is biased, ambient occlusion, render passes and motion
+>   vectors, on a BVH ray tracing core (software traversal; hardware ray tracing is not
+>   used or claimed), with reproducible seeds;
+> - **film output**: a filmic view transform with a path to white (fitted to
+>   measurements of Blender's AgX), 16-bit PNG and OpenEXR masters with passes,
+>   resumable 60 fps frame sequences with real motion blur and depth of field, and video
+>   assembled by FFmpeg from Aether3D's frames (H.264, preset slow, CRF 10; lossless
+>   FFV1 masters);
 > - an **operations history**: every change -- from Python, scripts or the
 >   command line -- can be undone and redone exactly, with transactions,
 >   checkpoints, memory limits, and histories saved with projects;
@@ -70,7 +81,10 @@ graphical interface required.
 >   depth, measured facts per object), check them against stated expectations and an
 >   agent's own visual evaluations, and correct what is wrong with verified, undoable
 >   steps -- by hand, in a budgeted loop, from Python, the CLI or MCP. Every finding says
->   whether it was measured or judged; the engine never claims to have seen anything;
+>   whether it was measured or judged; the engine never claims to have seen anything.
+>   Lighting is measured on the subject from the scene's lights (lighting ratio,
+>   separation from the background, lights without effect) and corrected with verified
+>   fill, key and rim changes;
 > - **precision modeling and CAD**: units and tolerances, parametric sketches solved
 >   under constraints and dimensions (exact DOF, redundancy and conflict analysis), solid
 >   parts built from features (extrudes, revolves, sweeps, lofts, holes, fillets,
@@ -85,11 +99,16 @@ graphical interface required.
 > - **animation, rigging and cinematics**: keyframes on exact F-curves (every
 >   interpolation and Penner easing, five handle types with weighted tangents, exact
 >   derivatives to jerk, cycle-aware loops, modifiers, continuity and overshoot reports,
->   keyframe reduction, baking, SVG/PNG graphs), quaternion tracks, clips with layers and
->   strips, skeletons with FK, IK (two-bone with poles, FABRIK, CCD) and constraints,
+>   keyframe reduction, baking, SVG/PNG graphs with labelled keys, handles, extrema and
+>   discontinuities; Blender-compatible automatic handles measured against Blender,
+>   generator, function and cycles modifiers, timing operations -- ease, hold,
+>   anticipation, overshoot, retime, offset cycles), world-space motion diagnostics
+>   (jumps, acceleration steps, jitter, snaps, pole flips, loop seams, framing, focus),
+>   quaternion tracks, clips with layers, masks, smooth transitions and strips, skeletons with FK, IK (two-bone with poles, FABRIK, CCD) and constraints,
 >   rigid attachments, linear and dual-quaternion skinning, morph targets, editable motion
 >   generators (idle, walk, run, jump, superhero landing, wave, head turns), foot
->   contacts and planting, mirroring, root motion, retargeting, camera moves and shot
+>   contacts and planting, mirroring, root motion, retargeting, camera moves (dolly,
+>   truck, crane, orbit, follow, zoom, focus pulls), shot framing by shot size and shot
 >   sequences, frame rendering with real motion blur, and glTF animation, skin and morph
 >   import/export -- all headless, from Python, JSON scripts, the CLI and MCP;
 > - **character rigging**: unrigged meshes rigged automatically (landmarks measured on
@@ -122,8 +141,8 @@ graphical interface required.
 > All of it is scriptable from Python and from declarative JSON on the CLI.
 > Physics is not part of this release. Procedural worlds (Stage 16) were built after
 > Stage 17 and ship as 0.18.0; there is no 0.16.0. Character rigging (Stage 18) ships as
-> 0.19.0 and its revision, measured against Blender, as 0.19.1. See the
-> [changelog](CHANGELOG.md).
+> 0.19.0 and its revision, measured against Blender, as 0.19.1; animation, lighting and
+> film output (Stage 19) as 0.20.0. See the [changelog](CHANGELOG.md).
 
 ## Quick start
 

@@ -645,6 +645,16 @@ prototype is kept for that) after shading is restructured -- a wavefront path tr
 sorting hits by material, where traversal could dominate -- or when wgpu-native's C API
 gains acceleration structures, which would remove the second device.
 
+**Re-examined in Stage 19 (0.20.0).** The installed wgpu-py 0.32.0 ships wgpu-native
+29.0.1.1. Its headers (`wgpu.h`) declare the native features `RayQuery` and
+`AccelerationStructureBindingArray` and a ray-query initialization check, but no function
+creates, builds or binds a bottom- or top-level acceleration structure, so a Python host
+still cannot use ray queries. The conditions above therefore still hold, and the decision
+stands: the GPU path tracer traverses its BVH in software on the shader cores, and no
+report or document claims hardware ray tracing. Stage 19's new features (glass, spot and
+area lights, image environments, Sobol', filters, adaptive sampling) went into that
+kernel.
+
 ## Visual feedback (0.12.0)
 
 Stage 12 added no kernel: observations reuse the renderers, the retained render world and

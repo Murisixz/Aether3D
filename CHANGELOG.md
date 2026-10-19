@@ -4,6 +4,91 @@ All notable changes to Aether3D are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may add
 features; breaking changes are called out explicitly).
 
+## 0.20.0: animation, cameras, lighting, path tracing and film output
+
+Stage 19 deepens keyframe animation and camera work and brings lighting, the path
+tracers and the output pipeline to film quality. Blender 5.2 (headless `bpy`) was the
+measured reference for curves, NLA blending, lights and units, lenses, environment mapping
+and AgX: its numbers became test fixtures (`tests/data/blender_*`); nothing in the package
+imports or runs it and no Blender or Cycles code was read for, copied into or translated
+into Aether3D. The design record:
+[research/2026-10-stage19/DESIGN.md](research/2026-10-stage19/DESIGN.md).
+
+- **Curves.** Blender-compatible automatic handles (`smoothing`: `"continuous"`, Blender
+  5.2's *Continuous Acceleration*, or `"blender"`, its *None*): on 49 measured cases every
+  handle and value agrees with Blender within 2e-6 of the case's scale (float32).
+  **Changed default:** new curves use `"continuous"` (C2 automatic handles), so a script
+  that builds curves through the API gets smoother, slightly different handles than
+  0.19.1; curves saved before 0.20.0 load as `"local"` (Aether3D's 0.17 rule) and
+  evaluate exactly as before, and `smoothing="local"` keeps that rule. New modifiers `generator`, `function` and `cycles`; new key
+  operations `insert` (keeping the curve's shape), `ease`, `anticipate`, `overshoot`,
+  `hold`, `smooth`, `smoothing` and `extrapolation`; back easing's in-out overshoot now
+  uses Blender's definition (stored keys are migrated).
+- **Graphs** with jerk, labelled keys, handles, extrema and discontinuities, and
+  reference samples drawn over them (`references`), as SVG or PNG.
+- **Blending.** Strip transitions `blend_curve` (`smooth`, `smoother`: C2). Measured
+  against Blender's NLA: Aether3D's quaternion blending (slerp: a linear ramp turns at an
+  even rate) gives Blender's COMBINE angles; Blender's REPLACE adds components (0.737
+  long midway), which Aether3D does not copy.
+- **World-space motion quality** (`anim.motion_report`, MCP `inspect_animation` `motion`,
+  feedback `motion_quality`): jumps, acceleration steps, jitter, snaps, pauses, pole flips,
+  loop seams, ground penetration, framing and focus for objects, joints and cameras --
+  sampled and labelled so -- with verified corrections.
+- **Cameras.** Lenses (focal length, sensor, shift, f-stop, focus distance or object,
+  aperture blades, rotation and ratio), depth of field on every backend (aperture samples
+  on the rasterizers, the thin lens in the path tracers), animatable `focus_distance`,
+  `fstop` and shifts (rack focus), look-at composition (`screen`), and
+  `frame_shot` by shot sizes measured on the subject.
+- **Lights.** Spot and area lights (square, rectangle, disk, ellipse, `spread`), Blender's
+  watts (`units="watts"`), colour temperature (black bodies within 1.1 % of Blender's
+  from 2,700 K), exposure, per-light shadows and light linking, on every backend: the
+  rasterizers integrate area lights exactly (within 2e-4 of Cycles) and the path tracers
+  converge to Cycles' images (sums within 0.4 %). Studio light rigs
+  (`scene.light_rig`: three-point, loop, Rembrandt, butterfly, split, high key, low key,
+  silhouette) are placed from the camera and solved on the subject.
+- **Image environments** (`type: "image"`: `.hdr`/`.pfm` files in the project's folder
+  or four built-ins) with Blender's mapping, importance-sampled with MIS in the path
+  tracers (convergence to the images' integrals within 0.6 %), and approximated on the
+  rasterizers by nine spherical harmonics and an extracted sun (labelled so).
+- **Glass**: `transmission` and `ior` (presets `glass`, `frosted_glass`, `water`): a
+  rough dielectric BSDF with the exact Fresnel term and total internal reflection (a
+  smooth ball in a white furnace keeps 0.999 of the light); glTF
+  `KHR_materials_transmission` and `KHR_materials_ior`.
+- **Sampling.** Owen-scrambled Sobol' (an area-lit plane at 16 samples: 6.4 % RMS error
+  with hashed numbers, 0.74 % with Sobol'), Gaussian and Blackman-Harris pixel filters by
+  importance sampling, adaptive sampling (on its test scene 5-45 % less error at equal
+  mean samples, but at equal time a gain in one setting of four: it pays where cheap
+  areas converge early), an opt-in denoiser (20-35 % less error than the raw image; biased, reported
+  `DENOISED`), and motion vectors (`render(motion=dt)`). The GPU path tracer does all of
+  it with the CPU's random numbers. Hardware ray tracing was re-examined and stays
+  deferred (wgpu-native 29.0.1.1 cannot build acceleration structures); nothing claims it.
+- **Film output.** A `film` view transform with a path to white (Aether3D's own curve,
+  fitted to Blender's AgX: RMS 0.008 on grey and seven colour ramps), 16-bit PNG and
+  OpenEXR masters with passes (`result.save(..., bits=16)`, `.exr`;
+  `render_frames(format="png16"|"exr", resume=True)`), resumable frame sequences, and
+  videos FFmpeg assembles from Aether3D's frames (H.264 preset slow CRF 10 with BT.709
+  tags, lossless FFV1 masters; PSNR and SSIM verified against the frames).
+- **Lighting feedback.** The `lighting` check measures, from the scene's lights, the
+  irradiance on the subject's visible surface: its lighting ratio, its separation from
+  the background (CIE L* across the outline), and lights that do not reach it (with the
+  reason). Corrections (`LIGHTING_RATIO_*`, `POOR_SEPARATION`) predict from those
+  measurements, scale the key or fill or add a fill or rim, and are kept only when a new
+  render confirms them.
+- **Interfaces.** Every feature through Python, scene and animation scripts, the CLI
+  (`light add|set` fields, `light rig`, `render --sampler --filter --adaptive --denoise
+  --bits 16 -o x.exr`, `--tonemap film`), MCP (`render_image` and `render_preview`
+  options, `inspect_animation` `motion`, the lighting check) and scene plans; the MCP tool
+  list stays under 40,000 bytes.
+- **Showcases A-I** (`examples/film_*.py`): a Minecraft-style rigid character, a skinned
+  character, curve graphs against Blender, a camera through a generated world, a studio
+  product shot, a night street lit by emission, the path tracer before and after
+  (against the real v0.19.1), a 1080p60 trailer, and an agent working over MCP.
+- **Project format 13** (lens, light, environment and material fields; curve
+  `smoothing`, new modifiers, strip `blend_curve`): the migration from 12 writes the
+  defaults, which render as before, and rescales back easing's in-out overshoot so stored
+  curves keep their shapes. Default renders are unchanged: the CPU path tracer gives
+  v0.19.1's bits and the render goldens did not change.
+
 ## 0.19.1: character rigging, revised against Blender
 
 Stage 18's rigging passed its tests but looked poor in practice. 0.19.1 revises it after

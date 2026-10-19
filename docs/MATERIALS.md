@@ -165,6 +165,8 @@ scene.materials.remove_material(stone, force=True)  # unassigns it, then removes
 | `normal_strength` | both | 1 | scales the tilt of the normal map (−10..10) |
 | `occlusion_strength` | both | 1 | how much the occlusion map darkens ambient light |
 | `double_sided` | both | `True` | `False`: back faces are not drawn (glTF's `doubleSided: false`) |
+| `transmission` | standard | 0 | 0..1 (0.20.0): the share of a dielectric's diffuse part that is transmitted -- glass in the path tracers (refracted, total internal reflection, tinted by the base colour); the rasterizers draw only the reflection (`c_diff (1 − transmission)`) |
+| `ior` | standard | 1.5 | 1..3 (0.20.0): the index of refraction of a transmissive material |
 
 Changing `model` keeps the parameters both models share (`base_color`,
 `opacity`, the alpha settings, `emissive`, the strengths, `double_sided`).
@@ -455,7 +457,8 @@ and `offset`. Inputs marked connectable in the schema (colors, `factor`, `a`,
 ## Presets
 
 Presets build a material and its procedural textures from a few options. They
-need no image files, and no UVs (object coordinates, triplanar):
+need no image files, and no UVs (object coordinates, triplanar). The three
+transmissive presets (0.20.0) have no textures:
 
 | Preset | Look | Options (besides `scale`, `seed`, `coordinates`, `projection`, `color`) |
 | --- | --- | --- |
@@ -465,6 +468,9 @@ need no image files, and no UVs (object coordinates, triplanar):
 | `metal` | brushed metal (metallic, varying roughness) | `roughness_low`, `roughness_high` |
 | `grass` | patchy greens and blade clumps | `color2` |
 | `fabric` | woven warp and weft threads | — |
+| `glass` | clear glass: `transmission` 1, `ior` 1.5, roughness 0 (0.20.0) | — (`color` tints it) |
+| `frosted_glass` | rough glass: roughness 0.35 (0.20.0) | — |
+| `water` | `transmission` 1, `ior` 1.33, roughness 0.02 (0.20.0) | — |
 
 ```python
 scene.create_material("Roof", preset="brick", color="#9c3a27", brick_width=0.42, roughness=0.8)
@@ -532,8 +538,11 @@ unchanged, with no materials.
 ## glTF
 
 Import and export map materials to glTF 2.0's `pbrMetallicRoughness`, with
-`KHR_texture_transform`, `KHR_materials_emissive_strength` and
-`KHR_materials_specular`. Each face group becomes one primitive. Procedural
+`KHR_texture_transform`, `KHR_materials_emissive_strength`,
+`KHR_materials_specular` and, since 0.20.0, `KHR_materials_transmission` and
+`KHR_materials_ior` (a transmission texture is not imported:
+`TRANSMISSION_TEXTURE_IGNORED`; an `ior` outside 1..3 is clamped with the lossy
+`IOR_CLAMPED`). Each face group becomes one primitive. Procedural
 textures are not glTF content. They are left out with a warning
 (`PROCEDURAL_TEXTURE_NOT_EXPORTED`) or, when explicitly requested, *baked*
 into PNG images over the unit UV square: `scene.export("a.glb",
@@ -638,6 +647,9 @@ thing. What changes is the light that reaches the surface:
   sampled point.
 - **Occlusion maps are ignored.** The path tracer computes occlusion from the
   geometry, and applying a baked map too would darken twice.
+- **Glass** (0.20.0). `transmission` and `ior` make a rough dielectric interface:
+  reflection and refraction with the exact Fresnel term and total internal reflection,
+  the refracted light tinted by the base colour ([RENDER_QUALITY.md](RENDER_QUALITY.md#glass-0200)).
 - **Alpha masks and single-sided materials** let rays through, shadow and
   AO rays included, so cut-outs cast cut-out shadows.
 - **Texture filtering.** Mip levels and procedural filtering come from ray
@@ -751,12 +763,13 @@ In practice:
 - **Emission does not light the scene on the rasterizers.** Emissive surfaces
   glow but do not illuminate other objects there (the path tracer does), and
   there is no bloom.
-- **Image-based lighting.** On the rasterizers ambient light is a uniform
-  environment: no reflections of the sky or of other objects. The path tracer
-  reflects the scene and its uniform or procedural sky. No renderer reads
-  environment images.
-- **No transmission.** No glass, refraction or subsurface scattering, on any
-  renderer.
+- **Image-based lighting.** On the rasterizers an image environment lights
+  through nine spherical harmonics and one extracted sun (0.20.0): no reflections of
+  the image or of other objects. The path tracers reflect the scene and the
+  environment, images included.
+- **Transmission** (0.20.0) is refracted by the path tracers only; the rasterizers
+  draw glass's reflection. No absorption in volumes, dispersion or subsurface
+  scattering.
 - **Normal-map tangents** are MikkTSpace for UV bindings that keep the UV
   basis (0.14.0); rotated, mirrored or non-uniformly scaled bindings use the
   per-triangle UV-gradient frame. glTF `TANGENT` attributes are not imported
@@ -769,6 +782,7 @@ In practice:
   imported). Images decoded from files are 8 bits per channel; painted
   textures keep 16 bits per channel (their level 0 is filtered at 8 bits by
   the renderers, as other images).
-- **File formats.** PNG and JPEG only. No KTX2/Basis, HDR or EXR textures.
+- **File formats.** PNG and JPEG textures only (no KTX2/Basis, HDR or EXR textures;
+  HDR images light scenes as environments, [RENDERING.md](RENDERING.md#image-environments-0200)).
 - **No displacement.** Bump and normal maps tilt normals; they do not move
   geometry.

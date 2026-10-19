@@ -46,6 +46,12 @@ apply to agents too.
   evaluated state, time, paths, F-curves, rotations, clips and NLA, rigs, skins, IK and
   constraints, generators, contacts, cameras, frames, glTF, scripts); the design record:
   [research/2026-10-stage17/DESIGN.md](research/2026-10-stage17/DESIGN.md).
+- Stage 19 (0.20.0: curve smoothing measured against Blender, motion quality, lenses and
+  shots, spot and area lights, linking, studio rigs, image environments, glass, Sobol',
+  filters, adaptive sampling, the denoiser, the film view transform, masters, video): the
+  design record [research/2026-10-stage19/DESIGN.md](research/2026-10-stage19/DESIGN.md);
+  the Blender experiments behind the fixtures:
+  [research/2026-10-stage19/blender/](research/2026-10-stage19/blender/README.md).
 - Character rigging: [docs/CHARACTER_RIGGING.md](docs/CHARACTER_RIGGING.md) (three
   workflows, the rig document, automatic rigging and landmarks, weights, deformation,
   structural editing, IK/FK and pose commands, diagnostics and verified correction,
@@ -158,6 +164,42 @@ apply to agents too.
     Hardware ray queries were prototyped outside the package
     (`research/2026-10-modernization/hw_pathtrace/`) and deferred; see
     docs/PERFORMANCE.md (Phase 5) before reopening that question.
+
+- Lights, environments, sampling and film output (Stage 19: `rendering/light.py`,
+  `blackbody.py`, `studio.py`, `envimage.py`, `denoise.py`, `tonemap.py`, `exr.py`,
+  `motion.py`, `pathtrace/sampling.py`, `surface.py`, `wgsl/scene.wgsl`,
+  `wgsl/pathtrace.wgsl`):
+  - **One lighting model, four implementations in step.** A light feature (spot cones,
+    area irradiance, spread, linking, shadows, temperature, units) is computed the same
+    way by the CPU rasterizer (`surface.py`), the GPU rasterizer (`scene.wgsl`) and both
+    path tracers; `tests/test_lights.py` checks every backend against Blender's Cycles
+    (`tests/data/blender_lights`) and the GPU parity tests compare the rasterizers. Keep
+    `LIGHT_FLOATS`, `FRAME_FLOATS` and the area constants in `gpu/resources.py` in step
+    with the WGSL (`tests/test_gpu_data.py`).
+  - **Defaults render as before.** Every new camera, light, environment and material
+    field defaults to the 0.19.1 behaviour (a pinhole, `aether` units, no temperature,
+    opaque materials, box filter, hashed numbers); the render goldens and v0.19.1's
+    path-traced bits must not change unless a change is intended and justified.
+  - **Blender is a measured reference only.** Fixtures in `tests/data/blender_*` come
+    from the headless scripts in `research/2026-10-stage19/blender/` and are regenerated
+    only with them; nothing in the package imports `bpy`, runs Blender, or contains code
+    read from or translated from Blender or Cycles.
+  - **Unbiased unless labelled.** Sobol', pixel filters and adaptive sampling stay
+    unbiased and independent of batching and workers (an adaptive pixel's samples are a
+    prefix of its full sequence); the denoiser is opt-in, keeps the raw image in
+    `passes["beauty"]` and is reported (`backend["denoiser"]["biased"]`, `DENOISED`).
+    The GPU path tracer draws the CPU's numbers (Sobol' bits included).
+  - **Approximations say so.** The rasterizers' image-environment lighting (nine
+    harmonics and one extracted sun) and glass (reflection only) are documented
+    approximations; never present them as the path tracers' results.
+  - **Untrusted environment images.** `envimage.py` checks sizes before allocating and
+    keeps files inside the project's directory (as textures); errors are `ENVIRONMENT_*`.
+  - **Film output is ours; FFmpeg only encodes.** View transforms go through
+    `tonemap.display` on every backend, masters through Aether3D's PNG and EXR writers;
+    videos are assembled from finished frames only (`assemble_video`: libx264, preset
+    slow, CRF 10, BT.709 tags, or lossless FFV1), and every frame is rendered by Aether3D.
+  - **No hardware ray tracing claims.** Both path tracers traverse their BVH in software;
+    wgpu-native 29.0.1.1 cannot build acceleration structures (docs/PERFORMANCE.md).
 
 - Sculpting (`sculpt/`):
   - **Every change goes through the journal.** Write sculpt mesh state only through the
@@ -327,8 +369,19 @@ apply to agents too.
     only when glTF expresses the same function; otherwise it is fitted within the stated
     tolerance and its error reported. Exports stay Khronos-validator clean (0 errors,
     0 warnings).
-  - **No fake cinematography.** No renderer simulates depth of field and nothing claims
-    it; motion blur is real temporal sampling; every frame is rendered by Aether3D.
+  - **No fake cinematography.** Depth of field is real (aperture samples on the
+    rasterizers, the thin lens in the path tracers), motion blur is real temporal
+    sampling; nothing fakes either with image filters; every frame is rendered by
+    Aether3D.
+  - **Curve smoothing modes are measured.** `smoothing: "continuous"` (the default for
+    new curves, as in Blender 5.2) and `"blender"` reproduce Blender's automatic handles
+    (`tests/data/blender_curves`, within 2e-6 of each case's scale); curves saved without
+    `smoothing` load as `"local"`, so saved animation keeps its shape. A change to handle
+    computation is checked against the fixture.
+  - **Motion quality is sampled and says so.** `motion_report` findings (jumps,
+    acceleration steps, jitter, snaps, pole flips, loop seams, framing, focus) come from
+    world-space samples at a stated rate; corrections are verified like any feedback
+    correction.
 
 - Character rigging (`animation/autorig.py`, `landmarks.py`, `anatomy.py`, `voxels.py`,
   `heat.py`, `weights.py`, `rig_edit.py`, `controls.py`, `limits.py`, `rig_report.py`,
@@ -426,6 +479,12 @@ apply to agents too.
   - Test a planner's correction by applying it and diagnosing again on a real render (the
     tests in `tests/test_feedback_corrections.py`); stub critics only to test the
     provider contract, and label them so.
+  - **The lighting check measures lights, not pixels.** `feedback/lighting.py` computes
+    each light's irradiance on the subject's visible points with the rasterizers' diffuse
+    term and ray-traced shadows (basis `geometry`, `exact: false`); only separation is
+    measured on the displayed image (basis `render`). Planners predict from these
+    measurements; added lights are `approval`, scaled ones `verify`
+    (`tests/test_feedback_lighting.py`).
 
 - Performance work:
   - **Measure first and after** with `benchmarks/bench_engine.py` (`--compare` against a
@@ -516,6 +575,20 @@ apply to agents too.
   `sites`, `route`), check `info()`'s cost estimates before large regions, and keep
   cameras above the ground with `ground_path(clearance=...)`. Renders include worlds
   (`render_preview` frames them by their ground).
+- **Light a subject, then measure the light.** Start from a rig (`scene.light_rig(subject,
+  "three_point")`, scene-script op `light_rig`, `aether3d light rig PROJECT --subject S`)
+  or add spot and area lights; check with a `lighting` expectation (`ratio`,
+  `min_separation`, `max_merged_fraction`, `lights`) and read `LIGHTING_RATIO_HIGH/LOW`,
+  `POOR_SEPARATION`, `UNLIT` and `LIGHT_NO_EFFECT` (its `reason`: zero intensity, hidden,
+  unlinked, blocked, points away). `verify` corrections are kept only if a new render
+  confirms them; added fill and rim lights wait for approval.
+- **Render for film.** `aether3d render PROJECT -o shot.exr --backend gpu_path --spp 256
+  --sampler sobol --filter blackman_harris --adaptive 0.02 --denoise --tonemap film --json`
+  (or `--bits 16` with a `.png`); read `backend.device`, `stats.samples_mean` and the
+  `DENOISED` diagnostic. Sequences: `render_frames(scene, dir, fps=60, format="png16",
+  resume=True, ...)` then `assemble_video(...)` (FFmpeg encodes Aether3D's frames only).
+  Measure camera and character motion with `anim.motion_report` or MCP
+  `inspect_animation` `what: "motion"` before rendering long clips.
 - Prefer ids (`obj.id`) over names for durable references.
 - Every change can be undone: `scene.history.undo()`, `with scene.transaction("label"):`
   for several changes as one step (all or nothing), `scene.history.checkpoint(name)` and
