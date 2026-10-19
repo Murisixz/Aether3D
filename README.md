@@ -1006,6 +1006,62 @@ print(result.backend["device"], result.stats["noise"], sorted(result.passes))
   on the GPU path tracer and 15.6 minutes on the CPU (see
   [docs/RENDER_QUALITY.md](docs/RENDER_QUALITY.md#performance)).
 
+### Film: lenses, lights, glass and deliveries (0.20.0)
+
+![A studio product shot, path traced on the GPU](examples/output/film/e_studio/hero_preview.png)
+
+*Glass, chrome, gold, wood and frosted glass under a solved three-point rig, a 70 mm f/4
+lens with depth of field: 1920x1080, 512 samples per pixel with adaptive sampling, Sobol'
+samples, a Blackman-Harris filter, the denoiser and the film view transform; 473 s on an
+RTX 4060 Laptop GPU ([`examples/film_e_studio.py`](examples/film_e_studio.py)).*
+
+```python
+scene.light_rig("Products", "three_point", rim=1.4, temperature=5600)  # solved on the subject
+cam.camera.configure(focal_length=70, fstop=4.0, focus_object=vase.id)
+scene.world.environment.configure(type="image", image="builtin:studio", visible=False)
+result = scene.render(
+    backend="gpu_path",
+    width=1920,
+    height=1080,
+    tonemap="film",
+    path={
+        "samples": 512,
+        "sampler": "sobol",
+        "filter": "blackman_harris",
+        "adaptive_threshold": 0.015,
+    },
+    denoise=True,
+)
+result.save("shot.exr")  # scene-linear OpenEXR with the passes
+result.save("shot.png", bits=16)  # a 16-bit master of the view transform
+```
+
+- **Lights as Blender measures them**: spot and area lights (squares, rectangles, disks,
+  ellipses, spread), watts, colour temperature, exposure, per-light shadows and light
+  linking on every backend -- the rasterizers integrate area lights exactly (within
+  2e-4 of Cycles), the path tracers converge to Cycles' images. Studio rigs (three-point,
+  loop, Rembrandt, butterfly, split, high and low key, silhouette) are solved on the
+  subject.
+- **Image environments** (HDR files or built-ins) importance-sampled by the path tracers
+  and approximated on the rasterizers by harmonics and an extracted sun; **glass** with
+  refraction and total internal reflection; **emission that lights the scene**
+  ([night street](examples/output/film/f_night/hero_preview.png): its windows and lamp
+  glass alone light the cobbles, [proof](examples/output/film/f_night/emissive_proof.png)).
+- **An animatable world**: keys on the sky, ambient light, environment and fog with the
+  sun's give an authored day-night cycle ([timelapse](examples/output/film/d_world/daynight_sheet.png)).
+- **Sampling and film output**: Owen-scrambled Sobol', pixel filters, adaptive sampling
+  and an opt-in denoiser that says it is biased; a film view transform fitted to
+  measurements of Blender's AgX; 16-bit PNG and OpenEXR masters; motion vectors; 60 fps
+  sequences that resume, and H.264/FFV1 deliveries FFmpeg assembles from Aether3D's frames.
+- **Measured motion and lighting**: `motion_report` finds jumps, jitter, snaps, pole flips
+  and framing drift in world space; the feedback `lighting` check measures a subject's
+  lighting ratio and separation from the scene's lights and corrects them with verified
+  changes. Curves can use Blender's automatic handles, measured against Blender.
+- Nine film showcases ([docs/ANIMATION.md](docs/ANIMATION.md#film-showcases-0200)):
+  a rigid character, a skinned character, graphs against Blender, a flight and a
+  day-night cycle over a generated valley, the studio, the night street, the path tracer
+  of v0.19.1 against 0.20.0, a 1080p60 trailer, and an agent working over MCP.
+
 ## Command-line interface
 
 ```console
