@@ -304,8 +304,13 @@ def render(
     time: float | None = None,
     dof_samples: int | None = None,
     denoise: bool | dict[str, Any] | None = None,
+    motion: float | None = None,
 ) -> RenderResult:
     """Render ``scene`` and return a :class:`RenderResult`.
+
+    * ``motion`` -- seconds (a frame's interval): adds ``passes["motion"]``, the pixel
+      motion to ``time - motion`` and ``time + motion`` of what each pixel shows
+      (:mod:`~aether3d.rendering.motion`; any backend, a scene camera).
 
     * ``denoise`` -- path tracers only: ``True`` (or settings, see
       :class:`~aether3d.rendering.denoise.DenoiseSettings`) filters the image with the
@@ -603,8 +608,13 @@ def render(
             )
         )
 
+    if motion is not None and (
+        isinstance(motion, bool) or not isinstance(motion, (int, float)) or not 0 < motion <= 3600
+    ):
+        raise RenderError("INVALID_SETTINGS", "motion is a time interval in seconds (> 0)",
+                          "motion")  # fmt: skip
     if requested in PATH_BACKENDS:
-        return _finish_path(
+        result = _finish_path(
             rs,
             settings,
             path_settings,
@@ -620,21 +630,32 @@ def render(
             adapter,
             denoiser,
         )
-    lens_views = 1
-    if rs.camera.camera.has_depth_of_field:
-        lens_views = DOF_SAMPLES if dof_samples is None else dof_samples
-    if lens_views > 1:
-        return _lens_views(
-            rs, lens_views, aspect, settings, tonemap, wanted, diagnostics,
-            lambda rs_k, wanted_k, diags: _finish_raster(
-                rs_k, settings, antialiasing, plan, adapter, limits, requested, diags,
-                frame, aspect, t_start, tonemap, wanted_k, msaa, supersample,
-            ),
+    else:
+        lens_views = 1
+        if rs.camera.camera.has_depth_of_field:
+            lens_views = DOF_SAMPLES if dof_samples is None else dof_samples
+        if lens_views > 1:
+            result = _lens_views(
+                rs, lens_views, aspect, settings, tonemap, wanted, diagnostics,
+                lambda rs_k, wanted_k, diags: _finish_raster(
+                    rs_k, settings, antialiasing, plan, adapter, limits, requested, diags,
+                    frame, aspect, t_start, tonemap, wanted_k, msaa, supersample,
+                ),
+            )  # fmt: skip
+        else:
+            result = _finish_raster(
+                rs, settings, antialiasing, plan, adapter, limits, requested, diagnostics, frame,
+                aspect, t_start, tonemap, wanted, msaa, supersample,
+            )  # fmt: skip
+    if motion is not None:
+        from .motion import motion_vectors
+
+        now = scene.animation.time if time is None else float(time)
+        result.passes["motion"] = motion_vectors(
+            scene, rs, settings.width, settings.height, now, float(motion),
+            None if frame else camera, settings.default_lights,
         )  # fmt: skip
-    return _finish_raster(
-        rs, settings, antialiasing, plan, adapter, limits, requested, diagnostics, frame,
-        aspect, t_start, tonemap, wanted, msaa, supersample,
-    )  # fmt: skip
+    return result
 
 
 DOF_SAMPLES = 16

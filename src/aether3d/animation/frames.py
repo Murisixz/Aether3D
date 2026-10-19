@@ -17,7 +17,9 @@ Film output (0.20.0): ``format`` is ``"png"`` (8-bit display frames, the default
 ``"png16"`` (16-bit display masters) or ``"exr"`` (scene-linear OpenEXR masters: half
 ``R``, ``G``, ``B`` after exposure, plus any of the path tracers' ``passes`` -- ``depth``
 as ``Z``, ``normal``, ``albedo``, ``direct``, ``indirect``, ``variance`` as
-``name.X/Y/Z`` or ``name.R/G/B``). ``resume=True`` keeps the frames already written (a
+``name.X/Y/Z`` or ``name.R/G/B``; and, from any backend, ``motion`` as ``motion.X/Y``
+(pixels to the previous frame) and ``motion.Z/W`` (to the next)). ``resume=True`` keeps
+the frames already written (a
 valid file at a frame's path) and renders the others, so an interrupted long render
 continues where it stopped. The report is also written next to the frames
 (``frames.json``, after every frame, atomically): settings, per-frame seconds, camera,
@@ -59,6 +61,7 @@ PASS_CHANNELS = {
     "direct": ("direct.R", "direct.G", "direct.B"),
     "indirect": ("indirect.R", "indirect.G", "indirect.B"),
     "variance": ("variance.R", "variance.G", "variance.B"),
+    "motion": ("motion.X", "motion.Y", "motion.Z", "motion.W"),  # to the previous, next frame
 }
 MANIFEST = "frames.json"
 
@@ -169,9 +172,10 @@ def render_frames(
             if name not in PASS_CHANNELS:
                 raise _err("INVALID_ARGUMENT", f"passes are {', '.join(PASS_CHANNELS)}",
                            "passes")  # fmt: skip
-        if render_options.get("backend") not in ("path", "gpu_path"):
-            raise _err("INVALID_ARGUMENT", "passes come from the path tracers (backend path "
-                       "or gpu_path)", "passes")  # fmt: skip
+        traced = [p for p in passes if p != "motion"]
+        if traced and render_options.get("backend") not in ("path", "gpu_path"):
+            raise _err("INVALID_ARGUMENT", "passes other than motion come from the path tracers "
+                       "(backend path or gpu_path)", "passes")  # fmt: skip
         wanted_passes = list(dict.fromkeys(passes))
     if not isinstance(resume, bool):
         raise _err("INVALID_ARGUMENT", "resume is true or false", "resume")
@@ -255,6 +259,8 @@ def render_frames(
         need_linear = format != "png"
         if blur is None:
             options = dict(render_options)
+            if "motion" in wanted_passes:
+                options["motion"] = rate.frame_duration
             if need_linear:
                 options["outputs"] = sorted({*(options.get("outputs") or ("image",)), "linear"})
             result = scene.render(time=t, **options)
