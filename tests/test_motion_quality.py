@@ -210,3 +210,29 @@ def test_feedback_measures_motion_and_keeps_only_corrections_that_help():
     assert len(steps_after) < sum(1 for c, n in found if c == "ACCELERATION_STEP")
     scene.history.undo()  # one step: both corrections
     assert anim.channel(cube, "transform.position.y").smoothing == "local"
+
+
+@pytest.mark.parametrize("blend_curve", ["linear", "smooth", "smoother"])
+def test_shaped_crossfades_keep_the_velocity_continuous(blend_curve):
+    scene, anim = stage(end=3.0)
+    cube = scene.add_cube("Cube", size=0.2)
+    for name, x in (("A", 0.0), ("B", 1.0)):
+        clip = anim.add_clip(name)
+        clip.set_channel("transform.position.x", [(0, x), (1, x)])
+    anim.add_layer(cube, "Base")
+    # A crossfade: A ramps out while B ramps in (weights 1 - s and s).
+    anim.add_strip(cube, "Base", "A", start=0.0, repeat=2.0, blend_out=1.0,
+                   blend_curve=blend_curve)  # fmt: skip
+    anim.add_strip(cube, "Base", "B", start=1.0, repeat=2.0, blend_in=1.0, after="hold",
+                   blend_curve=blend_curve)  # fmt: skip
+    r = anim.motion_report(["Cube"])
+    jumps = codes(r, "VELOCITY_JUMP")
+    steps = codes(r, "ACCELERATION_STEP")
+    if blend_curve == "linear":  # the crossfade's velocity jumps where the ramp starts/ends
+        assert {round(f["time"], 1) for f in jumps} == {1.0, 2.0}
+    else:
+        assert jumps == []
+    if blend_curve == "smoother":
+        assert steps == []  # C2: the acceleration is continuous too
+    x = [float(anim.evaluate(t).position[0][0]) for t in (1.0, 1.5, 2.0)]
+    assert x == pytest.approx([0.0, 0.5, 1.0])  # every shape crosses halfway at the middle

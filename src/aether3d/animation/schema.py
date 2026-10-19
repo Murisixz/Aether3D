@@ -198,6 +198,11 @@ _ARGUMENTS: dict[str, Any] = {
         "(Blender's handles without smoothing), local (Aether3D's own rule before 0.20.0)",
     },
     "keep_shape": {"type": "boolean", "description": "insert: a key that keeps the curve"},
+    "blend_curve": {
+        "enum": ["linear", "smooth", "smoother"],
+        "description": "strip: the shape of its blend ramps (smooth: C1, smoother: C2 "
+        "crossfades; linear: velocity jumps where a ramp starts and ends)",
+    },
     "ease_in": {"type": "number", "minimum": 0, "maximum": 1},
     "ease_out": {"type": "number", "minimum": 0, "maximum": 1},
     "amount": {"type": "number", "minimum": 0, "maximum": 10},

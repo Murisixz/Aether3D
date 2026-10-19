@@ -104,7 +104,7 @@ _CURVE_OPTIONS = ("interpolation", "handles", "extrapolation", "modifiers", "eas
 _STRIP_OPTIONS = (
     "name", "start", "clip_start", "clip_end", "speed", "repeat", "reverse", "blend_in",
     "blend_out", "before", "after", "weight", "weight_curve", "time_curve", "accumulate",
-    "mute",
+    "mute", "blend_curve",
 )  # fmt: skip
 _LAYER_CHANGES = ("name", "mode", "weight", "weight_curve", "mask", "mute", "index")
 _EDIT_ARGUMENTS = (
