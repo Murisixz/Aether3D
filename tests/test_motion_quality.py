@@ -236,3 +236,20 @@ def test_shaped_crossfades_keep_the_velocity_continuous(blend_curve):
         assert steps == []  # C2: the acceleration is continuous too
     x = [float(anim.evaluate(t).position[0][0]) for t in (1.0, 1.5, 2.0)]
     assert x == pytest.approx([0.0, 0.5, 1.0])  # every shape crosses halfway at the middle
+
+
+def test_focus_is_measured_on_the_subject():
+    scene, anim = stage(end=2.0)
+    scene.render_settings.configure(width=320, height=180)
+    hero = scene.add_cube("Hero", size=0.4, position=(0, 3, 0.5))
+    anim.set_channel(hero, "transform.position.y", [(0, 3.0), (2, 8.0)])  # walks away
+    cam = scene.add_camera("Cam", position=(0, -1, 0.5), look_at=(0, 3, 0.5), focal_length=85.0,
+                           fstop=1.8, focus_distance=4.0)  # fmt: skip
+    r = anim.motion_report(["Cam"], subject="Hero")
+    blur = r["targets"][0]["framing"]["focus"]
+    assert blur["blur_px"]["max"] == pytest.approx(2.79, abs=0.05)  # 85 mm f/1.8 at 9 m
+    assert codes(r, "FOCUS_ERROR")
+    cam.camera.focus_object = hero.id  # pull focus with it
+    r = anim.motion_report(["Cam"], subject="Hero")
+    assert r["targets"][0]["framing"]["focus"]["blur_px"]["max"] < 0.1
+    assert not codes(r, "FOCUS_ERROR")

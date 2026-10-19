@@ -5,7 +5,9 @@ frame rate by default) with any of Aether3D's own renderers, one frame at a time
 stays bounded), and writes each PNG atomically. ``motion_blur={"shutter": s,
 "samples": n}`` averages ``n`` renders spread over the fraction ``s`` of the frame
 interval centred on the frame time, in linear light, before the same display encoding
-the renderer uses: real temporal sampling, not a filter. The shutter stays inside the
+the renderer uses: real temporal sampling, not a filter (the frame's sample budget is
+shared across the shutter: the path tracers split their samples over the time samples,
+the rasterizers' depth of field its aperture views). The shutter stays inside the
 rendered range (``start``..``end``, or the timeline for a list of ``frames``): the first
 and last frames never sample beyond it (where shots or keys may not exist).
 ``should_stop`` cancels between frames (the frames written so far are listed);
@@ -168,7 +170,7 @@ def render_frames(
             result = None
             for j in range(samples):
                 sub = min(max(t + ((j + 0.5) / samples - 0.5) * dt, lo), hi)
-                options = dict(render_options)
+                options = _shutter_share(render_options, samples, j)
                 outputs = options.pop("outputs", None)
                 wanted = {"image", "linear"} if outputs is None else {*outputs, "linear"}
                 result = scene.render(time=sub, outputs=sorted(wanted), **options)
@@ -200,6 +202,28 @@ def render_frames(
         "stopped": stopped,
         "motion_blur": None if blur is None else {"shutter": blur[0], "samples": blur[1]},
     }
+
+
+def _shutter_share(options: dict[str, Any], samples: int, j: int) -> dict[str, Any]:
+    """Render options of time sample ``j`` of ``samples`` across the shutter: the frame's
+    budget is shared, not multiplied -- a path tracer traces its samples split over the
+    time samples (a seed of their own each, so their noise is independent), and the
+    rasterizers' depth of field averages its aperture views over them (at least 2 per
+    time sample)."""
+    from ..rendering.renderer import DOF_SAMPLES
+    from ..rendering.settings import PathSettings
+
+    out = dict(options)
+    backend = out.get("backend", "cpu")
+    if backend in ("path", "gpu_path"):
+        path = PathSettings.coerce(out.get("path")).to_dict()
+        path["samples"] = max(1, -(-path["samples"] // samples))
+        path["seed"] = (path["seed"] + j * 0x9E3779B1) % (2**63)
+        out["path"] = path
+    else:
+        views = out.get("dof_samples") or DOF_SAMPLES
+        out["dof_samples"] = max(2, -(-views // samples))
+    return out
 
 
 def contact_sheet(

@@ -61,6 +61,7 @@ DEFAULTS: dict[str, float | None] = {
     "ground_tolerance": 0.002,
     "frame_margin": 0.0,
     "drift": 0.25,
+    "focus_px": 1.5,
 }
 """Default thresholds (units: m, s, degrees, fractions of a target's own peak)."""
 MAX_SAMPLES = 20_000
@@ -387,7 +388,7 @@ def motion_report(
         rep = _measure(
             obj.name, worlds[x["object"]], ts, h, th, findings, camera=is_camera,
             subject=x.get("subject", subject) if is_camera else None, system=system,
-            loop=loop, fov=[obj.camera.fov] * count if is_camera else None,
+            loop=loop, fov=_lens_series(system, obj, ts) if is_camera else None,
         )  # fmt: skip
         reports.append(
             {"target": obj.name, "kind": "camera" if is_camera else "object", **rep["summary"]}
@@ -693,9 +694,24 @@ def _subject_points(system: Any, subject: Any, ts: np.ndarray) -> np.ndarray:
     return out
 
 
+def _lens_series(system: Any, obj: Any, ts: np.ndarray) -> list[Any]:
+    """The camera's lens at every time (animated fields applied): ``Camera`` copies."""
+    from ..rendering.scene_data import _with_fields
+
+    out = []
+    for t in ts.tolist():
+        overlay = system.overlay(t)
+        values = None if overlay is None else overlay.field_values(obj._id, "camera")
+        out.append(_with_fields(obj.camera, values) if values else obj.camera)
+    return out
+
+
 def _framing(label, mats, ts, subject, system, th, findings, fov, cuts) -> dict[str, Any]:
-    """Aim error, screen position and its drift, out-of-frame and obstruction."""
-    from ..rendering.camera import Camera  # noqa: F401 - conventions only
+    """Aim error, screen position and its drift, out-of-frame, obstruction and focus."""
+    lenses = None
+    if fov is not None and fov and not isinstance(fov[0], (int, float)):
+        lenses = fov
+        fov = [lens.fov for lens in lenses]
 
     target = _subject_points(system, subject, ts)
     eye = mats[:, :3, 3]
@@ -774,7 +790,11 @@ def _framing(label, mats, ts, subject, system, th, findings, fov, cuts) -> dict[
                 time=blocked[0],
                 magnitude=len(blocked) / len(picks),
             )
+    focus = None
+    if lenses is not None and any(lens.has_depth_of_field for lens in lenses):
+        focus = _focus(label, lenses, mats, ts, depth, system, th, findings)
     return {
+        "focus": focus,
         "aim_error_deg": {"mean": float(np.mean(aim)), "max": float(np.max(aim))},
         "screen": {
             "mean": [float(np.nanmean(sx)), float(np.nanmean(sy))],
@@ -785,6 +805,46 @@ def _framing(label, mats, ts, subject, system, th, findings, fov, cuts) -> dict[
         "out_of_frame": float(out_of_frame.mean()),
         "obstructed_samples": len(blocked),
     }
+
+
+def _focus(label, lenses, mats, ts, depth, system, th, findings) -> dict[str, Any]:
+    """The subject's blur (circle of confusion, pixels of the frame's height) at every
+    time from the thin-lens law: ``(f / N) |1/d - 1/focus|`` on the image plane."""
+    height = float(system.scene.render_settings.height)
+    aspect = _aspect(system)
+    coc = np.zeros(len(ts))
+    for i, lens in enumerate(lenses):
+        if not lens.has_depth_of_field or depth[i] <= 0:
+            continue
+        focus = lens.focus_distance
+        if lens.focus_object is not None:
+            posed = system._posed_worlds(float(ts[i]))
+            m = posed.get(lens.focus_object)
+            if m is not None:
+                d = float(
+                    np.dot(
+                        m[:3, 3] - mats[i][:3, 3], -mats[i][:3, 1] / np.linalg.norm(mats[i][:3, 1])
+                    )
+                )
+                if d > 0:
+                    focus = d
+        _hx, hy = lens.half_extents(aspect)
+        aperture = 2.0 * lens.aperture_radius()
+        coc[i] = aperture * abs(1.0 / depth[i] - 1.0 / focus) * height / (2.0 * hy)
+    soft = coc > th["focus_px"]
+    if soft.mean() > 0.1:
+        i = int(np.flatnonzero(soft)[0])
+        findings.add(
+            "FOCUS_ERROR",
+            "warning",
+            label,
+            f"the subject is out of focus {soft.mean() * 100:.3g} % of the time (blur up to "
+            f"{coc.max():.3g} px; first at {ts[i]:.4g} s)",
+            time=ts[i],
+            magnitude=float(coc.max()),
+        )
+    return {"blur_px": {"max": float(coc.max()), "mean": float(coc.mean())},
+            "soft_fraction": float(soft.mean())}  # fmt: skip
 
 
 def _aspect(system: Any) -> float:
