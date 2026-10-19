@@ -1289,6 +1289,163 @@ class Diagnoser:
                     ),
                 )
 
+    def _check_lighting(self, check: Check, result: CheckResult) -> None:
+        from .lighting import DEFAULT_SEPARATION, measure
+
+        objs = self._geometry_objects(check, result)
+        if not objs:
+            return
+        obs = self.observation(check.view)
+        min_sep = check.params.get("min_separation", DEFAULT_SEPARATION)
+        lighting = measure(obs, objs, min_separation=min_sep)
+        summary = lighting.summary()
+        sep = summary.pop("separation")
+        subjects = [_ref(o, "subject") for o in objs]
+        base = {"view": check.view, "observation": obs.id}
+        result.measured = {**summary, "separation": None}
+        if sep is not None:
+            result.measured["separation"] = {
+                **{k: v for k, v in sep.items() if k != "sectors"},
+                "merged": [r for r in sep["sectors"] if r["merged"]],
+            }
+        if not lighting.count:
+            self.add(
+                result,
+                self.finding(
+                    check,
+                    "NOT_VISIBLE",
+                    "the subject shows no surface in the view to measure its light on",
+                    subjects,
+                    basis="render",
+                    hint="frame the camera on it",
+                    **base,
+                ),
+            )
+            return
+        ratio, method = lighting.ratio()
+        if "ratio" in check.params:
+            lo, hi = check.params["ratio"]["min"], check.params["ratio"]["max"]
+            evidence = {"ratio": ratio, "method": method, "key": summary["key"],
+                        "target": check.params["ratio"]}  # fmt: skip
+            if ratio is None:
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "UNLIT",
+                        "no light reaches the subject's visible surface",
+                        subjects,
+                        basis="geometry",
+                        exact=False,
+                        evidence=evidence,
+                        hint="add lights (light_rig) or aim the lights at it",
+                        **base,
+                    ),
+                )
+            elif hi is not None and ratio > hi:
+                unlit = math.isinf(ratio)
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "LIGHTING_RATIO_HIGH",
+                        "the shadow side gets no light (the key alone lights the subject)"
+                        if unlit
+                        else f"lighting ratio {ratio:.3g}:1 is above {hi:g}:1 "
+                        f"({math.log2(ratio / hi):.2f} stops)",
+                        subjects,
+                        basis="geometry",
+                        exact=False,
+                        evidence=evidence,
+                        magnitude=None if unlit else math.log2(ratio / hi),
+                        unit=None if unlit else "stops",
+                        hint="raise the fill (or the ambient light), or lower the key",
+                        **base,
+                    ),
+                )
+            elif lo is not None and ratio < lo:
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "LIGHTING_RATIO_LOW",
+                        f"lighting ratio {ratio:.3g}:1 is below {lo:g}:1 "
+                        f"({math.log2(lo / ratio):.2f} stops): flat lighting",
+                        subjects,
+                        basis="geometry",
+                        exact=False,
+                        evidence=evidence,
+                        magnitude=math.log2(lo / ratio),
+                        unit="stops",
+                        hint="lower the fill (or the ambient light), or raise the key",
+                        **base,
+                    ),
+                )
+        if "max_merged_fraction" in check.params or "min_separation" in check.params:
+            limit = check.params.get("max_merged_fraction", 0.25)
+            if sep is None:
+                result.note = "the subject has no outline in the image to measure separation on"
+            elif sep["merged_fraction"] > limit:
+                merged = [r for r in sep["sectors"] if r["merged"]]
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "POOR_SEPARATION",
+                        f"{sep['merged_fraction']:.0%} of the outline is within {min_sep:g} "
+                        f"L* of its surroundings (at most {limit:.0%} expected)",
+                        subjects,
+                        basis="render",
+                        evidence={
+                            "separation": {k: v for k, v in sep.items() if k != "sectors"},
+                            "merged": merged,
+                        },  # fmt: skip
+                        magnitude=sep["merged_fraction"] - limit,
+                        unit="fraction",
+                        hint="add or raise a rim light, or light the background apart",
+                        **base,
+                    ),
+                )
+        if "lights" in check.params:
+            wanted, unknown = self.select(check.params["lights"], f"{check.pointer}/lights")
+            if unknown:
+                self.missing(check, result, [str(u) for u in unknown])
+            columns = {info["id"]: k for k, info in enumerate(lighting.lights) if info["id"]}
+            rows = {row["id"]: row for row in summary["lights"] if row.get("id")}
+            for light in wanted:
+                if light.light is None:
+                    continue
+                k = columns.get(light.id)
+                row = rows.get(light.id)
+                if k is not None and row is not None and row["reach"] > 0.0:
+                    continue
+                if light.light.intensity <= 0.0:
+                    why = "its intensity is 0"
+                elif k is None:
+                    why = "it is hidden"
+                elif row.get("unlinked"):
+                    why = "light linking excludes the subject"
+                elif row["blocked"] > 0.0:
+                    names = row.get("blockers") or []
+                    why = "it is blocked" + (f" by {', '.join(map(repr, names))}" if names else "")
+                else:
+                    why = "it points away or the subject is outside its cone or range"
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "LIGHT_NO_EFFECT",
+                        f"{light.name!r} does not light the subject: {why}",
+                        [*subjects, _ref(light, "light")],
+                        basis="geometry",
+                        exact=False,
+                        evidence={"light": row, "reason": why},
+                        hint="aim it at the subject, move it, or remove what blocks it",
+                        qualifier=light.id,
+                        **base,
+                    ),
+                )
+
     def _check_mesh_validity(self, check: Check, result: CheckResult) -> None:
         from ..sculpt.validate import object_report, tier_index
 

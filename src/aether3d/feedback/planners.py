@@ -79,6 +79,8 @@ REASONS = {
     "POSSIBLE_PENETRATION": "informational: state a no_overlap check if it is unintended",
     "POSSIBLE_CONTAINMENT": "informational: state a no_overlap check if it is unintended",
     "BLACK_AREAS": "black areas can be shadows or background: decide on lights or exposure",
+    "LIGHT_NO_EFFECT": "a light does not reach the subject: decide whether to aim it, move "
+    "it or remove what blocks it",
 }
 
 
@@ -1068,6 +1070,415 @@ def _make_cyclic(diagnosis, finding, fix, context):
     ], None
 
 
+# --------------------------------------------------------------------------- #
+# Lighting design (the lighting check)
+# --------------------------------------------------------------------------- #
+
+LIGHT_STEPS = 2.0 ** (np.arange(-12, 13) / 4.0)
+"""Intensity factors tried for a light: 1/8 to 8 in quarter stops (max_light_factor)."""
+
+
+def _lighting_of(diagnosis, finding):
+    """The check and the lighting measurement a lighting finding came from (cached on its
+    observation), or ``(None, None)``."""
+    from .lighting import DEFAULT_SEPARATION, measure
+
+    check = _check_of(diagnosis, finding)
+    obs = diagnosis.observed.get(finding.view)
+    if check is None or obs is None:
+        return None, None
+    scene = diagnosis.scene
+    objs = [
+        scene._objects[s["id"]]
+        for s in finding.subjects
+        if s.get("role") == "subject" and s.get("id") in scene._objects
+    ]
+    if not objs:
+        return None, None
+    sep = check.params.get("min_separation", DEFAULT_SEPARATION)
+    return check, measure(obs, objs, min_separation=sep)
+
+
+def _scene_lights(diagnosis, lighting):
+    """``(column, light object)`` of the measured lights that are scene objects."""
+    out = []
+    for k, info in enumerate(lighting.lights):
+        obj = diagnosis.scene._objects.get(info.get("id") or "")
+        if obj is not None and obj.light is not None and obj.light.intensity > 0.0:
+            out.append((k, obj))
+    return out
+
+
+def _side_ratio(total: np.ndarray, lit: np.ndarray, shadow: np.ndarray) -> float:
+    hi, lo = float(np.median(total[lit])), float(np.median(total[shadow]))
+    return math.inf if lo <= 1e-9 * hi else hi / lo
+
+
+def _subject_frame(diagnosis, finding, lighting):
+    """The subject's world-box centre and size (its parts included), the ids of its
+    parts, and unit vectors toward the camera (horizontal) and to the camera's left."""
+    from ..spatial.index import get_index
+    from .observe import parts_of
+
+    scene = diagnosis.scene
+    index = get_index(scene)
+    lo, hi, ids = np.full(3, np.inf), np.full(3, -np.inf), []
+    for s in finding.subjects:
+        obj = scene._objects.get(s.get("id") or "") if s.get("role") == "subject" else None
+        for part in [] if obj is None else parts_of(obj):
+            entry = index.by_id.get(part.id)
+            if entry is not None:
+                lo, hi = np.minimum(lo, entry.box[0]), np.maximum(hi, entry.box[1])
+                ids.append(part.id)
+    if not ids:  # (no geometry indexed: the measured surface)
+        lo, hi = lighting.points.min(axis=0), lighting.points.max(axis=0)
+    centre = 0.5 * (lo + hi)
+    size = max(float(np.max(hi - lo)), 1e-3)
+    toward = lighting.eye - centre
+    toward[2] = 0.0
+    if np.linalg.norm(toward) < 1e-9:
+        toward = np.array([0.0, -1.0, 0.0])
+    toward /= np.linalg.norm(toward)
+    left = np.cross(toward, np.array([0.0, 0.0, 1.0]))
+    return centre, size, ids, toward, left
+
+
+def _unique_light_name(scene, base: str) -> str:
+    name, k = base, 1
+    while name in scene._by_name:
+        k += 1
+        name = f"{base} {k}"
+    return name
+
+
+def _lighting_ratio(diagnosis, finding, fix, context):
+    check, lighting = _lighting_of(diagnosis, finding)
+    if lighting is None or not lighting.count:
+        return [], "the lighting measurement is not available"
+    lo, hi = check.params["ratio"]["min"], check.params["ratio"]["max"]
+    high = finding.code == "LIGHTING_RATIO_HIGH"
+    target = hi / 1.15 if high else lo * 1.15
+    if lo is not None and hi is not None and not lo <= target <= hi:
+        target = math.sqrt(lo * hi)
+    lit, shadow, _method = lighting.sides()
+    total = lighting.total
+    current = _side_ratio(total, lit, shadow)
+    key = lighting.key_index()
+
+    def score(r: float) -> float:
+        return abs(math.log(r / target)) if math.isfinite(r) and r > 0.0 else math.inf
+
+    def inside(r: float, margin: float = 1.0) -> bool:
+        return (lo is None or r >= lo * margin) and (hi is None or r <= hi / margin)
+
+    def rank(r: float, is_key: bool, f: float) -> tuple:
+        # A ratio safely inside the range first; then the fill rather than the key (the
+        # subject's exposure moves less), then the smallest change; else the closest.
+        if inside(r, 1.05):
+            return (0, is_key, abs(math.log(f)), 0.0)
+        return (1, False, score(r), abs(math.log(f)))
+
+    # Each light's (and the ambient's) direct contribution scales with its intensity: the
+    # ratio after a change is predicted from the measured contributions.
+    best = None
+    for k, obj in _scene_lights(diagnosis, lighting):
+        c = lighting.contribution[:, k]
+        if not (c > 0.0).any():
+            continue
+        for f in LIGHT_STEPS:
+            r = _side_ratio(total + (f - 1.0) * c, lit, shadow)
+            here = rank(r, k == key, float(f))
+            if best is None or here < best[0]:
+                best = (here, obj, float(f), r)
+    scene = diagnosis.scene
+    ambient_ok = scene.world.environment.type != "image" and scene.world.ambient_intensity > 0
+    ambient = None
+    if ambient_ok and (lighting.ambient > 0.0).any():
+        for f in LIGHT_STEPS:
+            r = _side_ratio(total + (f - 1.0) * lighting.ambient, lit, shadow)
+            here = rank(r, False, float(f))
+            if ambient is None or here < ambient[0]:
+                ambient = (here, None, float(f), r)
+    key_name = None if key is None else lighting.lights[key]["name"]
+    drafts = []
+    for choice in (best, ambient):
+        if choice is None or not inside(choice[3]):
+            continue
+        _rank, obj, f, r = choice
+        if obj is not None:
+            new = obj.light.intensity * f
+            title = f"Set {obj.name!r}'s intensity to {new:.4g} (x{f:.3g})"
+            actions = [{"action": "set_light", "light": obj.id, "intensity": round(new, 6)}]
+        else:
+            new = scene.world.ambient_intensity * f
+            title = f"Set the ambient intensity to {new:.4g} (x{f:.3g})"
+            actions = [{"action": "set_ambient", "intensity": round(new, 6)}]
+        drafts.append(
+            Draft(
+                title,
+                [finding],
+                actions,
+                "verify",
+                f"the measured direct light predicts a lighting ratio of {r:.3g}:1 after "
+                f"this change ({current:.3g}:1 now, target {target:.3g}:1; the key, the light "
+                f"giving the subject the most, is {key_name!r}); verification re-renders and "
+                "re-measures",
+                expected=_expected(finding),
+                validation=[f"re-check {finding.check!r}", "no new failure"],
+                group="lighting_ratio",
+            )
+        )
+        break  # (the light first; the ambient, which changes every object, only without)
+    if drafts:
+        return drafts, None
+    if not high:
+        return [], (
+            "no light or ambient change reaches the ratio: the key lights the subject from "
+            "the camera's side (move it, e.g. scene.light_rig with another preset)"
+        )
+    return _add_fill(diagnosis, finding, lighting, lit, shadow, target, key)
+
+
+def _add_fill(diagnosis, finding, lighting, lit, shadow, target, key):
+    """A soft fill on the side opposite the key, its intensity solved for the target ratio
+    (unshadowed: needs approval and verification)."""
+    from ..rendering.scene_data import RenderLight
+    from .lighting import _luma, unshadowed
+
+    scene = diagnosis.scene
+    centre, size, _ids, toward, left = _subject_frame(diagnosis, finding, lighting)
+    side = -1.0
+    if key is not None:
+        obj = scene._objects.get(lighting.lights[key].get("id") or "")
+        if obj is not None and obj.light is not None:
+            if obj.light.type == "directional":
+                towards_key = -np.asarray(obj.world_matrix[:3, :3] @ [0.0, -1.0, 0.0])
+            else:
+                towards_key = np.asarray(obj.world_matrix[:3, 3]) - centre
+            side = -1.0 if float(towards_key @ left) >= 0.0 else 1.0
+    d = 1.25 * size
+    a, e = math.radians(50.0 * side), math.radians(15.0)
+    direction = math.cos(e) * (math.cos(a) * toward + math.sin(a) * left)
+    pos = centre + d * (direction + np.array([0.0, 0.0, math.sin(e)]))
+    w = 0.75 * d
+    normal = (centre - pos) / np.linalg.norm(centre - pos)
+    ax = np.cross(normal, np.array([0.0, 0.0, 1.0]))
+    ax = ax / max(np.linalg.norm(ax), 1e-12)
+    ay = np.cross(ax, normal)
+    probe = RenderLight(None, "", "area", np.ones(3), pos, normal, None, "inverse_square",
+                        axis_x=ax * w / 2, axis_y=ay * w / 2, shape="square",
+                        area=w * w)  # fmt: skip
+    u = _luma(unshadowed(probe, lighting.points, lighting.normals))
+    if not (u[shadow] > 0.0).any():
+        return [], "no fill position reaches the shadow side"
+    guess = max(float(np.median(lighting.total[lit])) / target, 1e-6) / max(
+        float(np.median(u[shadow])), 1e-12
+    )
+    best = None
+    for f in 2.0 ** (np.arange(-16, 17) / 4.0):
+        r = _side_ratio(lighting.total + guess * f * u, lit, shadow)
+        rank = abs(math.log(r / target)) if math.isfinite(r) else math.inf
+        if best is None or rank < best[0]:
+            best = (rank, guess * f, r)
+    name = _unique_light_name(scene, "Feedback fill light")
+    return [
+        Draft(
+            "Add a soft fill light opposite the key",
+            [finding],
+            [
+                {
+                    "action": "add_light",
+                    "type": "area",
+                    "name": name,
+                    "position": [round(float(v), 6) for v in pos],
+                    "look_at": [round(float(v), 6) for v in centre],
+                    "size": round(float(w), 6),
+                    "intensity": round(float(best[1]), 6),
+                }
+            ],
+            "approval",
+            f"no existing light fills the shadow side; a square area light ({w:.3g} m) "
+            f"on the side opposite the key, intensity solved for {target:.3g}:1 "
+            f"(predicted {best[2]:.3g}:1 without its shadows; a choice: needs approval)",
+            expected=_expected(finding, None),
+            validation=[f"re-check {finding.check!r}", "no new failure"],
+        )
+    ], None
+
+
+def _sector_means(lighting, xy, values) -> np.ndarray:
+    """Per outline sector: the mean of ``values`` over the points there (``(S, ...)``)."""
+    from .lighting import SECTORS, sector_of
+
+    sec = sector_of(xy, lighting.separation["centroid"])
+    count = np.maximum(np.bincount(sec, minlength=SECTORS), 1)
+    values = np.asarray(values, np.float64)
+    if values.ndim == 1:
+        return np.bincount(sec, weights=values, minlength=SECTORS) / count
+    return np.stack(
+        [np.bincount(sec, weights=values[:, k], minlength=SECTORS) / count
+         for k in range(values.shape[1])],
+        axis=1,
+    ) if values.shape[1] else np.zeros((SECTORS, 0))  # fmt: skip
+
+
+def _predicted_merged(rows, add_in, add_out, min_sep: float) -> float:
+    """The merged fraction after each sector's inside and outside display luminance grow
+    by ``add_in`` and ``add_out`` (``(S,)``; light adds to what the image shows)."""
+    from .lighting import SECTORS, lstar_to_y, y_to_lstar
+
+    merged = valid = 0
+    for row in rows:
+        s = min(int(row["angle"] // (360.0 / SECTORS)), SECTORS - 1)
+        y_in = float(lstar_to_y(row["inside"])) + add_in[s]
+        y_out = float(lstar_to_y(row["outside"])) + add_out[s]
+        valid += row["pixels"]
+        if abs(float(y_to_lstar(y_in)) - float(y_to_lstar(y_out))) < min_sep:
+            merged += row["pixels"]
+    return merged / valid if valid else 0.0
+
+
+def _separation(diagnosis, finding, fix, context):
+    check, lighting = _lighting_of(diagnosis, finding)
+    sep = None if lighting is None else lighting.separation
+    if sep is None or not lighting.count:
+        return [], "the subject's outline was not measured"
+    limit = check.params.get("max_merged_fraction", 0.25)
+    min_sep = sep["min_separation"]
+    rows = sep["sectors"]
+    current = sep["merged_fraction"]
+    # A diffuse surface shows albedo x irradiance x 2^exposure: what a light change adds to
+    # each sector's inside and outside is predicted from the measured contributions.
+    gain = 2.0**diagnosis.scene.render_settings.exposure
+    ring = lighting.on_outline
+    lit_in = (
+        _sector_means(
+            lighting, lighting.xy[ring], lighting.albedo[ring, None] * lighting.contribution[ring]
+        )
+        * gain
+    )
+    sur = lighting.surround
+    if sur is not None and sur["xy"].shape[0]:
+        lit_out = (
+            _sector_means(lighting, sur["xy"], sur["albedo"][:, None] * sur["contribution"]) * gain
+        )
+    else:
+        lit_out = np.zeros_like(lit_in)  # fmt: skip
+    best = None
+    for k, obj in _scene_lights(diagnosis, lighting):
+        for f in LIGHT_STEPS:
+            m = _predicted_merged(rows, (f - 1.0) * lit_in[:, k], (f - 1.0) * lit_out[:, k],
+                                  min_sep)  # fmt: skip
+            rank = (m, abs(math.log(f)))
+            if best is None or rank < best[0]:
+                best = (rank, obj, float(f), m)
+    if best is not None and best[3] <= limit and best[3] < current - 0.02:
+        _rank, obj, f, m = best
+        new = obj.light.intensity * f
+        return [
+            Draft(
+                f"Set {obj.name!r}'s intensity to {new:.4g} (x{f:.3g})",
+                [finding],
+                [{"action": "set_light", "light": obj.id, "intensity": round(new, 6)}],
+                "verify",
+                f"the light's measured contribution to the outline and to what surrounds it "
+                f"predicts {m:.0%} of the outline merged after this change ({current:.0%} "
+                "now); verification re-renders and re-measures",
+                expected=_expected(finding),
+                validation=[f"re-check {finding.check!r}", "no new failure"],
+                group="separation",
+            )
+        ], None
+    return _add_rim(diagnosis, finding, lighting, rows, gain, min_sep, current)
+
+
+RIM_PLACES = [(a, e) for a in (150.0, -150.0, 120.0, -120.0, 180.0) for e in (10.0, 35.0, 60.0)]
+"""Where a rim light is tried: (azimuth from the camera's side, positive to its left;
+elevation), in degrees."""
+
+
+def _add_rim(diagnosis, finding, lighting, rows, gain, min_sep, current):
+    """A spot light behind the subject aimed at it (a rim): the place and intensity with
+    the least predicted merging (unshadowed: needs approval and verification)."""
+    from ..rendering.scene_data import RenderLight
+    from .lighting import _luma, unshadowed
+
+    scene = diagnosis.scene
+    centre, size, ids, toward, left = _subject_frame(diagnosis, finding, lighting)
+    ring = lighting.on_outline
+    sur = lighting.surround
+    has_sur = sur is not None and sur["xy"].shape[0] > 0
+    key = lighting.key_index()
+    level = float(lighting.contribution[:, key].mean()) if key is not None else 1.0
+    best = None
+    for az, el in RIM_PLACES:
+        a, e = math.radians(az), math.radians(el)
+        direction = math.cos(e) * (math.cos(a) * toward + math.sin(a) * left)
+        direction = direction + np.array([0.0, 0.0, math.sin(e)])
+        d = 1.5 * size
+        hit = scene.raycast(centre.tolist(), direction.tolist(), max_distance=d,
+                            exclude=ids or None)  # fmt: skip
+        if hit is not None:  # keep the light in front of what stands behind the subject
+            d = 0.8 * hit.distance
+        if d < 0.6 * size:
+            continue
+        pos = centre + d * direction
+        half = min(60.0, max(10.0, math.degrees(math.atan(0.75 * size / d))))
+        cos_outer = math.cos(math.radians(half))
+        aim = (centre - pos) / np.linalg.norm(centre - pos)
+        probe = RenderLight(None, "", "spot", np.ones(3), pos, aim, None, "inverse_square",
+                            cos_outer=cos_outer, spot_smooth=(1.0 - cos_outer) * 0.15)  # fmt: skip
+        u_in = _luma(unshadowed(probe, lighting.points[ring], lighting.normals[ring]))
+        if not (u_in > 0.0).any():
+            continue
+        p_in = _sector_means(lighting, lighting.xy[ring], lighting.albedo[ring] * u_in) * gain
+        p_out = np.zeros_like(p_in)
+        if has_sur:
+            u_out = _luma(unshadowed(probe, sur["points"], sur["normals"]))
+            p_out = _sector_means(lighting, sur["xy"], sur["albedo"] * u_out) * gain
+        guess = max(level, 1e-6) / max(float(u_in[u_in > 0.0].mean()), 1e-12)
+        for f in 2.0 ** (np.arange(-12, 13) / 4.0):
+            intensity = guess * f
+            m = _predicted_merged(rows, intensity * p_in, intensity * p_out, min_sep)
+            rank = (m, abs(math.log(f)))
+            if best is None or rank < best[0]:
+                best = (rank, intensity, m, pos, d, az, el)
+    if best is None or best[2] >= current - 0.02:
+        return [], (
+            "no light change predicts a better separation: change the background's tone "
+            "or the subject's material, or light what surrounds it (a decision)"
+        )
+    _rank, intensity, m, pos, d, az, el = best
+    name = _unique_light_name(scene, "Feedback rim light")
+    side = "left" if az > 0 else "right" if az < 0 else "back"
+    return [
+        Draft(
+            "Add a rim light behind the subject",
+            [finding],
+            [
+                {
+                    "action": "add_light",
+                    "type": "spot",
+                    "name": name,
+                    "position": [round(float(v), 6) for v in pos],
+                    "look_at": [round(float(v), 6) for v in centre],
+                    "intensity": round(float(intensity), 6),
+                }
+            ],
+            "approval",
+            f"a spot light behind the subject on the camera's {side} ({el:.0f} degrees up, "
+            f"{d:.3g} m away) predicts {m:.0%} of the outline merged ({current:.0%} now), "
+            "without its shadows; a choice: needs approval",
+            expected=_expected(finding, None),
+            validation=[f"re-check {finding.check!r}", "no new failure"],
+        )
+    ], None
+
+
+def _unlit(diagnosis, finding, fix, context):
+    return _add_light(diagnosis, finding)
+
+
 PLANNERS = {
     "ACCELERATION_STEP": _curve_smoothing,
     "VELOCITY_JUMP": _curve_smoothing,
@@ -1102,4 +1513,8 @@ PLANNERS = {
     "CLIPPED_HIGHLIGHTS": _exposure,
     "BLACK_IMAGE": _black,
     "OCCLUDED": _occluded,
+    "LIGHTING_RATIO_HIGH": _lighting_ratio,
+    "LIGHTING_RATIO_LOW": _lighting_ratio,
+    "POOR_SEPARATION": _separation,
+    "UNLIT": _unlit,
 }

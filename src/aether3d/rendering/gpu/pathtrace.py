@@ -817,16 +817,20 @@ def _frame(
         "mean_standard_error": float(err[lit].mean()) if measured else None,
         "mean_relative_error": float((err[lit] / lum[lit]).mean()) if measured else None,
     }
+    per_pixel = counts
     counts = {
         **{k: v for k, v in ray_counts.items() if k != "pass_through_rays"},
         "triangles": ps.triangle_count,
         "instances": len(ps.rs.instances),
         "lights": lights.count,
         "emissive_triangles": 0 if lights.emitters is None else lights.emitters.count,
-        "paths": int(n_pix * spp if counts is None else counts.sum()),
+        "paths": int(n_pix * spp if per_pixel is None else per_pixel.sum()),
         "samples_per_pixel": int(spp),
-        "pass_through_rays": ray_counts["pass_through_rays"],
     }
+    if per_pixel is not None:  # adaptive sampling (as the CPU path tracer reports it)
+        counts["samples_mean"] = float(per_pixel.mean())
+        counts["pixels_converged_early"] = int(np.count_nonzero(per_pixel < spp))
+    counts["pass_through_rays"] = ray_counts["pass_through_rays"]
     linear = passes["beauty"]
     passes = {k: v for k, v in passes.items()}
     return PathFrame(

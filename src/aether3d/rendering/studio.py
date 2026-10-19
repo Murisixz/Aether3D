@@ -25,7 +25,8 @@ polygon formula) is computed, and the intensities scaled so that the key and the
 together give ``level`` (1: a white surface facing them appears white at exposure 0) in
 the preset's ratio; rims give ``rim`` times the key. The report gives what was solved and
 measured. Everything written is ordinary, editable data (light objects tagged
-``light_rig``), in one undo step; calling it again updates the same lights.
+``light_rig``), in one undo step; calling it again updates the same lights, and removes
+the rig's lights (tagged, with the same ``prefix``) that the new preset does not use.
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ PRESETS: dict[str, dict[str, Any]] = {
 }
 TAG = "light_rig"
 SIZES = {"key": (0.5, 0.5), "fill": (0.75, 0.75), "rim": (0.15, 0.6)}  # x distance
+NAMES = ("Key", "Fill", "Rim", "Rim 1", "Rim 2")  # every light name a preset uses
 
 
 def _err(message: str, location: str) -> RenderError:
@@ -153,8 +155,19 @@ def light_rig(
     if spec["fill"] is not None and r is not None:
         targets["fill"] = level / r
     key_target = targets.get("key", level)
-    created = []
+    created, removed = [], []
+    used = {f"{prefix}{name}" for _role, name, _angles in roles}
     with scene.transaction(f"Light rig {preset!r} on {subj.name!r}"):
+        for name in NAMES:  # the previous preset's lights this one does not use
+            stale = scene._by_name.get(f"{prefix}{name}")
+            if (
+                f"{prefix}{name}" not in used
+                and stale is not None
+                and stale.light is not None
+                and TAG in stale.tags
+            ):
+                removed.append(stale.name)
+                scene.remove(stale)
         for (role, name, (az, el)), e1 in zip(roles, unit, strict=True):
             want = targets.get(role, rim * key_target)  # irradiance (base colours) at the centre
             intensity = want * math.pi / max(e1, 1e-300)  # E = pi x (radiance factor)
@@ -194,6 +207,7 @@ def light_rig(
         "centre": [float(v) for v in centre],
         "distance": float(d),
         "lights": created,
+        "removed": removed,
         "level": level,
     }
     if "key" in targets and "fill" in targets:

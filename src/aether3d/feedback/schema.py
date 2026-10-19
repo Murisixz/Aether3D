@@ -128,6 +128,16 @@ def _check_schema(kind: str) -> dict[str, Any]:
     }
     types = {
         "objects": _SELECTOR,
+        "lights": {**_SELECTOR, "description": "lights that must reach the subject"},
+        "ratio": {**_RANGE, "description": "lighting ratio: key's lit side over its shadow side"},
+        "min_separation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 10,
+            "description": "L* difference of the outline from its surroundings",
+        },
+        "max_merged_fraction": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.25},
         "against": _SELECTOR,
         "support": _SELECTOR,
         "a": {"type": "string", "minLength": 1},
@@ -330,6 +340,7 @@ def action_schema() -> dict[str, Any]:
         "near": {"type": "number", "exclusiveMinimum": 0},
         "far": {"type": "number", "exclusiveMinimum": 0},
         "intensity": {"type": "number", "minimum": 0, "maximum": 1e6},
+        "size": {"type": "number", "exclusiveMinimum": 0, "maximum": 1e6},
         "type": {"enum": list(LIGHT_TYPES)},
         "exposure": {"type": "number", "minimum": -20, "maximum": 20},
         "value": {"type": ["number", "string", "boolean"]},

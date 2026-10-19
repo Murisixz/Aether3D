@@ -682,6 +682,14 @@ def _subject_points(system: Any, subject: Any, ts: np.ndarray) -> np.ndarray:
             raise _err("INVALID_ARGUMENT", "a subject point must be finite", "subject")
         return np.repeat(p[None, :], ts.shape[0], 0)
     obj = system._object(subject, "subject")
+    if obj.children:  # a group: the centre of its and its descendants' posed bounds
+        from .shots import subject_bounds
+
+        out = np.empty((ts.shape[0], 3))
+        for i, t in enumerate(ts.tolist()):
+            lo, hi = subject_bounds(system, obj, t)
+            out[i] = 0.5 * (lo + hi)
+        return out
     centre = np.zeros(4)
     centre[3] = 1.0
     mesh = obj.mesh
@@ -767,7 +775,12 @@ def _framing(label, mats, ts, subject, system, th, findings, fov, cuts) -> dict[
         picks = np.linspace(0, len(ts) - 1, min(MAX_SIGHT_SAMPLES, len(ts))).round().astype(int)
         exclude = []
         if not (isinstance(subject, (list, tuple)) and len(subject) == 3):
-            exclude = [system._object(subject, "subject")._id]
+            root = system._object(subject, "subject")
+            stack, exclude = [root], []
+            while stack:  # the subject and its descendants never hide it
+                o = stack.pop()
+                exclude.append(o._id)
+                stack.extend(o.children)
         anim = system
         before = anim.time
         try:

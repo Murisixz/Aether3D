@@ -232,6 +232,7 @@ class Observation:
     _geometry: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
     _png: dict[str, bytes] = field(default_factory=dict, repr=False)
     _by_id: dict[str, int] = field(default_factory=dict, repr=False)
+    _lighting: dict[str, Any] = field(default_factory=dict, repr=False)  # (lighting.measure)
 
     def __post_init__(self) -> None:
         self._by_id = {row["id"]: row["index"] for row in self.instances}

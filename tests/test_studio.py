@@ -79,6 +79,22 @@ def test_rigs_update_in_place_and_undo_as_one_step():
     )
 
 
+def test_switching_presets_removes_only_the_rigs_unused_lights():
+    scene = subject_scene()
+    scene.light_rig("Hero", "three_point")
+    report = scene.light_rig("Hero", "silhouette")
+    assert report["removed"] == ["Key", "Fill", "Rim"]
+    lights = sorted(o.name for o in scene if o.light is not None)
+    assert lights == ["Rim 1", "Rim 2"]
+    scene.history.undo()  # one step: the three-point rig is back
+    assert sorted(o.name for o in scene if o.light is not None) == ["Fill", "Key", "Rim"]
+    # A light the rig did not make (untagged) is never removed, even with a rig's name.
+    scene = subject_scene()
+    scene.add_point_light("Fill", position=(2, -2, 2))
+    report = scene.light_rig("Hero", "split")
+    assert report["removed"] == [] and scene.get_by_name("Fill").light.type == "point"
+
+
 @pytest.mark.parametrize("preset", sorted(PRESETS))
 def test_every_preset_lights_a_head_from_its_side(preset):
     scene = Scene()

@@ -148,6 +148,7 @@ An expectations document states what the scene must satisfy, as checks:
 | `upright` | each object's local `axis` (default +Z) is within `max_tilt` degrees (default 2) of world +Z |
 | `material` | each object uses the material (by name or id) |
 | `camera_clipping` | the view's near and far planes cut none of the objects (default: every visible object) |
+| `lighting` | how the view's subject (the `objects` as one, with their parts) is lit (0.20.0; [Lighting](#lighting)): the lighting ratio within `ratio` `{min, max}` (`LIGHTING_RATIO_HIGH`, `LIGHTING_RATIO_LOW`, magnitude in stops; `UNLIT` when no light reaches it; basis `geometry`, sampled); at most `max_merged_fraction` (default 0.25) of its outline within `min_separation` (default 10) of the background's CIE L* (`POOR_SEPARATION`, basis `render`); each light of `lights` (a selector) reaching it (`LIGHT_NO_EFFECT`, with the reason: zero intensity, hidden, unlinked, blocked -- naming the blockers --, or aimed away). Without these keys the check only measures. Corrected by changing a light or the ambient (`verify`), or by adding a fill or a rim light (`approval`) |
 | `mesh_validity` | each object's mesh (a group: its parts' meshes) reaches the validity `tier` (`valid`, `manifold`, `closed` -- the default --, or `solid`, which runs the exact self-intersection test; [MODELING.md](MODELING.md#validity)); below it: `MESH_BELOW_TIER` (basis `geometry`, exact) with the counts. Never corrected: corrections do not edit meshes (0.13.0) |
 | `uv_quality` | each object's mesh (a group: its parts' meshes) has UVs (`NO_UVS`) with at most `max_flipped` flipped (`UV_FLIPPED`) and `max_overlapping` overlapping triangles (`UV_OVERLAP`; default 0 each; stacked islands -- deliberate copies -- are not counted), and optionally an L2 stretch of at most `max_stretch` (`UV_STRETCH`), a texel-density spread of at most `max_density_spread` (`UV_DENSITY_SPREAD`) and gaps of at least `min_gap` texels (`UV_GAP`) at `resolution` (default 1024); basis `geometry`, exact ([TEXTURING.md](TEXTURING.md#diagnostics)). Never corrected: corrections do not edit UVs (0.14.0) |
 | `cad_valid` | the CAD `items` (default: every item) regenerate (`CAD_ERROR`, basis `scene`, with the item's error), every part body is a valid solid (`CAD_INVALID_SOLID`), and with `fully_constrained` no sketch has degrees of freedom left (`CAD_UNDERCONSTRAINED`, magnitude the DOF); exact, from the CAD document ([CAD.md](CAD.md)). Never corrected (0.15.0) |
@@ -181,6 +182,50 @@ Documents are checked as a whole, like scene plans: every problem with a stable 
 `MISSING_KEY`, `DUPLICATE_ID`, `UNKNOWN_VIEW`, `LIMIT_EXCEEDED`, ...) and a JSON pointer.
 The JSON Schema is `aether3d feedback schema expectations`; the tests check that it refuses
 nothing the checker accepts.
+
+## Lighting
+
+The `lighting` check (0.20.0, `aether3d.feedback.lighting`) measures how a subject is lit
+in a view without guessing from the image's colors:
+
+* **Direct light at the visible surface.** Up to 1024 of the subject's pixels are sampled
+  evenly (and up to 256 more just inside its outline); a ray through each pixel's centre
+  -- the path tracer's ray core and camera arithmetic -- finds the surface point and its
+  shading normal. Each light's irradiance there is the rasterizers' own diffuse term on a
+  white surface (area lights by the exact polygon formula with their spread, spots with
+  their cone, falloff and range), so `1` makes a white surface appear white at exposure 0
+  -- the unit of `light_rig`'s `level`; where nothing is shadowed it equals what the
+  rasterizer shades at that pixel to float precision (`tests/test_feedback_lighting.py`).
+  Shadows are decided by rays (nine points over an area light, the centre of other
+  lights; a light with `shadow` off is never blocked) and light linking is honored. The
+  ambient term is the rasterizers' (uniform, hemisphere or an image environment's
+  harmonics), unoccluded; light bounced off other surfaces is not counted (the findings
+  say `exact: false`).
+* **The lighting ratio.** The *key* is the light giving the subject the most; its lit side
+  is the points it lights at half its strength or more, its shadow side the points it does
+  not reach (2% or less); the ratio is the median irradiance of the lit side over the
+  shadow side's -- key plus fill against fill. It is measured on the visible surface:
+  `light_rig`'s nominal ratio holds at the subject's centre on cards facing each light, a
+  cube turned toward the lights shows it, and a sphere about twice it (its shadow side
+  turns away from the fill). With no shadow side in view (a frontal key) the ratio is the
+  90th over the 10th percentile (`ratio_method: "percentile"`).
+* **Separation.** On the displayed image: the outline is split into 16 sectors around the
+  subject's centroid; in each, the median CIE L* of a ring just inside the outline is
+  compared with a ring just outside (about 0.6% of the image wide). Lightness, not stops:
+  two near-black tones are many stops apart and look the same. The merged sectors (angle,
+  inside, outside) are the finding's evidence.
+* **Per light**: its share of the subject's irradiance, its reach (the fraction of points
+  it lights), the fraction it would light but is blocked from, and the blockers.
+
+Corrections predict before they act: direct light scales with intensity, so the ratio and
+the outline after scaling a light (or the ambient) by 1/8 to 8 in quarter stops are
+computed from the measured contributions -- the outline from the albedo at each point and
+the render's exposure -- and the smallest change that reaches the target is proposed,
+preferring the fill to the key (`verify`: re-rendered and kept only if it helped). When no
+existing light can, a soft fill on the side opposite the key or a spot rim behind the
+subject (placed clear of what stands behind it) is proposed with its predicted effect,
+without its shadows (`approval`). A light that does not reach the subject is never moved
+for you (`LIGHT_NO_EFFECT` is unresolved: aim it, move it or remove the blocker).
 
 ## Findings and what they rest on
 
@@ -277,7 +322,7 @@ not used.
 | `translate` (`offset`, `frame`: `world` or `local`), `place` (`position`), `rotate` (`rotation_euler` or `rotation`), `scale` (`factor`) | an object's placement; world offsets and positions are converted exactly through the parent's world matrix |
 | `set_visibility`, `assign_material`, `set_color` | an object's visibility, material (an existing one) or color |
 | `frame_camera` (`targets`, `direction`, `margin`), `aim_camera` (`look_at`), `dolly_camera` (`distance`), `set_camera` (`fov`, `near`, `far`) | a camera |
-| `set_light` (`intensity`, `color`), `add_light`, `set_exposure`, `set_ambient` | light |
+| `set_light` (`intensity`, `color`), `add_light` (`type`; directional: `direction`; point: `position`; spot and area (0.20.0): `position` and `look_at` -- a point or an object -- or `direction`, an area light's `size`; `intensity`, `color`, `name`), `set_exposure`, `set_ambient` | light |
 | `set_parameter` | a procedural scene parameter (off by default: `allow_procedural`) |
 | `plant_feet` (`armature`, `legs`: foot -> `[hip, knee, foot]`), `smooth_keys` (`object`, `path`, `keys`, `handles`) | animation (off by default: `allow_animation`; 0.17.0): keyed IK pins each foot contact where it touched down; the keys of a channel get automatic handles (`auto_clamped` by default: no corners, no overshoot) |
 | `rig_fix` (`armature`, `fixes`: proposals from `propose_rig_fix` / `inspect_rig` `fixes`, or `"safe"` / `"verify"`) | animation (`allow_animation`; 0.19.0): the rig's own corrections -- weight edits, dual quaternion blended in around a collapsing joint, rebinding, a pole moved off the chain's line, planted feet -- each checked as data before anything changes and applied by `apply_rig_fix`, which measures again after each and undoes what did not help; the session then verifies the step as for any correction |

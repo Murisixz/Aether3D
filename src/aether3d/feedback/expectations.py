@@ -121,6 +121,16 @@ CHECKS: dict[str, dict[str, Any]] = {
         "whole image with over: image) within a range, clipped and black fractions at most "
         "the given ones, geometry covering at least min_coverage of the image",
     },
+    "lighting": {
+        "fields": ("objects", "view", "ratio", "min_separation", "max_merged_fraction", "lights"),
+        "required": ("objects",),
+        "summary": "how the view's subject (the objects as one) is lit, from the scene's "
+        "lights at its visible surface (direct light, shadows by rays, the ambient term): the "
+        "lighting ratio (median irradiance of the key's lit side over its shadow side) within "
+        "ratio; at most max_merged_fraction (default 0.25) of its outline within "
+        "min_separation (default 10) of the background's lightness (CIE L* of the displayed "
+        "image); each of lights (a selector) reaching it",
+    },
     "camera_clipping": {
         "fields": ("objects", "view"),
         "required": (),
@@ -453,7 +463,10 @@ def _parse_check(
         value = _parse_field(doc, kind, key, obj[key], join(ptr, key), views)
         if value is not BAD:
             params[key] = value
-    if kind in ("visible", "framing", "exposure", "camera_clipping") and "view" not in params:
+    if (
+        kind in ("visible", "framing", "exposure", "camera_clipping", "lighting")
+        and "view" not in params
+    ):
         if default_view is None and views:
             doc.issues.add(
                 "MISSING_KEY",
@@ -475,8 +488,15 @@ def _parse_check(
 
 
 def _parse_field(doc: Doc, kind: str, key: str, value: Any, ptr: str, views: dict[str, Any]) -> Any:
-    if key in ("objects", "against", "support"):
+    if key in ("objects", "against", "support", "lights"):
         return doc.selector(value, ptr)
+    if key == "ratio":
+        r = doc.range(value, ptr, lo=1.0)
+        return BAD if r is BAD else {"min": r[0], "max": r[1]}
+    if key == "min_separation":
+        return doc.number(value, ptr, lo=0.0, hi=100.0)
+    if key == "max_merged_fraction":
+        return doc.number(value, ptr, lo=0.0, hi=1.0)
     if key in ("a", "b"):
         return doc.string(value, ptr)
     if key == "view":

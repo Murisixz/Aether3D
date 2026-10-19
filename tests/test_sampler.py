@@ -178,6 +178,11 @@ def test_adaptive_images_do_not_depend_on_batching_or_workers(monkeypatch):
 def test_the_gpu_stops_the_pixels_the_cpu_stops():
     scene = adaptive_scene()
     path = {"samples": 64, "bounces": 2, "sampler": "sobol", "adaptive_threshold": 0.03}
-    c = scene.render(width=40, height=30, backend="path", path=path).passes["sample_count"]
-    g = scene.render(width=40, height=30, backend="gpu_path", path=path).passes["sample_count"]
+    rc = scene.render(width=40, height=30, backend="path", path=path)
+    rg = scene.render(width=40, height=30, backend="gpu_path", path=path)
+    c, g = rc.passes["sample_count"], rg.passes["sample_count"]
     assert np.mean(c == g) > 0.99  # (float32 sums may flip a pixel at the threshold)
+    # Both report what they spent the same way.
+    for r, counts in ((rc, c), (rg, g)):
+        assert r.stats["samples_mean"] == pytest.approx(counts.mean())
+        assert r.stats["pixels_converged_early"] == int((counts < 64).sum())

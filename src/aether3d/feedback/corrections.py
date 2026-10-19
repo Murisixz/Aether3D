@@ -127,10 +127,20 @@ ACTIONS: dict[str, dict[str, Any]] = {
         "summary": "change a light's intensity or color",
     },
     "add_light": {
-        "fields": ("type", "name", "direction", "position", "intensity", "color"),
+        "fields": (
+            "type",
+            "name",
+            "direction",
+            "position",
+            "look_at",
+            "size",
+            "intensity",
+            "color",
+        ),  # fmt: skip
         "required": ("type",),
         "category": "lighting",
-        "summary": "add a directional or point light",
+        "summary": "add a light: directional (direction), point (position), spot or area "
+        "(position and direction or look_at; an area light's size)",
     },
     "set_exposure": {
         "fields": ("exposure",),
@@ -264,6 +274,8 @@ def check_action(doc: Doc, value: Any, ptr: str) -> dict[str, Any] | None:
             r = doc.number(v, p, lo=0.0, lo_open=True, hi=MAX_COORDINATE)
         elif key == "intensity":
             r = doc.number(v, p, lo=0.0, hi=1e6)
+        elif key == "size":
+            r = doc.number(v, p, lo=0.0, lo_open=True, hi=1e6)
         elif key == "type":
             r = doc.enum(v, p, LIGHT_TYPES)
         elif key == "exposure":
@@ -311,10 +323,19 @@ def check_action(doc: Doc, value: Any, ptr: str) -> dict[str, Any] | None:
         doc.issues.add("MISSING_KEY", "give intensity or color", ptr)
     if name == "set_ambient" and not ({"intensity", "color"} & set(obj)):
         doc.issues.add("MISSING_KEY", "give intensity or color", ptr)
-    if name == "add_light" and ("direction" in obj) == ("position" in obj):
-        doc.issues.add(
-            "INVALID_VALUE", "a light needs direction (directional) or position (point)", ptr
-        )
+    if name == "add_light":
+        kind = obj.get("type")
+        aimed = ("direction" in obj) + ("look_at" in obj)
+        if kind == "directional" and ("position" in obj or "direction" not in obj):
+            doc.issues.add("INVALID_VALUE", "a directional light needs direction (only)", ptr)
+        elif kind == "point" and ("position" not in obj or aimed):
+            doc.issues.add("INVALID_VALUE", "a point light needs position (only)", ptr)
+        elif kind in ("spot", "area") and ("position" not in obj or aimed != 1):
+            doc.issues.add(
+                "INVALID_VALUE", f"a {kind} light needs position and direction or look_at", ptr
+            )
+        if "size" in obj and kind != "area":
+            doc.issues.add("INVALID_VALUE", "size is an area light's", join(ptr, "size"))
     if doc.issues.total > before:
         return None
     return out
@@ -936,7 +957,7 @@ def _bind_camera(scene: Scene, action: dict[str, Any], category: str, ptr: str) 
 def _bind_light(scene: Scene, action: dict[str, Any], category: str, ptr: str) -> Bound:
     if action["action"] == "add_light":
         op = {"op": "add_light", "type": action["type"]}
-        for key in ("name", "direction", "position", "intensity", "color"):
+        for key in ("name", "direction", "position", "look_at", "size", "intensity", "color"):
             if key in action:
                 op[key] = action[key]
         if action.get("name") and action["name"] in scene._by_name:
