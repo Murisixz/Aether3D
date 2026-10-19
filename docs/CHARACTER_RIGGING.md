@@ -37,9 +37,9 @@ anim = scene.animation
 found = anim.detect_landmarks(body)
 print(found["pose"], found["frame"]["forward"])  # A-pose [-0.0, -1.0, -0.0]
 
-# Rig and bind in one undo step: skeleton, limits, IK controls, geodesic weights.
+# Rig and bind in one undo step: skeleton, limits, IK controls, bone heat weights.
 rig = anim.autorig(body, name="Hero")
-print(len(rig["joints"]), rig["weights"]["Body"]["mode"])  # 23 geodesic
+print(len(rig["joints"]), rig["weights"]["Body"]["method"])  # 30 heat
 
 # Animate: a generated walk (in place), then a pose command keyed on the controls.
 anim.generate("Hero", "walk", forward="-y", travel=False)

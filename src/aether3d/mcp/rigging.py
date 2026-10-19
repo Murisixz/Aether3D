@@ -8,7 +8,9 @@ step, all or nothing): ``autorig``, ``edit_rig``, ``generate_weights``, ``edit_w
 * ``summary`` -- an armature's rig: joints (roles, helpers), controls, constraints, skins;
 * ``landmarks`` -- the landmarks of unrigged ``meshes`` with confidences and diagnostics;
 * ``weights`` -- a mesh's skin: validity, coverage, leakage (``joint``: its weights);
-* ``diagnose`` -- the rig, its skins and the deformation under the diagnostic pose suite;
+* ``diagnose`` -- the rig, its skins and the deformation under the diagnostic pose suite
+  (``suite``: ``suite``, the everyday range, or ``stress``, the extremes; or one ``pose``):
+  per pose the skin's kept size, creases, folds and stretch;
 * ``fixes`` -- correction proposals for the findings (apply them with ``apply_rig_fix``);
 * ``preview`` -- a picture (PNG): ``mode`` pose, weights (``joint``), stretch (``pose``)
   or skeleton (with its SVG), from ``view``;
@@ -45,11 +47,11 @@ def inspect_rig(session: Session, args: dict, ctx: Any):
         elif what == "weights":
             data = system.inspect_weights(_need(args, "target"), joint=args.get("joint"))
         elif what == "diagnose":
-            poses = [args["pose"]] if args.get("pose") else "suite"
             data = system.diagnose_rig(_need(args, "target"), time=args.get("time"),
-                                       max_findings=MAX_FINDINGS, poses=poses)  # fmt: skip
+                                       max_findings=MAX_FINDINGS, poses=_poses(args))  # fmt: skip
         elif what == "fixes":
-            data = system.propose_rig_fix(_need(args, "target"), time=args.get("time"))
+            data = system.propose_rig_fix(_need(args, "target"), time=args.get("time"),
+                                          poses=_poses(args))  # fmt: skip
         elif what == "parts":
             data = system.rigid_parts(_need(args, "target"))
         elif what == "preview":
@@ -77,6 +79,13 @@ def inspect_rig(session: Session, args: dict, ctx: Any):
                       image=image)  # fmt: skip
 
 
+def _poses(args: dict) -> Any:
+    suite = args.get("suite", "suite")
+    if suite not in ("suite", "stress"):
+        raise ToolError("INVALID_ARGUMENT", "suite is 'suite' or 'stress'")
+    return [args["pose"]] if args.get("pose") else suite
+
+
 def _need(args: dict, key: str) -> Any:
     if key in args and args[key] is not None:
         return args[key]
@@ -92,7 +101,8 @@ def specs() -> tuple[Any, ...]:
             "inspect_rig",
             "Inspect a rig",
             "Read-only rigging questions: summary (joints, controls, skins); landmarks of "
-            "unrigged meshes; weights of a mesh; diagnose (pose suite); fixes (proposals); "
+            "unrigged meshes; weights of a mesh; diagnose (pose suite: suite, or stress for "
+            "the extremes; kept size, creases, folds, stretch); fixes (proposals); "
             "preview (PNG: mode pose|weights|stretch|skeleton); parts (a rigid-part "
             "character, no bones). Rig with run_script.",
             _schema(
@@ -102,6 +112,7 @@ def specs() -> tuple[Any, ...]:
                     "meshes": {"type": "array", "items": text},
                     "joint": text,
                     "pose": text,
+                    "suite": {"enum": ["suite", "stress"]},
                     "mode": {"enum": ["pose", "weights", "stretch", "skeleton"]},
                     "view": {"enum": ["front", "side", "left", "back", "three_quarter"]},
                     "time": {"type": "number"},

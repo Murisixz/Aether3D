@@ -77,6 +77,7 @@ def test_an_agent_rigs_animates_verifies_and_exports(tmp_path):
     assert isinstance(out["fixes"]["proposals"], list)
     assert len(out["preview"]) == 1 and out["preview"][0].mime_type == "image/png"
     assert out["export"]["path"].endswith("hero.glb")
+    assert not any(d["lossy"] for d in out["export"]["diagnostics"])  # (glTF's own skinning)
     assert out["bad"]["error"]["code"] in ("SKELETON_CYCLE", "INVALID_SCRIPT")
     assert "Rigid-part characters need no bones" in out["guide"]
     ops_schema = out["schema"]["properties"]["operations"]["items"]["oneOf"]

@@ -107,7 +107,12 @@ _ARGUMENTS: dict[str, Any] = {
     },
     "parts": {
         "type": "object",
-        "description": "per mesh name: geodesic | transfer | rigid | attach | skip",
+        "description": "per mesh name, how it binds: generate (weights.method, default heat), "
+        "heat or geodesic (that method), transfer (from the first generated part), rigid, "
+        "attach (parented to its nearest joint) or skip",
+        "additionalProperties": {
+            "enum": ["generate", "heat", "geodesic", "transfer", "rigid", "attach", "skip"]
+        },
     },
     "operations": {
         "type": "array",
@@ -120,7 +125,10 @@ _ARGUMENTS: dict[str, Any] = {
     },
     "commands": {
         "type": "array",
-        "description": "{do: reach|plant_feet|look_at|raise_arm|lean|crouch|aim_hips|rotate, ...}",
+        "description": "{do: reach|plant_feet|look_at|raise_arm|lean|crouch|aim_hips|rotate|"
+        "curl_fingers|roll_foot, ...}: raise_arm {side, angle, direction: forward|side, "
+        "shoulder: auto|0..1}; curl_fingers {side, shape: curl|fist|point, amount, fingers, "
+        "spread}; roll_foot {side, angle (<0 heel, >0 ball then toe), break, ground}",
         "items": {"type": "object"},
         "minItems": 1,
     },
@@ -139,6 +147,45 @@ _ARGUMENTS: dict[str, Any] = {
     "hide_original": {"type": "boolean"},
     "policy": {"enum": ["organic", "stylized", "rigid"]},
     "skinning": {"enum": ["linear", "dual_quaternion", "blended"]},
+    "method": {
+        "type": "string",
+        "description": "skin: linear | dual_quaternion | blended; generate_weights: heat (the "
+        "default: bone heat) | geodesic | envelope | nearest",
+    },
+    "normals": {
+        "enum": ["joints", "surface"],
+        "description": "joints: rest normals turned by the joints (glTF's); surface: turned "
+        "as the deformed surface turns",
+    },
+    "corrective": {
+        "type": ["object", "boolean", "null"],
+        "description": "corrective smoothing (delta mush) for the skin: {iterations 1..100, "
+        "strength (0, 1], region: blend | all, weights: cotangent | uniform}, true for the "
+        "defaults, null for none",
+    },
+    "smooth": {
+        "description": "skin: corrective smoothing (delta mush), as generate_weights' "
+        "corrective, or null; generate_weights and transfer_weights: smoothing passes over "
+        "the weights",
+    },
+    "diffusion": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "description": "heat weights: the Laplacian's scale (1: Blender's balance)",
+    },
+    "visibility": {
+        "type": "boolean",
+        "description": "heat weights: only bones a vertex sees heat it (the default)",
+    },
+    "poses": {
+        "description": "diagnostic poses: suite (the everyday range), stress (the extremes), "
+        "or a list of suite names and custom {name, turns, joint} poses",
+        "oneOf": [
+            {"enum": ["suite", "stress"]},
+            {"type": "array", "maxItems": 64},
+            {"type": "null"},
+        ],
+    },
     "kind": {"enum": ["ik", "pole", "gaze", "fk", "root"]},
     "skins": {"enum": ["rebind", "keep_bind"]},
     "edit": {

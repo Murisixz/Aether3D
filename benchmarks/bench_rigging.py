@@ -16,12 +16,20 @@ machine only.
 
 Groups:
 
-* ``autorig:VOXEL`` -- landmarks, skeleton, controls and geodesic weights for the humanoid
-  meshed at VOXEL millimetres (20: 6,480 vertices; 12: about 18,000): total, detection
-  and binding, on a fresh scene each run.
+* ``autorig:VOXEL`` -- landmarks, skeleton, controls and weights (bone heat since the
+  revision) for the humanoid meshed at VOXEL millimetres (20: 6,480 vertices; 12: about
+  18,000): total, detection and binding, on a fresh scene each run.
+* ``figure:VOXEL`` -- the same for the anatomical figure of ``aether3d.sculpt.figure``
+  (20: about 6,400 vertices, no fingers; 8: about 41,000, fingers: some 60 joints).
+* ``heat`` -- the figure's weights at 8 mm: bone heat (eight influences) and geodesic
+  voxel binding on the same rig.
+* ``mush`` -- per-frame costs of the figure's skin (8 mm): delta mush (8 iterations;
+  native kernel and NumPy reference, bitwise equal) and surface-following normals.
+* ``stress`` -- the stress pose suite (13 poses: creases, folds, stretch) of the figure.
 * ``landmarks`` -- landmark detection alone at resolutions 96 and 128.
-* ``weights`` -- geodesic weights (organic policy) for the 12 mm body on an existing rig,
-  four smoothing passes over every vertex, a jacket's weight transfer, the inspector.
+* ``weights`` -- weights (organic policy: bone heat; ``generate_geodesic_ms`` the voxel
+  binding) for the 12 mm body on an existing rig, four smoothing passes over every vertex,
+  a jacket's weight transfer, the inspector.
 * ``dqs:V`` -- dual quaternion and blended (half DQS) skinning of V vertices, 4 influences,
   64 joints: NumPy reference, the native kernel on one thread and on all of them
   (bitwise equal to the reference).
@@ -59,8 +67,24 @@ sys.path.insert(0, str(ROOT / "examples"))
 
 from bench_engine import compare, machine, median_time, ms, peak_rss_mib  # noqa: E402
 
-SIZED = {"autorig": ("20", "12"), "dqs": ("100000", "1000000"), "eval": ("1", "10", "50")}
-GROUPS = ("landmarks", "weights", "workflows", "diagnose", "controls", "render", "gltf")
+SIZED = {
+    "autorig": ("20", "12"),
+    "figure": ("20", "8"),
+    "dqs": ("100000", "1000000"),
+    "eval": ("1", "10", "50"),
+}
+GROUPS = (
+    "landmarks",
+    "weights",
+    "heat",
+    "mush",
+    "stress",
+    "workflows",
+    "diagnose",
+    "controls",
+    "render",
+    "gltf",
+)
 
 
 def _repeat(quick: bool, n: int) -> int:
@@ -113,6 +137,110 @@ def group_autorig(size: str, quick: bool) -> dict[str, Any]:
     }
 
 
+def _figure(voxel_mm: float):
+    from aether3d.sculpt.figure import figure_mesh
+
+    return figure_mesh(voxel_mm / 1000.0)
+
+
+def group_figure(size: str, quick: bool) -> dict[str, Any]:
+    from aether3d import Scene
+
+    mesh = _figure(float(size))
+    reports = []
+
+    def run() -> None:
+        s = Scene("Bench")
+        body = s.add_object("Body", mesh=mesh)
+        reports.append(s.animation.autorig(body, name="Rig"))
+
+    total = median_time(run, _repeat(quick, 3))
+    timings = reports[-1]["timings"]
+    return {
+        "voxel_mm": float(size),
+        "vertices": mesh.vertex_count,
+        "total_ms": ms(total),
+        "detect_ms": round(timings["detect_s"] * 1000, 3),
+        "bind_ms": round(timings["bind_s"] * 1000, 3),
+        "joints": len(reports[-1]["joints"]),
+        "peak_rss_mib": peak_rss_mib(),
+    }
+
+
+def group_heat(size: str, quick: bool) -> dict[str, Any]:
+    s, body = _rigged(_figure(8.0))
+    a = s.animation
+    arm = s.get_by_name("Body Rig")
+    reps = _repeat(quick, 3)
+    out: dict[str, Any] = {"vertices": body.mesh.vertex_count, "joints": len(a.rig(arm).joints)}
+    rep: dict[str, Any] = {}
+
+    def heat() -> None:
+        rep.update(a.generate_weights(body, arm, method="heat"))
+
+    out["heat_ms"] = ms(median_time(heat, reps))
+    out["heat_solve_ms"] = round(rep["timings"].get("heat_s", 0.0) * 1000, 3)
+    out["heat_influences"] = rep.get("influences")
+    out["geodesic_ms"] = ms(median_time(
+        lambda: a.generate_weights(body, arm, method="geodesic"), reps))  # fmt: skip
+    out["peak_rss_mib"] = peak_rss_mib()
+    return out
+
+
+def group_mush(size: str, quick: bool) -> dict[str, Any]:
+    import numpy as np
+
+    from aether3d import _native
+    from aether3d.animation import rig as RG
+
+    s, body = _rigged(_figure(8.0))
+    skin = s.animation._owned[("skin", body._id)]._definition
+    p = body.mesh.positions.astype(np.float64)
+    t = np.asarray(body.mesh.triangles, np.int64)
+    out: dict[str, Any] = {"vertices": int(len(p))}
+    spec = {"iterations": 8, "strength": 0.5, "region": "blend", "weights": "cotangent"}
+    out["rest_ms"] = ms(median_time(lambda: RG.mush_rest(p, t, skin.weights, spec), 3))
+    rest = RG.mush_rest(p, t, skin.weights, spec)
+    posed = p + np.random.default_rng(3).normal(0.0, 0.004, p.shape)
+    reps = _repeat(quick, 7)
+    fast = RG.delta_mush(posed, rest)
+    out["native_ms"] = ms(median_time(lambda: RG.delta_mush(posed, rest), reps))
+    real = _native.module
+    _native.module = lambda: None
+    try:
+        slow = RG.delta_mush(posed, rest)
+        out["numpy_ms"] = ms(median_time(lambda: RG.delta_mush(posed, rest), reps))
+    finally:
+        _native.module = real
+    out["native_available"] = real() is not None
+    out["bitwise_equal"] = bool(fast.tobytes() == slow.tobytes())
+    frame = RG.face_normal_sums(p, t)
+    length = np.linalg.norm(frame, axis=1, keepdims=True)
+    frame = np.where(length > 0, frame / np.maximum(length, 1e-300), 0.0)
+    normals = body.mesh.normals
+    out["surface_normals_ms"] = ms(median_time(
+        lambda: RG.surface_normals(frame, posed, t, normals), reps))  # fmt: skip
+    out["peak_rss_mib"] = peak_rss_mib()
+    return out
+
+
+def group_stress(size: str, quick: bool) -> dict[str, Any]:
+    s, body = _rigged(_figure(8.0))
+    a = s.animation
+    rep: dict[str, Any] = {}
+
+    def run() -> None:
+        rep.update(a.diagnose_rig("Body Rig", poses="stress", animation=False))
+
+    out: dict[str, Any] = {"vertices": body.mesh.vertex_count}
+    out["stress_suite_ms"] = ms(median_time(run, _repeat(quick, 3)))
+    out["poses"] = len(rep["poses"])
+    out["new_creases"] = sum(e["Body"]["new_creases"] for e in rep["poses"].values())
+    out["folded_triangles"] = sum(e["Body"]["folded_triangles"] for e in rep["poses"].values())
+    out["peak_rss_mib"] = peak_rss_mib()
+    return out
+
+
 def group_landmarks(size: str, quick: bool) -> dict[str, Any]:
     from aether3d import Scene
 
@@ -158,6 +286,8 @@ def group_weights(size: str, quick: bool) -> dict[str, Any]:
     }
     reps = _repeat(quick, 5)
     out["generate_ms"] = ms(median_time(lambda: a.generate_weights(body, arm), reps))
+    out["generate_geodesic_ms"] = ms(median_time(
+        lambda: a.generate_weights(body, arm, method="geodesic"), reps))  # fmt: skip
     out["smooth_4_ms"] = ms(median_time(
         lambda: a.edit_weights(body, [{"op": "smooth", "iterations": 4}]), reps))  # fmt: skip
     out["transfer_ms"] = ms(median_time(lambda: a.transfer_weights(jacket, body), reps))

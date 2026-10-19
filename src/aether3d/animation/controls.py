@@ -37,7 +37,29 @@ if TYPE_CHECKING:
     from .system import AnimationSystem
 
 KINDS = ("ik", "pole", "gaze", "fk", "root")
-COMMANDS = ("reach", "plant_feet", "look_at", "raise_arm", "lean", "crouch", "aim_hips", "rotate")
+COMMANDS = (
+    "reach",
+    "plant_feet",
+    "look_at",
+    "raise_arm",
+    "lean",
+    "crouch",
+    "aim_hips",
+    "rotate",
+    "curl_fingers",
+    "roll_foot",
+)
+# Raising an arm, the clavicle elevates once the arm is past 30 degrees: 1 degree for
+# every 6 of the arm's (25 at 180) -- a simple model of the shoulder girdle's share of an
+# arm's elevation, of the order shoulder-kinematics studies measure (Ludewig et al. 2009);
+# ``shoulder`` overrides it.
+RHYTHM_START = 30.0
+RHYTHM_SHARE = 1.0 / 6.0
+CLAVICLE_MOST = 25.0
+# A finger curled fully: knuckle, middle and last joint (degrees); the thumb's.
+CURL = (75.0, 95.0, 70.0)
+THUMB_CURL = (25.0, 45.0, 60.0)
+FINGER_KEYS = ("thumb", "index", "middle", "ring", "pinky")
 
 
 def _err(code: str, message: str, location: str, hint: str | None = None) -> AnimationError:
@@ -733,19 +755,238 @@ def _cmd_look_at(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
     return {"do": "look_at", "target": [round(float(v), 6) for v in goal]}
 
 
+def shoulder_share(angle: float, shoulder: Any = "auto") -> float:
+    """Degrees the clavicle elevates for an arm raised ``angle`` degrees (``shoulder``:
+    ``"auto"`` -- :data:`RHYTHM_SHARE` of the angle beyond :data:`RHYTHM_START` -- or a
+    fraction 0..1 of the angle), at most :data:`CLAVICLE_MOST`."""
+    a = abs(float(angle))
+    if shoulder == "auto":
+        c = min(max(a - RHYTHM_START, 0.0) * RHYTHM_SHARE, CLAVICLE_MOST)
+    else:
+        c = min(float(shoulder) * a, CLAVICLE_MOST)
+    return math.copysign(c, angle)
+
+
 def _cmd_raise_arm(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
+    """Raise an arm ``angle`` degrees from its rest toward the front (``direction``
+    ``forward``) or away from the body (``side``), the clavicle elevating with it
+    (:func:`shoulder_share`; ``shoulder``: ``"auto"``, or a fraction, 0 for none): the arm
+    points exactly where asked while the shoulder rises."""
     side = _side(cmd, loc)
     angle = _num(cmd.get("angle", 90.0), f"{loc}.angle", -180.0, 180.0)
     direction = cmd.get("direction", "forward")
     if direction not in ("forward", "side"):
         raise _err("INVALID_ARGUMENT", "direction is 'forward' or 'side'", f"{loc}.direction")
+    shoulder = cmd.get("shoulder", "auto")
+    if shoulder != "auto":
+        shoulder = _num(shoulder, f"{loc}.shoulder", 0.0, 1.0)
     name = _role_joint(rig, f"upper_arm.{side}", [f"UpperArm.{side}"])
     if name is None:
         raise _err("ROLE_MISSING", f"the rig has no {side} upper arm", loc)
-    return {
-        "do": "raise_arm",
-        **_turn_in_armature(system, arm, rig, name, direction, side, angle, time),
-    }
+    clavicle = _role_joint(rig, f"clavicle.{side}", [f"Shoulder.{side}"])
+    k = rig.index(name)
+    kc = None if clavicle is None else rig.index(clavicle)
+    if kc is not None and not _is_ancestor(rig, kc, k):
+        kc = None  # (a clavicle that does not carry the arm takes no share)
+    share = shoulder_share(angle, shoulder) if kc is not None else 0.0
+    model = rig.rest_model()
+    fwd, up, out = _body_axes(rig, side)
+    # (a hanging limb swings toward the front, or away from the body)
+    axis = np.cross(-up, fwd) if direction == "forward" else np.cross(-up, out)
+    turn_c = np.eye(3)
+    if kc is not None:  # (the clavicle's outer end rises; keyed even at rest)
+        turn_c = _turn(np.cross(-up, out), share)
+        _key_model_rotation(system, arm, rig, model, kc, turn_c @ _rot(model[kc]), {}, time)
+    target = _turn(axis, angle) @ _rot(model[k])
+    _key_model_rotation(system, arm, rig, model, k, target, {kc: turn_c}, time)
+    return {"do": "raise_arm", "joint": name, "angle": angle, "direction": direction,
+            "clavicle": clavicle if kc is not None else None,
+            "clavicle_angle": round(share, 3)}  # fmt: skip
+
+
+def _body_axes(rig, side: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The armature's forward and up and the character's ``side`` outward direction."""
+    fwd = _forward_vec(rig)
+    up = np.array([0.0, 0.0, 1.0])
+    right = np.cross(fwd, up)
+    return fwd, up, (-right if side == "L" else right)  # (the character's left: -right)
+
+
+def _rot(m: np.ndarray) -> np.ndarray:
+    return m[:3, :3] / np.linalg.norm(m[:3, :3], axis=0)
+
+
+def _turn(axis: np.ndarray, degrees: float) -> np.ndarray:
+    a = np.asarray(axis, np.float64)
+    return R.matrices(R.axis_angle(a / np.linalg.norm(a), math.radians(degrees)))[0]
+
+
+def _is_ancestor(rig, a: int, k: int) -> bool:
+    j = rig.parents[k]
+    while j >= 0:
+        if j == a:
+            return True
+        j = rig.parents[j]
+    return False
+
+
+def _key_model_rotation(system, arm, rig, model, k, target, turned, time) -> None:
+    """Key joint ``k``'s local rotation so its armature-space rotation is ``target``,
+    its ancestors at rest except those in ``turned`` (joint index: the armature-space
+    turn keyed on it)."""
+    parent = np.eye(3)
+    j = rig.parents[k]
+    if j >= 0:
+        parent = _rot(model[j])
+        a = j
+        while a >= 0:  # (a turned ancestor turns everything below it)
+            if a in turned:
+                parent = turned[a] @ parent
+            a = rig.parents[a]
+    local = parent.T @ target
+    q = R.from_matrices(local[None])[0]
+    q = q / np.linalg.norm(q)
+    _key_joint_rotation(system, arm, rig, rig.joints[k].name, q if q[3] >= 0 else -q, time)
+
+
+def _cmd_curl_fingers(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
+    """Fingers curled toward the palm (about each joint's +X, the template's flexion
+    axis): ``amount`` 0 (straight, the rest pose) .. 1 (a fist), ``fingers`` (default all
+    five), ``shape`` ``curl`` | ``fist`` (the thumb over the fingers) | ``point`` (the
+    index straight, the rest curled), ``spread`` degrees between the fingers."""
+    side = _side(cmd, loc)
+    shape = cmd.get("shape", "curl")
+    if shape not in ("curl", "fist", "point"):
+        raise _err("INVALID_ARGUMENT", "shape is 'curl', 'fist' or 'point'", f"{loc}.shape")
+    amount = _num(cmd.get("amount", 1.0 if shape != "curl" else 0.5), f"{loc}.amount", -0.3, 1.2)
+    spread = _num(cmd.get("spread", 0.0), f"{loc}.spread", -30.0, 30.0)
+    names = cmd.get("fingers", list(FINGER_KEYS))
+    if not isinstance(names, list) or not names or any(f not in FINGER_KEYS for f in names):
+        raise _err("INVALID_ARGUMENT", f"fingers are some of {', '.join(FINGER_KEYS)}",
+                   f"{loc}.fingers")  # fmt: skip
+    turned = []
+    for f in names:
+        a = amount
+        if shape == "point":
+            a = 0.0 if f == "index" else amount
+        curls = THUMB_CURL if f == "thumb" else CURL
+        if shape == "fist" and f == "thumb":
+            curls = (40.0, 50.0, 55.0)
+        fan = {"index": 1.5, "middle": 0.5, "ring": -0.5, "pinky": -1.5}.get(f, 0.0)
+        for i in range(3):
+            k = rig.role_index(f"{f}.{i + 1}.{side}")
+            if k is None:
+                continue
+            name = rig.joints[k].name
+            # (+X bends toward the palm; the knuckle's Z spreads the fingers apart)
+            euler = [curls[i] * a, 0.0, spread * fan * (1.0 if side == "L" else -1.0)
+                     if i == 0 else 0.0]  # fmt: skip
+            _rotate(system, arm, rig, name, np.array(euler), time)
+            turned.append(name)
+    if not turned:
+        raise _err("ROLE_MISSING", f"the rig has no {side} finger joints", loc,
+                   hint="auto-rig a hand that shows its fingers, or add finger joints")  # fmt: skip
+    return {"do": "curl_fingers", "side": side, "shape": shape, "amount": amount,
+            "joints": turned}  # fmt: skip
+
+
+def _cmd_roll_foot(system, arm, rig, cmd, time, loc) -> dict[str, Any]:
+    """Roll an IK foot on the ground about its heel (``angle`` < 0: the toes come up), its
+    ball (0 < ``angle`` <= ``break``: the heel comes up, the toes stay flat) and beyond
+    ``break`` its toe tip (foot and toes turn on together) -- Rigify's foot roll, as keys.
+    The foot is first set flat where it stands (on the heel, ball or toe tip lifted
+    least, or on ``ground``), with its heading; then its IK target is turned about the
+    pivot (the heel, ball and toe tip landmarks) and the toe joint turned back by the
+    ball's share of the roll. A roll is absolute: the same command gives the same pose
+    whatever rolls were keyed before. The leg's IK is switched on at ``time``."""
+    side = _side(cmd, loc)
+    angle = _num(cmd.get("angle", 20.0), f"{loc}.angle", -60.0, 120.0)
+    brk = _num(cmd.get("break", 35.0), f"{loc}.break", 1.0, 89.0)
+    cname = _ensure_limb(system, arm, rig, "leg", side)
+    rig = system.rig(arm)
+    c, _, _ = _limb(rig, cname)
+    result, worlds = _rigging(system, time)
+    _, model = result.joints[arm._id]
+    a_world = worlds[arm._id]
+    rest = rig.rest_model()
+    kf = rig.index(c.p["chain"][-1])
+    kt = rig.role_index(f"toe.{side}")
+    if kt is not None and rig.parents[kt] != kf:
+        kt = None
+    lm = rig.landmark_dict
+    tails = rig.tails()
+    ankle = rest[kf][:3, 3]
+    ball0 = rest[kt][:3, 3] if kt is not None else (rest[kf] @ np.append(tails[kf], 1.0))[:3]
+    tip0 = (rest[kt] @ np.append(tails[kt], 1.0))[:3] if kt is not None else ball0
+    sole = min(ankle[2], ball0[2], tip0[2])
+
+    def landmark(name: str, fallback: np.ndarray) -> np.ndarray:  # (rest, world)
+        q = np.asarray(lm[name], np.float64) if name in lm else fallback
+        return (a_world @ np.append(q, 1.0))[:3]
+
+    heel_r = landmark(f"heel.{side}", np.array([ankle[0], ankle[1], sole]))
+    ball_r = landmark(f"ball.{side}", np.array([ball0[0], ball0[1], sole]))
+    tip_r = landmark(f"toe_tip.{side}", np.array([tip0[0], tip0[1], sole]))
+
+    # Where the heel, ball and toe tip are now (the tip carried by the toe joint); the
+    # one lifted least is the one the foot stands on (a roll's pivot stays put): the foot
+    # is set flat about it -- its rest orientation turned to its heading -- so a roll is
+    # absolute, whatever rolls were keyed before.
+    def now(k: int, q: np.ndarray) -> np.ndarray:
+        m = a_world @ model[k] @ np.linalg.inv(a_world @ rest[k])
+        return (m @ np.append(q, 1.0))[:3]
+
+    rest_pts = {"heel": heel_r, "ball": ball_r, "toe": tip_r}
+    now_pts = {"heel": now(kf, heel_r), "ball": now(kf, ball_r),
+               "toe": now(kt if kt is not None else kf, tip_r)}  # fmt: skip
+    anchor = min(rest_pts, key=lambda n: now_pts[n][2] - rest_pts[n][2])
+    ahead_r, ahead = tip_r - heel_r, now_pts["toe"] - now_pts["heel"]
+    yaw = math.atan2(
+        ahead_r[0] * ahead[1] - ahead_r[1] * ahead[0], ahead_r[0] * ahead[0] + ahead_r[1] * ahead[1]
+    )
+    flat = np.eye(4)
+    flat[:3, :3] = _turn([0.0, 0.0, 1.0], math.degrees(yaw))
+    moved = flat[:3, :3] @ rest_pts[anchor]
+    goal = now_pts[anchor].copy()
+    ground = cmd.get("ground")
+    if ground is not None:
+        low = min(heel_r[2], ball_r[2], tip_r[2])
+        goal[2] = _num(ground, f"{loc}.ground") + (rest_pts[anchor][2] - low)
+    flat[:3, 3] = goal - moved
+    foot_r = a_world @ rest[kf]
+    heel, ball, tip = ((flat @ np.append(q, 1.0))[:3] for q in (heel_r, ball_r, tip_r))
+    left = np.cross([0.0, 0.0, 1.0], flat[:3, :3] @ ahead_r)
+    left[2] = 0.0
+    left /= np.linalg.norm(left)  # (about the foot's left, a positive turn lifts the heel)
+    if angle < 0:
+        steps, used = [(heel, angle)], "heel"
+    elif angle <= brk or kt is None:
+        steps, used = [(ball, angle)], "ball"
+    else:
+        steps, used = [(ball, brk), (tip, angle - brk)], "ball+toe"
+    world = flat @ foot_r
+    for pivot, deg in steps:
+        m = np.eye(4)
+        m[:3, :3] = _turn(left, deg)
+        m[:3, 3] = pivot - m[:3, :3] @ pivot
+        world = m @ world
+    tgt = system.scene._objects[c.p["target"]["object"]]
+    _set_object_world(system, tgt, world, worlds, time, True)
+    system.keyframe(arm, f'constraints["{cname}"].influence', time, 1.0, interpolation="constant")
+    back = min(max(angle, 0.0), brk) if kt is not None else 0.0
+    if kt is not None:
+        # The toes stay flat while the foot rolls on the ball and turn on with it beyond
+        # the break: they turn back by the ball's share of the roll (about the foot's
+        # left, in the toe's frame at rest).
+        left_rest = np.linalg.solve((a_world @ rest[kt])[:3, :3], flat[:3, :3].T @ left)
+        local = _rot(np.linalg.solve(rest[kf], rest[kt])) @ _turn(left_rest, -back)
+        q = R.from_matrices(local[None])[0]
+        q = q / np.linalg.norm(q)
+        _key_joint_rotation(system, arm, rig, rig.joints[kt].name, q if q[3] >= 0 else -q, time)
+    return {"do": "roll_foot", "side": side, "angle": angle, "pivot": used,
+            "toe_turned_back": back,
+            "pivots": {k: [round(float(v), 6) for v in q]
+                       for k, q in (("heel", heel), ("ball", ball), ("toe", tip))}}  # fmt: skip
 
 
 def _turn_in_armature(system, arm, rig, name, direction, side, angle, time) -> dict[str, Any]:
@@ -852,4 +1093,6 @@ _COMMANDS = {
     "crouch": _cmd_crouch,
     "aim_hips": _cmd_aim_hips,
     "rotate": _cmd_rotate,
+    "curl_fingers": _cmd_curl_fingers,
+    "roll_foot": _cmd_roll_foot,
 }

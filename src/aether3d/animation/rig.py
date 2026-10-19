@@ -1152,22 +1152,24 @@ def make_skin(
 
 
 NORMALS = ("joints", "surface")
-SMOOTH_KEYS = ("iterations", "strength", "region")
+SMOOTH_KEYS = ("iterations", "strength", "region", "weights")
 SMOOTH_REGIONS = ("blend", "all")
+SMOOTH_WEIGHTS = ("cotangent", "uniform")
 
 
 def check_smooth(raw: Any, location: str = "smooth") -> str:
     """Corrective smoothing of a skin as canonical JSON (``"null"``: none):
-    ``{"iterations": 1..100 (default 10), "strength": 0..1 (default 0.5), "region":
+    ``{"iterations": 1..100 (default 8), "strength": 0..1 (default 0.5), "region":
     "blend" (where weights blend, fading out where one joint holds a vertex: the
-    default) or "all"}`` -- see :func:`delta_mush`."""
+    default) or "all", "weights": "cotangent" (the default: smoothing along the surface,
+    no drift across it) or "uniform"}`` -- see :func:`delta_mush`."""
     if raw is None:
         return "null"
     if raw is True:
         raw = {}
     if not isinstance(raw, dict) or set(raw) - set(SMOOTH_KEYS):
         raise _err("INVALID_SKIN", f"smooth is {{{', '.join(SMOOTH_KEYS)}}} or null", location)
-    it = raw.get("iterations", 10)
+    it = raw.get("iterations", 8)
     if isinstance(it, bool) or not isinstance(it, int) or not 1 <= it <= 100:
         raise _err("INVALID_SKIN", "smooth.iterations is 1..100", f"{location}.iterations")
     st = raw.get("strength", 0.5)
@@ -1180,8 +1182,15 @@ def check_smooth(raw: Any, location: str = "smooth") -> str:
             f"smooth.region is one of {', '.join(SMOOTH_REGIONS)}",
             f"{location}.region",
         )
+    weights = raw.get("weights", "cotangent")
+    if weights not in SMOOTH_WEIGHTS:
+        raise _err(
+            "INVALID_SKIN",
+            f"smooth.weights is one of {', '.join(SMOOTH_WEIGHTS)}",
+            f"{location}.weights",
+        )
     return json.dumps(
-        {"iterations": it, "strength": float(st), "region": region},
+        {"iterations": it, "strength": float(st), "region": region, "weights": weights},
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -1526,18 +1535,46 @@ def mush_edges(n: int, triangles: np.ndarray) -> tuple[np.ndarray, np.ndarray, n
     return np.stack([dst, src]), deg, first
 
 
-def _mush_smooth(x: np.ndarray, graph: np.ndarray, deg: np.ndarray, it: int, lam: float):
-    """``it`` rounds of ``x += lam (mean of neighbours - x)``; each sum in edge order (a
-    bincount: what the native kernel's scatter repeats)."""
+def mush_weights(
+    p: np.ndarray, t: np.ndarray, graph: np.ndarray, deg: np.ndarray, kind: str
+) -> tuple[np.ndarray, np.ndarray]:
+    """The smoothing's weight per directed edge of ``graph`` and their sum per vertex:
+    ``uniform`` (1), or ``cotangent`` -- the rest surface's cotangent weights, negative
+    ones (edges across obtuse corners) clamped to 0, so each step is an average that
+    moves vertices along the surface's normal only where it curves: an irregular mesh's
+    vertices do not drift along it, so the rest detail is small and lies across the
+    surface (a vertex whose weights all vanish smooths uniformly)."""
+    dst, src = graph
+    n = len(p)
+    if kind == "uniform":
+        return np.ones(len(dst)), np.asarray(deg, np.float64)
+    from .heat import laplacian
+
+    rows, cols, vals, _ = laplacian(np.asarray(p, np.float64), t)
+    at = np.searchsorted(dst * n + src, rows * n + cols)
+    w = np.maximum(np.bincount(at, -vals, len(dst)), 0.0)
+    wsum = np.bincount(dst, w, n)
+    flat = (wsum <= 0.0) & (np.asarray(deg) > 0)
+    if flat.any():
+        w = np.where(flat[dst], 1.0, w)
+        wsum = np.bincount(dst, w, n)
+    return w, wsum
+
+
+def _mush_smooth(
+    x: np.ndarray, graph: np.ndarray, w: np.ndarray, wsum: np.ndarray, it: int, lam: float
+):
+    """``it`` rounds of ``x += lam (weighted mean of neighbours - x)``; each sum in edge
+    order (a bincount: what the native kernel's loop repeats)."""
     dst, src = graph
     n = len(x)
-    has = deg > 0
-    inv = np.where(has, 1.0 / np.where(has, deg, 1), 0.0)
+    has = wsum > 0
+    div = np.where(has, wsum, 1.0)
     out = np.array(x, np.float64)
     for _ in range(it):
         nxt = out.copy()
         for k in range(3):
-            mean = np.bincount(dst, out[src, k], n) * inv
+            mean = np.bincount(dst, w * out[src, k], n) / div
             nxt[:, k] = np.where(has, out[:, k] + lam * (mean - out[:, k]), out[:, k])
         out = nxt
     return out
@@ -1554,54 +1591,44 @@ def _unit3(x, y, z):
     return x * inv, y * inv, z * inv, length
 
 
-def _mush_frames(sm: np.ndarray, triangles: np.ndarray, first: np.ndarray):
-    """Per vertex an orthonormal frame -- tangent, bitangent, normal, nine arrays -- of
-    the smoothed surface: its area-weighted normal and the direction to the first
-    neighbour (any perpendicular when that lies along the normal)."""
-    f = face_normal_sums(sm, triangles)
-    nx, ny, nz, length = _unit3(f[:, 0], f[:, 1], f[:, 2])
-    flat = length <= 0.0
-    nz = np.where(flat, 1.0, nz)
-    j = np.maximum(first, 0)
-    has = first >= 0
-    rx = np.where(has, sm[j, 0] - sm[:, 0], 1.0)
-    ry = np.where(has, sm[j, 1] - sm[:, 1], 0.0)
-    rz = np.where(has, sm[j, 2] - sm[:, 2], 0.0)
-    d = (rx * nx + ry * ny) + rz * nz
-    tx, ty, tz = rx - d * nx, ry - d * ny, rz - d * nz
-    tx, ty, tz, tl = _unit3(tx, ty, tz)
-    ax, ay, az = _cross(nx, ny, nz, 1.0, 0.0, 0.0)
-    _, _, _, al = _unit3(ax, ay, az)
-    bx, by, bz = _cross(nx, ny, nz, 0.0, 1.0, 0.0)
-    use_a = al > 1e-6
-    ax, ay, az = np.where(use_a, ax, bx), np.where(use_a, ay, by), np.where(use_a, az, bz)
-    ax, ay, az, _ = _unit3(ax, ay, az)
-    good = tl > 1e-12
-    tx, ty, tz = np.where(good, tx, ax), np.where(good, ty, ay), np.where(good, tz, az)
-    bx, by, bz = _cross(nx, ny, nz, tx, ty, tz)
-    return (tx, ty, tz, bx, by, bz, nx, ny, nz)
+def _mush_corners(sm: np.ndarray, t: np.ndarray):
+    """Per triangle corner (corner ``c`` of triangle ``f`` at ``3 f + c``) an orthonormal
+    frame of the smoothed surface -- the corner's bisector, the face normal x bisector,
+    the face normal: nine arrays -- and its weight, the sine of the corner's angle (0 for
+    a degenerate corner, whose frame is undefined)."""
+    v = t.reshape(-1)
+    a = t[:, [1, 2, 0]].reshape(-1)
+    b = t[:, [2, 0, 1]].reshape(-1)
+    ux, uy, uz, _ = _unit3(sm[a, 0] - sm[v, 0], sm[a, 1] - sm[v, 1], sm[a, 2] - sm[v, 2])
+    wx, wy, wz, _ = _unit3(sm[b, 0] - sm[v, 0], sm[b, 1] - sm[v, 1], sm[b, 2] - sm[v, 2])
+    nx, ny, nz, sine = _unit3(*_cross(ux, uy, uz, wx, wy, wz))
+    xx, xy, xz, _ = _unit3(ux + wx, uy + wy, uz + wz)
+    yx, yy, yz = _cross(nx, ny, nz, xx, xy, xz)
+    return (xx, xy, xz, yx, yy, yz, nx, ny, nz), sine
 
 
 def mush_rest(
     positions: np.ndarray, triangles: np.ndarray, weights: np.ndarray, spec: dict[str, Any]
 ) -> dict[str, Any]:
-    """What delta mush keeps of the rest pose: the smoothing graph, each vertex's detail
-    (its offset from the smoothed rest surface in that surface's local frame) and the
-    smoothing mask (``region`` ``blend``: full where the vertex's largest weight is at
-    most ``1 - MUSH_BLEND``, none where one joint holds it, smooth in between and
-    spread over the surface; ``all``: everywhere)."""
+    """What delta mush keeps of the rest pose: the smoothing graph, the rest detail (each
+    vertex's offset from the smoothed rest surface, in the frame of each of its triangle
+    corners) and the smoothing mask (``region`` ``blend``: full where the vertex's largest
+    weight is at most ``1 - MUSH_BLEND``, none where one joint holds it, smooth in between
+    and spread over the surface; ``all``: everywhere)."""
     p0 = np.asarray(positions, np.float64)
-    t = np.asarray(triangles, np.int64)
+    t = np.asarray(triangles, np.int64).reshape(-1, 3)
     n = len(p0)
-    graph, deg, first = mush_edges(n, t)
+    graph, deg, _ = mush_edges(n, t)
+    w, wsum = mush_weights(p0, t, graph, deg, spec.get("weights", "cotangent"))
     it, lam = int(spec["iterations"]), float(spec["strength"])
-    sm = _mush_smooth(p0, graph, deg, it, lam)
-    tx, ty, tz, bx, by, bz, nx, ny, nz = _mush_frames(sm, t, first)
-    dx, dy, dz = p0[:, 0] - sm[:, 0], p0[:, 1] - sm[:, 1], p0[:, 2] - sm[:, 2]
+    sm = _mush_smooth(p0, graph, w, wsum, it, lam)
+    (xx, xy, xz, yx, yy, yz, nx, ny, nz), _ = _mush_corners(sm, t)
+    v = t.reshape(-1)
+    dx, dy, dz = p0[v, 0] - sm[v, 0], p0[v, 1] - sm[v, 1], p0[v, 2] - sm[v, 2]
     delta = np.stack(
         [
-            (tx * dx + ty * dy) + tz * dz,
-            (bx * dx + by * dy) + bz * dz,
+            (xx * dx + xy * dy) + xz * dz,
+            (yx * dx + yy * dy) + yz * dz,
             (nx * dx + ny * dy) + nz * dz,
         ],
         axis=1,
@@ -1612,46 +1639,52 @@ def mush_rest(
         top = np.asarray(weights, np.float64).max(axis=1)
         u = np.clip((1.0 - top) / MUSH_BLEND, 0.0, 1.0)
         mask = u * u * (3.0 - 2.0 * u)
-        spread = _mush_smooth(np.stack([mask, mask, mask], axis=1), graph, deg, it, 0.5)
+        spread = _mush_smooth(np.stack([mask, mask, mask], axis=1), graph, w, wsum, it, 0.5)
         mask = np.maximum(mask, np.clip(spread[:, 0] * 1.5, 0.0, 1.0))
-    return {"graph": np.ascontiguousarray(graph), "deg": deg, "first": first, "triangles": t,
+    return {"graph": np.ascontiguousarray(graph), "weights": w, "wsum": wsum, "triangles": t,
             "delta": delta, "mask": mask, "iterations": it, "strength": lam}  # fmt: skip
 
 
 def delta_mush(positions: np.ndarray, rest: dict[str, Any]) -> np.ndarray:
-    """Delta mush of skinned positions (Mancewicz et al. 2014; the principle of Blender's
-    Corrective Smooth): the posed surface smoothed as the rest one was, each vertex's
-    rest detail added back in the smoothed posed surface's frame, blended by the mask --
-    LBS pinching, folds and crumples relax while the modeled detail stays. Exactly the
-    input at rest. The NumPy reference of the native kernel (the same operations in the
-    same order: bitwise the same result)."""
+    """Delta mush of skinned positions (Mancewicz et al. 2014), with the per-corner frames
+    of Blender's Corrective Smooth: the posed surface is smoothed as the rest one was, and
+    each vertex's rest detail is added back in the frames of its triangle corners on the
+    smoothed posed surface, averaged by the corners' weights (one frame per vertex turns
+    with whichever edge defines it, and shears put folds in the detail), then blended by
+    the mask -- LBS pinching, folds and crumples relax while the modeled detail stays. The
+    input at rest (to rounding). The NumPy reference of the native kernel (the same
+    operations in the same order: bitwise the same result)."""
     from .. import _native
 
     p = np.ascontiguousarray(positions, np.float64)
+    t = rest["triangles"]
     native = _native.module()
     if native is not None and hasattr(native, "delta_mush"):
         out = np.empty((len(p), 3), np.float32)
         native.delta_mush(
-            p, rest["graph"][0], rest["graph"][1], np.ascontiguousarray(rest["deg"], np.int64),
-            np.ascontiguousarray(rest["first"], np.int64),
-            np.ascontiguousarray(rest["triangles"], np.int64),
-            np.ascontiguousarray(rest["delta"], np.float64),
-            np.ascontiguousarray(rest["mask"], np.float64),
-            int(rest["iterations"]), float(rest["strength"]), out, _native.threads(),
+            p, rest["graph"][0], rest["graph"][1], rest["weights"], rest["wsum"],
+            np.ascontiguousarray(t, np.int64), np.ascontiguousarray(rest["delta"], np.float64),
+            np.ascontiguousarray(rest["mask"], np.float64), int(rest["iterations"]),
+            float(rest["strength"]), out, _native.threads(),
         )  # fmt: skip
         return out
-    sm = _mush_smooth(p, rest["graph"], rest["deg"], rest["iterations"], rest["strength"])
-    tx, ty, tz, bx, by, bz, nx, ny, nz = _mush_frames(sm, rest["triangles"], rest["first"])
+    n = len(p)
+    sm = _mush_smooth(
+        p, rest["graph"], rest["weights"], rest["wsum"], rest["iterations"], rest["strength"]
+    )
+    (xx, xy, xz, yx, yy, yz, nx, ny, nz), w = _mush_corners(sm, t)
     d = rest["delta"]
     d0, d1, d2 = d[:, 0], d[:, 1], d[:, 2]
-    ox = sm[:, 0] + ((tx * d0 + bx * d1) + nx * d2)
-    oy = sm[:, 1] + ((ty * d0 + by * d1) + ny * d2)
-    oz = sm[:, 2] + ((tz * d0 + bz * d1) + nz * d2)
+    v = t.reshape(-1)
+    wsum = np.bincount(v, w, n)
+    has = wsum > 0.0
+    div = np.where(has, wsum, 1.0)
+    o = []
+    for k, (ex, ey, en) in enumerate(((xx, yx, nx), (xy, yy, ny), (xz, yz, nz))):
+        acc = np.bincount(v, w * ((ex * d0 + ey * d1) + en * d2), n)
+        o.append(np.where(has, sm[:, k] + acc / div, p[:, k]))
     m = rest["mask"]
-    out = np.stack(
-        [p[:, 0] + m * (ox - p[:, 0]), p[:, 1] + m * (oy - p[:, 1]), p[:, 2] + m * (oz - p[:, 2])],
-        axis=1,
-    )
+    out = np.stack([p[:, k] + m * (o[k] - p[:, k]) for k in range(3)], axis=1)
     return out.astype(np.float32)
 
 

@@ -197,3 +197,129 @@ def test_switches_keep_every_joint_including_twist_helpers(body_mesh):
         after = a.pose_joints(arm, t, space="world")
         for name, m in after.items():
             assert np.abs(m - before[name]).max() < 1e-4, (t, name)
+
+
+@pytest.fixture(scope="module")
+def figure_rig():
+    """The anatomical figure, rigged without a skin (its hands show their fingers)."""
+    from aether3d.sculpt.figure import figure_mesh
+
+    s = Scene("Figure")
+    body = s.add_object("Body", mesh=figure_mesh(0.008))
+    rep = s.animation.autorig(body, name="Rig", bind=False)
+    return s, rep
+
+
+def test_raising_an_arm_elevates_the_clavicle_and_points_the_arm_exactly(figure_rig):
+    from aether3d.animation import rotation as R
+    from aether3d.animation.controls import shoulder_share
+
+    s, _ = figure_rig
+    a = s.animation
+    j0 = a.pose_joints("Rig", 0.0, space="armature")
+    n = len(s.history)
+    for t, side, angle, direction, shoulder in (
+        (1.0, "L", 90.0, "forward", "auto"),
+        (2.0, "R", 150.0, "side", "auto"),
+        (3.0, "L", 120.0, "side", 0.0),
+    ):
+        rep = a.pose_character("Rig", [{"do": "raise_arm", "side": side, "angle": angle,
+                                        "direction": direction, "shoulder": shoulder}],
+                               time=t)["commands"][0]  # fmt: skip
+        assert rep["clavicle"] == f"Shoulder.{side}"
+        assert rep["clavicle_angle"] == pytest.approx(shoulder_share(angle, shoulder))
+        j = a.pose_joints("Rig", t, space="armature")
+        out = np.array([1.0 if side == "L" else -1.0, 0.0, 0.0])
+        fwd = np.array([0.0, -1.0, 0.0])
+        axis = np.cross([0.0, 0.0, -1.0], fwd if direction == "forward" else out)
+        turn = R.matrices(R.axis_angle(axis / np.linalg.norm(axis), np.radians(angle)))[0]
+        d0 = j0[f"ForeArm.{side}"][:3, 3] - j0[f"UpperArm.{side}"][:3, 3]
+        d1 = j[f"ForeArm.{side}"][:3, 3] - j[f"UpperArm.{side}"][:3, 3]
+        assert np.abs(d1 - turn @ d0).max() < 1e-9  # (exactly where asked)
+        rise = j[f"UpperArm.{side}"][2, 3] - j0[f"UpperArm.{side}"][2, 3]
+        if shoulder == 0.0:
+            assert abs(rise) < 1e-9
+        else:
+            assert 0.01 < rise < 0.06  # (the shoulder comes up a few centimetres)
+    assert shoulder_share(20.0) == 0.0 and shoulder_share(90.0) == pytest.approx(10.0)
+    assert shoulder_share(180.0) == pytest.approx(25.0)
+    assert len(s.history) == n + 3
+    for _ in range(3):
+        s.history.undo()
+
+
+def test_fingers_curl_into_a_fist_point_and_spread(figure_rig):
+    s, _ = figure_rig
+    a = s.animation
+    rig = a.rig("Rig")
+    tails = rig.tails()
+
+    def tips(t):
+        j = a.pose_joints("Rig", t, space="armature")
+        inv = np.linalg.inv(j["Hand.L"])
+        out = {}
+        for cap in ("Thumb", "Index", "Middle", "Ring", "Pinky"):
+            k = rig.index(f"{cap}3.L")
+            tip = inv @ j[f"{cap}3.L"] @ np.append(tails[k], 1.0)
+            out[cap] = (tip[:3], (inv @ j[f"{cap}1.L"])[:3, 3])
+        return out
+
+    rest = tips(0.0)
+    rep = a.pose_character("Rig", [{"do": "curl_fingers", "side": "L", "shape": "fist"}],
+                           time=1.0)["commands"][0]  # fmt: skip
+    assert len(rep["joints"]) == 15
+    fist = tips(1.0)
+    for cap in ("Index", "Middle", "Ring", "Pinky"):
+        reach0 = np.linalg.norm(rest[cap][0] - rest[cap][1])
+        reach1 = np.linalg.norm(fist[cap][0] - fist[cap][1])
+        assert reach1 < 0.45 * reach0, cap  # (curled up to its knuckle)
+    a.pose_character("Rig", [{"do": "curl_fingers", "side": "L", "shape": "point"}], time=2.0)
+    point = tips(2.0)
+    assert np.abs(point["Index"][0] - rest["Index"][0]).max() < 1e-9  # (straight)
+    assert np.linalg.norm(point["Middle"][0] - point["Middle"][1]) < 0.45 * np.linalg.norm(
+        rest["Middle"][0] - rest["Middle"][1])  # fmt: skip
+    a.pose_character("Rig", [{"do": "curl_fingers", "side": "L", "amount": 0.0,
+                              "spread": 15}], time=3.0)  # fmt: skip
+    spread = tips(3.0)
+    gap0 = np.linalg.norm(rest["Index"][0] - rest["Pinky"][0])
+    assert np.linalg.norm(spread["Index"][0] - spread["Pinky"][0]) > gap0 + 0.01
+    with pytest.raises(AnimationError) as e:
+        a.pose_character("Rig", [{"do": "curl_fingers", "fingers": ["toe"]}], time=1.0)
+    assert e.value.code == "INVALID_ARGUMENT"
+    for _ in range(3):
+        s.history.undo()
+
+
+def test_feet_roll_on_their_heel_ball_and_toe_tip(figure_rig):
+    s, _ = figure_rig
+    a = s.animation
+    rig = a.rig("Rig")
+    lm = rig.landmark_dict
+    rest = rig.rest_model()
+
+    def carried(j, joint, name):
+        k = rig.index(joint)
+        return (j[joint] @ np.linalg.solve(rest[k], np.append(lm[name], 1.0)))[:3]
+
+    n = len(s.history)
+    # (each roll at its own time: a roll is absolute, whatever was keyed before it)
+    for t, angle, fixed, moves in (
+        (1.0, 20.0, ("ball.L", "toe_tip.L"), "heel.L"),
+        (2.0, -15.0, ("heel.L",), "toe_tip.L"),
+        (3.0, 45.0, ("toe_tip.L",), "heel.L"),
+        (4.0, 20.0, ("ball.L", "toe_tip.L"), "heel.L"),
+    ):
+        rep = a.pose_character("Rig", [{"do": "roll_foot", "side": "L", "angle": angle}],
+                               time=t)  # fmt: skip
+        assert rep["residuals"]["leg_ik.L"] < 1e-6
+        j = a.pose_joints("Rig", t, space="armature")
+        for name in fixed:
+            joint = "Foot.L" if name == "heel.L" else "Toe.L"
+            assert np.abs(carried(j, joint, name) - lm[name]).max() < 2e-3, (angle, name)
+        joint = "Foot.L" if moves == "heel.L" else "Toe.L"
+        assert carried(j, joint, moves)[2] - lm[moves][2] > 0.02, (angle, moves)
+    j1, j4 = (a.pose_joints("Rig", t, space="armature") for t in (1.0, 4.0))
+    assert np.abs(j1["Foot.L"] - j4["Foot.L"]).max() < 1e-9  # (the same roll, the same pose)
+    assert len(s.history) == n + 4
+    for _ in range(4):
+        s.history.undo()

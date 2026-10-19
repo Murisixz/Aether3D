@@ -487,6 +487,7 @@ def detect(
         _quadruped(det, grid, c_centers, solid_flat, keep, height)
     else:
         mesh_c = (det.canonical(p), np.asarray(triangles, np.int64))
+        det.info["_symmetric"] = symmetry == "auto" and sym >= 0.75  # (sides symmetrized)
         _humanoid(det, grid, c_centers, solid_flat, keep, height, template, (to_c, shift), mesh_c)
     if symmetry == "auto" and sym >= 0.75:
         _symmetrize(det, height)
@@ -721,6 +722,9 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame, mesh_c) 
         det.info["pose"] = "T-pose" if ang > 70 else ("A-pose" if ang > 20 else "arms down")
 
 
+FINGER_AGREE = 0.015  # of the height: a symmetric body's hands find each finger this close
+
+
 def _fingers(det, mesh_c, H) -> None:
     """Fingers and thumbs (:func:`.anatomy.hand_fingers`) as landmarks: ``thumb.1.L`` ..
     ``thumb.tip.L``, ``index.1.L`` (the knuckle) .. ``index.tip.L``, likewise ``middle``,
@@ -728,16 +732,58 @@ def _fingers(det, mesh_c, H) -> None:
     detection says so."""
     from .anatomy import hand_fingers
 
-    found = {}
+    found: dict[str, Any] = {}
+    hands: dict[str, dict[str, Any]] = {}
     for side in ("L", "R"):
         wr, tip = det.landmarks.get(f"wrist.{side}"), det.landmarks.get(f"hand_tip.{side}")
         if wr is None or tip is None or wr.method == "proportion":
             continue
         res = hand_fingers(mesh_c[0], mesh_c[1], wr.position, tip.position, H)
         found[side] = {"tips": res["count"], "mitten": res["mitten"]}
-        if res["mitten"]:
-            continue
-        for name, pts in [*res["fingers"].items(), ("thumb", res["thumb"])]:
+        if "edge" in res:
+            found[side]["finger_radius_in_edges"] = round(
+                res["finger_radius"] / max(res["edge"], 1e-12), 3
+            )
+        if not res["mitten"]:
+            hands[side] = {**res["fingers"], "thumb": res["thumb"]}
+    # The hands of a symmetric body (its sides are symmetrized) must find the same
+    # fingers: a finger one hand misses or places farther than FINGER_AGREE from its
+    # mirror image is not resolved by the mesh (too coarse for its width; measured: such
+    # fingers were 2 to 8 % of the height off) and is left out of both.
+    mirror = np.array([-1.0, 1.0, 1.0])
+    pair = {"L", "R"} <= set(found) and bool(det.info.get("_symmetric"))
+    dropped = []
+    if pair and hands:
+        names = sorted({n for h in hands.values() for n in h if h[n] is not None})
+        for name in names:
+            a = hands.get("L", {}).get(name)
+            b = hands.get("R", {}).get(name)
+            gap = (
+                max(
+                    float(np.linalg.norm(np.asarray(pa) * mirror - np.asarray(pb)))
+                    for pa, pb in zip(a, b, strict=True)
+                )
+                if a is not None and b is not None
+                else np.inf
+            )
+            found.setdefault("mirror_gaps", {})[name] = round(gap / H, 5)
+            if not gap < FINGER_AGREE * H:
+                dropped.append(name)
+        if dropped:
+            # (all or none: a hand whose other fingers bend while these cannot is worse
+            # than one without finger joints, which landmarks can complete)
+            hands = {}
+            det.diag(
+                "FINGERS_UNCERTAIN",
+                "warning",
+                f"the hands' {', '.join(dropped)} do not match their mirror images (the "
+                "mesh is too coarse for their width): the hands have no finger landmarks",
+                fingers=dropped,
+                hint="remesh finer (fingers need edges about as short as their radius), "
+                "or give finger landmarks",
+            )
+    for side, fingers in hands.items():
+        for name, pts in fingers.items():
             if pts is None:
                 continue
             notes = ("its base", "its middle joint", "its last joint", "its tip")
@@ -747,6 +793,8 @@ def _fingers(det, mesh_c, H) -> None:
                 conf = 0.8 if key == "tip" else 0.65
                 how = f"the {name} finger's {note[4:]}, on its measured axis"
                 det.add(f"{name}.{key}.{side}", pts[k], conf, "finger", how)
+    if dropped:
+        found["dropped"] = dropped
     det.info["fingers"] = found
 
 

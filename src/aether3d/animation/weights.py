@@ -2,7 +2,15 @@
 
 **Generation** (:func:`generate_weights`, ``scene.animation.generate_weights``):
 
-* ``geodesic`` (the default) -- geodesic voxel binding (after Dionne and de Lasa, SCA
+* ``heat`` (the default, 0.19.1) -- bone heat (Baran and Popovic 2007, Blender's Automatic
+  Weights; :mod:`.heat`): one sparse solve of ``(L + D) w = D p`` for all bones, the
+  cotangent Laplacian ``L`` diffusing from each vertex's nearest *visible* bone (``D``:
+  its heat). On a mesh and bones both were given, the dominant joint agrees with
+  Blender's on 99.8 % of the vertices. Left and right joints then fade out across the
+  mirror plane (heat diffuses through the groin and the sternum; Blender's leak there is
+  0.19 of a vertex's weight). ``diffusion`` scales ``L``, ``visibility`` (default on)
+  keeps bones a vertex cannot see from heating it.
+* ``geodesic`` -- geodesic voxel binding (after Dionne and de Lasa, SCA
   2013): the mesh (all its parts, open or not) is voxelized into a solid; each deforming
   bone's segment is rasterized into it; each vertex's distance to each bone is the
   shortest path **inside the solid** (:func:`.voxels.geodesic`). Weights fall off with that
@@ -11,8 +19,8 @@
   Because paths cannot cross air, an arm resting near the torso does not pull the torso,
   and the left leg never weighs on the right.
 * ``envelope`` and ``nearest`` -- Stage 17's Euclidean distances to the bone segments.
-* **Policies**: ``organic`` (``p = 3``, smooth blends), ``stylized`` (``p = 4``,
-  tighter blends), ``rigid`` (each disconnected part follows the one bone nearest to it
+* **Policies**: ``organic`` (``p = 3``, smooth blends; heat: diffusion 1), ``stylized``
+  (``p = 4``, tighter blends), ``rigid`` (each disconnected part follows the one bone nearest to it
   as a whole -- blocky and armoured characters -- else each vertex its nearest bone).
   ``rigid_parts`` (``auto``, ``all``, ``none``) makes small separate parts (buttons,
   armour plates, a helmet) rigid in the other policies too.
@@ -53,6 +61,11 @@ if TYPE_CHECKING:
     from .system import AnimationSystem
 
 METHODS = ("heat", "geodesic", "envelope", "nearest")
+# Bone heat keeps up to eight influences per vertex (Blender's Automatic Weights give 12 %
+# of a figure's vertices more than four, at most seven): capped at four, the torso's weights
+# jump where a fifth joint takes over -- a twisted torso showed 118 new creases and 24
+# folds, two and none with eight (measured; glTF carries eight in two joint sets).
+HEAT_INFLUENCES = 8
 POLICIES = {
     # heat: ``diffusion`` scales the Laplacian (1: Blender's balance; the stylized policy
     # blends tighter). geodesic (p 3: a knee bent 140 degrees keeps 0.76 of its size, 0.69
@@ -389,6 +402,8 @@ def generate_weights(
             "INVALID_ARGUMENT", f"rigid_parts is one of {', '.join(RIGID_PARTS)}", "rigid_parts"
         )
     pol = dict(POLICIES[policy])
+    if method == "heat" and pol["influences"] > 1:
+        pol["influences"] = HEAT_INFLUENCES
     k = pol["influences"] if influences is None else _int(influences, "influences", 1, 8)
     iterations = pol["smooth"] if smooth is None else _int(smooth, "smooth", 0, 200)
     resolution = _int(resolution, "resolution", 16, 512)
@@ -1461,7 +1476,7 @@ def transfer_weights(
     source: Any,
     *,
     max_distance: float | None = None,
-    influences: int = 4,
+    influences: int | None = None,
     unmatched: str = "rigid",
     smooth: int = 2,
     skinning: str | None = None,
@@ -1470,15 +1485,20 @@ def transfer_weights(
     at the closest point of its surface (barycentric blend) -- one undo step. Vertices
     farther than ``max_distance`` (default: 5 % of the source's size) are reported; whole
     parts that far are bound rigidly to their nearest joint (``unmatched="rigid"``),
-    keep the transferred weights (``"keep"``) or make the call fail (``"refuse"``)."""
+    keep the transferred weights (``"keep"``) or make the call fail (``"refuse"``).
+    ``influences`` defaults to the source skin's."""
     from ..rendering.scene_data import world_matrices
     from ..spatial.geometry import closest_points_on_triangles
 
     if unmatched not in ("rigid", "keep", "refuse"):
         raise _err("INVALID_ARGUMENT", "unmatched is 'rigid', 'keep' or 'refuse'", "unmatched")
-    k = _int(influences, "influences", 1, 8)
     smooth = _int(smooth, "smooth", 0, 100)
     src = _Edit(system, source)
+    k = (
+        int(src.skin.indices.shape[1])
+        if influences is None
+        else _int(influences, "influences", 1, 8)
+    )
     tgt_obj = system._object(target, "target")
     if tgt_obj._id == src.obj._id:
         raise _err("INVALID_ARGUMENT", "the target is the source", "target")

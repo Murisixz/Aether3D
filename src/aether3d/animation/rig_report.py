@@ -44,7 +44,20 @@ COLLAPSE_WARN = 0.75  # a bent joint's cross-section keeps less than this of its
 COLLAPSE_ERROR = 0.5
 STRETCH = 1.6
 COMPRESS = 0.5
-FIX_CALLS = ("edit_weights", "edit_rig", "skin_method", "rebind", "pole", "plant_feet")
+CREASE = 60.0  # degrees between neighbouring triangles: a crease (smooth at rest)
+CREASE_FINDING = 5  # new creases (edges) a pose may make before it is a finding
+SUITES = ("suite", "stress")
+FIX_CALLS = (
+    "edit_weights",
+    "edit_rig",
+    "skin_method",
+    "smooth_skin",
+    "rebind",
+    "pole",
+    "plant_feet",
+)
+SMOOTH_FIX = {"iterations": 8, "strength": 0.5, "region": "blend"}  # (a skin without any)
+SMOOTH_MOST = 30  # iterations a smoothing fix goes up to
 
 
 def _err(code: str, message: str, location: str) -> AnimationError:
@@ -75,9 +88,16 @@ def _bone_dir(rig, k: int) -> np.ndarray:
     return d / n if n > 1e-12 else np.array([0.0, 0.0, 1.0])
 
 
-def pose_suite(rig) -> list[dict[str, Any]]:
+def pose_suite(rig, level: str = "suite") -> list[dict[str, Any]]:
     """The diagnostic poses this rig supports: ``{name, joint, turns: {joint index:
-    (armature-space axis, degrees)}}`` (joints found by role)."""
+    (armature-space axis, degrees)}}`` (joints found by role). ``level`` ``suite``: the
+    everyday range (elbows and knees 120, hips 90, arms raised 90, wrists twisted 90,
+    torso 45, head 60); ``stress``: the extremes (elbows and knees 140, hips 100, arms
+    raised 150 with the clavicle's share, torso twisted 60) -- what a character's hardest
+    motions ask of the skin."""
+    from .controls import shoulder_share
+
+    stress = level == "stress"
     fwd = {"+x": (1, 0, 0), "-x": (-1, 0, 0), "+y": (0, 1, 0), "-y": (0, -1, 0)}.get(
         rig.forward_axis("-y"), (0, -1, 0)
     )
@@ -93,12 +113,15 @@ def pose_suite(rig) -> list[dict[str, Any]]:
         return None if n < 1e-6 else (axis / n, deg)
 
     for side, out in (("L", -right), ("R", right)):
-        for role, name, toward, deg in (
-            ("lower_arm", "elbow_bend_120", fwd, 120.0),
-            ("shin", "knee_bend_120", -fwd, 120.0),
-            ("thigh", "hip_flex_90", fwd, 90.0),
-            ("upper_arm", "shoulder_raise_90", up, 90.0),
+        for role, toward, deg in (
+            ("lower_arm", fwd, 140.0 if stress else 120.0),
+            ("shin", -fwd, 140.0 if stress else 120.0),
+            ("thigh", fwd, 100.0 if stress else 90.0),
+            ("upper_arm", up, 150.0 if stress else 90.0),
         ):
+            base = {"lower_arm": "elbow_bend", "shin": "knee_bend", "thigh": "hip_flex",
+                    "upper_arm": "shoulder_raise"}[role]  # fmt: skip
+            name = f"{base}_{deg:g}"
             k = _role(rig, f"{role}.{side}")
             if k is None:
                 continue
@@ -108,8 +131,16 @@ def pose_suite(rig) -> list[dict[str, Any]]:
                 # raise sideways: from the rest direction toward up, in the plane of out
                 axis = np.cross(d, up) if abs(d @ up) < 0.95 else np.cross(d, out)
                 t = (axis / np.linalg.norm(axis), deg)
-            if t is not None:
-                poses.append({"name": f"{name}.{side}", "joint": k, "turns": {k: t}})
+            if t is None:
+                continue
+            turns = {k: t}
+            c = _role(rig, f"clavicle.{side}")
+            if stress and role == "upper_arm" and c is not None and c == rig.joints[k].parent:
+                # (the arm raised the way pose commands raise it: the clavicle elevates
+                # its share about the same axis, the arm the rest)
+                share = shoulder_share(deg)
+                turns = {c: (t[0], share), k: (t[0], deg - share)}
+            poses.append({"name": f"{name}.{side}", "joint": k, "turns": turns})
         k = _role(rig, f"hand.{side}")
         if k is not None:
             poses.append(
@@ -121,11 +152,12 @@ def pose_suite(rig) -> list[dict[str, Any]]:
             )
     spine = [k for k in (_role(rig, "spine"), _role(rig, "chest")) if k is not None]
     if spine:
+        twist = 60.0 if stress else 45.0
         poses.append(
             {
-                "name": "torso_twist_45",
+                "name": f"torso_twist_{twist:g}",
                 "joint": spine[0],
-                "turns": {k: (up, 45.0 / len(spine)) for k in spine},
+                "turns": {k: (up, twist / len(spine)) for k in spine},
             }
         )
         poses.append(
@@ -171,12 +203,47 @@ def _posed(system, arm, rig, turns: dict[int, tuple[np.ndarray, float]], time: f
 # --------------------------------------------------------------------------------------- #
 
 
+def edge_pairs(tris: np.ndarray) -> np.ndarray:
+    """``(edges, 2)``: the two triangles of each edge two triangles share (border and
+    non-manifold edges are left out)."""
+    tris = np.asarray(tris, np.int64)
+    if not len(tris):
+        return np.zeros((0, 2), np.int64)
+    e = np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]])
+    f = np.tile(np.arange(len(tris)), 3)
+    n = int(tris.max()) + 1
+    key = np.minimum(e[:, 0], e[:, 1]) * n + np.maximum(e[:, 0], e[:, 1])
+    o = np.argsort(key, kind="stable")
+    key, f = key[o], f[o]
+    _, start, count = np.unique(key, return_index=True, return_counts=True)
+    two = start[count == 2]
+    return np.stack([f[two], f[two + 1]], axis=1)
+
+
+def dihedrals(p: np.ndarray, tris: np.ndarray, pairs: np.ndarray) -> np.ndarray:
+    """Degrees between the normals of each pair's triangles (0: flat)."""
+    cr = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
+    cr /= np.maximum(np.linalg.norm(cr, axis=1, keepdims=True), 1e-300)
+    d = np.einsum("ij,ij->i", cr[pairs[:, 0]], cr[pairs[:, 1]])
+    return np.degrees(np.arccos(np.clip(d, -1.0, 1.0)))
+
+
+def _area_normals(p: np.ndarray, tris: np.ndarray) -> np.ndarray:
+    cr = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
+    n = np.zeros_like(p)
+    for c in range(3):
+        n += np.stack([np.bincount(tris[:, c], cr[:, i], len(p)) for i in range(3)], axis=1)
+    return n
+
+
 def _tri_measures(
     p0: np.ndarray,
     p1: np.ndarray,
     tris: np.ndarray,
     n1: np.ndarray | None,
     n0: np.ndarray | None = None,
+    pairs: np.ndarray | None = None,
+    rest_dihedral: np.ndarray | None = None,
 ):
     a0, b0, c0 = p0[tris[:, 0]], p0[tris[:, 1]], p0[tris[:, 2]]
     a1, b1, c1 = p1[tris[:, 0]], p1[tris[:, 1]], p1[tris[:, 2]]
@@ -202,9 +269,27 @@ def _tri_measures(
     e1 = np.linalg.norm(p1[edges[:, 0]] - p1[edges[:, 1]], axis=1)
     good = e0 > max(0.35 * float(np.median(e0)), 1e-12)
     er = np.where(good, e1 / np.where(good, e0, 1.0), 1.0)
+    # Geometry only (whatever normals the skin carries): a fold is a triangle facing
+    # against the area-weighted normal of its posed neighbourhood that did not at rest;
+    # a crease an edge between triangles of typical size bent past CREASE degrees that
+    # was smooth at rest.
+    nb0 = _area_normals(p0, tris)[tris].sum(axis=1)
+    nb1 = _area_normals(p1, tris)[tris].sum(axis=1)
+    folded = ok & (np.einsum("ij,ij->i", cr1, nb1) < 0) & (np.einsum("ij,ij->i", cr0, nb0) >= 0)
+    creases = np.zeros(0, np.int64)
+    sharpest = 0.0
+    if pairs is not None and len(pairs):
+        rest = dihedrals(p0, tris, pairs) if rest_dihedral is None else rest_dihedral
+        now = dihedrals(p1, tris, pairs)
+        smooth = (rest <= CREASE) & ok[pairs[:, 0]] & ok[pairs[:, 1]]
+        creases = np.flatnonzero(smooth & (now > CREASE))
+        sharpest = float(now[smooth].max()) if smooth.any() else 0.0
     return {
         "collapsed": np.flatnonzero(collapsed),
         "flipped": np.flatnonzero(flipped),
+        "folded": np.flatnonzero(folded),
+        "creases": creases,
+        "sharpest_crease": sharpest,
         "stretched": edges[good & (er > STRETCH)],
         "compressed": edges[good & (er < COMPRESS)],
         "worst_stretch": float(er.max()) if er.size else 1.0,
@@ -241,6 +326,8 @@ class _Skinned:
         self.dominant = np.array([self.palette[c] for c in np.argmax(dense, axis=1)])
         self.closed = _closed(self.tris)
         self.volume0 = _volume(self.p0, self.tris) if self.closed else None
+        self.pairs = edge_pairs(self.tris)
+        self.rest_dihedral = dihedrals(self.p0, self.tris, self.pairs)
         self.n0 = None if mesh.normals is None else mesh.normals.astype(np.float64) @ m[:3, :3].T
 
     def posed(self, result) -> tuple[np.ndarray, np.ndarray | None]:
@@ -488,7 +575,11 @@ def diagnose_rig(
                     unit="m",
                 )
     # -- the pose suite -----------------------------------------------------------------------
-    suite = pose_suite(rig) if poses == "suite" else ([] if not poses else _named(poses, rig))
+    suite = (
+        pose_suite(rig, poses)
+        if isinstance(poses, str) and poses in SUITES
+        else ([] if not poses else _named(poses, rig))
+    )
     pose_report: dict[str, Any] = {}
     for pose in suite:
         result = _posed(system, arm, rig, pose["turns"], t)
@@ -496,10 +587,13 @@ def diagnose_rig(
         k = pose["joint"]
         for sk in skinned:
             p1, n1 = sk.posed(result)
-            m = _tri_measures(sk.p0, p1, sk.tris, n1, sk.n0)
+            m = _tri_measures(sk.p0, p1, sk.tris, n1, sk.n0, sk.pairs, sk.rest_dihedral)
             rec: dict[str, Any] = {
                 "collapsed_triangles": int(m["collapsed"].size),
                 "flipped_triangles": int(m["flipped"].size),
+                "folded_triangles": int(m["folded"].size),
+                "new_creases": int(m["creases"].size),
+                "sharpest_crease": round(m["sharpest_crease"], 2),
                 "stretched_edges": int(len(m["stretched"])),
                 "compressed_edges": int(len(m["compressed"])),
                 "worst_stretch": round(m["worst_stretch"], 4),
@@ -569,6 +663,31 @@ def diagnose_rig(
                     magnitude=int(m["flipped"].size),
                     unit="triangles",
                 )
+            if m["creases"].size >= CREASE_FINDING:
+                tri = np.unique(sk.pairs[m["creases"]])
+                add(
+                    "SKIN_CREASE",
+                    "warning",
+                    f"{pose['name']}: {m['creases'].size} edges of {sk.obj.name!r} crease "
+                    f"past {CREASE:g} degrees (sharpest {m['sharpest_crease']:.0f})",
+                    mesh=sk.obj.name,
+                    pose=pose["name"],
+                    vertices=np.unique(sk.tris[tri])[:max_vertices].tolist(),
+                    magnitude=int(m["creases"].size),
+                    unit="edges",
+                )
+            if m["folded"].size:
+                add(
+                    "SKIN_FOLD",
+                    "warning",
+                    f"{pose['name']}: {m['folded'].size} triangles of {sk.obj.name!r} fold "
+                    "over their neighbours",
+                    mesh=sk.obj.name,
+                    pose=pose["name"],
+                    triangles=m["folded"][:max_vertices].tolist(),
+                    magnitude=int(m["folded"].size),
+                    unit="triangles",
+                )
             if len(m["stretched"]) > 0.002 * len(sk.tris):
                 add(
                     "STRETCHED_EDGES",
@@ -603,6 +722,9 @@ def diagnose_rig(
             "every finding is measured (basis: numeric); how a pose should look is not judged",
             "joint_ring: the mean distance of the skin around a bent joint to its pivot, "
             "posed over rest (1: kept; below 0.75: collapsing)",
+            f"new_creases: edges smooth at rest bent past {CREASE:g} degrees; "
+            "folded_triangles: triangles turned against their posed neighbourhood "
+            "(both from the geometry alone)",
         ],
     }
 
@@ -613,7 +735,9 @@ MAX_POSE_TURNS = 16
 def _named(poses: Any, rig) -> list[dict[str, Any]]:
     if not isinstance(poses, list) or len(poses) > 64:
         raise _err(
-            "INVALID_ARGUMENT", "poses is 'suite', none or a list of up to 64 poses", "poses"
+            "INVALID_ARGUMENT",
+            "poses is 'suite', 'stress', none or a list of up to 64 poses",
+            "poses",
         )
     return [resolve_pose(rig, p, f"poses[{i}]") for i, p in enumerate(poses)]
 
@@ -627,7 +751,7 @@ def resolve_pose(rig, spec: Any, location: str = "pose") -> dict[str, Any]:
     from .limits import AXES
 
     if isinstance(spec, str):
-        suite = {p["name"]: p for p in pose_suite(rig)}
+        suite = {p["name"]: p for level in SUITES for p in pose_suite(rig, level)}
         if spec not in suite:
             raise _err(
                 "INVALID_ARGUMENT", f"no diagnostic pose {spec!r}; one of {sorted(suite)}", location
@@ -886,6 +1010,23 @@ def propose_rig_fix(
                 proposals.append(
                     _proposal(code, "verify", f"Smooth {mesh!r}'s weights around {joint!r}", ops, f)
                 )
+        elif code in ("SKIN_CREASE", "SKIN_FOLD", "FLIPPED_TRIANGLES") and mesh:
+            # Creases, folds and turned triangles of linear blend skinning relax under
+            # corrective smoothing -- across most poses, while a joint bent hardest may
+            # fold a little more (measured in the revision's design record): a trade-off,
+            # so a choice (a dry run shows the measured changes). A skin that has it
+            # already smooths further.
+            sk = system._owned[("skin", system._object(mesh, "mesh")._id)]._definition
+            spec = dict(SMOOTH_FIX)
+            title = f"Relax {mesh!r}'s skinning with corrective smoothing (delta mush)"
+            if sk.smooth != "null":
+                spec = json.loads(sk.smooth)
+                spec["iterations"] = min(SMOOTH_MOST, int(spec["iterations"] * 1.5) + 1)
+                title = f"Smooth {mesh!r}'s skinning further ({spec['iterations']} iterations)"
+            title += ": fewer creases and folds in most poses, maybe more at the hardest bends"
+            if sk.smooth == "null" or spec["iterations"] > json.loads(sk.smooth)["iterations"]:
+                ops = [{"call": "smooth_skin", "mesh": mesh, "smooth": spec}]
+                proposals.append(_proposal(code, "approval", title, ops, f))
         elif code in ("INTERPENETRATION", "STRETCHED_EDGES") and f.get("vertices") and mesh:
             ops = [
                 {
@@ -1067,6 +1208,7 @@ _FIX_FIELDS = {
     "edit_rig": ("operations",),
     "rebind": ("mesh",),
     "skin_method": ("mesh", "method", "dq"),
+    "smooth_skin": ("mesh", "smooth"),
     "pole": ("constraint",),
     "plant_feet": ("legs",),
 }
@@ -1132,6 +1274,10 @@ def _check_fix(system, arm, f: Any, where: str) -> None:
                 not isinstance(dq["joint"], str) or rig.index(dq["joint"]) is None
             ):
                 raise _err("INVALID_ARGUMENT", "no such joint", f"{at}.dq.joint")
+        if call == "smooth_skin":
+            from .rig import check_smooth
+
+            check_smooth(op["smooth"], f"{at}.smooth")
         if call == "pole":
             c = next((c for c in rig.constraints if c.name == op["constraint"]), None)
             if c is None or not isinstance(c.p.get("pole"), dict) or "object" not in c.p["pole"]:
@@ -1148,6 +1294,7 @@ def _check_fix(system, arm, f: Any, where: str) -> None:
 _SCOPE = {
     "edit_weights": {"deform"},
     "skin_method": {"deform"},
+    "smooth_skin": {"deform"},
     "rebind": {"deform"},
     "pole": {"motion"},
     "plant_feet": {"motion"},
@@ -1194,10 +1341,22 @@ def _run_fix_op(system, arm, op: dict[str, Any]) -> None:
             _blend_measured(system, arm, op["mesh"], op["method"], dq)
         else:
             _blend_around(system, op["mesh"], op["method"], dq)
+    elif call == "smooth_skin":
+        _smooth_skin(system, op["mesh"], op["smooth"])
     elif call == "pole":
         _move_pole(system, arm, op["constraint"])
     elif call == "plant_feet":
         system.plant_feet(arm, op["legs"])
+
+
+def _smooth_skin(system, mesh, smooth: Any) -> None:
+    """Corrective smoothing (delta mush) on a skin: its weights, binding and method stay."""
+    from .rig import check_smooth
+
+    obj = system._object(mesh, "mesh")
+    item = system._owned[("skin", obj._id)]
+    with system._op(f"Smooth the skinning of {obj.name!r}"):
+        system._set(item, definition=item._definition.replace(smooth=check_smooth(smooth)))
 
 
 def _rebind(system, arm, mesh) -> None:
@@ -1366,15 +1525,22 @@ def _amount(f: dict[str, Any]) -> float | None:
     return None
 
 
+DELTA_KEYS = (
+    "joint_ring",
+    "new_creases",
+    "folded_triangles",
+    "flipped_triangles",
+    "worst_stretch",
+)
+
+
 def _delta(before, after) -> dict[str, Any]:
+    """``{"pose/mesh/measure": [before, after]}`` for the pose measures that changed."""
     out = {}
     for pose, meshes in after["poses"].items():
         for mesh, rec in meshes.items():
             old = before["poses"].get(pose, {}).get(mesh, {})
-            if (
-                "joint_ring" in rec
-                and "joint_ring" in old
-                and rec["joint_ring"] != old["joint_ring"]
-            ):
-                out[f"{pose}/{mesh}/joint_ring"] = [old["joint_ring"], rec["joint_ring"]]
+            for key in DELTA_KEYS:
+                if key in rec and key in old and rec[key] != old[key]:
+                    out[f"{pose}/{mesh}/{key}"] = [old[key], rec[key]]
     return out

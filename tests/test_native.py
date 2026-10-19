@@ -735,6 +735,74 @@ def test_dual_quaternion_skinning_is_numpys(seed, blended, monkeypatch):
     assert_bitwise(skin_dual_quaternion(*args, blend)[0], slow[0], "8 threads")
 
 
+def _mush_inputs(seed: int, region: str, weights: str):
+    """A bumpy closed surface (detail to keep), its skin-like weights and a deformation,
+    with a degenerate corner and a vertex no triangle uses (adversarial)."""
+    from aether3d import create_sphere
+    from aether3d.animation import rig as RG
+
+    rng = np.random.default_rng(seed)
+    s = create_sphere(0.5, segments=48, rings=24)
+    p = s.positions.astype(np.float64)
+    p *= (1.0 + 0.05 * rng.standard_normal(len(p)))[:, None]
+    t = np.asarray(s.triangles, np.int64)
+    p = np.vstack([p, [[9.0, 9.0, 9.0]]])  # (unused: no corner, no neighbour)
+    p[t[0, 1]] = p[t[0, 0]]  # (a degenerate corner: zero weight)
+    w = rng.dirichlet(np.ones(3), size=len(p))
+    w[::4] = [1.0, 0.0, 0.0]  # (rigid vertices: masked out in the blend region)
+    spec = {"iterations": int(rng.integers(1, 16)), "strength": float(rng.uniform(0.2, 1.0)),
+            "region": region, "weights": weights}  # fmt: skip
+    rest = RG.mush_rest(p, t, w, spec)
+    angle = rng.uniform(0.5, 2.0)
+    bend = np.where(p[:, 2:3] > 0, angle * p[:, 2:3], 0.0)  # (a bend: not rigid)
+    posed = p.copy()
+    posed[:, 0] = p[:, 0] * np.cos(bend[:, 0]) - p[:, 2] * np.sin(bend[:, 0])
+    posed[:, 2] = p[:, 0] * np.sin(bend[:, 0]) + p[:, 2] * np.cos(bend[:, 0])
+    return posed, rest
+
+
+@pytest.mark.parametrize("seed", range(3))
+@pytest.mark.parametrize("region", ["blend", "all"])
+@pytest.mark.parametrize("weights", ["cotangent", "uniform"])
+def test_delta_mush_is_numpys(seed, region, weights, monkeypatch):
+    """Delta mush (0.19.1): the native kernel's positions are the NumPy reference's bit for
+    bit -- cotangent and uniform smoothing, both regions, degenerate corners and vertices
+    no triangle uses included."""
+    from aether3d.animation.rig import delta_mush
+
+    posed, rest = _mush_inputs(seed, region, weights)
+    fast = delta_mush(posed, rest)
+    monkeypatch.setattr(_native, "module", lambda: None)
+    slow = delta_mush(posed, rest)
+    assert_bitwise(fast, slow, "positions")
+    assert np.isfinite(slow).all()
+    assert np.array_equal(slow[-1], posed[-1].astype(np.float32))  # (no corner: as given)
+
+
+def test_delta_mush_rejects_bad_tables():
+    _, rest = _mush_inputs(0, "all", "cotangent")
+    n = len(rest["mask"])
+    good = dict(
+        pos=np.zeros((n, 3)), dst=rest["graph"][0].copy(), src=rest["graph"][1].copy(),
+        w=rest["weights"], wsum=rest["wsum"], tris=rest["triangles"].copy(),
+        delta=rest["delta"], mask=rest["mask"], iterations=3, lam=0.5,
+        out=np.empty((n, 3), np.float32),
+    )  # fmt: skip
+    native.delta_mush(**good)
+    for key, bad in (
+        ("src", lambda a: np.where(np.arange(a.size) == 5, n, a)),
+        ("dst", lambda a: a[::-1].copy()),
+        ("tris", lambda a: np.where(np.arange(a.size).reshape(a.shape) == 7, -1, a)),
+        ("delta", lambda a: a[:-1].copy()),
+        ("w", lambda a: a[:-1].copy()),
+    ):
+        args = dict(good, **{key: bad(good[key])})
+        with pytest.raises(ValueError):
+            native.delta_mush(**args)
+    with pytest.raises(ValueError):
+        native.delta_mush(**dict(good, iterations=5000))
+
+
 def test_geodesic_voxel_distances_are_numpys(monkeypatch):
     """Geodesic voxel distances (0.19): the native kernel's integers equal the NumPy
     bucket queue's, on any thread count, with and without a cutoff."""

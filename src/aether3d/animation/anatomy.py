@@ -270,6 +270,11 @@ def hand_fingers(
             spreads.append(spread)
             k += 1
         chains.append((v, np.array(cents) if cents else q[[v]], spreads))
+    # How well the mesh shows the fingers: their radius (the rings near their tips) in
+    # edges of the hand's mesh.
+    radii = [float(np.median(sp[:3])) for _, _, sp in chains if sp]
+    out["edge"] = edge_len
+    out["finger_radius"] = float(np.median(radii)) if radii else 0.0
     # The thumb: its finger's base lies nearest the wrist.
     bases = [ch[1][-1] for ch in chains]
     thumb_i = int(np.argmin([float((b - wrist) @ axis) for b in bases]))

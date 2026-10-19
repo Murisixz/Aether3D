@@ -863,7 +863,12 @@ def export_scene(session: Session, args: dict, ctx: ToolContext) -> ToolOutput:
             "meshes": result.mesh_count,
             "animations": result.animations,
             "diagnostics": [
-                {"code": d.code, "severity": d.severity, "message": d.message}
+                {
+                    "code": d.code,
+                    "severity": d.severity,
+                    "message": d.message,
+                    "lossy": bool(d.lossy),
+                }
                 for d in result.diagnostics[:30]
             ],
         }

@@ -23,7 +23,8 @@ def body_mesh():
 def rigged(mesh, *, soft_knee=False):
     s = Scene("Feedback")
     body = s.add_object("Body", mesh=mesh)
-    s.animation.autorig(body, name="Rig")
+    # (plain linear blend skinning: the collapse the dual quaternion fix is for)
+    s.animation.autorig(body, name="Rig", weights={"corrective": None, "normals": "joints"})
     if soft_knee:  # (weights smoothed by hand far too wide: the knee collapses when bent)
         smooth = {"op": "smooth", "iterations": 200, "joints": ["Thigh.L", "Shin.L"]}
         s.animation.edit_weights(body, [smooth, smooth])

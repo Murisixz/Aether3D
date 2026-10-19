@@ -734,20 +734,20 @@ fn skin_linear(
 }
 
 /// Delta mush (`animation.rig.delta_mush`): `out` (n, 3) float32 from skinned `pos` (n, 3)
-/// float64, the smoothing graph (`dst`, `src`: directed edges sorted by destination, then
-/// source; `deg` (n) edges per vertex; `first` (n) each vertex's first neighbour or -1),
-/// `tris` (t, 3) int64, the rest detail `delta` (n, 3) and the `mask` (n), smoothed
-/// `iterations` times with strength `lam`.
+/// float64, the smoothing graph (`dst`, `src`: directed edges sorted by destination; `w`
+/// their weights, `wsum` (n) each vertex's sum), `tris` (t, 3) int64, the rest detail
+/// `delta` (3 t, 3: one row per triangle corner) and the `mask` (n), smoothed `iterations`
+/// times with strength `lam`.
 #[pyfunction]
-#[pyo3(signature = (pos, dst, src, deg, first, tris, delta, mask, iterations, lam, out, threads=1))]
+#[pyo3(signature = (pos, dst, src, w, wsum, tris, delta, mask, iterations, lam, out, threads=1))]
 #[allow(clippy::too_many_arguments)]
 fn delta_mush(
     py: Python<'_>,
     pos: &Bound<'_, PyAny>,
     dst: &Bound<'_, PyAny>,
     src: &Bound<'_, PyAny>,
-    deg: &Bound<'_, PyAny>,
-    first: &Bound<'_, PyAny>,
+    w: &Bound<'_, PyAny>,
+    wsum: &Bound<'_, PyAny>,
     tris: &Bound<'_, PyAny>,
     delta: &Bound<'_, PyAny>,
     mask: &Bound<'_, PyAny>,
@@ -763,51 +763,37 @@ fn delta_mush(
     check(unsafe { p.slice() }.len() == 3 * n, || {
         "pos: not (n, 3)".into()
     })?;
-    let dg = arrays.input::<i64>(deg, "deg", Some(n))?;
-    let fs = arrays.input::<i64>(first, "first", Some(n))?;
     let ds = arrays.input::<i64>(dst, "dst", None)?;
     let e = unsafe { ds.slice() }.len();
     let sr = arrays.input::<i64>(src, "src", Some(e))?;
+    let wt = arrays.input::<f64>(w, "w", Some(e))?;
+    let ws = arrays.input::<f64>(wsum, "wsum", Some(n))?;
     let tr = arrays.input::<i64>(tris, "tris", None)?;
-    check(unsafe { tr.slice() }.len() % 3 == 0, || {
+    let t = unsafe { tr.slice() }.len() / 3;
+    check(unsafe { tr.slice() }.len() == 3 * t, || {
         "tris: not (t, 3)".into()
     })?;
-    let dl = arrays.input::<f64>(delta, "delta", Some(3 * n))?;
+    let dl = arrays.input::<f64>(delta, "delta", Some(9 * t))?;
     let mk = arrays.input::<f64>(mask, "mask", Some(n))?;
     check(iterations <= 1000, || {
         format!("iterations = {iterations}: at most 1000")
     })?;
     check(lam.is_finite(), || "lam: not finite".into())?;
-    // The graph: destinations sorted, as many per vertex as its degree, sources in range.
-    let (dsv, srv, dgv) = unsafe { (ds.slice(), sr.slice(), dg.slice()) };
-    let mut total = 0usize;
-    for (v, &d) in dgv.iter().enumerate() {
-        check(d >= 0, || format!("deg[{v}] = {d}: negative"))?;
-        total += d as usize;
-    }
-    check(total == e, || {
-        format!("deg sums to {total}, not the {e} edges")
-    })?;
-    let mut at = 0usize;
-    for (v, &d) in dgv.iter().enumerate() {
-        for k in at..at + d as usize {
-            check(dsv[k] == v as i64, || {
-                format!("dst[{k}] = {}: not sorted by vertex", dsv[k])
-            })?;
-            check(srv[k] >= 0 && (srv[k] as usize) < n, || {
-                format!("src[{k}] = {}: not a vertex (0..{n})", srv[k])
-            })?;
-        }
-        at += d as usize;
-    }
-    for (v, &f) in unsafe { fs.slice() }.iter().enumerate() {
-        check(f >= -1 && f < n as i64, || {
-            format!("first[{v}] = {f}: not a vertex or -1")
+    let (dsv, srv) = unsafe { (ds.slice(), sr.slice()) };
+    for k in 0..e {
+        check(dsv[k] >= 0 && (dsv[k] as usize) < n, || {
+            format!("dst[{k}] = {}: not a vertex (0..{n})", dsv[k])
+        })?;
+        check(k == 0 || dsv[k - 1] <= dsv[k], || {
+            format!("dst[{k}] = {}: not sorted", dsv[k])
+        })?;
+        check(srv[k] >= 0 && (srv[k] as usize) < n, || {
+            format!("src[{k}] = {}: not a vertex (0..{n})", srv[k])
         })?;
     }
-    for (k, &t) in unsafe { tr.slice() }.iter().enumerate() {
-        check(t >= 0 && (t as usize) < n, || {
-            format!("tris[{k}] = {t}: not a vertex (0..{n})")
+    for (k, &v) in unsafe { tr.slice() }.iter().enumerate() {
+        check(v >= 0 && (v as usize) < n, || {
+            format!("tris[{k}] = {v}: not a vertex (0..{n})")
         })?;
     }
     let o = arrays.output::<f32>(out, "out", Some(3 * n))?;
@@ -815,9 +801,10 @@ fn delta_mush(
     py.detach(|| unsafe {
         mush::delta_mush(
             p.slice(),
+            ds.slice(),
             sr.slice(),
-            dg.slice(),
-            fs.slice(),
+            wt.slice(),
+            ws.slice(),
             tr.slice(),
             dl.slice(),
             mk.slice(),

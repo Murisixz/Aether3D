@@ -383,10 +383,12 @@ def test_blended_skins_mix_linear_and_dual_quaternion_per_vertex():
     assert got.same(locked)
 
 
-def test_version_10_projects_load_and_save_as_11(tmp_path):
+def test_version_10_projects_load_and_save_as_the_current_version(tmp_path):
+    from aether3d.serialization import FORMAT_VERSION
+
     s, arm, leg, _ = tube_scene()
     doc = scene_to_dict(s)
-    assert doc["format_version"] == 11
+    assert doc["format_version"] == FORMAT_VERSION
     doc["format_version"] = 10  # a Stage 17 rig has nothing new: the v10 form is the same
     old = scene_from_dict(doc)
     assert (
@@ -394,5 +396,57 @@ def test_version_10_projects_load_and_save_as_11(tmp_path):
     )
     path = tmp_path / "leg.aether"
     old.save(path)
-    assert json.loads(path.read_text())["format_version"] == 11
+    assert json.loads(path.read_text())["format_version"] == FORMAT_VERSION
     assert load_scene(path).animation.rig(arm.id) is not None
+
+
+def test_corrective_smoothing_and_surface_normals_are_skin_data(tmp_path):
+    """A skin's delta mush (``smooth``) and surface-following normals (format 12): one undo
+    step to set, the modeled mesh at rest, a different surface only where weights blend,
+    saved and loaded, validated, and reported as what glTF cannot carry."""
+    from aether3d.animation.rig import check_smooth
+    from aether3d.errors import UnsupportedFeatureError
+
+    s, arm, leg, _ = tube_scene()
+    a = s.animation
+    rig = a.rig(arm)
+    base = a._owned[("skin", leg.id)]._definition
+    given = {"indices": base.indices, "weights": base.weights,
+             "joints": [rig.joints[rig.index_of_id(j)].name for j in base.joints]}  # fmt: skip
+    a.keyframe(arm, 'joints["Knee"].rotation_euler', 0.0, [0.0, 0.0, 0.0])
+    a.keyframe(arm, 'joints["Knee"].rotation_euler', 1.0, [80.0, 0.0, 0.0])
+    plain = a.rigging(1.0).meshes[leg.id].positions.copy()
+    n = len(s.history)
+    smooth = {"iterations": 8, "strength": 0.5}
+    a.skin(leg, arm, weights=given, normals="surface", smooth=smooth)
+    assert len(s.history) == n + 1
+    skin = a._owned[("skin", leg.id)]._definition
+    assert skin.smooth == check_smooth(smooth) and skin.normals == "surface"
+    assert json.loads(skin.smooth) == {"iterations": 8, "strength": 0.5, "region": "blend",
+                                       "weights": "cotangent"}  # fmt: skip
+    rest = a.rigging(0.0).meshes[leg.id].positions
+    assert np.abs(rest - leg.mesh.positions).max() < 1e-6  # (the knee at rest)
+    bent = a.rigging(1.0).meshes[leg.id].positions
+    moved = np.linalg.norm(bent - plain, axis=1)
+    top = base.weights.max(axis=1)
+    assert moved[top < 0.8].max() > 1e-3  # (the blend region relaxes)
+    pos = leg.mesh.positions
+    far = (pos[:, 2] > 0.85) | (pos[:, 2] < 0.25)
+    assert np.array_equal(bent[far], plain[far])  # (one joint holds these: untouched)
+    loaded = scene_from_dict(json.loads(json.dumps(scene_to_dict(s))))
+    assert loaded.animation._owned[("skin", leg.id)]._definition.same(skin)
+    for bad in ({"iterations": 0}, {"strength": 1.5}, {"region": "x"}, {"weights": "x"},
+                {"mode": 1}):  # fmt: skip
+        with pytest.raises(AnimationError) as e:
+            a.skin(leg, arm, weights=given, smooth=bad)
+        assert e.value.code == "INVALID_SKIN"
+    assert len(s.history) == n + 1  # (refused: nothing changed)
+    with pytest.raises(UnsupportedFeatureError) as e:
+        s.export(tmp_path / "leg.glb", animation="bake")
+    assert "SKIN_SMOOTHING_LOSSY" in str(e.value)
+    report = s.export(tmp_path / "leg.glb", animation="bake", allow_lossy=True).to_dict()
+    codes = {d["code"]: d for d in report["diagnostics"]}
+    assert codes["SKIN_SMOOTHING_LOSSY"]["lossy"] and not codes["SKIN_NORMALS_DIFFER"]["lossy"]
+    s.history.undo()
+    back = a._owned[("skin", leg.id)]._definition
+    assert back.smooth == "null" and back.normals == "joints"

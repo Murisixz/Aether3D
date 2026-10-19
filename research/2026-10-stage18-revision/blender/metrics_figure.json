@@ -1,0 +1,660 @@
+{
+ "weights": {
+  "aether_vs_blender_dominant_agreement": 0.9998,
+  "aether_vs_blender_mean_abs_difference": 0.0118,
+  "blender_weights_lbs_in_aether3d_vs_blender_max_m": 9.5367431640625e-07
+ },
+ "poses": {
+  "aether_heat_lbs": {
+   "elbow_bend_140.L": {
+    "new_creases": 9,
+    "sharpest_crease": 177.9,
+    "folded_triangles": 2,
+    "worst_stretch": 1.943,
+    "joint_ring": 0.8749
+   },
+   "knee_bend_140.L": {
+    "new_creases": 11,
+    "sharpest_crease": 163.2,
+    "folded_triangles": 1,
+    "worst_stretch": 1.897,
+    "joint_ring": 0.8891
+   },
+   "hip_flex_100.L": {
+    "new_creases": 47,
+    "sharpest_crease": 159.1,
+    "folded_triangles": 1,
+    "worst_stretch": 3.631,
+    "joint_ring": 0.9995
+   },
+   "shoulder_raise_150.L": {
+    "new_creases": 16,
+    "sharpest_crease": 173.6,
+    "folded_triangles": 0,
+    "worst_stretch": 3.829,
+    "joint_ring": 0.9005
+   },
+   "wrist_twist_90.L": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.469,
+    "joint_ring": 0.9923
+   },
+   "elbow_bend_140.R": {
+    "new_creases": 12,
+    "sharpest_crease": 139.7,
+    "folded_triangles": 1,
+    "worst_stretch": 1.942,
+    "joint_ring": 0.8747
+   },
+   "knee_bend_140.R": {
+    "new_creases": 9,
+    "sharpest_crease": 170.1,
+    "folded_triangles": 2,
+    "worst_stretch": 1.863,
+    "joint_ring": 0.8873
+   },
+   "hip_flex_100.R": {
+    "new_creases": 52,
+    "sharpest_crease": 148.5,
+    "folded_triangles": 2,
+    "worst_stretch": 3.6,
+    "joint_ring": 0.9996
+   },
+   "shoulder_raise_150.R": {
+    "new_creases": 16,
+    "sharpest_crease": 165.3,
+    "folded_triangles": 0,
+    "worst_stretch": 3.8,
+    "joint_ring": 0.8971
+   },
+   "wrist_twist_90.R": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.438,
+    "joint_ring": 0.9916
+   },
+   "torso_twist_60": {
+    "new_creases": 2,
+    "sharpest_crease": 61.1,
+    "folded_triangles": 0,
+    "worst_stretch": 1.573,
+    "joint_ring": 0.9668
+   },
+   "spine_bend_45": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.352,
+    "joint_ring": 1.0003
+   },
+   "head_turn_60": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.579,
+    "joint_ring": 0.9493
+   }
+  },
+  "aether_heat_mush8": {
+   "elbow_bend_140.L": {
+    "new_creases": 8,
+    "sharpest_crease": 172.1,
+    "folded_triangles": 1,
+    "worst_stretch": 1.564,
+    "joint_ring": 0.8696
+   },
+   "knee_bend_140.L": {
+    "new_creases": 8,
+    "sharpest_crease": 179.8,
+    "folded_triangles": 1,
+    "worst_stretch": 1.746,
+    "joint_ring": 0.8877
+   },
+   "hip_flex_100.L": {
+    "new_creases": 54,
+    "sharpest_crease": 169.7,
+    "folded_triangles": 3,
+    "worst_stretch": 3.816,
+    "joint_ring": 0.9995
+   },
+   "shoulder_raise_150.L": {
+    "new_creases": 14,
+    "sharpest_crease": 167.9,
+    "folded_triangles": 0,
+    "worst_stretch": 3.712,
+    "joint_ring": 0.899
+   },
+   "wrist_twist_90.L": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.287,
+    "joint_ring": 0.9917
+   },
+   "elbow_bend_140.R": {
+    "new_creases": 11,
+    "sharpest_crease": 163.4,
+    "folded_triangles": 1,
+    "worst_stretch": 1.549,
+    "joint_ring": 0.8694
+   },
+   "knee_bend_140.R": {
+    "new_creases": 9,
+    "sharpest_crease": 173.7,
+    "folded_triangles": 1,
+    "worst_stretch": 1.724,
+    "joint_ring": 0.886
+   },
+   "hip_flex_100.R": {
+    "new_creases": 54,
+    "sharpest_crease": 175.1,
+    "folded_triangles": 2,
+    "worst_stretch": 3.494,
+    "joint_ring": 0.9995
+   },
+   "shoulder_raise_150.R": {
+    "new_creases": 12,
+    "sharpest_crease": 136.7,
+    "folded_triangles": 0,
+    "worst_stretch": 3.73,
+    "joint_ring": 0.8955
+   },
+   "wrist_twist_90.R": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.266,
+    "joint_ring": 0.9906
+   },
+   "torso_twist_60": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.477,
+    "joint_ring": 0.9664
+   },
+   "spine_bend_45": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.311,
+    "joint_ring": 1.0
+   },
+   "head_turn_60": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.462,
+    "joint_ring": 0.9488
+   }
+  },
+  "blender_lbs": {
+   "elbow_bend_140.L": {
+    "new_creases": 9,
+    "sharpest_crease": 177.9,
+    "folded_triangles": 2,
+    "worst_stretch": 1.943,
+    "joint_ring": 0.8749
+   },
+   "knee_bend_140.L": {
+    "new_creases": 11,
+    "sharpest_crease": 163.2,
+    "folded_triangles": 1,
+    "worst_stretch": 1.897,
+    "joint_ring": 0.8891
+   },
+   "hip_flex_100.L": {
+    "new_creases": 40,
+    "sharpest_crease": 172.0,
+    "folded_triangles": 0,
+    "worst_stretch": 3.248,
+    "joint_ring": 0.9995
+   },
+   "shoulder_raise_150.L": {
+    "new_creases": 16,
+    "sharpest_crease": 173.7,
+    "folded_triangles": 0,
+    "worst_stretch": 3.828,
+    "joint_ring": 0.9003
+   },
+   "wrist_twist_90.L": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.469,
+    "joint_ring": 0.9923
+   },
+   "elbow_bend_140.R": {
+    "new_creases": 12,
+    "sharpest_crease": 139.7,
+    "folded_triangles": 1,
+    "worst_stretch": 1.942,
+    "joint_ring": 0.8747
+   },
+   "knee_bend_140.R": {
+    "new_creases": 9,
+    "sharpest_crease": 170.0,
+    "folded_triangles": 2,
+    "worst_stretch": 1.863,
+    "joint_ring": 0.8873
+   },
+   "hip_flex_100.R": {
+    "new_creases": 45,
+    "sharpest_crease": 167.3,
+    "folded_triangles": 1,
+    "worst_stretch": 2.996,
+    "joint_ring": 0.9995
+   },
+   "shoulder_raise_150.R": {
+    "new_creases": 16,
+    "sharpest_crease": 165.3,
+    "folded_triangles": 0,
+    "worst_stretch": 3.797,
+    "joint_ring": 0.897
+   },
+   "wrist_twist_90.R": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.438,
+    "joint_ring": 0.9916
+   },
+   "torso_twist_60": {
+    "new_creases": 2,
+    "sharpest_crease": 61.1,
+    "folded_triangles": 0,
+    "worst_stretch": 1.576,
+    "joint_ring": 0.967
+   },
+   "spine_bend_45": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.353,
+    "joint_ring": 1.0007
+   },
+   "head_turn_60": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.579,
+    "joint_ring": 0.9494
+   }
+  },
+  "blender_dqs": {
+   "elbow_bend_140.L": {
+    "new_creases": 16,
+    "sharpest_crease": 175.5,
+    "folded_triangles": 1,
+    "worst_stretch": 3.312,
+    "joint_ring": 1.0
+   },
+   "knee_bend_140.L": {
+    "new_creases": 12,
+    "sharpest_crease": 175.0,
+    "folded_triangles": 2,
+    "worst_stretch": 3.282,
+    "joint_ring": 1.0
+   },
+   "hip_flex_100.L": {
+    "new_creases": 23,
+    "sharpest_crease": 133.0,
+    "folded_triangles": 0,
+    "worst_stretch": 3.962,
+    "joint_ring": 1.0
+   },
+   "shoulder_raise_150.L": {
+    "new_creases": 19,
+    "sharpest_crease": 179.2,
+    "folded_triangles": 0,
+    "worst_stretch": 6.254,
+    "joint_ring": 1.0058
+   },
+   "wrist_twist_90.L": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.527,
+    "joint_ring": 1.0
+   },
+   "elbow_bend_140.R": {
+    "new_creases": 15,
+    "sharpest_crease": 178.7,
+    "folded_triangles": 2,
+    "worst_stretch": 3.288,
+    "joint_ring": 1.0
+   },
+   "knee_bend_140.R": {
+    "new_creases": 11,
+    "sharpest_crease": 171.9,
+    "folded_triangles": 2,
+    "worst_stretch": 3.221,
+    "joint_ring": 1.0
+   },
+   "hip_flex_100.R": {
+    "new_creases": 25,
+    "sharpest_crease": 133.0,
+    "folded_triangles": 0,
+    "worst_stretch": 3.646,
+    "joint_ring": 1.0
+   },
+   "shoulder_raise_150.R": {
+    "new_creases": 18,
+    "sharpest_crease": 168.9,
+    "folded_triangles": 0,
+    "worst_stretch": 6.141,
+    "joint_ring": 1.0064
+   },
+   "wrist_twist_90.R": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.516,
+    "joint_ring": 1.0
+   },
+   "torso_twist_60": {
+    "new_creases": 3,
+    "sharpest_crease": 63.3,
+    "folded_triangles": 0,
+    "worst_stretch": 1.633,
+    "joint_ring": 0.9999
+   },
+   "spine_bend_45": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.375,
+    "joint_ring": 1.0111
+   },
+   "head_turn_60": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.709,
+    "joint_ring": 1.0
+   }
+  },
+  "blender_lbs_cs": {
+   "elbow_bend_140.L": {
+    "new_creases": 7,
+    "sharpest_crease": 155.5,
+    "folded_triangles": 0,
+    "worst_stretch": 1.65,
+    "joint_ring": 0.8697
+   },
+   "knee_bend_140.L": {
+    "new_creases": 11,
+    "sharpest_crease": 147.7,
+    "folded_triangles": 1,
+    "worst_stretch": 1.778,
+    "joint_ring": 0.8879
+   },
+   "hip_flex_100.L": {
+    "new_creases": 44,
+    "sharpest_crease": 167.7,
+    "folded_triangles": 1,
+    "worst_stretch": 3.084,
+    "joint_ring": 0.9995
+   },
+   "shoulder_raise_150.L": {
+    "new_creases": 12,
+    "sharpest_crease": 162.4,
+    "folded_triangles": 1,
+    "worst_stretch": 3.688,
+    "joint_ring": 0.8991
+   },
+   "wrist_twist_90.L": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.318,
+    "joint_ring": 0.992
+   },
+   "elbow_bend_140.R": {
+    "new_creases": 12,
+    "sharpest_crease": 158.7,
+    "folded_triangles": 2,
+    "worst_stretch": 1.619,
+    "joint_ring": 0.8697
+   },
+   "knee_bend_140.R": {
+    "new_creases": 9,
+    "sharpest_crease": 136.0,
+    "folded_triangles": 1,
+    "worst_stretch": 1.789,
+    "joint_ring": 0.8861
+   },
+   "hip_flex_100.R": {
+    "new_creases": 45,
+    "sharpest_crease": 179.7,
+    "folded_triangles": 0,
+    "worst_stretch": 2.974,
+    "joint_ring": 0.9995
+   },
+   "shoulder_raise_150.R": {
+    "new_creases": 14,
+    "sharpest_crease": 174.9,
+    "folded_triangles": 2,
+    "worst_stretch": 3.625,
+    "joint_ring": 0.8957
+   },
+   "wrist_twist_90.R": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.317,
+    "joint_ring": 0.9908
+   },
+   "torso_twist_60": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.516,
+    "joint_ring": 0.9666
+   },
+   "spine_bend_45": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.322,
+    "joint_ring": 1.0005
+   },
+   "head_turn_60": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.52,
+    "joint_ring": 0.9489
+   }
+  },
+  "blender_lbs_cs12": {
+   "elbow_bend_140.L": {
+    "new_creases": 13,
+    "sharpest_crease": 147.4,
+    "folded_triangles": 0,
+    "worst_stretch": 1.525,
+    "joint_ring": 0.8641
+   },
+   "knee_bend_140.L": {
+    "new_creases": 10,
+    "sharpest_crease": 168.8,
+    "folded_triangles": 1,
+    "worst_stretch": 1.701,
+    "joint_ring": 0.8863
+   },
+   "hip_flex_100.L": {
+    "new_creases": 44,
+    "sharpest_crease": 177.9,
+    "folded_triangles": 1,
+    "worst_stretch": 3.009,
+    "joint_ring": 0.9995
+   },
+   "shoulder_raise_150.L": {
+    "new_creases": 13,
+    "sharpest_crease": 152.4,
+    "folded_triangles": 0,
+    "worst_stretch": 3.58,
+    "joint_ring": 0.8978
+   },
+   "wrist_twist_90.L": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.259,
+    "joint_ring": 0.9918
+   },
+   "elbow_bend_140.R": {
+    "new_creases": 9,
+    "sharpest_crease": 176.9,
+    "folded_triangles": 2,
+    "worst_stretch": 1.5,
+    "joint_ring": 0.8645
+   },
+   "knee_bend_140.R": {
+    "new_creases": 10,
+    "sharpest_crease": 169.1,
+    "folded_triangles": 1,
+    "worst_stretch": 1.704,
+    "joint_ring": 0.8846
+   },
+   "hip_flex_100.R": {
+    "new_creases": 50,
+    "sharpest_crease": 178.6,
+    "folded_triangles": 1,
+    "worst_stretch": 2.855,
+    "joint_ring": 0.9995
+   },
+   "shoulder_raise_150.R": {
+    "new_creases": 16,
+    "sharpest_crease": 158.2,
+    "folded_triangles": 0,
+    "worst_stretch": 3.486,
+    "joint_ring": 0.8945
+   },
+   "wrist_twist_90.R": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.265,
+    "joint_ring": 0.99
+   },
+   "torso_twist_60": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.484,
+    "joint_ring": 0.9661
+   },
+   "spine_bend_45": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.306,
+    "joint_ring": 1.0002
+   },
+   "head_turn_60": {
+    "new_creases": 0,
+    "sharpest_crease": 60.0,
+    "folded_triangles": 0,
+    "worst_stretch": 1.476,
+    "joint_ring": 0.9484
+   }
+  },
+  "v0.19.0": {
+   "elbow_bend_140.L": {
+    "joint_ring": 0.7414,
+    "new_creases": 15,
+    "sharpest_crease": 150.62,
+    "folded_triangles": 0,
+    "worst_stretch": 2.8867
+   },
+   "knee_bend_140.L": {
+    "joint_ring": 0.731,
+    "new_creases": 22,
+    "sharpest_crease": 175.44,
+    "folded_triangles": 1,
+    "worst_stretch": 2.8568
+   },
+   "hip_flex_100.L": {
+    "joint_ring": 0.9098,
+    "new_creases": 10,
+    "sharpest_crease": 177.96,
+    "folded_triangles": 3,
+    "worst_stretch": 2.7137
+   },
+   "shoulder_raise_150.L": {
+    "joint_ring": 0.9326,
+    "new_creases": 62,
+    "sharpest_crease": 176.29,
+    "folded_triangles": 4,
+    "worst_stretch": 6.3222
+   },
+   "wrist_twist_90.L": {
+    "joint_ring": 0.9967,
+    "new_creases": 1,
+    "sharpest_crease": 61.71,
+    "folded_triangles": 0,
+    "worst_stretch": 1.7705
+   },
+   "elbow_bend_140.R": {
+    "joint_ring": 0.7438,
+    "new_creases": 15,
+    "sharpest_crease": 176.04,
+    "folded_triangles": 0,
+    "worst_stretch": 2.6886
+   },
+   "knee_bend_140.R": {
+    "joint_ring": 0.7296,
+    "new_creases": 22,
+    "sharpest_crease": 146.24,
+    "folded_triangles": 0,
+    "worst_stretch": 2.9191
+   },
+   "hip_flex_100.R": {
+    "joint_ring": 0.9089,
+    "new_creases": 5,
+    "sharpest_crease": 84.7,
+    "folded_triangles": 0,
+    "worst_stretch": 2.8507
+   },
+   "shoulder_raise_150.R": {
+    "joint_ring": 0.9254,
+    "new_creases": 35,
+    "sharpest_crease": 159.82,
+    "folded_triangles": 0,
+    "worst_stretch": 3.9922
+   },
+   "wrist_twist_90.R": {
+    "joint_ring": 0.9967,
+    "new_creases": 4,
+    "sharpest_crease": 66.08,
+    "folded_triangles": 0,
+    "worst_stretch": 1.7003
+   },
+   "torso_twist_60": {
+    "joint_ring": 0.9769,
+    "new_creases": 0,
+    "sharpest_crease": 59.99,
+    "folded_triangles": 0,
+    "worst_stretch": 1.7416
+   },
+   "spine_bend_45": {
+    "joint_ring": 0.9931,
+    "new_creases": 0,
+    "sharpest_crease": 59.99,
+    "folded_triangles": 0,
+    "worst_stretch": 1.5304
+   },
+   "head_turn_60": {
+    "joint_ring": 0.9046,
+    "new_creases": 21,
+    "sharpest_crease": 142.29,
+    "folded_triangles": 2,
+    "worst_stretch": 2.5924
+   }
+  }
+ }
+}

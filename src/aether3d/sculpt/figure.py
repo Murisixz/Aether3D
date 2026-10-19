@@ -48,6 +48,9 @@ FIGURE_DEFAULTS: dict[str, float] = {
     "fingers": 1.0,  # 1: separate fingers; 0: a mitten (fingers fused into one paddle)
 }
 
+CROTCH_BELOW_HIP = 0.048  # of the stature: the crotch below the hip joints' centres
+LEG_GAP = 0.005  # of the stature: the gap left between the thighs, knees and feet
+
 FINGERS = ("index", "middle", "ring", "pinky")
 # Per finger, in units of the stature: metacarpal (wrist to knuckle), proximal, middle and
 # distal phalanx lengths, the knuckle's offset across the palm (+ toward the thumb), and the
@@ -193,12 +196,28 @@ def figure_joints(**options: Any) -> dict[str, np.ndarray]:
 def figure_shapes(**options: Any) -> list[dict[str, Any]]:
     """The figure's implicit shapes (for :func:`aether3d.sculpt.implicit.implicit_surface`);
     see the module docstring and :data:`FIGURE_DEFAULTS`."""
+    return _figure_shapes(options, 0.0)
+
+
+PARTS = ("torso", "hips", "neck", "head", "upper_arm", "forearm", "hand", "thigh", "knee",
+         "shin", "foot")  # fmt: skip
+"""The body parts the figure's shapes belong to (``figure_garment`` dresses some of them;
+the limbs' are sided: ``upper_arm.L``...)."""
+
+
+def _figure_shapes(
+    options: dict[str, Any], min_gap: float, tags: list[str] | None = None
+) -> list[dict[str, Any]]:
     o = _options(options)
     J = figure_joints(**options)
     H = o["height"]
     m = o["muscle"]
     limb = o["limbs"]
     shapes: list[dict[str, Any]] = []
+    marks: list[tuple[int, str]] = []
+
+    def mark(part: str) -> None:  # (the shapes from here on belong to ``part``)
+        marks.append((len(shapes), part))
 
     def capsule(a, b, r0, r1=None, blend=0.012 * H):
         shapes.append({"type": "capsule", "a": [float(v) for v in a], "b": [float(v) for v in b],
@@ -216,6 +235,7 @@ def figure_shapes(**options: Any) -> list[dict[str, Any]]:
         return a + t * (b - a)
 
     # -- torso ------------------------------------------------------------------------------
+    mark("torso")
     spine, chest, upper = J["spine"], J["chest"], J["upper_chest"]
     neck = J["neck"]
     hip_z = J["hip.L"][2]
@@ -225,10 +245,12 @@ def figure_shapes(**options: Any) -> list[dict[str, Any]]:
     # (a smooth union bulges by up to a quarter of its blend radius where shapes overlap).
     capsule([0, 0.006 * H, hip_z + 0.02 * H], [0, 0.008 * H, neck[2] - 0.03 * H],
             0.060 * H, 0.054 * H, blend=0.03 * H)  # fmt: skip
+    mark("hips")
     ell([0, 0.004 * H, hip_z + 0.034 * H], [0.078 * H * hw, 0.052 * H, 0.060 * H], 0.03 * H)
     for sx in (1.0, -1.0):  # glutes
         ell([sx * 0.040 * H * hw, 0.036 * H, hip_z + 0.002 * H],
             [0.042 * H * hw * m ** 0.3, 0.032 * H * m ** 0.5, 0.054 * H], 0.016 * H)  # fmt: skip
+    mark("torso")
     belly = o["belly"]
     ell(
         [0, -0.008 * H * belly, spine[2] - 0.012 * H],
@@ -256,8 +278,10 @@ def figure_shapes(**options: Any) -> list[dict[str, Any]]:
     # -- neck and head ----------------------------------------------------------------------
     head = J["head"]
     hs = o["head"]
+    mark("neck")
     capsule([0, 0.012 * H, neck[2] - 0.012 * H], [0, 0.002 * H, head[2] + 0.004 * H],
             0.031 * H * limb ** 0.5, 0.027 * H, blend=0.02 * H)  # fmt: skip
+    mark("head")
     hr = 0.13 * H * hs  # head height (chin to crown)
     top = J["head_top"][2]
     ell([0, 0.012 * hr, top - 0.42 * hr], [0.355 * hr, 0.42 * hr, 0.43 * hr], 0.02 * H)  # cranium
@@ -283,6 +307,7 @@ def figure_shapes(**options: Any) -> list[dict[str, Any]]:
         fwd = np.array([0.0, -1.0, 0.0])
         front = _unit(fwd - (fwd @ ua) * ua)  # the arm's front (biceps side)
         r_up = 0.028 * H * limb
+        mark(f"upper_arm.{side}")
         capsule(sh, el, r_up, 0.021 * H * limb, blend=0.012 * H)
         ell(
             sh + ua * 0.022 * H + np.array([sx * 0.008 * H, 0, 0.006 * H]),
@@ -302,6 +327,7 @@ def figure_shapes(**options: Any) -> list[dict[str, Any]]:
             0.010 * H,
             axis=ua,
         )
+        mark(f"forearm.{side}")
         ell(el - front * 0.012 * H, [0.011 * H, 0.011 * H, 0.012 * H], 0.010 * H)  # olecranon
         capsule(el, wr, 0.022 * H * limb, 0.0145 * H * limb, blend=0.012 * H)
         f_front = _unit(fwd - (fwd @ fa) * fa)
@@ -312,6 +338,7 @@ def figure_shapes(**options: Any) -> list[dict[str, Any]]:
             axis=fa,
         )
         # -- the hand: a palm, knuckles, fingers and a thumb --------------------------------
+        mark(f"hand.{side}")
         mid1 = J[f"middle.1.{side}"]
         idx1, pky1 = J[f"index.1.{side}"], J[f"pinky.1.{side}"]
         across = _unit(idx1 - pky1)  # toward the thumb
@@ -346,6 +373,7 @@ def figure_shapes(**options: Any) -> list[dict[str, Any]]:
         hip, knee, ankle = J[f"hip.{side}"], J[f"knee.{side}"], J[f"ankle.{side}"]
         th = _unit(knee - hip)
         sh_ = _unit(ankle - knee)
+        mark(f"thigh.{side}")
         capsule(hip + np.array([0, 0, 0.025 * H]), knee, 0.050 * H * limb, 0.033 * H * limb,
                 blend=0.03 * H)  # fmt: skip
         ell(
@@ -366,8 +394,10 @@ def figure_shapes(**options: Any) -> list[dict[str, Any]]:
             0.025 * H,
             axis=th,
         )  # hamstrings
+        mark(f"knee.{side}")
         ell(knee + np.array([0, -0.022 * H, 0.004 * H]), [0.012 * H, 0.008 * H, 0.015 * H],
             0.014 * H)  # kneecap  # fmt: skip
+        mark(f"shin.{side}")
         capsule(knee, ankle, 0.031 * H * limb, 0.0175 * H * limb, blend=0.015 * H)
         ell(
             along(knee, ankle, 0.30) + np.array([sx * 0.002 * H, 0.020 * H, 0]),
@@ -379,6 +409,7 @@ def figure_shapes(**options: Any) -> list[dict[str, Any]]:
             ell(ankle + np.array([side_off * 0.014 * H, 0.002 * H, -0.002 * H]),
                 [0.005 * H, 0.006 * H, 0.007 * H], 0.010 * H)  # fmt: skip
         heel, ball, toe = J[f"heel.{side}"], J[f"ball.{side}"], J[f"toe_tip.{side}"]
+        mark(f"foot.{side}")
         hc = np.array([ankle[0], heel[1] - 0.016 * H, 0.020 * H])
         ell(hc, [0.020 * H, 0.024 * H, 0.022 * H], 0.012 * H)  # heel
         capsule(hc + np.array([0, 0, 0.004 * H]), ball + np.array([0, 0, 0.006 * H]),
@@ -398,10 +429,54 @@ def figure_shapes(**options: Any) -> list[dict[str, Any]]:
             del k
         capsule(ankle + np.array([0, 0.0, 0.01 * H]), hc + np.array([0, -0.006 * H, 0.014 * H]),
                 0.018 * H, 0.018 * H, blend=0.015 * H)  # fmt: skip
+    # The legs apart below the crotch: thighs that touch (most do) are two surfaces, not a
+    # web the other leg would drag along (a 100-degree hip flexion stretched it 11 times).
+    crotch = hip_z - CROTCH_BELOW_HIP * H
+    mark("cut")
+    shapes.append({"type": "box", "center": [0.0, 0.0, 0.5 * crotch - 0.25 * H],
+                   "size": [max(LEG_GAP * H, min_gap), H, crotch + 0.5 * H],
+                   "blend": 0.004 * H, "subtract": True})  # fmt: skip
     # Flat soles: everything below the floor is cut away (last: it subtracts from all).
     shapes.append({"type": "box", "center": [0.0, 0.0, -0.5 * H], "size": [4 * H, 4 * H, H],
                    "blend": 0.004 * H, "subtract": True})  # fmt: skip
+    if tags is not None:
+        bounds = [i for i, _ in marks] + [len(shapes)]
+        for (start, part), end in zip(marks, bounds[1:], strict=True):
+            tags.extend([part] * (end - start))
     return shapes
+
+
+def figure_garment(parts: Any, inflate: float, voxel_size: float = 0.008, **options: Any) -> Any:
+    """A garment (or armour) shell over some of the figure's ``parts`` (:data:`PARTS`, a
+    limb's with or without its side: ``"upper_arm"`` is both, ``"upper_arm.L"`` one): their
+    shapes inflated by ``inflate`` metres and meshed like the figure, legs apart below the
+    crotch and flat at the floor."""
+    import copy
+
+    from .implicit import implicit_surface
+
+    wanted = {parts} if isinstance(parts, str) else set(parts)
+    for p_ in wanted:
+        if p_.split(".")[0] not in PARTS:
+            raise ValidationError(f"unknown figure part {p_!r}; one of {', '.join(PARTS)}")
+    if isinstance(inflate, bool) or not isinstance(inflate, (int, float)) or inflate < 0:
+        raise ValidationError("inflate is a non-negative number of metres")
+    tags: list[str] = []
+    shapes = _figure_shapes(options, 2.2 * float(voxel_size), tags)
+    out = []
+    for sh, tag in zip(shapes, tags, strict=True):
+        keep = tag == "cut" or tag in wanted or tag.split(".")[0] in wanted
+        if not keep or (sh.get("subtract") and tag != "cut"):
+            continue
+        sh = copy.deepcopy(sh)
+        if tag != "cut":
+            for key in ("radius", "radius_b"):
+                if key in sh:
+                    sh[key] += inflate
+            if "radii" in sh:
+                sh["radii"] = [r + inflate for r in sh["radii"]]
+        out.append(sh)
+    return implicit_surface(out, voxel_size)
 
 
 def _quat(axis: np.ndarray, side: np.ndarray | None = None) -> list[float]:
@@ -427,7 +502,7 @@ def figure_mesh(voxel_size: float = 0.006, *, remesh: float | None = None, **opt
     from ..mesh import Mesh
     from .implicit import _check, _field, implicit_surface
 
-    shapes = figure_shapes(**options)
+    shapes = _figure_shapes(options, 2.2 * float(voxel_size))  # (a gap the voxels resolve)
     mesh = implicit_surface(shapes, voxel_size)
     if remesh is None:
         return mesh

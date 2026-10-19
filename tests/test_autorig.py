@@ -189,7 +189,7 @@ def test_autorig_builds_a_controlled_weighted_humanoid(bodies):
     assert ik["forearm_twist.L"].type == "twist"
     # The skin uses deforming joints only, all vertices weighted.
     w = a.inspect_weights(body)
-    assert w["valid"] and w["max_influences"] <= 4
+    assert w["valid"] and w["max_influences"] <= 8  # (heat weights keep up to eight)
     assert not any(f["code"] in ("CROSS_SIDE_WEIGHTS", "HELPER_JOINT_WEIGHTED")
                    for f in w["findings"])  # fmt: skip
     # Nothing moved at rest; undo removes everything.

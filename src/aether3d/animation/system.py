@@ -1211,8 +1211,9 @@ class AnimationSystem:
         return ik_fk(self, armature, limb, mode, time, **options)
 
     def pose_character(self, armature: Any, commands: list[Any], *, time: float = 0.0) -> dict:
-        """High-level posing as keys: ``reach``, ``plant_feet``, ``look_at``, ``raise_arm``,
-        ``lean``, ``crouch``, ``aim_hips``, ``rotate``; see :mod:`.controls`."""
+        """High-level posing as keys: ``reach``, ``plant_feet``, ``look_at``, ``raise_arm``
+        (with the clavicle's share), ``lean``, ``crouch``, ``aim_hips``, ``rotate``,
+        ``curl_fingers`` and ``roll_foot``; see :mod:`.controls`."""
         from .controls import pose_character
 
         return pose_character(self, armature, commands, time=time)
@@ -1244,10 +1245,11 @@ class AnimationSystem:
         return rig_preview(self, armature, **options)
 
     def generate_weights(self, mesh_object: Any, armature: Any, **options: Any) -> dict:
-        """Automatic skin weights (``method``: ``geodesic`` voxel binding by default,
-        ``envelope``, ``nearest``; ``policy``: ``organic``, ``stylized``, ``rigid``) and the
-        binding, as one undo step; see :mod:`.weights`. Returns a report (technique,
-        assumptions, voxel size, fallbacks, timings)."""
+        """Automatic skin weights (``method``: ``heat`` -- bone heat, the default --,
+        ``geodesic`` voxel binding, ``envelope``, ``nearest``; ``policy``: ``organic``,
+        ``stylized``, ``rigid``) and the binding (``normals``, ``corrective`` smoothing), as
+        one undo step; see :mod:`.weights`. Returns a report (technique, assumptions,
+        fallbacks, timings)."""
         from .weights import generate_weights
 
         with self._op(f"Weights of {self._object(mesh_object, 'mesh_object').name!r}"):
