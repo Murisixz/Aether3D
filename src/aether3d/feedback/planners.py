@@ -1348,7 +1348,8 @@ def _separation(diagnosis, finding, fix, context):
     rows = sep["sectors"]
     current = sep["merged_fraction"]
     # A diffuse surface shows albedo x irradiance x 2^exposure: what a light change adds to
-    # each sector's inside and outside is predicted from the measured contributions.
+    # each sector's inside and outside is predicted from the measured contributions (the
+    # diffuse part: metals' and glass's highlights are not predicted).
     gain = 2.0**diagnosis.scene.render_settings.exposure
     ring = lighting.on_outline
     lit_in = (

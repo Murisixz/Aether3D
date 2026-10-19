@@ -76,7 +76,8 @@ class Lighting:
     on_outline: np.ndarray  # (n,) bool: just inside the outline
     total: np.ndarray  # (n,) luminance of the irradiance: lights + ambient
     ambient: np.ndarray  # (n,) the ambient term's luminance
-    albedo: np.ndarray  # (n,) the base color's luminance (materials and textures)
+    albedo: np.ndarray  # (n,) the diffuse albedo's luminance: base x (1 - metallic) x
+    # (1 - transmission), materials and textures (what diffuse light shows of the surface)
     contribution: np.ndarray  # (n, L) each light's, linked and shadowed
     unshadowed: np.ndarray  # (n, L) each light's, linked, without shadows
     lights: list[dict[str, Any]]  # one per column: name, id, type, ...
@@ -362,6 +363,15 @@ def _blockers(inst: np.ndarray) -> list[int]:
     return [int(i) for i in ids[np.argsort(-counts, kind="stable")][:3]]
 
 
+def _diffuse_albedo(sh: Any) -> np.ndarray:
+    """What of a surface diffuse light shows: the rasterizers' ``c_diff`` (metals and glass
+    reflect almost none of it; their highlights are not counted)."""
+    out = _luma(sh.base) * (1.0 - np.clip(sh.metallic, 0.0, 1.0))
+    if sh.transmission is not None:
+        out = out * (1.0 - np.clip(sh.transmission, 0.0, 1.0))
+    return out
+
+
 def _render_scene(obs: Any):
     from ..rendering.overlay import animation_overlay
     from ..rendering.scene_data import extract_render_scene, raster_environment
@@ -503,13 +513,13 @@ def measure(
             "normals": out_it.ns * out_it.toward[:, None],
             "total": c_out.sum(axis=1) + a_out,
             "contribution": c_out,
-            "albedo": _luma(ps.shade(out_it).base),
+            "albedo": _diffuse_albedo(ps.shade(out_it)),
         }
     total = contribution.sum(axis=1) + ambient
     notes = []
     if any(info.get("default") for info in lights):
         notes.append("the scene has no lights: the renderers' built-in default light is measured")
-    albedo = _luma(ps.shade(it).base)
+    albedo = _diffuse_albedo(ps.shade(it))
     out = Lighting(it.p, n, xy, even[it.rows], on_ring[it.rows], total, ambient, albedo,
                    contribution, flat, lights, sep, it.p[even[it.rows]].mean(axis=0),
                    view.eye, pixels, surround, notes)  # fmt: skip

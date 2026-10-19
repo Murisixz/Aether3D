@@ -40,12 +40,15 @@ def rel(path: Path | str) -> str:
     return str(path.relative_to(HERE)) if path.is_relative_to(HERE) else str(path)
 
 
-def arguments(description: str) -> argparse.Namespace:
+def arguments(description: str, extra: tuple[tuple[str, dict], ...] = ()) -> argparse.Namespace:
+    """The showcases' options (``extra``: more, as ``(flag, add_argument options)``)."""
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--quick", action="store_true", help="small CPU renders (tests)")
     parser.add_argument("--out", type=Path, help="output directory")
     parser.add_argument("--no-video", action="store_true", help="skip the sequences")
     parser.add_argument("--part", default="all", help="render only this part (see each script)")
+    for flag, options in extra:
+        parser.add_argument(flag, **options)
     return parser.parse_args()
 
 
@@ -153,9 +156,7 @@ def sequence(
     options: dict[str, Any],
     quick: bool,
 ) -> dict[str, Any]:
-    """Frames at 60 fps (resumable), then the encodes: ``<name>_1080p.mp4`` (H.264 preset
-    slow, CRF 10, BT.709), ``<name>_master.mkv`` (FFV1) and ``<name>_preview.mp4``
-    (960x540, small enough to commit), verified by PSNR/SSIM against the frames."""
+    """Frames at 60 fps (resumable), then :func:`encode` them."""
     frames_dir = out_dir / "frames" / name
     t0 = time.perf_counter()
     report = render_frames(scene, frames_dir, start=start, end=end, fps=FPS, resume=True, **options)
@@ -166,10 +167,19 @@ def sequence(
         "seconds_per_frame": round((time.perf_counter() - t0) / max(1, len(report["frames"])), 2),
         "resumed": sum(1 for f in report["frames"] if f.get("resumed")),
         "manifest": rel(report["manifest"]),
+        "video": encode(frames_dir, out_dir, name, quick=quick),
     }
+    return out
+
+
+def encode(frames_dir: Path, out_dir: Path, name: str, *, quick: bool = False) -> dict[str, Any]:
+    """``frame_%05d.png`` at 60 fps encoded by FFmpeg: ``<name>_1080p.mp4`` (H.264 preset
+    slow, CRF 10, BT.709), ``<name>_master.mkv`` (FFV1, lossless) and ``<name>_preview.mp4``
+    (960 wide, small enough to commit), verified by PSNR/SSIM against the frames."""
     if shutil.which("ffmpeg") is None:
-        out["video"] = {"skipped": "ffmpeg is not installed"}
-        return out
+        return {"skipped": "ffmpeg is not installed"}
+    import subprocess
+
     pattern = "frame_{frame:05d}.png"
     mp4 = out_dir / f"{name}_1080p.mp4"
     master = out_dir / f"{name}_master.mkv"
@@ -178,8 +188,6 @@ def sequence(
         "master": assemble_video(frames_dir, pattern, FPS, master, lossless=True),
     }
     small = out_dir / f"{name}_preview.mp4"
-    import subprocess
-
     subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp4), "-vf", "scale=960:-2:flags=lanczos",
          "-c:v", "libx264", "-preset", "slow", "-crf", "28", "-movflags", "+faststart",
@@ -187,7 +195,7 @@ def sequence(
         check=True, timeout=3600,
     )  # fmt: skip
     rate = f"{FPS}"
-    out["video"] = {
+    out = {
         "mp4": {"path": rel(mp4), "bytes": videos["mp4"]["bytes"],
                 "command": " ".join(videos["mp4"]["command"][1:])},
         "master": {"path": rel(master), "bytes": videos["master"]["bytes"]},
@@ -196,7 +204,7 @@ def sequence(
         "verify_master": verify(master, str(frames_dir / "frame_%05d.png"), rate),
     }  # fmt: skip
     if quick:
-        out["video"]["quick"] = True
+        out["quick"] = True
     return out
 
 

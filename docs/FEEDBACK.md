@@ -219,8 +219,10 @@ in a view without guessing from the image's colors:
 
 Corrections predict before they act: direct light scales with intensity, so the ratio and
 the outline after scaling a light (or the ambient) by 1/8 to 8 in quarter stops are
-computed from the measured contributions -- the outline from the albedo at each point and
-the render's exposure -- and the smallest change that reaches the target is proposed,
+computed from the measured contributions -- the outline from the diffuse albedo at each
+point (base colour times 1 - metallic times 1 - transmission: a metal's or glass's
+highlights are not predicted) and the render's exposure -- and the smallest change that
+reaches the target is proposed,
 preferring the fill to the key (`verify`: re-rendered and kept only if it helped). When no
 existing light can, a soft fill on the side opposite the key or a spot rim behind the
 subject (placed clear of what stands behind it) is proposed with its predicted effect,

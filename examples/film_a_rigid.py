@@ -49,6 +49,7 @@ from aether3d.mesh import Mesh  # noqa: E402
 from aether3d.rendering.png import encode_png, write_png  # noqa: E402
 
 DURATION = 5.0
+JUMPS = ("POSITION_JUMP", "VELOCITY_JUMP", "ROTATION_SNAP", "ANGULAR_VELOCITY_JUMP")
 STRIPS = (  # layer, motion, start, generator parameters
     ("Gesture", "wave", 0.6, {"waves": 3}),
     ("Gesture", "head_turn", 2.2, {"yaw": 35.0}),
@@ -268,6 +269,9 @@ def main() -> dict:
     report["gestures_crossfades"] = quality(scene, root)
     mute_action(scene, root, False)
     report["performance_motion"] = quality(scene, root)
+    for key in ("gestures_cuts", "gestures_crossfades"):
+        found = report[key]["findings"]
+        report[key]["jumps"] = sum(n for c, n in found.items() if c in JUMPS)
     jump = report["clips"]["jump"]
     start = next(s for _l, k, s, _p in STRIPS if k == "jump")
     report["jump_events"] = {"takeoff": start + jump["takeoff"], "landing": start + jump["landing"]}
