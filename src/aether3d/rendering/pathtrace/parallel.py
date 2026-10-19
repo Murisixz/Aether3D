@@ -37,6 +37,7 @@ CHANNELS = {
     "normal": 3,
     "ao": 1,
     "hits": 1,
+    "samples": 1,
 }
 """Running sums kept per pixel (``squares``: of the beauty, for the variance)."""
 AUTO_MIN_RAYS = 3_000_000
@@ -108,10 +109,14 @@ _STATE: tuple | None = None
 """``(tracer, accumulators, batch)`` of the render in progress: forked workers inherit it."""
 
 
-def run_task(task: tuple[int, int, int, int]) -> dict[str, Any]:
-    """Trace pixels ``[start, stop)`` for samples ``[s0, s1)``; add them to the sums."""
+def run_task(task: tuple) -> dict[str, Any]:
+    """Trace pixels ``[start, stop)`` (or the listed ``pixels``) for samples ``[s0, s1)``;
+    add them to the sums."""
     tracer, acc, batch = _STATE
-    start, stop, s0, s1 = task
+    start, stop, s0, s1 = task[:4]
+    listed = task[4] if len(task) > 4 else None
+    if listed is not None:
+        start, stop = 0, len(listed)
     before_counts = dict(tracer.counts)
     before_times = dict(tracer.timings)
     before_ps = (tracer.ps.pass_through_rays, tracer.ps.layer_limited)
@@ -127,7 +132,7 @@ def run_task(task: tuple[int, int, int, int]) -> dict[str, Any]:
         idx = np.arange(b, min(total, b + size), dtype=np.int64)
         offset, local = np.divmod(idx, n_tile)
         sample = s0 + offset
-        pixel = start + local
+        pixel = start + local if listed is None else listed[local]
         out = tracer.trace(pixel, sample)
         for s in np.unique(sample):  # per pixel, add samples in sample order
             sel = np.flatnonzero(sample == s)
@@ -138,6 +143,7 @@ def run_task(task: tuple[int, int, int, int]) -> dict[str, Any]:
             for name in ("direct", "indirect", "albedo", "normal"):
                 acc[name][px] += out[name][sel]
             acc["ao"][px] += out["ao"][sel]
+            acc["samples"][px] += 1.0
             hit = out["hit"][sel]
             acc["hits"][px] += hit
             visible += np.bincount(out["inst"][sel][hit], minlength=visible.size)

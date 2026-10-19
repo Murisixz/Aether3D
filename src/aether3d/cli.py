@@ -839,6 +839,8 @@ _PATH_FLAGS = {
     "sampler": "sampler",
     "filter": "filter",
     "filter_width": "filter_width",
+    "adaptive": "adaptive_threshold",
+    "adaptive_min_samples": "adaptive_min_samples",
     "clamp": "clamp",
     "workers": "workers",
 }
@@ -2253,6 +2255,16 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
         help="path: pixel filter (box, default; blackman_harris is Blender's)",
     )
     p_render.add_argument("--filter-width", type=float, help="path: filter width in pixels (1.5)")
+    p_render.add_argument(
+        "--adaptive",
+        type=float,
+        metavar="THRESHOLD",
+        help="path: adaptive sampling, a pixel stops below this relative error (e.g. 0.02); "
+        "--spp is then the most samples a pixel gets",
+    )
+    p_render.add_argument(
+        "--adaptive-min-samples", type=int, help="path: adaptive sampling's first round"
+    )
     p_render.add_argument(
         "--denoise",
         action="store_true",

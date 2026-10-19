@@ -36,7 +36,7 @@ import numpy as np
 
 from ...diagnostics import INFO, WARNING, Diagnostic
 from ...errors import RenderError
-from ..pathtrace.integrator import PathFrame, estimate_work
+from ..pathtrace.integrator import PathFrame, adaptive_rounds, converged, estimate_work
 from ..pathtrace.lights import LightSet
 from ..pathtrace.sampling import SOBOL_DIRECTIONS, filter_table
 from ..pathtrace.scene import MAX_LAYERS, PathScene
@@ -52,7 +52,8 @@ from .resources import link_masks, pack_instances
 WORKGROUP = 8
 STACK_SIZE = 64
 """Traversal stack entries per ray in the kernel (``PT_STACK``)."""
-ACC_PLANES = 22
+ACC_PLANES = 23  # (plane 22: adaptive sampling's active pixels)
+ACC_ACTIVE = 22
 """Per-pixel float32 sums (see the kernel's ``ACC_*``)."""
 COUNTER_SLOTS = 8
 HEADER_WORDS = 16
@@ -67,6 +68,7 @@ MAX_PIXEL_SAMPLES_PER_DISPATCH = 1 << 20
 MODE_PATHS, MODE_CENTER, MODE_RNG = 0, 1, 2
 FLAG_PERSPECTIVE, FLAG_PASS_THROUGH, FLAG_AO, FLAG_SIZED_LIGHTS, FLAG_SOBOL = 1, 2, 4, 8, 16
 FLAG_FILTER = 32
+FLAG_ADAPTIVE = 64
 ENV_KINDS = {"ambient": 0, "uniform": 1, "sky": 2, "image": 3}
 CULLS = {"none": 0, "back": 1, "front": 2}
 RAY_COUNTERS = (
@@ -378,6 +380,7 @@ def base_params(
         | (FLAG_SIZED_LIGHTS if sized else 0)
         | (FLAG_SOBOL if path.sampler == "sobol" else 0)
         | (FLAG_FILTER if path.filter != "box" else 0)
+        | (FLAG_ADAPTIVE if path.adaptive_threshold > 0.0 and path.integrator == "path" else 0)
     )
     pr.u(35, flags)
     pr.u(36, path.seed & 0xFFFFFFFF)
@@ -625,17 +628,42 @@ def render_scene(
             per = 1
         done = 0
         stopped = False
-        while done < path.samples:
-            count = min(per, path.samples - done)
-            for tile in tiles:
-                dispatch(MODE_PATHS, tile, done, count)
-            done += count
-            if (
-                progress is not None
-                and progress(done, path.samples, time.perf_counter() - t_start) is False
-                and done < path.samples
-            ):
-                stopped = True
+        adaptive = path.adaptive_threshold > 0.0 and path.integrator == "path"
+        counts = np.zeros(n_pix) if adaptive else None
+        if adaptive:  # every pixel active to begin with
+            context.queue.write_buffer(accum, ACC_ACTIVE * n_pix * 4, np.ones(n_pix, np.float32))
+            limits_ = adaptive_rounds(path)
+        else:
+            limits_ = [(0, path.samples)]
+        active = np.ones(n_pix, dtype=bool)
+        for s0, s1 in limits_:
+            if adaptive and s0 > 0:  # which pixels go on: read back their estimates
+                p = np.frombuffer(context.queue.read_buffer(accum), dtype=np.float32).reshape(
+                    ACC_PLANES, n_pix
+                )
+                n_now = np.maximum(counts, 2.0)[:, None]
+                mean_now = p[14:17].T.astype(np.float64)
+                var_now = np.maximum(p[17:20].T.astype(np.float64), 0.0) / (n_now * (n_now - 1))
+                active &= ~converged(mean_now, var_now, width, height, path.adaptive_threshold)
+                if not active.any():
+                    break
+                context.queue.write_buffer(accum, ACC_ACTIVE * n_pix * 4, active.astype(np.float32))
+            done = s0
+            while done < s1:
+                count = min(per, s1 - done)
+                for tile in tiles:
+                    dispatch(MODE_PATHS, tile, done, count)
+                done += count
+                if (
+                    progress is not None
+                    and progress(done, path.samples, time.perf_counter() - t_start) is False
+                    and done < path.samples
+                ):
+                    stopped = True
+                    break
+            if adaptive:
+                counts[active] += done - s0
+            if stopped:
                 break
         t_trace = time.perf_counter() - t_trace
 
@@ -653,7 +681,9 @@ def render_scene(
             created.destroy()
         compile_seconds = context.shaders.compile_seconds - compile_before
 
-    frame = _frame(planes, done, width, height, path, ao, ray_counts, visible, ps, lights, stopped)
+    frame = _frame(
+        planes, done, width, height, path, ao, ray_counts, visible, ps, lights, stopped, counts
+    )
     frame.timings = {
         "setup": t_setup,
         "bvh": ps.timings["bvh"],
@@ -713,29 +743,40 @@ def _frame(
     ps: PathScene,
     lights: LightSet,
     stopped: bool,
+    counts: np.ndarray | None = None,
 ) -> PathFrame:
-    """The CPU path tracer's outputs (passes, coverage, noise, counts) from the GPU's sums."""
+    """The CPU path tracer's outputs (passes, coverage, noise, counts) from the GPU's sums
+    (``counts``: each pixel's samples, adaptive sampling)."""
     n_pix = width * height
     shape = (height, width)
-    inv = 1.0 / spp
+    inv = 1.0 / spp if counts is None else 1.0 / np.maximum(counts, 1.0)
     p = planes.astype(np.float64)
 
     def rgb(k: int) -> np.ndarray:
         return p[k : k + 3].T
 
     mean = rgb(14)
-    if spp > 1:
+    if counts is not None:
+        n = np.maximum(counts, 1.0)[:, None]
+        variance = np.maximum(rgb(17), 0.0) / (n * np.maximum(n - 1.0, 1.0))
+        variance[counts < 2] = np.inf
+    elif spp > 1:
         variance = np.maximum(rgb(17), 0.0) / (spp * (spp - 1))
     else:
         variance = np.full((n_pix, 3), np.inf)
+    inv3 = inv if counts is None else inv[:, None]
     passes = {
         "beauty": mean.reshape(*shape, 3),
-        "direct": (rgb(0) * inv).reshape(*shape, 3),
-        "indirect": (rgb(3) * inv).reshape(*shape, 3),
-        "albedo": (rgb(6) * inv).reshape(*shape, 3),
-        "normal": (rgb(9) * inv).reshape(*shape, 3),
+        "direct": (rgb(0) * inv3).reshape(*shape, 3),
+        "indirect": (rgb(3) * inv3).reshape(*shape, 3),
+        "albedo": (rgb(6) * inv3).reshape(*shape, 3),
+        "normal": (rgb(9) * inv3).reshape(*shape, 3),
         "depth": planes[20].reshape(shape).copy(),
-        "sample_count": np.full(shape, spp, dtype=np.int32),
+        "sample_count": (
+            np.full(shape, spp, dtype=np.int32)
+            if counts is None
+            else counts.astype(np.int32).reshape(shape)
+        ),
         "variance": variance.reshape(*shape, 3),
     }
     passes["depth"][passes["depth"] >= 3.0e38] = np.inf
@@ -782,7 +823,7 @@ def _frame(
         "instances": len(ps.rs.instances),
         "lights": lights.count,
         "emissive_triangles": 0 if lights.emitters is None else lights.emitters.count,
-        "paths": int(n_pix * spp),
+        "paths": int(n_pix * spp if counts is None else counts.sum()),
         "samples_per_pixel": int(spp),
         "pass_through_rays": ray_counts["pass_through_rays"],
     }

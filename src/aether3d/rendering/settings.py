@@ -876,6 +876,13 @@ class PathSettings(_Validated):
       traces in the calling process, ``N`` uses ``N``. Parallel tracing forks
       processes and is available on Linux; elsewhere renders use one
       process. The image does not depend on it.
+    * ``adaptive_threshold`` -- adaptive sampling (0.20.0; ``0``: off, the default): the
+      samples are traced in rounds that double (``adaptive_min_samples`` first, default
+      ``max(4, samples // 16)``), and a pixel stops when the estimated relative error of
+      its luminance -- and of its 3 x 3 neighbours' -- is below the threshold (``0.01``:
+      1 %; luminance under 0.05 counts as 0.05, so dark pixels do not run forever).
+      ``samples`` is the most a pixel gets; ``passes["sample_count"]`` says how many each
+      got. Deterministic: a pixel's samples are its first ones, whatever the batching.
     * ``filter`` -- the pixel reconstruction filter: ``"box"`` (default: each pixel's
       area), ``"gaussian"`` or ``"blackman_harris"`` (Blender's default) over
       ``filter_width`` pixels (default 1.5), by filter importance sampling (0.20.0).
@@ -897,6 +904,8 @@ class PathSettings(_Validated):
         "sampler",
         "filter",
         "filter_width",
+        "adaptive_threshold",
+        "adaptive_min_samples",
     )
     _CODE = "INVALID_PATH_SETTINGS"
     __slots__ = tuple(f"_{name}" for name in _FIELDS)
@@ -914,6 +923,8 @@ class PathSettings(_Validated):
         sampler: str = "random",
         filter: str = "box",
         filter_width: float = 1.5,
+        adaptive_threshold: float = 0.0,
+        adaptive_min_samples: int = 0,
     ) -> None:
         self._assign(
             self._check(
@@ -929,6 +940,8 @@ class PathSettings(_Validated):
                     "sampler": sampler,
                     "filter": filter,
                     "filter_width": filter_width,
+                    "adaptive_threshold": adaptive_threshold,
+                    "adaptive_min_samples": adaptive_min_samples,
                 },
                 "path",
             )
@@ -987,6 +1000,22 @@ class PathSettings(_Validated):
                 f"{location}.filter_width",
                 0.5,
                 8.0,
+            ),
+            "adaptive_threshold": _number(
+                values.get("adaptive_threshold", 0.0),
+                c,
+                "adaptive_threshold",
+                f"{location}.adaptive_threshold",
+                0.0,
+                1.0,
+            ),  # fmt: skip
+            "adaptive_min_samples": _integer(
+                values.get("adaptive_min_samples", 0),
+                c,
+                "adaptive_min_samples",
+                f"{location}.adaptive_min_samples",
+                0,
+                MAX_PATH_SAMPLES,
             ),  # fmt: skip
         }
 
@@ -1001,6 +1030,8 @@ class PathSettings(_Validated):
     sampler = _prop("sampler")
     filter = _prop("filter")
     filter_width = _prop("filter_width")
+    adaptive_threshold = _prop("adaptive_threshold")
+    adaptive_min_samples = _prop("adaptive_min_samples")
 
     @classmethod
     def coerce(cls, value: Any) -> PathSettings:

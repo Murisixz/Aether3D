@@ -231,6 +231,38 @@ def estimate_work(rs: RenderScene, width: int, height: int, path: PathSettings, 
     return {"paths": int(paths), "rays": int(rays), "memory": int(memory), "workers": workers}
 
 
+ADAPTIVE_FLOOR = 0.05
+"""Luminance below which adaptive sampling measures absolute error (as if 0.05)."""
+
+
+def adaptive_rounds(path: PathSettings) -> list[tuple[int, int]]:
+    """Sample ranges of adaptive sampling's rounds: the first ``adaptive_min_samples``
+    (default ``max(4, samples // 16)``), then doubling, up to ``samples``."""
+    first = path.adaptive_min_samples or max(4, path.samples // 16)
+    first = max(2, min(first, path.samples))
+    rounds = [(0, first)]
+    while rounds[-1][1] < path.samples:
+        s0 = rounds[-1][1]
+        rounds.append((s0, min(path.samples, 2 * s0)))
+    return rounds
+
+
+def converged(
+    mean: np.ndarray, variance_of_mean: np.ndarray, width: int, height: int, threshold: float
+) -> np.ndarray:
+    """Pixels whose estimate -- and every 3 x 3 neighbour's -- has a relative luminance
+    error below ``threshold`` (``mean``, ``variance_of_mean``: ``(n_pix, 3)``)."""
+    lum = np.maximum(mean @ LUMINANCE, ADAPTIVE_FLOOR)
+    err = np.sqrt(np.maximum(variance_of_mean @ (LUMINANCE * LUMINANCE), 0.0)) / lum
+    err = np.where(np.isfinite(err), err, np.inf).reshape(height, width)
+    padded = np.pad(err, 1, mode="edge")
+    worst = np.zeros_like(err)
+    for dy in range(3):
+        for dx in range(3):
+            worst = np.maximum(worst, padded[dy : dy + height, dx : dx + width])
+    return (worst < threshold).reshape(-1)
+
+
 def render_scene(
     rs: RenderScene,
     width: int,
@@ -279,8 +311,16 @@ def render_scene(
     workers, why = parallel.plan_workers(path.workers, work["rays"])
     acc = parallel.Accumulators(n_pix, shared=workers > 1)
     visible = np.zeros(len(rs.instances), dtype=np.int64)
-    # One round of all samples; with a progress callback, one pass per round.
-    rounds = [(0, path.samples)] if progress is None else [(s, s + 1) for s in range(path.samples)]
+    # One round of all samples; with a progress callback, one pass per round; adaptive
+    # sampling: doubling rounds over the pixels that have not converged.
+    adaptive = path.adaptive_threshold > 0.0 and path.integrator == "path"
+    if adaptive:
+        rounds = adaptive_rounds(path)
+    elif progress is None:
+        rounds = [(0, path.samples)]
+    else:
+        rounds = [(s, s + 1) for s in range(path.samples)]
+    active = np.arange(n_pix, dtype=np.int64)
     passes_done = 0
     stopped = False
     paths = 0
@@ -294,9 +334,27 @@ def render_scene(
     try:
         with parallel.Runner(tracer, acc, workers, BATCH) as runner:
             for s0, s1 in rounds:
-                count = parallel.tile_count(n_pix, s1 - s0, workers, BATCH)
-                tiles = parallel.tiles(n_pix, count)
-                for result in runner.run([(a, b, s0, s1) for a, b in tiles]):
+                if adaptive and s0 > 0:  # drop the pixels that have converged
+                    n_now = np.array(acc["samples"])  # (a copy: the shared sums close later)
+                    safe = np.maximum(n_now, 1.0)[:, None]
+                    mean_now = acc["beauty"] / safe
+                    var_now = (
+                        np.maximum(acc["squares"] / safe - mean_now * mean_now, 0.0)
+                        / (np.maximum(n_now - 1.0, 1.0)[:, None])
+                    )
+                    done_mask = converged(mean_now, var_now, width, height,
+                                          path.adaptive_threshold)  # fmt: skip
+                    active = np.flatnonzero(~done_mask)
+                    if not active.size:
+                        break
+                n_act = int(active.size)
+                count = parallel.tile_count(n_act, s1 - s0, workers, BATCH)
+                tiles = parallel.tiles(n_act, count)
+                if adaptive:
+                    tasks = [(a, b, s0, s1, active[a:b]) for a, b in tiles]
+                else:
+                    tasks = [(a, b, s0, s1) for a, b in tiles]
+                for result in runner.run(tasks):
                     for k, v in result["counts"].items():
                         ray_counts[k] = ray_counts.get(k, 0) + v
                     for k, v in result["timings"].items():
@@ -330,12 +388,23 @@ def render_scene(
     layer_limited += ps.layer_limited - before[1]
     ray_counts["center_rays"] = tracer.counts["center_rays"] - before[2]
     t_center = time.perf_counter() - t0
-    inv = 1.0 / spp
-    mean = acc["beauty"] * inv
-    if spp > 1:
-        variance = np.maximum(acc["squares"] * inv - mean * mean, 0.0) * (1.0 / (spp - 1))
+    if adaptive:  # every pixel has its own count
+        n_px = np.maximum(acc["samples"], 1.0)
+        inv = (1.0 / n_px)[:, None]
+        mean = acc["beauty"] * inv
+        variance = (
+            np.maximum(acc["squares"] * inv - mean * mean, 0.0)
+            / np.maximum(n_px - 1.0, 1.0)[:, None]
+        )
+        variance[n_px < 2] = np.inf
     else:
-        variance = np.full((n_pix, 3), np.inf)
+        inv = 1.0 / spp
+        mean = acc["beauty"] * inv
+        if spp > 1:
+            variance = np.maximum(acc["squares"] * inv - mean * mean, 0.0) * (1.0 / (spp - 1))
+        else:
+            variance = np.full((n_pix, 3), np.inf)
+    inv1 = inv[:, 0] if adaptive else inv
     shape = (height, width)
     passes = {
         "beauty": mean.reshape(*shape, 3),
@@ -344,14 +413,18 @@ def render_scene(
         "albedo": (acc["albedo"] * inv).reshape(*shape, 3),
         "normal": (acc["normal"] * inv).reshape(*shape, 3),
         "depth": depth.reshape(shape),
-        "sample_count": np.full(shape, spp, dtype=np.int32),
+        "sample_count": (
+            acc["samples"].astype(np.int32).reshape(shape)
+            if adaptive
+            else np.full(shape, spp, dtype=np.int32)
+        ),
         "variance": variance.reshape(*shape, 3),
     }
     if ao is not None:
-        passes["ao"] = (acc["ao"] * inv).reshape(shape)
+        passes["ao"] = (acc["ao"] * inv1).reshape(shape)
     if path.integrator == "ao":
         passes["beauty"] = passes["direct"]
-    coverage = (acc["hits"] * inv).astype(np.float32).reshape(shape)
+    coverage = (acc["hits"] * inv1).astype(np.float32).reshape(shape)
     diagnostics = []
     if stopped:
         diagnostics.append(
@@ -382,6 +455,9 @@ def render_scene(
             "samples_per_pixel": int(spp),
         }
     )
+    if adaptive:
+        counts["samples_mean"] = float(acc["samples"].mean())
+        counts["pixels_converged_early"] = int(np.count_nonzero(acc["samples"] < spp))
     counts["pass_through_rays"] = pass_through
     if layer_limited:
         diagnostics.append(

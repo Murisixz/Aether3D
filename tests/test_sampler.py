@@ -138,3 +138,46 @@ def test_pixel_filters_spread_an_edge_as_their_profiles_say(name):
         PathSettings(filter="lanczos")
     with pytest.raises(RenderError):
         PathSettings(filter="gaussian", filter_width=20.0)
+
+
+def adaptive_scene():
+    from test_denoise import two_walls
+
+    return two_walls()
+
+
+@pytest.mark.parametrize("backend", ["path", *(["gpu_path"] if GPU else [])])
+def test_adaptive_sampling_spends_samples_where_the_noise_is(backend):
+    scene = adaptive_scene()
+    path = {"samples": 128, "bounces": 3, "sampler": "sobol", "adaptive_threshold": 0.03}
+    r = scene.render(width=48, height=36, backend=backend, path=path)
+    counts = r.passes["sample_count"]
+    assert counts.min() >= 8 and counts.max() == 128  # rounds: 8, 16, 32, 64, 128
+    assert counts.mean() < 0.6 * 128 and r.stats["paths"] == int(counts.sum())
+    sky = r.object_index < 0
+    assert counts[sky].mean() < counts[~sky].mean()  # the flat sky converges first
+    # Pixels that stopped early meet the threshold (their estimated relative error).
+    lum = np.maximum(r.passes["beauty"] @ [0.2126, 0.7152, 0.0722], 0.05)
+    err = np.sqrt(r.passes["variance"] @ np.array([0.2126, 0.7152, 0.0722]) ** 2) / lum
+    early = counts < 128
+    assert np.percentile(err[early], 95) < 0.03
+
+
+def test_adaptive_images_do_not_depend_on_batching_or_workers(monkeypatch):
+    scene = adaptive_scene()
+    opts = {"width": 24, "height": 18, "backend": "path",
+            "path": {"samples": 32, "bounces": 2, "adaptive_threshold": 0.05}}  # fmt: skip
+    a = scene.render(**opts)
+    monkeypatch.setattr(integrator, "BATCH", 37)
+    b = scene.render(**{**opts, "path": {**opts["path"], "workers": 3}})
+    assert np.array_equal(a.linear, b.linear)
+    assert np.array_equal(a.passes["sample_count"], b.passes["sample_count"])
+
+
+@pytest.mark.skipif(not GPU, reason="needs a GPU")
+def test_the_gpu_stops_the_pixels_the_cpu_stops():
+    scene = adaptive_scene()
+    path = {"samples": 64, "bounces": 2, "sampler": "sobol", "adaptive_threshold": 0.03}
+    c = scene.render(width=40, height=30, backend="path", path=path).passes["sample_count"]
+    g = scene.render(width=40, height=30, backend="gpu_path", path=path).passes["sample_count"]
+    assert np.mean(c == g) > 0.99  # (float32 sums may flip a pixel at the threshold)

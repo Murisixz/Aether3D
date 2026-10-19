@@ -66,6 +66,7 @@ const FLAG_AO: u32 = 4u;
 const FLAG_SIZED_LIGHTS: u32 = 8u;
 const FLAG_SOBOL: u32 = 16u;  // PathSettings.sampler == "sobol"
 const FLAG_FILTER: u32 = 32u;  // a pixel filter other than the box (filter importance sampling)
+const FLAG_ADAPTIVE: u32 = 64u;  // adaptive sampling: skip pixels whose ACC_ACTIVE is 0
 const FILTER_TABLE: u32 = 256u;
 
 // The pixel position of uniform u (sampling.filter_offset): the pixel's centre plus the
@@ -104,6 +105,7 @@ const ACC_MEAN: u32 = 14u;
 const ACC_M2: u32 = 17u;
 const ACC_DEPTH: u32 = 20u;
 const ACC_INSTANCE: u32 = 21u;
+const ACC_ACTIVE: u32 = 22u;  // adaptive sampling: 1 while the pixel takes samples
 
 // Counters.
 const C_CAMERA: u32 = 0u;
@@ -1978,7 +1980,7 @@ fn path_main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invoc
       accum[plane(ACC_DEPTH, pixel)] = st.depth;
       accum[plane(ACC_INSTANCE, pixel)] = bitcast<f32>(st.center_inst);
       tally = st.tally;
-    } else {
+    } else if ((params.flags & FLAG_ADAPTIVE) == 0u || accum[plane(ACC_ACTIVE, pixel)] != 0.0) {
       for (var s = params.sample_first; s < params.sample_first + params.sample_count; s++) {
         let key = path_key(pixel, s);
         var st = new_state(key);
