@@ -652,8 +652,14 @@ def area_highlight(light, px, py, pz, nx, ny, nz, vx, vy, vz):
     return lx, ly, lz, cos_l / d2, d
 
 
-def _hemisphere(rs: RenderScene, nz: np.ndarray) -> np.ndarray | None:
-    """Per-sample hemisphere ambient light, or ``None`` (uniform ambient)."""
+def _hemisphere(rs: RenderScene, nz: np.ndarray, n=None) -> np.ndarray | None:
+    """Per-sample ambient light: an image environment's (its spherical harmonics at the
+    normals ``n``), the hemisphere ambient's, or ``None`` (uniform ambient)."""
+    sh = getattr(rs, "ambient_sh", None)
+    if sh is not None:
+        from .envimage import sh_ambient
+
+        return sh_ambient(sh, np.stack(n, axis=1))
     atm = getattr(rs, "atmosphere", None)
     if atm is None or not atm["settings"].enabled or atm["settings"].ambient != "hemisphere":
         return None
@@ -687,7 +693,7 @@ def shade_simple(
     px, py, pz = p
     count = nx.shape[0]
     any_spec = bool(np.any(spec > 0.0))
-    hemi = _hemisphere(rs, nz)
+    hemi = _hemisphere(rs, nz, (nx, ny, nz))
     if hemi is not None:  # (scene.world.atmosphere ambient="hemisphere")
         diffuse = [hemi[:, c] if occlusion is None else hemi[:, c] * occlusion for c in range(3)]
     elif occlusion is None:
@@ -778,7 +784,7 @@ def shade_standard(
     f0 = (0.08 * np.asarray(specular, dtype=np.float64)) * (1.0 - metallic) + base * metallic
     ndv = np.maximum((n * v).sum(axis=1), 1e-4)[:, None]
     scale, bias = env_brdf(rough, ndv[:, 0])
-    hemi = _hemisphere(rs, n[:, 2])
+    hemi = _hemisphere(rs, n[:, 2], (n[:, 0], n[:, 1], n[:, 2]))
     amb = rs.ambient if hemi is None else hemi
     out = amb * sv.occlusion[:, None] * (c_diff + f0 * scale[:, None] + bias[:, None])
     px, py, pz = p[:, 0], p[:, 1], p[:, 2]

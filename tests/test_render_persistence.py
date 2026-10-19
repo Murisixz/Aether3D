@@ -91,6 +91,10 @@ def test_document_layout():
             "zenith_color": [0.22, 0.42, 0.78],
             "horizon_color": [0.78, 0.85, 0.93],
             "ground_color": [0.32, 0.3, 0.27],
+            # (0.20.0: image environments)
+            "image": None,
+            "rotation": 0.0,
+            "visible": True,
         },
         # (Stage 16: the world's atmosphere -- sky, sun glow, height fog, hemisphere
         # ambient -- off by default.)

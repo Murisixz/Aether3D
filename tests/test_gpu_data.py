@@ -92,6 +92,7 @@ def test_frame_light_shadow_and_finalize_layouts_match_the_shaders():
     assert (frame["forward"], frame["ambient"], frame["light_count"]) == (64, 80, 96)
     assert (frame["pcf_radius"], frame["shadow_texel"]) == (100, 104)
     assert (frame["eye"], frame["atmo"]) == (112, 4 * 32)  # pack_frame: atmosphere at [32:80]
+    assert (frame["env"], frame["sh"]) == (108, 4 * 80)  # (0.20.0: image environments)
     light, size = struct_layout(SCENE, "Light")
     assert size == 4 * resources.LIGHT_FLOATS
     assert [light[k] for k in ("radiance", "kind", "vector", "range", "falloff", "shadow")] == [

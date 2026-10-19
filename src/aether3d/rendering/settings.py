@@ -176,7 +176,9 @@ class Appearance(_Validated):
         return self == Appearance()
 
 
-ENVIRONMENT_TYPES = ("ambient", "uniform", "sky")
+ENVIRONMENT_TYPES = ("ambient", "uniform", "sky", "image")
+ENVIRONMENT_DEFAULTS_0_20 = {"image": None, "rotation": 0.0, "visible": True}
+"""The environment fields 0.20.0 adds (older documents and history files lack them)."""
 DEFAULT_ZENITH: Color = (0.22, 0.42, 0.78)
 DEFAULT_HORIZON: Color = (0.78, 0.85, 0.93)
 DEFAULT_GROUND: Color = (0.32, 0.30, 0.27)
@@ -195,16 +197,35 @@ class Environment(_Validated):
       ``"uniform"``: radiance ``color x intensity`` from every direction.
       ``"sky"``: a procedural gradient from ``ground_color`` (below the
       horizon) through ``horizon_color`` to ``zenith_color`` (straight up,
-      +Z), times ``intensity``. With ``"uniform"`` and ``"sky"`` every ray
+      +Z), times ``intensity``. ``"image"`` (0.20.0): an equirectangular HDR
+      image, ``image`` (see :mod:`~aether3d.rendering.envimage`), times
+      ``intensity``. With ``"uniform"``, ``"sky"`` and ``"image"`` every ray
       that misses the scene -- camera rays included -- sees the environment.
     * ``color`` -- display color of the uniform environment.
     * ``intensity`` -- radiance multiplier (``>= 0``) of ``"uniform"`` and ``"sky"``.
     * ``zenith_color``, ``horizon_color``, ``ground_color`` -- display colors of the sky.
+    * ``image`` -- the image environment's ``.hdr``/``.pfm`` file (relative to the
+      project's directory) or ``builtin:studio``, ``builtin:overcast``,
+      ``builtin:sunset``, ``builtin:night``; ``rotation`` -- degrees about +Z (Blender's
+      mapping rotation); ``visible`` -- whether camera rays see it (``False``: they see
+      ``world.background``, the image still lights the scene).
 
-    See ``docs/RENDER_QUALITY.md`` for the sky formula.
+    Image environments light every backend: the path tracers sample the image, the
+    rasterizers take their ambient light from its spherical-harmonic projection and draw
+    it behind the geometry. See ``docs/RENDER_QUALITY.md`` for the sky formula.
     """
 
-    _FIELDS = ("type", "color", "intensity", "zenith_color", "horizon_color", "ground_color")
+    _FIELDS = (
+        "type",
+        "color",
+        "intensity",
+        "zenith_color",
+        "horizon_color",
+        "ground_color",
+        "image",
+        "rotation",
+        "visible",
+    )
     _CODE = "INVALID_WORLD"
     __slots__ = tuple(f"_{name}" for name in _FIELDS)
 
@@ -216,6 +237,9 @@ class Environment(_Validated):
         zenith_color: Any = DEFAULT_ZENITH,
         horizon_color: Any = DEFAULT_HORIZON,
         ground_color: Any = DEFAULT_GROUND,
+        image: str | None = None,
+        rotation: float = 0.0,
+        visible: bool = True,
     ) -> None:
         self._assign(
             self._check(
@@ -226,10 +250,19 @@ class Environment(_Validated):
                     "zenith_color": zenith_color,
                     "horizon_color": horizon_color,
                     "ground_color": ground_color,
+                    "image": image,
+                    "rotation": rotation,
+                    "visible": visible,
                 },
                 "world.environment",
             )
         )
+
+    @classmethod
+    def from_dict(cls, data: Any, location: str):
+        if isinstance(data, dict):  # (documents and history files before 0.20.0)
+            data = {**ENVIRONMENT_DEFAULTS_0_20, **data}
+        return super().from_dict(data, location)
 
     def _location(self) -> str:
         return "world.environment"
@@ -248,9 +281,32 @@ class Environment(_Validated):
         out["intensity"] = _number(
             values["intensity"], self._CODE, "intensity", f"{location}.intensity", 0.0, 1e6
         )
+        image = values["image"]
+        if image is not None:
+            from .envimage import check_reference
+
+            image = check_reference(image, f"{location}.image")
+        elif kind == "image":
+            raise RenderError(
+                self._CODE,
+                "an image environment needs an image",
+                f"{location}.image",
+                hint="set image to an .hdr/.pfm file in the project's folder or builtin:studio "
+                "(configure(type='image', image=...) sets both at once)",
+            )
+        out["image"] = image
+        out["rotation"] = _number(
+            values["rotation"], self._CODE, "rotation", f"{location}.rotation", -1e6, 1e6
+        )
+        if not isinstance(values["visible"], bool):
+            raise RenderError(self._CODE, "visible must be true or false", f"{location}.visible")
+        out["visible"] = values["visible"]
         return {name: out[name] for name in self._FIELDS}
 
     type = _prop("type")
+    image = _prop("image")
+    rotation = _prop("rotation")
+    visible = _prop("visible")
     color = _prop("color")
     intensity = _prop("intensity")
     zenith_color = _prop("zenith_color")

@@ -13,10 +13,15 @@ Built from ``scene.world`` (:class:`~aether3d.rendering.settings.Environment`):
   ``mix(horizon, ground, min(1, 4 |z|))`` (so the ground color is reached
   about 14 degrees below the horizon), times ``intensity``.
 
-With ``"uniform"`` and ``"sky"`` camera rays that miss see the environment
-too. The environment is reached by BSDF-sampled rays (it is not sampled as
-a light), which suits these smooth, low-contrast environments; a sun is a
-directional light with an ``angle``.
+* ``"image"`` (0.20.0) -- an equirectangular HDR image
+  (:class:`~aether3d.rendering.envimage.EnvironmentImage`) times ``intensity``.
+
+With ``"uniform"``, ``"sky"`` and ``"image"`` camera rays that miss see the environment
+too (an image only if ``visible``; otherwise ``world.background``). The smooth
+environments are reached by BSDF-sampled rays only; an image is also sampled as a light
+(next-event estimation by its luminance, :meth:`EnvironmentImage.sample`), both
+strategies weighted by the power heuristic, so a bright sun in an image does not make
+fireflies. A sun is otherwise a directional light with an ``angle``.
 """
 
 from __future__ import annotations
@@ -38,26 +43,41 @@ class EnvironmentModel:
     horizon: np.ndarray
     ground: np.ndarray
     atmosphere: Any = None  # the atmosphere (its sun and horizon glow add to the sky)
+    image: Any = None  # "image": the EnvironmentImage (rotation and intensity included)
+    visible: bool = True  # "image": camera rays see it (else world.background)
 
     @classmethod
-    def build(cls, env, background: np.ndarray, ambient: np.ndarray) -> EnvironmentModel:
-        """From an :class:`~aether3d.rendering.settings.Environment` (``None``: ambient)."""
+    def build(
+        cls, env, background: np.ndarray, ambient: np.ndarray, image: Any = None
+    ) -> EnvironmentModel:
+        """From an :class:`~aether3d.rendering.settings.Environment` (``None``: ambient)
+        and, for ``"image"``, its loaded image."""
         if env is None:
             from ..settings import Environment
 
             env = Environment()
         scale = env.intensity
+        kind = env.type if env.type != "image" or image is not None else "ambient"
         return cls(
-            env.type,
-            ambient.copy() if env.type == "ambient" else to_linear(env.color) * scale,
+            kind,
+            ambient.copy() if kind == "ambient" else to_linear(env.color) * scale,
             background.copy(),
             to_linear(env.zenith_color) * scale,
             to_linear(env.horizon_color) * scale,
             to_linear(env.ground_color) * scale,
+            image=image if kind == "image" else None,
+            visible=bool(getattr(env, "visible", True)),
         )
 
     @property
+    def sampled(self) -> bool:
+        """Whether light sampling draws directions toward this environment (an image)."""
+        return self.kind == "image" and not self.image.tables()["black"]
+
+    @property
     def black(self) -> bool:
+        if self.kind == "image":
+            return self.image.tables()["black"] or self.image.intensity <= 0.0
         if self.kind == "sky":
             return not (self.zenith.any() or self.horizon.any() or self.ground.any())
         return not self.uniform.any()
@@ -76,6 +96,8 @@ class EnvironmentModel:
         return base
 
     def _radiance(self, d: np.ndarray) -> np.ndarray:
+        if self.kind == "image":
+            return self.image.radiance(d)
         if self.kind != "sky":
             return np.broadcast_to(self.uniform, d.shape).copy()
         z = np.clip(d[:, 2], -1.0, 1.0)
@@ -87,7 +109,7 @@ class EnvironmentModel:
 
     def camera(self, d: np.ndarray) -> np.ndarray:
         """What camera rays that miss show."""
-        if self.kind == "ambient":
+        if self.kind == "ambient" or (self.kind == "image" and not self.visible):
             base = np.broadcast_to(self.background, d.shape).copy()
             if self.atmosphere is not None:
                 from ..atmosphere import glow
@@ -98,6 +120,18 @@ class EnvironmentModel:
 
     def to_dict(self) -> dict:
         data = {"type": self.kind}
+        if self.kind == "image":
+            img = self.image
+            data.update(
+                image=img.source,
+                width=img.width,
+                height=img.height,
+                rotation=img.rotation,
+                intensity=img.intensity,
+                visible=self.visible,
+                sampled=self.sampled,
+            )
+            return data
         if self.kind == "sky":
             data.update(
                 zenith=self.zenith.tolist(),

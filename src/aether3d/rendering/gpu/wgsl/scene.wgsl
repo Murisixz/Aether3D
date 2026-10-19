@@ -23,9 +23,10 @@ struct Frame {
   light_count: u32,
   pcf_radius: i32,         // shadow filter radius in texels
   shadow_texel: f32,       // one shadow-map texel in texture coordinates
-  _pad: u32,
+  env: u32,                // 1: the ambient light is an image environment's harmonics
   eye: vec4<f32>,          // xyz: the camera position in world space (for world coordinates)
   atmo: Atmo,              // scene.world.atmosphere (atmosphere.wgsl)
+  sh: array<vec4<f32>, 9>, // rgb: ambient harmonics (envimage.EnvironmentImage.ambient_sh)
 };
 
 struct Light {
@@ -364,6 +365,23 @@ fn area_highlight(light: Light, position: vec3<f32>, n: vec3<f32>, v: vec3<f32>)
   return AreaHighlight(l, cos_l / d2, d);
 }
 
+// The ambient light at normal n: an image environment's harmonics (envimage.sh_ambient),
+// else the atmosphere's hemisphere or the uniform ambient.
+fn ambient_light(n: vec3<f32>) -> vec3<f32> {
+  if (frame.env == 0u) {
+    return atmo_ambient(frame.atmo, frame.ambient.rgb, n);
+  }
+  let x = n.x;
+  let y = n.y;
+  let z = n.z;
+  let c = frame.sh[0].rgb * 0.282095
+    + frame.sh[1].rgb * (0.488603 * y) + frame.sh[2].rgb * (0.488603 * z)
+    + frame.sh[3].rgb * (0.488603 * x) + frame.sh[4].rgb * (1.092548 * x * y)
+    + frame.sh[5].rgb * (1.092548 * y * z) + frame.sh[6].rgb * (0.315392 * (3.0 * z * z - 1.0))
+    + frame.sh[7].rgb * (1.092548 * x * z) + frame.sh[8].rgb * (0.546274 * (x * x - y * y));
+  return max(c, vec3<f32>(0.0));
+}
+
 // Light linking: whether light i leaves this instance unlit (Instance.normal[0..1].w).
 fn unlinked(links: vec2<u32>, i: u32) -> bool {
   if (i >= 64u) {
@@ -379,7 +397,7 @@ fn shade_simple(
   position: vec3<f32>, n: vec3<f32>, shadow_origin: vec3<f32>, links: vec2<u32>
 ) -> vec3<f32> {
   let v = view_direction(position);
-  var diffuse = atmo_ambient(frame.atmo, frame.ambient.rgb, n) * occlusion;
+  var diffuse = ambient_light(n) * occlusion;
   var highlight = vec3<f32>(0.0);
   for (var i = 0u; i < frame.light_count; i++) {
     let light = lights[i];
@@ -446,7 +464,7 @@ fn shade_standard(
   let f0 = vec3<f32>(0.08 * specular * (1.0 - metallic)) + sv.base * metallic;
   let ndv = max(dot(n, v), 1e-4);
   let ab = env_brdf(rough, ndv);
-  var out = atmo_ambient(frame.atmo, frame.ambient.rgb, n) * sv.occlusion * (c_diff + f0 * ab.x + ab.y);
+  var out = ambient_light(n) * sv.occlusion * (c_diff + f0 * ab.x + ab.y);
   for (var i = 0u; i < frame.light_count; i++) {
     let light = lights[i];
     if (unlinked(links, i)) {

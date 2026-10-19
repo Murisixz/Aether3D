@@ -172,7 +172,7 @@ class PathScene:
 
         self.atmosphere = _atmosphere(rs)
         self.environment = EnvironmentModel.build(
-            rs.environment, rs.background, rs.ambient
+            rs.environment, rs.background, rs.ambient, getattr(rs, "environment_image", None)
         ).with_atmosphere(self.atmosphere)
         self.timings = {"bvh": t1 - t0, "geometry": time.perf_counter() - t1}
         self.pass_through_rays = 0  # extra ray segments behind transparent hits

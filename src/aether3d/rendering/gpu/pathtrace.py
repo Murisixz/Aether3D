@@ -65,7 +65,7 @@ MAX_PIXEL_SAMPLES_PER_DISPATCH = 1 << 20
 """Pixel samples one dispatch may trace when no progress callback asks for every pass."""
 MODE_PATHS, MODE_CENTER, MODE_RNG = 0, 1, 2
 FLAG_PERSPECTIVE, FLAG_PASS_THROUGH, FLAG_AO, FLAG_SIZED_LIGHTS = 1, 2, 4, 8
-ENV_KINDS = {"ambient": 0, "uniform": 1, "sky": 2}
+ENV_KINDS = {"ambient": 0, "uniform": 1, "sky": 2, "image": 3}
 CULLS = {"none": 0, "back": 1, "front": 2}
 RAY_COUNTERS = (
     "camera_rays",
@@ -272,6 +272,7 @@ def pack_scene_words(
         emitters.reshape(-1),
         cdf.view(np.uint32),
         lookup,
+        _environment_words(ps.environment),
     ]
     header = np.zeros(HEADER_WORDS, dtype=np.uint32)
     offset = HEADER_WORDS
@@ -279,6 +280,30 @@ def pack_scene_words(
         header[k] = offset
         offset += region.shape[0]
     return np.concatenate([header, *regions]).astype(np.uint32)
+
+
+def _environment_words(env) -> np.ndarray:
+    """An image environment's words: width, height, cells (nu, nv), its pixels (RGB
+    float32, row 0 at the top), the marginal CDF and the conditional CDFs (float32); a
+    placeholder for the other environments."""
+    if env.kind != "image":
+        return np.zeros(4, dtype=np.uint32)
+    img = env.image
+    t = img.tables()
+    nv, nu = t["cells"]
+    head = np.array([img.width, img.height, nu, nv], dtype=np.uint32)
+    if t["black"]:
+        marg = np.zeros(nv + 1, np.float32)
+        cond = np.zeros((nv, nu + 1), np.float32)
+    else:
+        marg, cond = t["marginal"], t["conditional"]
+    parts = [
+        head,
+        np.ascontiguousarray(img.pixels, dtype=np.float32).reshape(-1).view(np.uint32),
+        np.ascontiguousarray(marg, dtype=np.float32).view(np.uint32),
+        np.ascontiguousarray(cond, dtype=np.float32).reshape(-1).view(np.uint32),
+    ]
+    return np.concatenate(parts)
 
 
 class Params:
@@ -371,6 +396,10 @@ def base_params(
         math.sin(rot),
         1.0 / cam.aperture_ratio,
     )
+    if env.kind == "image":
+        cos_r, sin_r = env.image.cos_sin
+        pr.floats[124:127] = (cos_r, sin_r, env.image.intensity)
+        pr.words[127] = (1 if env.visible else 0) | (2 if env.sampled else 0)
     return pr
 
 

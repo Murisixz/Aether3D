@@ -230,6 +230,8 @@ class RenderScene:
     timings: dict[str, float] = field(default_factory=dict)
     materials: tuple[RenderMaterial, ...] = ()
     environment: Environment | None = None  # scene.world.environment (path tracer)
+    environment_image: Any = None  # its EnvironmentImage (type "image"), loaded
+    ambient_sh: np.ndarray | None = None  # rasterizers: ambient harmonics of an image
     atmosphere: dict | None = None  # {"settings": scene.world.atmosphere, "ambient_intensity"}
     arrays: InstanceArrays | None = field(default=None, repr=False, compare=False)
     cache: dict[str, Any] | None = field(default=None, repr=False, compare=False)
@@ -938,7 +940,8 @@ def _finish(
     diagnostics += [d for _, d in sorted(ordered, key=lambda item: item[0])]
     if any(light.links != ((), ()) for light in lights):
         lights = _link_lights(scene, lights, instances, diagnostics)
-    if not lights and default_lights:
+    lit_by_image = scene.world.environment.type == "image"  # (no built-in key light then)
+    if not lights and default_lights and not lit_by_image:
         lights.append(default_light(camera.frame))
         diagnostics.append(
             Diagnostic(
@@ -948,7 +951,7 @@ def _finish(
                 "was used (set default_lights=False to disable)",
             )
         )
-    elif not lights:
+    elif not lights and not lit_by_image:
         diagnostics.append(
             Diagnostic(
                 "NO_LIGHTS",
@@ -965,6 +968,24 @@ def _finish(
             )
         )
     world_settings = scene.world
+    environment = world_settings.environment.copy()
+    environment_image = None
+    if environment.type == "image":
+        from .envimage import load
+
+        try:
+            environment_image = load(scene, environment)
+        except RenderError as exc:  # a missing or broken image: render without it, and say so
+            diagnostics.append(
+                Diagnostic(
+                    exc.code,
+                    WARNING,
+                    f"{exc.message}; the environment is the ambient light instead",
+                    "world.environment.image",
+                )
+            )
+            environment = environment._clone()
+            object.__setattr__(environment, "_type", "ambient")
     total = time.perf_counter() - start
     return RenderScene(
         meshes=meshes,
@@ -980,7 +1001,8 @@ def _finish(
             "extract": total - evaluate_time - texture_time,
         },
         materials=materials,
-        environment=world_settings.environment.copy(),
+        environment=environment,
+        environment_image=environment_image,
         atmosphere={
             "settings": world_settings.atmosphere.copy(),
             "ambient_intensity": world_settings.ambient_intensity,
@@ -1046,6 +1068,35 @@ def _exists(scene: Scene, object_id: str) -> bool:
     except AetherError:
         return False
     return True
+
+
+def raster_environment(rs: RenderScene) -> RenderScene:
+    """The render scene as the rasterizers light it with an image environment: its sun (if
+    it has one) as a directional light and its ambient harmonics
+    (:meth:`~aether3d.rendering.envimage.EnvironmentImage.raster_lighting`)."""
+    image = rs.environment_image
+    if image is None or rs.ambient_sh is not None:
+        return rs
+    lighting = image.raster_lighting()
+    lights = rs.lights
+    sun = lighting["sun"]
+    if sun is not None:
+        omega = min(sun["solid_angle"], 2.0 * math.pi)
+        lights = (
+            *lights,
+            RenderLight(
+                None,
+                "environment sun",
+                "directional",
+                np.asarray(sun["irradiance"], np.float64) / math.pi,  # white facing it: E / pi
+                None,
+                -np.asarray(sun["direction"], np.float64),
+                None,
+                "none",
+                angle=math.degrees(2.0 * math.acos(1.0 - omega / (2.0 * math.pi))),
+            ),
+        )
+    return replace(rs, lights=tuple(lights), ambient_sh=lighting["sh"])
 
 
 def _material_cache(scene: Scene) -> MaterialCache | None:

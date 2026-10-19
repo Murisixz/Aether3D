@@ -44,7 +44,7 @@ CACHE_ENV = "AETHER3D_GPU_CACHE_MB"
 INSTANCE_FLOATS = 32  # 128 bytes, see `struct Instance` in common.wgsl
 LIGHT_FLOATS = 28  # 112 bytes, `struct Light` in scene.wgsl
 SHADOW_FLOATS = 20  # 80 bytes, `struct ShadowMap` in scene.wgsl
-FRAME_FLOATS = 80  # 320 bytes, `struct Frame` in scene.wgsl (with `struct Atmo`)
+FRAME_FLOATS = 116  # 464 bytes, `struct Frame` in scene.wgsl (with `struct Atmo`)
 ATMO_FLOATS = 48  # `struct Atmo` in atmosphere.wgsl
 MIRRORED = 1
 HAS_NORMALS = 2
@@ -920,6 +920,10 @@ def pack_frame(rs: RenderScene, aspect: float, plan: ShadowPlan | None) -> np.nd
         data[26] = 1.0 / plan.settings.map_size
     data[28:31] = rs.camera.frame.position  # world-space texture coordinates add it back
     data[32:80] = pack_atmosphere(rs)
+    sh = getattr(rs, "ambient_sh", None)
+    if sh is not None:  # an image environment's ambient harmonics (0.20.0)
+        words[27] = 1
+        data[80:116].reshape(9, 4)[:, :3] = sh
     return data
 
 

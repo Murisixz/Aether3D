@@ -1362,6 +1362,9 @@ def cmd_scene_set(args: argparse.Namespace) -> CommandOutput:
         "sky_zenith": "zenith_color",
         "sky_horizon": "horizon_color",
         "sky_ground": "ground_color",
+        "environment_image": "image",
+        "environment_rotation": "rotation",
+        "environment_visible": "visible",
     }
     environment = {
         key: getattr(args, flag)
@@ -2469,8 +2472,20 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p.add_argument("--ambient-intensity", type=float, help="ambient light strength (>= 0)")
     p.add_argument(
         "--environment",
-        choices=["ambient", "uniform", "sky"],
-        help="path tracer environment: ambient (the ambient light), uniform or sky",
+        choices=["ambient", "uniform", "sky", "image"],
+        help="environment: ambient (the ambient light), uniform, sky, or image (an HDR image "
+        "lighting every backend)",
+    )
+    p.add_argument(
+        "--environment-image",
+        help="image environment: an .hdr/.pfm file in the project's folder, or builtin:studio, "
+        "builtin:overcast, builtin:sunset, builtin:night",
+    )
+    p.add_argument("--environment-rotation", type=float, help="image environment: degrees about +Z")
+    p.add_argument(
+        "--environment-visible",
+        type=_bool_arg,
+        help="image environment: seen behind the geometry (true or false)",
     )
     p.add_argument("--environment-color", help="uniform environment color (#rrggbb)")
     p.add_argument(

@@ -407,6 +407,46 @@ def _background(
     return atmo.fog(model, color, d, np.full(d.shape[0], np.inf))
 
 
+def environment_background(
+    rs: RenderScene, width: int, height: int, aspect: float
+) -> np.ndarray | None:
+    """``(height, width, 3)``: what an image environment shows behind the geometry minus
+    what the rasterizers drew there (``world.background``, or the atmosphere's sky), so
+    ``linear + (1 - coverage) x it`` composites the image exactly; ``None`` without a
+    visible image environment."""
+    img = getattr(rs, "environment_image", None)
+    env = rs.environment
+    if img is None or env is None or env.type != "image" or not env.visible:
+        return None
+    cam = rs.camera.camera
+    hx, hy = cam.half_extents(aspect)
+    ox, oy = cam.ndc_offset(aspect)
+    perspective = cam.is_perspective
+    frame = rs.camera.frame
+    row, col = np.divmod(np.arange(width * height), width)
+    xn = (col + 0.5) * (2.0 / width) - 1.0 + ox
+    yn = 1.0 - (row + 0.5) * (2.0 / height) + oy
+    if perspective:
+        d = (
+            frame.forward[None, :]
+            + (xn * hx)[:, None] * frame.right[None, :]
+            + (yn * hy)[:, None] * frame.up[None, :]
+        )
+        d = d / np.linalg.norm(d, axis=1, keepdims=True)
+    else:
+        d = np.broadcast_to(frame.forward, (width * height, 3)).copy()
+    drawn = _background(rs, width, height, hx, hy, perspective, ox, oy)
+    if drawn is None:
+        drawn = np.broadcast_to(rs.background, d.shape)
+    color = img.radiance(d)
+    model = _atmosphere(rs)
+    if model is not None:
+        color = color + atmo.glow(model, d)
+        if model.fog:
+            color = atmo.fog(model, color, d, np.full(d.shape[0], np.inf))
+    return (color - drawn).reshape(height, width, 3)
+
+
 def _front_facing(
     P: np.ndarray,
     tv: np.ndarray,

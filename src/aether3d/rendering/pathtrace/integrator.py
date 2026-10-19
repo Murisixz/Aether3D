@@ -51,6 +51,7 @@ from .sampling import (
     SLOT_AO,
     SLOT_BSDF,
     SLOT_LENS,
+    SLOT_LIGHTS,
     SLOT_LOBE,
     SLOT_PIXEL,
     SLOT_RR,
@@ -570,7 +571,11 @@ class _Tracer:
             miss = ~hits.hit
             if miss.any():
                 m = r[miss]
-                target[m] += throughput[m] * ps.environment.radiance(direction[miss])
+                le = ps.environment.radiance(direction[miss])
+                if ps.environment.sampled:  # also sampled as a light: weight both strategies
+                    w = power_heuristic(pdf[keep][miss], ps.environment.image.pdf(direction[miss]))
+                    le = le * w[:, None]
+                target[m] += throughput[m] * le
             if self.lights.sized:  # suns and light spheres the BSDF sample reaches
                 target[r] += throughput[r] * self.lights.hit_sized(
                     origin, direction, hits.t, pdf[keep], it.inst[keep]
@@ -625,6 +630,29 @@ class _Tracer:
                 else:
                     rays_d.append(target[k] - origin[k])
                     rays_t.append(np.full(k.size, SHADOW_END))
+        env = ps.environment
+        if env.sampled:  # an image environment: directions by its luminance
+            for _ in range(ns):
+                slot = SLOT_LIGHTS + 3 * index
+                index += 1
+                u0 = uniform(keys, dimension(vertex, slot))
+                u1 = uniform(keys, dimension(vertex, slot + 1))
+                wi, pdf = env.image.sample(u0, u1)
+                f, pdf_bsdf, cos = bsdf.eval(wi)
+                ok = (cos > 0.0) & (pdf > 0.0) & ((wi * ng_side).sum(axis=1) > 0.0)
+                if not ok.any():
+                    continue
+                w = power_heuristic(pdf, pdf_bsdf)
+                le = env.radiance(wi)
+                contrib = f * le * (cos * w / (np.where(ok, pdf, 1.0) * ns))[:, None]
+                ok &= contrib.any(axis=1)
+                k = np.flatnonzero(ok)
+                rays_row.append(k)
+                rays_c.append(contrib[k])
+                rays_o.append(origin[k])
+                rays_test.append(np.ones(k.size, bool))
+                rays_d.append(wi[k])
+                rays_t.append(np.full(k.size, np.inf))
         if lights.emitters is not None:
             for _ in range(ns):
                 wi, x, le_over_pdf, pdf, _, _ = lights.sample_emitter(ps, it.p, keys, vertex, index)

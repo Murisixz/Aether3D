@@ -27,6 +27,7 @@ from .scene_data import (
     RenderScene,
     _with_fields,
     extract_render_scene,
+    raster_environment,
     resolve_camera,
     world_matrices,
 )
@@ -564,6 +565,8 @@ def render(
 
         rs = contribute(scene, rs, settings.height, aspect)  # procedural worlds for this camera
     diagnostics += list(rs.diagnostics)
+    if requested not in PATH_BACKENDS:  # an image environment's sun and ambient harmonics
+        rs = raster_environment(rs)
     plan = None if shadow_settings is None else plan_shadows(rs, shadow_settings, aspect)
     if requested in ("gpu", "gpu_path", "auto") and any(
         light.receivers is not None for light in rs.lights[MAX_LINKED_LIGHTS:]
@@ -784,6 +787,9 @@ def _finish_cpu(
 
     t0 = time.perf_counter()
     linear = frame_data.linear
+    behind = cpu.environment_background(rs, settings.width, settings.height, aspect)
+    if behind is not None:  # an image environment behind the geometry
+        linear += ((1.0 - frame_data.coverage)[..., None] * behind).astype(linear.dtype)
     if settings.exposure != 0.0:
         linear *= 2.0**settings.exposure
     image = display(linear, tonemap)  # in row blocks: bounded temporaries
@@ -924,7 +930,17 @@ def _finish_gpu(
         "device_init_seconds": context.init_seconds if fresh else 0.0,
         "resources": gpu_frame.resources,
     }
-    image = gpu_frame.image if tonemap == "none" else display(gpu_frame.linear, tonemap)
+    behind = cpu.environment_background(rs, settings.width, settings.height, aspect)
+    if behind is not None:  # an image environment behind the geometry (exposure applied)
+        gain = 2.0**settings.exposure
+        gpu_frame.linear += ((1.0 - gpu_frame.coverage)[..., None] * behind * gain).astype(
+            gpu_frame.linear.dtype
+        )
+    image = (
+        gpu_frame.image
+        if tonemap == "none" and behind is None
+        else display(gpu_frame.linear, tonemap)
+    )
     return RenderResult(
         image=image,
         linear=gpu_frame.linear,

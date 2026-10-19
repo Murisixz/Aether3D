@@ -72,6 +72,9 @@ const CULL_BACK: u32 = 1u;
 const CULL_FRONT: u32 = 2u;
 const ENV_AMBIENT: u32 = 0u;
 const ENV_SKY: u32 = 2u;
+const ENV_IMAGE: u32 = 3u;
+const ENV_VISIBLE: u32 = 1u;  // bits of bitcast<u32>(params.env_image.w)
+const ENV_SAMPLED: u32 = 2u;
 
 // Accumulator planes (n_pix floats each).
 const ACC_DIRECT: u32 = 0u;
@@ -140,7 +143,7 @@ struct Params {
   atmo: Atmo,  // scene.world.atmosphere (atmosphere.wgsl): sky glows, fog on camera paths
   lens: vec4<f32>,      // lens shift (NDC offsets x, y), aperture radius (m; 0: pinhole), focus
   aperture: vec4<f32>,  // blades (0: round), cos and sin of the rotation, 1 / ratio
-  film: vec4<f32>,      // (reserved)
+  env_image: vec4<f32>, // image environment: cos, sin of its rotation, intensity, flag bits
 };
 
 @group(0) @binding(8) var<storage, read> pt: array<u32>;
@@ -583,6 +586,9 @@ fn env_radiance(d: vec3<f32>) -> vec3<f32> {
 }
 
 fn env_base(d: vec3<f32>) -> vec3<f32> {
+  if (params.env_kind == ENV_IMAGE) {
+    return env_image_radiance(d);
+  }
   if (params.env_kind != ENV_SKY) {
     return params.env_uniform;
   }
@@ -593,8 +599,132 @@ fn env_base(d: vec3<f32>) -> vec3<f32> {
   return params.horizon + (params.ground - params.horizon) * min(1.0, 4.0 * max(-z, 0.0));
 }
 
+fn env_flags() -> u32 {
+  return bitcast<u32>(params.env_image.w);
+}
+
+fn env_sampled() -> bool {
+  return params.env_kind == ENV_IMAGE && (env_flags() & ENV_SAMPLED) != 0u;
+}
+
+fn env_dims() -> vec4<u32> {  // width, height, cells across (nu), cells down (nv)
+  let b = pt[H_ENV];
+  return vec4<u32>(pt[b], pt[b + 1u], pt[b + 2u], pt[b + 3u]);
+}
+
+fn env_pixel(x: u32, y: u32, w: u32) -> vec3<f32> {
+  return ptv3(pt[H_ENV] + 4u + 3u * (y * w + x));
+}
+
+// Image environments (envimage.py): R_z(rotation) d, Blender's equirectangular mapping,
+// bilinear, wrapping across u.
+fn env_uv(d: vec3<f32>) -> vec2<f32> {
+  let c = params.env_image.x;
+  let s = params.env_image.y;
+  let e = vec3<f32>(c * d.x - s * d.y, s * d.x + c * d.y, d.z);
+  var u = 0.5 - atan2(e.y, e.x) / (2.0 * PI);
+  u = u - floor(u);
+  let v = 0.5 + asin(clamp(e.z, -1.0, 1.0)) / PI;
+  return vec2<f32>(u, v);
+}
+
+fn env_image_radiance(d: vec3<f32>) -> vec3<f32> {
+  let dims = env_dims();
+  let w = i32(dims.x);
+  let h = i32(dims.y);
+  let uv = env_uv(d);
+  let x = uv.x * f32(w) - 0.5;
+  let y = (1.0 - uv.y) * f32(h) - 0.5;
+  let x0f = floor(x);
+  let y0f = floor(y);
+  let fx = x - x0f;
+  let fy = y - y0f;
+  let x0 = u32(((i32(x0f) % w) + w) % w);
+  let x1 = (x0 + 1u) % u32(w);
+  let y0 = u32(clamp(i32(y0f), 0, h - 1));
+  let y1 = u32(clamp(i32(y0f) + 1, 0, h - 1));
+  let top = env_pixel(x0, y0, u32(w)) * (1.0 - fx) + env_pixel(x1, y0, u32(w)) * fx;
+  let bottom = env_pixel(x0, y1, u32(w)) * (1.0 - fx) + env_pixel(x1, y1, u32(w)) * fx;
+  return (top * (1.0 - fy) + bottom * fy) * params.env_image.z;
+}
+
+struct EnvSample {
+  d: vec3<f32>,
+  pdf: f32,
+};
+
+// A direction drawn by the image's luminance (EnvironmentImage.sample): u0 picks the row,
+// u1 the column, their remainders the point in the cell.
+fn env_sample(u0: f32, u1: f32) -> EnvSample {
+  let dims = env_dims();
+  let nu = dims.z;
+  let nv = dims.w;
+  let mb = pt[H_ENV] + 4u + 3u * dims.x * dims.y;  // marginal CDF (nv + 1)
+  let cb = mb + nv + 1u;                            // conditional CDFs (nv x (nu + 1))
+  var lo = 0u;
+  var hi = nv - 1u;
+  while (lo < hi) {  // the last row whose CDF starts at or below u0
+    let mid = (lo + hi + 1u) / 2u;
+    if (ptf(mb + mid) <= u0) {
+      lo = mid;
+    } else {
+      hi = mid - 1u;
+    }
+  }
+  let r = lo;
+  let pr = ptf(mb + r + 1u) - ptf(mb + r);
+  let fr = clamp((u0 - ptf(mb + r)) / select(1.0, pr, pr > 0.0), 0.0, 1.0);
+  let rb = cb + r * (nu + 1u);
+  lo = 0u;
+  hi = nu - 1u;
+  while (lo < hi) {
+    let mid = (lo + hi + 1u) / 2u;
+    if (ptf(rb + mid) <= u1) {
+      lo = mid;
+    } else {
+      hi = mid - 1u;
+    }
+  }
+  let c = lo;
+  let pc = ptf(rb + c + 1u) - ptf(rb + c);
+  let fc = clamp((u1 - ptf(rb + c)) / select(1.0, pc, pc > 0.0), 0.0, 1.0);
+  let u = (f32(c) + fc) / f32(nu);
+  let v = 1.0 - (f32(r) + fr) / f32(nv);
+  let el = (v - 0.5) * PI;
+  let az = (0.5 - u) * 2.0 * PI;
+  let ce = cos(el);
+  let e = vec3<f32>(ce * cos(az), ce * sin(az), sin(el));
+  let cr = params.env_image.x;
+  let sr = params.env_image.y;
+  let d = vec3<f32>(cr * e.x + sr * e.y, -sr * e.x + cr * e.y, e.z);
+  var pdf = 0.0;
+  if (ce > 1e-9) {
+    pdf = pr * pc * f32(nu) * f32(nv) / (2.0 * PI * PI * ce);
+  }
+  return EnvSample(d, pdf);
+}
+
+// The density env_sample draws direction d with (EnvironmentImage.pdf).
+fn env_pdf(d: vec3<f32>) -> f32 {
+  let dims = env_dims();
+  let nu = dims.z;
+  let nv = dims.w;
+  let mb = pt[H_ENV] + 4u + 3u * dims.x * dims.y;
+  let cb = mb + nv + 1u;
+  let uv = env_uv(d);
+  let r = u32(clamp(i32((1.0 - uv.y) * f32(nv)), 0, i32(nv) - 1));
+  let c = u32(clamp(i32(uv.x * f32(nu)), 0, i32(nu) - 1));
+  let rb = cb + r * (nu + 1u);
+  let p = (ptf(mb + r + 1u) - ptf(mb + r)) * (ptf(rb + c + 1u) - ptf(rb + c)) * f32(nu) * f32(nv);
+  let ce = cos((uv.y - 0.5) * PI);
+  if (ce <= 1e-9) {
+    return 0.0;
+  }
+  return p / (2.0 * PI * PI * ce);
+}
+
 fn env_camera(d: vec3<f32>) -> vec3<f32> {
-  if (params.env_kind == ENV_AMBIENT) {
+  if (params.env_kind == ENV_AMBIENT || (params.env_kind == ENV_IMAGE && (env_flags() & ENV_VISIBLE) == 0u)) {
     return params.background + atmo_glow(params.atmo, d);
   }
   return env_radiance(d);
@@ -1146,7 +1276,11 @@ fn on_miss(st: ptr<function, State>) {
     }
     case 1u: {  // RAY_BOUNCE: the environment, and suns the ray found
       let direct = (*st).vertex == 1u;
-      add_target(st, (*st).throughput * env_radiance((*st).rd), direct);
+      var le = env_radiance((*st).rd);
+      if (env_sampled()) {  // also sampled as a light: weight both strategies
+        le = le * power_heuristic((*st).prev_pdf, env_pdf((*st).rd));
+      }
+      add_target(st, (*st).throughput * le, direct);
       if ((params.flags & FLAG_SIZED_LIGHTS) != 0u) {
         add_target(st, (*st).throughput * hit_sized((*st).origin, (*st).rd, PT_INF, (*st).prev_pdf, (*st).it.inst), direct);
       }
@@ -1363,8 +1497,9 @@ fn finish_emitter_sample(st: ptr<function, State>, le: vec3<f32>) -> bool {
 fn on_nee(st: ptr<function, State>) {
   let ns = params.light_samples;
   let it = (*st).it;
+  let lights = params.light_count + select(0u, 1u, env_sampled());  // the image after them
   loop {
-    if ((*st).nee_light < params.light_count) {
+    if ((*st).nee_light < lights) {
       if ((*st).nee_k >= ns) {
         (*st).nee_light += 1u;
         (*st).nee_k = 0u;
@@ -1373,6 +1508,21 @@ fn on_nee(st: ptr<function, State>) {
       let index = (*st).nee_index;
       (*st).nee_index += 1u;
       (*st).nee_k += 1u;
+      if ((*st).nee_light == params.light_count) {  // the image environment
+        let slot = SLOT_LIGHTS + 3u * index;
+        let es = env_sample(rnd((*st).key, (*st).vertex, slot), rnd((*st).key, (*st).vertex, slot + 1u));
+        let ev = bsdf_eval((*st).bsdf, es.d);
+        let ok = ev.cos > 0.0 && es.pdf > 0.0 && dot(es.d, (*st).ng_side) > 0.0;
+        if (ok) {
+          let w = power_heuristic(es.pdf, ev.pdf);
+          let contrib = ev.f * env_radiance(es.d) * (ev.cos * w / (es.pdf * f32(ns)));
+          if (any(contrib > vec3<f32>(0.0))) {
+            shadow_ray(st, contrib, es.d, PT_INF);
+            return;
+          }
+        }
+        continue;
+      }
       let ls = sample_analytic((*st).nee_light, it.p, (*st).key, (*st).vertex, index);
       let ev = bsdf_eval((*st).bsdf, ls.wi);
       let ok = ev.cos > 0.0 && dot(ls.wi, (*st).ng_side) > 0.0 && !unlinked(it.inst, (*st).nee_light);
