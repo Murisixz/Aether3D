@@ -58,8 +58,8 @@ from .sampling import (
     cosine_hemisphere,
     dimension,
     frame,
-    path_keys,
     power_heuristic,
+    sampler_keys,
     to_world,
     uniform,
 )
@@ -458,7 +458,7 @@ class _Tracer:
     def _trace(self, pixel: np.ndarray, sample: np.ndarray):
         ps, cam, path = self.ps, self.cam, self.path
         n = pixel.shape[0]
-        keys = path_keys(path.seed, pixel, sample)
+        keys = sampler_keys(path.sampler, path.seed, pixel, sample)
         row, col = np.divmod(pixel, cam.width)
         u = uniform(keys, dimension(0, SLOT_PIXEL))
         v = uniform(keys, dimension(0, SLOT_PIXEL + 1))
@@ -523,7 +523,16 @@ class _Tracer:
             bad = (n_shade * wo).sum(axis=1) < MIN_COS
             n_shade = np.where(bad[:, None], ng_side, n_shade)
             bsdf = BSDF.build(
-                n_shade, wo, sh.base, sh.metallic, sh.roughness, sh.specular, sh.has_specular
+                n_shade,
+                wo,
+                sh.base,
+                sh.metallic,
+                sh.roughness,
+                sh.specular,
+                sh.has_specular,
+                sh.transmission,
+                sh.ior,
+                it.toward > 0.0,
             )
             if vertex == 0:
                 out["albedo"][rows] = bsdf.albedo()
@@ -540,7 +549,9 @@ class _Tracer:
             u1 = uniform(kv, dimension(vertex, SLOT_BSDF))
             u2 = uniform(kv, dimension(vertex, SLOT_BSDF + 1))
             wi, weight, pdf, valid, spec = bsdf.sample(u_lobe, u1, u2)
-            valid &= (wi * ng_side).sum(axis=1) > 0.0
+            # Reflections leave on the geometric surface's side, refractions through it.
+            through = (wi * n_shade).sum(axis=1) < 0.0
+            valid &= ((wi * ng_side).sum(axis=1) > 0.0) != through
             throughput[rows] *= weight
             if vertex >= path.russian_roulette:
                 q = np.clip(throughput[rows].max(axis=1), RR_MIN, 1.0)
@@ -553,7 +564,8 @@ class _Tracer:
             r = rows[keep]
             prev_pdf[r] = pdf[keep]
             spread[r] = spread[r] + np.where(spec[keep], 2.0 * bsdf.alpha[keep], DIFFUSE_SPREAD)
-            origin = ps.offset_origin(it.p[keep], ng_side[keep])
+            side = np.where(through[keep, None], -ng_side[keep], ng_side[keep])
+            origin = ps.offset_origin(it.p[keep], side)
             direction = wi[keep]
             hits, nxt = ps.trace(
                 origin,
@@ -599,6 +611,9 @@ class _Tracer:
         out = np.zeros((m, 3))
         ns = self.path.light_samples
         origin = ps.offset_origin(it.p, ng_side)
+        transmits = bsdf.transmits
+        if transmits.any():  # lights seen through glass leave from its other side
+            inside = ps.offset_origin(it.p, -ng_side)
         rays_o, rays_d, rays_t, rays_row, rays_c, rays_test = [], [], [], [], [], []
         index = 0
         for light in range(lights.count):
@@ -608,7 +623,8 @@ class _Tracer:
                 wi, target, scale, pdf = lights.sample_analytic(light, it.p, keys, vertex, index)
                 index += 1
                 f, pdf_bsdf, cos = bsdf.eval(wi)
-                ok = (cos > 0.0) & ((wi * ng_side).sum(axis=1) > 0.0)
+                above = (wi * ng_side).sum(axis=1) > 0.0
+                ok = (cos > 0.0) & (above | transmits)
                 if receivers is not None:
                     ok &= receivers
                 # Sized lights are also found by BSDF sampling: weight both strategies.
@@ -622,13 +638,18 @@ class _Tracer:
                 k = np.flatnonzero(ok)
                 rays_row.append(k)
                 rays_c.append(contrib[k])
-                rays_o.append(origin[k])
+                o = (
+                    origin[k]
+                    if not transmits.any()
+                    else np.where(above[k, None], origin[k], inside[k])
+                )
+                rays_o.append(o)
                 rays_test.append(np.full(k.size, occluded))
                 if target is None:
                     rays_d.append(wi[k])
                     rays_t.append(np.full(k.size, np.inf))
                 else:
-                    rays_d.append(target[k] - origin[k])
+                    rays_d.append(target[k] - o)
                     rays_t.append(np.full(k.size, SHADOW_END))
         env = ps.environment
         if env.sampled:  # an image environment: directions by its luminance
@@ -639,7 +660,8 @@ class _Tracer:
                 u1 = uniform(keys, dimension(vertex, slot + 1))
                 wi, pdf = env.image.sample(u0, u1)
                 f, pdf_bsdf, cos = bsdf.eval(wi)
-                ok = (cos > 0.0) & (pdf > 0.0) & ((wi * ng_side).sum(axis=1) > 0.0)
+                above = (wi * ng_side).sum(axis=1) > 0.0
+                ok = (cos > 0.0) & (pdf > 0.0) & (above | transmits)
                 if not ok.any():
                     continue
                 w = power_heuristic(pdf, pdf_bsdf)
@@ -649,7 +671,8 @@ class _Tracer:
                 k = np.flatnonzero(ok)
                 rays_row.append(k)
                 rays_c.append(contrib[k])
-                rays_o.append(origin[k])
+                rays_o.append(origin[k] if not transmits.any() else
+                              np.where(above[k, None], origin[k], inside[k]))  # fmt: skip
                 rays_test.append(np.ones(k.size, bool))
                 rays_d.append(wi[k])
                 rays_t.append(np.full(k.size, np.inf))
@@ -658,7 +681,8 @@ class _Tracer:
                 wi, x, le_over_pdf, pdf, _, _ = lights.sample_emitter(ps, it.p, keys, vertex, index)
                 index += 1
                 f, pdf_bsdf, cos = bsdf.eval(wi)
-                ok = (cos > 0.0) & (pdf > 0.0) & ((wi * ng_side).sum(axis=1) > 0.0)
+                above = (wi * ng_side).sum(axis=1) > 0.0
+                ok = (cos > 0.0) & (pdf > 0.0) & (above | transmits)
                 w = power_heuristic(pdf, pdf_bsdf)
                 contrib = f * le_over_pdf * (cos * w / ns)[:, None]
                 ok &= contrib.any(axis=1)
@@ -667,9 +691,14 @@ class _Tracer:
                 k = np.flatnonzero(ok)
                 rays_row.append(k)
                 rays_c.append(contrib[k])
-                rays_o.append(origin[k])
+                o = (
+                    origin[k]
+                    if not transmits.any()
+                    else np.where(above[k, None], origin[k], inside[k])
+                )
+                rays_o.append(o)
                 rays_test.append(np.ones(k.size, bool))
-                rays_d.append(x[k] - origin[k])
+                rays_d.append(x[k] - o)
                 rays_t.append(np.full(k.size, SHADOW_END))
         if not rays_row:
             return out

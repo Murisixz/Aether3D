@@ -772,15 +772,19 @@ def shade_standard(
     p: np.ndarray,
     v: np.ndarray,
     inst: np.ndarray | None = None,
+    transmission: float = 0.0,
 ) -> np.ndarray:
     """``(n, 3)`` radiance of the metallic-roughness model (see the module docstring);
-    ``inst``: the samples' instances, for light linking."""
+    ``inst``: the samples' instances, for light linking; ``transmission``: the share of
+    the diffuse base that is transmitted (the rasterizers do not refract: it is dropped)."""
     metallic = np.clip(sv.metallic, 0.0, 1.0)[:, None]
     rough = np.clip(sv.roughness, MIN_ROUGHNESS, 1.0)
     alpha = rough * rough
     a2 = (alpha * alpha)[:, None]
     base = sv.base
     c_diff = base * (1.0 - metallic)
+    if transmission > 0.0:
+        c_diff = c_diff * (1.0 - transmission)
     f0 = (0.08 * np.asarray(specular, dtype=np.float64)) * (1.0 - metallic) + base * metallic
     ndv = np.maximum((n * v).sum(axis=1), 1e-4)[:, None]
     scale, bias = env_brdf(rough, ndv[:, 0])

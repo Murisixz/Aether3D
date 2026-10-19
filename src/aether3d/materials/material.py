@@ -114,6 +114,25 @@ PARAMS: tuple[ParamSpec, ...] = (
     ParamSpec("normal_strength", "float", 1.0, -10.0, 10.0, description="normal map tilt scale"),
     ParamSpec("occlusion_strength", "float", 1.0, 0.0, 1.0),
     ParamSpec("double_sided", "bool", True, description="render back faces too"),
+    ParamSpec(
+        "transmission",
+        "float",
+        0.0,
+        0.0,
+        1.0,
+        models=("standard",),
+        description="share of the non-metallic base that is transmitted (glass): the path "
+        "tracers refract it, the rasterizers draw only the reflection",
+    ),
+    ParamSpec(
+        "ior",
+        "float",
+        1.5,
+        1.0,
+        3.0,
+        models=("standard",),
+        description="index of refraction of the transmitted light (glass 1.5, water 1.33)",
+    ),
 )
 PARAM_SPECS = {p.name: p for p in PARAMS}
 MODEL_DEFAULTS = {"standard": {"specular": 0.5}, "simple": {"specular": 0.0}}

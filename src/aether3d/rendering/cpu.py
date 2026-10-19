@@ -783,7 +783,9 @@ def _shade_materials(
             )
             out = np.stack(part, axis=1)
         else:
-            out = surface.shade_standard(rs, sv, material.specular, n, p, view, s.inst)
+            out = surface.shade_standard(
+                rs, sv, material.specular, n, p, view, s.inst, material.transmission
+            )
         out = out + sv.emissive
         target = index[sel]
         for c in range(3):

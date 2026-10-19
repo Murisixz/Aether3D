@@ -7,6 +7,18 @@ order they are traced in or on how many processes trace them. Dimensions are
 fixed per path vertex and purpose (:func:`dimension`), which keeps the
 random numbers of different decisions independent.
 
+**Owen-scrambled Sobol'** (0.20.0, ``PathSettings.sampler="sobol"``): decisions that are
+made together -- the pixel position and the lens point, a BSDF sample (its two numbers,
+the lobe and Russian roulette), the three numbers of each light sample, each AO ray --
+draw one point of a 4D Sobol' sequence (Joe and Kuo's generator matrices for dimensions
+2-4, the first being van der Corput), indexed by the path's sample number after a nested
+uniform scramble and scrambled again per coordinate (Burley 2020, "Practical Hash-based
+Owen Scrambling", JCGT 9(4); Laine and Karras' permutation). The scrambling seeds are
+hashes of the pixel, the path vertex and the group, so pixels and decisions stay
+decorrelated while a pixel's samples are stratified. Values are 24-bit fractions (as
+float32 holds them), integer arithmetic only: the GPU computes the same bits. Other
+dimensions use the hash above.
+
 **Warps** map uniform numbers to directions and points with known densities
 (solid-angle densities unless noted):
 
@@ -60,9 +72,161 @@ def path_keys(seed: int, pixel: np.ndarray, sample: np.ndarray) -> np.ndarray:
 
 def uniform(keys: np.ndarray, dim: int) -> np.ndarray:
     """A uniform number in ``[0, 1)`` per key for random dimension ``dim``."""
+    if isinstance(keys, SobolKeys):
+        return keys.uniform(dim)
     with np.errstate(over="ignore"):
         x = mix(keys ^ (np.uint64(dim) * _DIM + _GOLDEN))
     return (x >> _S11).astype(np.float64) * _TO_UNIT
+
+
+SAMPLERS = ("random", "sobol")
+
+
+def sampler_keys(sampler: str, seed: int, pixel: np.ndarray, sample: np.ndarray):
+    """The keys :func:`uniform` draws from: hash keys (``"random"``) or
+    :class:`SobolKeys`."""
+    keys = path_keys(seed, pixel, sample)
+    if sampler == "random":
+        return keys
+    pixel_hash = (path_keys(seed, pixel, np.zeros_like(sample)) >> np.uint64(32)).astype(np.uint32)
+    return SobolKeys(pixel_hash, np.asarray(sample, dtype=np.uint32), keys)
+
+
+# Joe and Kuo's direction numbers (new-joe-kuo-6.21201) for Sobol' dimensions 2-4, as
+# (s, a, m); dimension 1 is van der Corput.
+_JOE_KUO = ((1, 0, (1,)), (2, 1, (1, 3)), (3, 1, (1, 3, 1)))
+
+
+def _directions() -> np.ndarray:
+    """``(4, 32) uint32``: the generator matrices' columns (bit ``j`` of the index)."""
+    v = np.zeros((4, 32), dtype=np.uint64)
+    v[0] = [1 << (31 - j) for j in range(32)]
+    for d, (deg, a, m) in enumerate(_JOE_KUO, start=1):
+        col = [0] * 33  # 1-based, scaled by 2^32
+        for i in range(1, deg + 1):
+            col[i] = m[i - 1] << (32 - i)
+        for i in range(deg + 1, 33):
+            x = col[i - deg] ^ (col[i - deg] >> deg)
+            for k in range(1, deg):
+                if (a >> (deg - 1 - k)) & 1:
+                    x ^= col[i - k]
+            col[i] = x
+        v[d] = col[1:33]
+    return v.astype(np.uint32)
+
+
+SOBOL_DIRECTIONS = _directions()
+"""The generator matrices of the first four Sobol' dimensions (``(4, 32) uint32``)."""
+_SOBOL_TABLES = np.zeros((4, 4, 256), dtype=np.uint32)  # per lane, per index byte
+for _lane in range(4):
+    for _byte in range(4):
+        for _value in range(256):
+            _x = 0
+            for _bit in range(8):
+                if (_value >> _bit) & 1:
+                    _x ^= int(SOBOL_DIRECTIONS[_lane, 8 * _byte + _bit])
+            _SOBOL_TABLES[_lane, _byte, _value] = _x
+
+
+def sobol(index: np.ndarray, lane: int) -> np.ndarray:
+    """Sobol' coordinate ``lane`` (0-3) of points ``index`` (uint32)."""
+    t = _SOBOL_TABLES[lane]
+    i = index.astype(np.uint32)
+    return (
+        t[0][i & 255]
+        ^ t[1][(i >> np.uint32(8)) & 255]
+        ^ t[2][(i >> np.uint32(16)) & 255]
+        ^ t[3][(i >> np.uint32(24)) & 255]
+    )
+
+
+def reverse_bits(x: np.ndarray) -> np.ndarray:
+    x = x.astype(np.uint32)
+    x = ((x >> np.uint32(1)) & np.uint32(0x55555555)) | (
+        (x & np.uint32(0x55555555)) << np.uint32(1)
+    )
+    x = ((x >> np.uint32(2)) & np.uint32(0x33333333)) | (
+        (x & np.uint32(0x33333333)) << np.uint32(2)
+    )
+    x = ((x >> np.uint32(4)) & np.uint32(0x0F0F0F0F)) | (
+        (x & np.uint32(0x0F0F0F0F)) << np.uint32(4)
+    )
+    x = ((x >> np.uint32(8)) & np.uint32(0x00FF00FF)) | (
+        (x & np.uint32(0x00FF00FF)) << np.uint32(8)
+    )
+    return (x >> np.uint32(16)) | (x << np.uint32(16))
+
+
+def hash32(x: np.ndarray) -> np.ndarray:
+    """A 32-bit integer hash (Wellons' lowbias32)."""
+    with np.errstate(over="ignore"):
+        x = np.asarray(x, dtype=np.uint32)
+        x = x ^ (x >> np.uint32(16))
+        x = x * np.uint32(0x7FEB352D)
+        x = x ^ (x >> np.uint32(15))
+        x = x * np.uint32(0x846CA68B)
+        return x ^ (x >> np.uint32(16))
+
+
+def nested_uniform_scramble(x: np.ndarray, seed: np.ndarray) -> np.ndarray:
+    """Owen scrambling of 32-bit fractions ``x`` (Burley 2020, Laine and Karras' hash)."""
+    with np.errstate(over="ignore"):
+        v = reverse_bits(x)
+        v = v + np.asarray(seed, dtype=np.uint32)
+        v = v ^ (v * np.uint32(0x6C50B47C))
+        v = v ^ (v * np.uint32(0xB82F1E52))
+        v = v ^ (v * np.uint32(0xC7AFE638))
+        v = v ^ (v * np.uint32(0x8D22F6E6))
+        return reverse_bits(v)
+
+
+def sobol_group(slot: int) -> tuple[int, int] | None:
+    """``(group, lane)`` of a decision slot for the Sobol' sampler, or ``None`` (hashed)."""
+    if slot in (SLOT_PIXEL, SLOT_PIXEL + 1, SLOT_LENS, SLOT_LENS + 1):
+        return 0, {SLOT_PIXEL: 0, SLOT_PIXEL + 1: 1, SLOT_LENS: 2, SLOT_LENS + 1: 3}[slot]
+    if slot in (SLOT_BSDF, SLOT_BSDF + 1, SLOT_LOBE, SLOT_RR):
+        return 1, {SLOT_BSDF: 0, SLOT_BSDF + 1: 1, SLOT_LOBE: 2, SLOT_RR: 3}[slot]
+    if SLOT_AO <= slot < SLOT_AO + 2048:
+        return 2 + (slot - SLOT_AO) // 2, (slot - SLOT_AO) % 2
+    if slot >= SLOT_LIGHTS:
+        k, lane = divmod(slot - SLOT_LIGHTS, 3)
+        return 4096 + k, lane
+    return None
+
+
+class SobolKeys:
+    """Keys of the Sobol' sampler: each path's pixel hash and sample number (and its hash
+    key, for dimensions the sampler does not group)."""
+
+    __slots__ = ("pixel", "sample", "hashed")
+
+    def __init__(self, pixel: np.ndarray, sample: np.ndarray, hashed: np.ndarray) -> None:
+        self.pixel = pixel
+        self.sample = sample
+        self.hashed = hashed
+
+    def __getitem__(self, rows) -> SobolKeys:
+        return SobolKeys(self.pixel[rows], self.sample[rows], self.hashed[rows])
+
+    def __len__(self) -> int:
+        return int(self.pixel.shape[0])
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self.pixel.shape
+
+    def uniform(self, dim: int) -> np.ndarray:
+        vertex, slot = divmod(int(dim), DIMENSIONS_PER_VERTEX)
+        group = sobol_group(slot)
+        if group is None:
+            return uniform(self.hashed, dim)
+        g, lane = group
+        with np.errstate(over="ignore"):
+            salt = hash32(np.uint32((vertex * 0x9E3779B9 + g * 0x85EBCA6B) & 0xFFFFFFFF))
+            seed = hash32(self.pixel ^ salt)
+            index = nested_uniform_scramble(self.sample, seed)
+            x = nested_uniform_scramble(sobol(index, lane), hash32(seed + np.uint32(lane + 1)))
+        return (x >> np.uint32(8)).astype(np.float64) * (1.0 / 16777216.0)
 
 
 def dimension(vertex: int, slot: int) -> int:

@@ -452,15 +452,18 @@ fn env_brdf(roughness: f32, ndv: f32) -> vec2<f32> {
 
 // The standard model: glTF 2.0 metallic-roughness, times pi (see docs/MATERIALS.md).
 fn shade_standard(
-  sv: SurfaceValues, specular: f32, position: vec3<f32>, n: vec3<f32>, shadow_origin: vec3<f32>,
-  links: vec2<u32>
+  sv: SurfaceValues, specular: f32, transmission: f32, position: vec3<f32>, n: vec3<f32>,
+  shadow_origin: vec3<f32>, links: vec2<u32>
 ) -> vec3<f32> {
   let v = view_direction(position);
   let metallic = clamp(sv.metallic, 0.0, 1.0);
   let rough = clamp(sv.roughness, MIN_ROUGHNESS, 1.0);
   let alpha = rough * rough;
   let a2 = alpha * alpha;
-  let c_diff = sv.base * (1.0 - metallic);
+  var c_diff = sv.base * (1.0 - metallic);
+  if (transmission > 0.0) {  // (not refracted on the rasterizers: dropped)
+    c_diff = c_diff * (1.0 - transmission);
+  }
   let f0 = vec3<f32>(0.08 * specular * (1.0 - metallic)) + sv.base * metallic;
   let ndv = max(dot(n, v), 1e-4);
   let ab = env_brdf(rough, ndv);
@@ -584,7 +587,7 @@ fn fs_main(in: VertexOut, @builtin(front_facing) front: bool) -> FragmentOut {
   let links = vec2<u32>(bitcast<u32>(inst.normal[0].w), bitcast<u32>(inst.normal[1].w));
   var radiance: vec3<f32>;
   if ((flags & MATERIAL_STANDARD) != 0u) {
-    radiance = shade_standard(sv, wordf(mb + 8u), in.position, n, shadow_origin, links);
+    radiance = shade_standard(sv, wordf(mb + 8u), wordf(mb + 15u), in.position, n, shadow_origin, links);
   } else {
     radiance = shade_simple(sv.base, wordf(mb + 8u), wordf(mb + 9u), sv.occlusion, in.position, n, shadow_origin, links);
   }

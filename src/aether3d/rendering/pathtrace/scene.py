@@ -93,6 +93,8 @@ class Shading:
     has_specular: np.ndarray  # bool
     emissive: np.ndarray
     normal: np.ndarray  # outward shading normal (normal-mapped)
+    transmission: np.ndarray | None = None  # (0.20.0) standard materials' transmission
+    ior: np.ndarray | None = None
 
 
 class PathScene:
@@ -294,6 +296,12 @@ class PathScene:
                 out.roughness[rows] = sv.roughness
                 out.specular[rows] = material.specular
                 out.has_specular[rows] = True
+                if material.transmission > 0.0:
+                    if out.transmission is None:
+                        out.transmission = np.zeros(m)
+                        out.ior = np.full(m, 1.5)
+                    out.transmission[rows] = material.transmission
+                    out.ior[rows] = material.ior
         return out
 
     def transparent(self, it: Interaction, camera_cull: str = "none") -> np.ndarray:

@@ -53,6 +53,8 @@ SUPPORTED_MATERIAL_EXTENSIONS = (
     "KHR_texture_transform",
     "KHR_materials_emissive_strength",
     "KHR_materials_specular",
+    "KHR_materials_transmission",
+    "KHR_materials_ior",
 )
 DEFAULT_SPECULAR = 0.5
 
@@ -217,6 +219,33 @@ class MaterialImporter:
                     "specular textures are not supported; the factors are imported",
                     f"{where}/extensions/KHR_materials_specular",
                 )
+        transmission = extensions.get("KHR_materials_transmission")
+        if isinstance(transmission, dict):
+            params["transmission"] = self._unit(
+                transmission, "transmissionFactor", 0.0, f"{where}/extensions"
+            )
+            if "transmissionTexture" in transmission:
+                self.r.note(
+                    "TRANSMISSION_TEXTURE_IGNORED",
+                    INFO,
+                    "transmission textures are not supported; the factor is imported",
+                    f"{where}/extensions/KHR_materials_transmission",
+                )
+        ior = extensions.get("KHR_materials_ior")
+        if isinstance(ior, dict) and "ior" in ior:
+            value = ior["ior"]
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise AssetFormatError("invalid KHR_materials_ior value", f"{where}/extensions")
+            if not 1.0 <= float(value) <= 3.0:
+                self.r.note(
+                    "IOR_CLAMPED",
+                    WARNING,
+                    f"ior {value!r} is outside Aether3D's 1..3 (0 means infinite in glTF); "
+                    "it was clamped",
+                    f"{where}/extensions/KHR_materials_ior",
+                    lossy=True,
+                )
+            params["ior"] = float(min(max(float(value), 1.0), 3.0))
         model = "standard"
         if isinstance(stored, dict) and "material" in stored:
             restored = self._stored_material(stored["material"], where)
@@ -689,6 +718,14 @@ class MaterialExporter:
             )
             record.setdefault("extensions", {})["KHR_materials_specular"] = ext
             self.extensions.add("KHR_materials_specular")
+        if m.model == "standard" and values.get("transmission", 0.0) > 0.0:
+            record.setdefault("extensions", {})["KHR_materials_transmission"] = {
+                "transmissionFactor": values["transmission"]
+            }
+            self.extensions.add("KHR_materials_transmission")
+        if m.model == "standard" and values.get("ior", 1.5) != 1.5:
+            record.setdefault("extensions", {})["KHR_materials_ior"] = {"ior": values["ior"]}
+            self.extensions.add("KHR_materials_ior")
         record["extras"] = {
             EXTRAS_KEY: {"id": m.id, "material": {"model": m.model, **_json(values)}}
         }

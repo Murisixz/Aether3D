@@ -870,6 +870,10 @@ class PathSettings(_Validated):
       traces in the calling process, ``N`` uses ``N``. Parallel tracing forks
       processes and is available on Linux; elsewhere renders use one
       process. The image does not depend on it.
+    * ``sampler`` -- ``"random"`` (default: independent hashed numbers) or ``"sobol"``
+      (0.20.0): Owen-scrambled Sobol' points for the decisions made together (pixel and
+      lens, BSDF samples, light samples, AO rays), stratified per pixel -- less noise for
+      the same samples (see :mod:`~aether3d.rendering.pathtrace.sampling`).
     """
 
     _FIELDS = (
@@ -881,6 +885,7 @@ class PathSettings(_Validated):
         "clamp",
         "integrator",
         "workers",
+        "sampler",
     )
     _CODE = "INVALID_PATH_SETTINGS"
     __slots__ = tuple(f"_{name}" for name in _FIELDS)
@@ -895,6 +900,7 @@ class PathSettings(_Validated):
         clamp: float = 0.0,
         integrator: str = "path",
         workers: int = 0,
+        sampler: str = "random",
     ) -> None:
         self._assign(
             self._check(
@@ -907,6 +913,7 @@ class PathSettings(_Validated):
                     "clamp": clamp,
                     "integrator": integrator,
                     "workers": workers,
+                    "sampler": sampler,
                 },
                 "path",
             )
@@ -924,6 +931,11 @@ class PathSettings(_Validated):
                 f"{location}.integrator",
             )
         c = self._CODE
+        if values.get("sampler", "random") not in ("random", "sobol"):
+            raise RenderError(
+                c, f"sampler must be random or sobol, got {values['sampler']!r}",
+                f"{location}.sampler",
+            )  # fmt: skip
         return {
             "samples": _integer(
                 values["samples"], c, "samples", f"{location}.samples", 1, MAX_PATH_SAMPLES
@@ -946,6 +958,7 @@ class PathSettings(_Validated):
             "clamp": _number(values["clamp"], c, "clamp", f"{location}.clamp", 0.0, 1e12),
             "integrator": integrator,
             "workers": _integer(values["workers"], c, "workers", f"{location}.workers", 0, 256),
+            "sampler": values.get("sampler", "random"),
         }
 
     samples = _prop("samples")
@@ -956,6 +969,7 @@ class PathSettings(_Validated):
     clamp = _prop("clamp")
     integrator = _prop("integrator")
     workers = _prop("workers")
+    sampler = _prop("sampler")
 
     @classmethod
     def coerce(cls, value: Any) -> PathSettings:

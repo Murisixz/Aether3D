@@ -383,7 +383,10 @@ def test_set_procedural_texture_is_atomic():
         m.set_procedural_texture("normal", "noise")
 
 
-@pytest.mark.parametrize("name", preset_names())
+PLAIN_PRESETS = {"glass", "frosted_glass", "water"}  # (0.20.0: transmission, no textures)
+
+
+@pytest.mark.parametrize("name", [n for n in preset_names() if n not in PLAIN_PRESETS])
 def test_presets_build_procedural_materials(name):
     scene = Scene()
     m = scene.create_material(preset=name)
@@ -401,7 +404,10 @@ def test_presets_build_procedural_materials(name):
 
 def test_preset_and_schema_listings():
     info = {p["name"]: p for p in preset_info()}
-    assert set(info) == {"stone", "brick", "wood", "metal", "grass", "fabric"}
+    assert set(info) == {"stone", "brick", "wood", "metal", "grass", "fabric", *PLAIN_PRESETS}
+    for name in PLAIN_PRESETS:
+        m = Scene().create_material(preset=name)
+        assert m.params["transmission"] == 1.0 and not m.textures
     assert "mortar_color" in info["brick"]["options"]
     schema = material_schema()
     assert schema["models"] == ["standard", "simple"]

@@ -482,9 +482,12 @@ struct Bsdf {
   alpha: f32,
   specular: bool,
   p_spec: f32,
+  glass: f32,          // the glass lobe's weight (transmission x (1 - metallic); bsdf.py)
+  eta: f32,            // relative index for the side of wo
+  tint: vec3<f32>,     // transmission tint (the base colour)
 };
 
-fn bsdf_build(n: vec3<f32>, wo_world: vec3<f32>, base: vec3<f32>, metallic_in: f32, roughness: f32, specular: f32, has_specular: bool) -> Bsdf {
+fn bsdf_build(n: vec3<f32>, wo_world: vec3<f32>, base: vec3<f32>, metallic_in: f32, roughness: f32, specular: f32, has_specular: bool, transmission: f32, ior: f32, entering: bool) -> Bsdf {
   let metallic = clamp(metallic_in, 0.0, 1.0);
   let rough = clamp(roughness, MIN_ROUGHNESS, 1.0);
   let c_diff = base * (1.0 - metallic);
@@ -505,7 +508,95 @@ fn bsdf_build(n: vec3<f32>, wo_world: vec3<f32>, base: vec3<f32>, metallic_in: f
   } else {
     p = select(0.0, 1.0, has_specular);
   }
-  return Bsdf(f, n, wo, c_diff, f0, rough * rough, has_specular, p);
+  let glass = clamp(transmission, 0.0, 1.0) * (1.0 - metallic);
+  let eta = select(1.0 / ior, ior, entering);
+  return Bsdf(f, n, wo, c_diff, f0, rough * rough, has_specular, p, glass, eta, base);
+}
+
+// -- the glass lobe (bsdf.py: fresnel_dielectric, glass_eval, glass_sample) --------------
+
+fn fresnel_dielectric(cos_i: f32, eta: f32) -> f32 {
+  let c = clamp(cos_i, 0.0, 1.0);
+  let sin2_t = (1.0 - c * c) / (eta * eta);
+  if (sin2_t >= 1.0) {
+    return 1.0;
+  }
+  let cos_t = sqrt(max(1.0 - sin2_t, 0.0));
+  let r_par = (eta * c - cos_t) / max(eta * c + cos_t, 1e-30);
+  let r_perp = (c - eta * cos_t) / max(c + eta * cos_t, 1e-30);
+  return 0.5 * (r_par * r_par + r_perp * r_perp);
+}
+
+fn smith_lambda(w: vec3<f32>, a2: f32) -> f32 {
+  let c2 = max(w.z * w.z, 1e-30);
+  let tan2 = max(1.0 - c2, 0.0) / c2;
+  return 0.5 * (sqrt(1.0 + a2 * tan2) - 1.0);
+}
+
+fn glass_eval(s: Bsdf, wi: vec3<f32>) -> BsdfValue {
+  let wo = s.wo;
+  let a2 = s.alpha * s.alpha;
+  let cos_o = wo.z;
+  let cos_i = wi.z;
+  let reflect = cos_i > 0.0;
+  let etap = select(s.eta, 1.0, reflect);
+  var wm = wi * etap + wo;
+  let len2 = dot(wm, wm);
+  if (!(abs(cos_i) > MIN_COS) || !(len2 > 1e-30)) {
+    return BsdfValue(vec3<f32>(0.0), 0.0);
+  }
+  wm = wm / sqrt(len2);
+  if (wm.z < 0.0) {
+    wm = -wm;
+  }
+  let dot_i = dot(wm, wi);
+  let dot_o = dot(wm, wo);
+  if (!(dot_i * cos_i > 0.0) || !(dot_o * cos_o > 0.0)) {
+    return BsdfValue(vec3<f32>(0.0), 0.0);
+  }
+  let fr = fresnel_dielectric(dot_o, s.eta);
+  let d = wm.z * wm.z * (a2 - 1.0) + 1.0;
+  let dist = a2 / (PI * d * d);
+  let g2 = 1.0 / (1.0 + smith_lambda(wo, a2) + smith_lambda(wi, a2));
+  let g1 = 1.0 / (1.0 + smith_lambda(wo, a2));
+  let visible = g1 * max(dot_o, 0.0) * dist / max(cos_o, 1e-30);
+  let abs_i = max(abs(cos_i), 1e-30);
+  if (reflect) {
+    let f = dist * g2 * fr / (4.0 * abs_i * cos_o);
+    return BsdfValue(vec3<f32>(f), visible / (4.0 * max(abs(dot_o), 1e-30)) * fr);
+  }
+  let denom = max((dot_i + dot_o / etap) * (dot_i + dot_o / etap), 1e-30);
+  let ft = dist * (1.0 - fr) * g2 * abs(dot_i * dot_o) / (abs_i * cos_o * denom) / (etap * etap);
+  return BsdfValue(ft * s.tint, visible * abs(dot_i) / denom * (1.0 - fr));
+}
+
+struct GlassSample {
+  wi: vec3<f32>,
+  valid: bool,
+};
+
+fn glass_sample(s: Bsdf, u_choice: f32, u1: f32, u2: f32) -> GlassSample {
+  let wm = ggx_visible_normal(s.wo, s.alpha, u1, u2);
+  let cos_m = dot(s.wo, wm);
+  let fr = fresnel_dielectric(cos_m, s.eta);
+  let sin2_t = (1.0 - cos_m * cos_m) / (s.eta * s.eta);
+  if (u_choice < fr) {
+    let wi = 2.0 * cos_m * wm - s.wo;
+    return GlassSample(wi, wi.z > MIN_COS);
+  }
+  let cos_t = sqrt(max(1.0 - sin2_t, 0.0));
+  let wi = -s.wo / s.eta + (cos_m / s.eta - cos_t) * wm;
+  return GlassSample(wi, wi.z < -MIN_COS && sin2_t < 1.0);
+}
+
+// The full BSDF at local wi: the opaque lobes, mixed with the glass lobe where it exists.
+fn bsdf_eval_mixed(s: Bsdf, wi: vec3<f32>) -> BsdfValue {
+  var v = bsdf_eval_local(s, wi);
+  if (s.glass > 0.0) {
+    let g = glass_eval(s, wi);
+    v = BsdfValue((1.0 - s.glass) * v.f + s.glass * g.f, (1.0 - s.glass) * v.pdf + s.glass * g.pdf);
+  }
+  return v;
 }
 
 struct BsdfValue {
@@ -546,8 +637,8 @@ struct BsdfEval {
 
 fn bsdf_eval(s: Bsdf, wi_world: vec3<f32>) -> BsdfEval {
   let wi = to_local(wi_world, s.f, s.n);
-  let v = bsdf_eval_local(s, wi);
-  return BsdfEval(v.f, v.pdf, max(wi.z, 0.0));
+  let v = bsdf_eval_mixed(s, wi);
+  return BsdfEval(v.f, v.pdf, select(max(wi.z, 0.0), abs(wi.z), s.glass > 0.0));
 }
 
 struct BsdfSample {
@@ -559,24 +650,38 @@ struct BsdfSample {
 };
 
 fn bsdf_sample(s: Bsdf, u_lobe: f32, u1: f32, u2: f32) -> BsdfSample {
-  let spec = u_lobe < s.p_spec;
+  // The glass lobe with probability w_g (the rest of u_lobe then picks reflection or
+  // refraction), else the opaque lobes with u_lobe rescaled (bsdf._sample_with_glass).
+  let glass = u_lobe < s.glass;
+  var rest = u_lobe;
+  if (s.glass > 0.0) {
+    rest = select((u_lobe - s.glass) / select(1.0, 1.0 - s.glass, s.glass < 1.0), 0.0, glass);
+  }
+  let spec = rest < s.p_spec && !glass;
   var wi = cosine_hemisphere(u1, u2);
   if (spec) {
     let h = ggx_visible_normal(s.wo, s.alpha, u1, u2);
     wi = 2.0 * dot(s.wo, h) * h - s.wo;
   }
-  let v = bsdf_eval_local(s, wi);
-  let valid = wi.z > MIN_COS && v.pdf > 0.0;
+  var good = true;
+  if (glass) {
+    let g = glass_sample(s, u_lobe / max(s.glass, 1e-30), u1, u2);
+    wi = g.wi;
+    good = g.valid;
+  }
+  let v = bsdf_eval_mixed(s, wi);
+  let cos = select(wi.z, abs(wi.z), s.glass > 0.0);
+  let valid = good && cos > MIN_COS && v.pdf > 0.0;
   var weight = vec3<f32>(0.0);
   if (valid) {
-    weight = v.f * (wi.z / v.pdf);
+    weight = v.f * (cos / v.pdf);
   }
-  return BsdfSample(to_world(wi, s.f, s.n), weight, v.pdf, valid, spec);
+  return BsdfSample(to_world(wi, s.f, s.n), weight, v.pdf, valid, spec || glass);
 }
 
 fn bsdf_albedo(s: Bsdf) -> vec3<f32> {
   let f_view = s.f0 + (1.0 - s.f0) * pow(max(1.0 - s.wo.z, 0.0), 5.0);
-  return s.c_diff * (1.0 - f_view) + f_view;
+  return (1.0 - s.glass) * (s.c_diff * (1.0 - f_view) + f_view) + s.glass * s.tint;
 }
 
 // -- the environment (pathtrace/environment.py) -----------------------------------------------
@@ -1122,6 +1227,7 @@ struct State {
   it: Inter,          // the vertex being shaded
   bsdf: Bsdf,
   ng_side: vec3<f32>,
+  inside: vec3<f32>,   // the offset origin on the other side (glass)
   leave: vec3<f32>,   // ray origin off the vertex
   // Next-event estimation at the vertex.
   nee_light: u32,
@@ -1426,11 +1532,15 @@ fn on_shade(st: ptr<function, State>) {
   var roughness = 1.0;
   var specular = 0.0;
   var has_specular = false;
+  var transmission = 0.0;
+  var ior = 1.5;
   if ((material_flags(it.material) & MATERIAL_STANDARD) != 0u) {
     metallic = sv.metallic;
     roughness = sv.roughness;
     specular = specular_factor;
     has_specular = true;
+    transmission = wordf(mb + 15u);
+    ior = wordf(mb + 23u);
   } else if (specular_factor > 0.0) {
     has_specular = true;
     specular = specular_factor;
@@ -1457,12 +1567,13 @@ fn on_shade(st: ptr<function, State>) {
   if (dot(n_shade, wo) < MIN_COS) {
     n_shade = ng_side;
   }
-  (*st).bsdf = bsdf_build(n_shade, wo, sv.base, metallic, roughness, specular, has_specular);
+  (*st).bsdf = bsdf_build(n_shade, wo, sv.base, metallic, roughness, specular, has_specular, transmission, ior, it.toward > 0.0);
   if ((*st).vertex == 0u) {
     (*st).albedo = bsdf_albedo((*st).bsdf);
   }
   (*st).ng_side = ng_side;
   (*st).leave = offset_origin(it.p, ng_side);
+  (*st).inside = offset_origin(it.p, -ng_side);  // (glass: rays through the surface)
   (*st).nee_light = 0u;
   (*st).nee_k = 0u;
   (*st).nee_index = 0u;
@@ -1476,6 +1587,21 @@ fn shadow_ray(st: ptr<function, State>, contrib: vec3<f32>, d: vec3<f32>, tmax: 
   (*st).tally.shadow += 1u;
 }
 
+// A shadow ray from the side of the surface its direction leaves by (glass transmits).
+fn side_origin(st: ptr<function, State>, d: vec3<f32>) -> vec3<f32> {
+  return select((*st).inside, (*st).leave, dot(d, (*st).ng_side) > 0.0);
+}
+
+fn shadow_ray_from(st: ptr<function, State>, origin: vec3<f32>, contrib: vec3<f32>, d: vec3<f32>, tmax: f32) {
+  (*st).pending = contrib;
+  start_ray(st, RAY_SHADOW, origin, d, 0.0, tmax, (*st).it.inst, (*st).it.prim);
+  (*st).tally.shadow += 1u;
+}
+
+fn sides_ok(st: ptr<function, State>, d: vec3<f32>) -> bool {
+  return dot(d, (*st).ng_side) > 0.0 || (*st).bsdf.glass > 0.0;
+}
+
 // The light sample of an emitter, once its emitted radiance `le` is known.
 fn finish_emitter_sample(st: ptr<function, State>, le: vec3<f32>) -> bool {
   var le_over_pdf = vec3<f32>(0.0);
@@ -1484,11 +1610,12 @@ fn finish_emitter_sample(st: ptr<function, State>, le: vec3<f32>) -> bool {
   }
   let wi = (*st).em_wi;
   let ev = bsdf_eval((*st).bsdf, wi);
-  let ok = ev.cos > 0.0 && (*st).em_pdf > 0.0 && dot(wi, (*st).ng_side) > 0.0;
+  let ok = ev.cos > 0.0 && (*st).em_pdf > 0.0 && sides_ok(st, wi);
   let w = power_heuristic((*st).em_pdf, ev.pdf);
   let contrib = ev.f * le_over_pdf * (ev.cos * w / f32(params.light_samples));
   if (ok && any(contrib > vec3<f32>(0.0))) {
-    shadow_ray(st, contrib, (*st).em_x - (*st).leave, SHADOW_END);
+    let o = side_origin(st, wi);
+    shadow_ray_from(st, o, contrib, (*st).em_x - o, SHADOW_END);
     return true;
   }
   return false;
@@ -1512,12 +1639,12 @@ fn on_nee(st: ptr<function, State>) {
         let slot = SLOT_LIGHTS + 3u * index;
         let es = env_sample(rnd((*st).key, (*st).vertex, slot), rnd((*st).key, (*st).vertex, slot + 1u));
         let ev = bsdf_eval((*st).bsdf, es.d);
-        let ok = ev.cos > 0.0 && es.pdf > 0.0 && dot(es.d, (*st).ng_side) > 0.0;
+        let ok = ev.cos > 0.0 && es.pdf > 0.0 && sides_ok(st, es.d);
         if (ok) {
           let w = power_heuristic(es.pdf, ev.pdf);
           let contrib = ev.f * env_radiance(es.d) * (ev.cos * w / (es.pdf * f32(ns)));
           if (any(contrib > vec3<f32>(0.0))) {
-            shadow_ray(st, contrib, es.d, PT_INF);
+            shadow_ray_from(st, side_origin(st, es.d), contrib, es.d, PT_INF);
             return;
           }
         }
@@ -1525,7 +1652,7 @@ fn on_nee(st: ptr<function, State>) {
       }
       let ls = sample_analytic((*st).nee_light, it.p, (*st).key, (*st).vertex, index);
       let ev = bsdf_eval((*st).bsdf, ls.wi);
-      let ok = ev.cos > 0.0 && dot(ls.wi, (*st).ng_side) > 0.0 && !unlinked(it.inst, (*st).nee_light);
+      let ok = ev.cos > 0.0 && sides_ok(st, ls.wi) && !unlinked(it.inst, (*st).nee_light);
       var w = 1.0;
       if (!ls.delta) {
         w = power_heuristic(ls.pdf, ev.pdf);
@@ -1536,10 +1663,11 @@ fn on_nee(st: ptr<function, State>) {
           (*st).nee_sum += contrib;  // casts no shadow: never occluded
           continue;
         }
+        let o = side_origin(st, ls.wi);
         if (ls.has_target) {
-          shadow_ray(st, contrib, ls.goal - (*st).leave, SHADOW_END);
+          shadow_ray_from(st, o, contrib, ls.goal - o, SHADOW_END);
         } else {
-          shadow_ray(st, contrib, ls.wi, PT_INF);
+          shadow_ray_from(st, o, contrib, ls.wi, PT_INF);
         }
         return;
       }
@@ -1621,7 +1749,9 @@ fn on_bounce(st: ptr<function, State>) {
     rnd(key, vertex, SLOT_BSDF),
     rnd(key, vertex, SLOT_BSDF + 1u)
   );
-  var valid = s.valid && dot(s.wi, (*st).ng_side) > 0.0;
+  // Reflections leave on the geometric surface's side, refractions through it.
+  let through = dot(s.wi, (*st).bsdf.n) < 0.0;
+  var valid = s.valid && ((dot(s.wi, (*st).ng_side) > 0.0) != through);
   (*st).throughput = (*st).throughput * s.weight;
   if (vertex >= params.rr_vertex) {
     let q = clamp(max3((*st).throughput), RR_MIN, 1.0);
@@ -1634,7 +1764,7 @@ fn on_bounce(st: ptr<function, State>) {
   }
   (*st).prev_pdf = s.pdf;
   (*st).spread += select(DIFFUSE_SPREAD, 2.0 * (*st).bsdf.alpha, s.specular);
-  start_ray(st, RAY_BOUNCE, (*st).leave, s.wi, 0.0, PT_INF, (*st).it.inst, (*st).it.prim);
+  start_ray(st, RAY_BOUNCE, select((*st).leave, (*st).inside, through), s.wi, 0.0, PT_INF, (*st).it.inst, (*st).it.prim);
   (*st).cone_w = (*st).it.width;
   (*st).cone_spread = (*st).spread;
   (*st).tally.bounce += 1u;

@@ -277,7 +277,9 @@ def _material_record(m: RenderMaterial) -> tuple[np.ndarray, np.ndarray]:
     floats[9:12] = m.emissive
     floats[12] = m.normal_strength
     floats[13] = m.occlusion_strength
+    floats[14] = m.transmission  # (0.20.0)
     record[1:16] = floats.view(np.uint32)
+    record[23] = np.float32(m.ior).view(np.uint32)
     return record, np.full(7, NO_BINDING, dtype=np.uint32)
 
 

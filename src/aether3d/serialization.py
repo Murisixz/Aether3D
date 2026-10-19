@@ -238,10 +238,11 @@ def _migrate_v11_to_v12(document: dict[str, Any]) -> dict[str, Any]:
 def _migrate_v12_to_v13(document: dict[str, Any]) -> dict[str, Any]:
     """v12 -> v13 (0.20.0): cameras get the lens (a pinhole: every render as before) and
     lights the fields of spot and area lights, units, temperature, exposure and shadows
-    (their defaults light as before), the environment its image fields; back easing in and out uses Penner's 1.525 x
-    overshoot, so keys of v12 documents get their ``back`` divided by 1.525 (their curves
-    keep their shapes); curves without a ``smoothing`` keep Aether3D's local automatic
-    handles (nothing to write)."""
+    (their defaults light as before), the environment its image fields; back easing in and
+    out uses Penner's 1.525 x overshoot, so keys of v12 documents get their ``back``
+    divided by 1.525 (their curves keep their shapes); curves without a ``smoothing`` keep
+    Aether3D's local automatic handles (nothing to write); materials without
+    ``transmission`` and ``ior`` get their defaults when read (0: opaque)."""
     import copy
 
     from .animation.easing import BACK_IN_OUT, DEFAULT_BACK
