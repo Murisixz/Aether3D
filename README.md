@@ -1057,10 +1057,12 @@ result.save("shot.png", bits=16)  # a 16-bit master of the view transform
   and framing drift in world space; the feedback `lighting` check measures a subject's
   lighting ratio and separation from the scene's lights and corrects them with verified
   changes. Curves can use Blender's automatic handles, measured against Blender.
-- Nine film showcases ([docs/ANIMATION.md](docs/ANIMATION.md#film-showcases-0200)):
-  a rigid character, a skinned character, graphs against Blender, a flight and a
-  day-night cycle over a generated valley, the studio, the night street, the path tracer
-  of v0.19.1 against 0.20.0, a 1080p60 trailer, and an agent working over MCP.
+- Film showcases ([docs/ANIMATION.md](docs/ANIMATION.md#film-showcases-0200)), five
+  rendered for this release: a rigid character, graphs against Blender, a flight and a
+  day-night cycle over a generated valley, the studio and the night street. Four more
+  scripts (a skinned character, the path tracer of v0.19.1 against 0.20.0, a 1080p60
+  trailer and an agent working over MCP) were not rendered here; the tests run them at a
+  small size.
 
 ## Command-line interface
 

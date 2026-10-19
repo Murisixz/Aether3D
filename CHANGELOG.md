@@ -88,12 +88,23 @@ into Aether3D. The design record:
   character, curve graphs against Blender, a camera through a generated world and a
   day-night timelapse over it, a studio
   product shot, a night street lit by emission, the path tracer before and after
-  (against the real v0.19.1), a 1080p60 trailer, and an agent working over MCP.
+  (against the real v0.19.1), a 1080p60 trailer, and an agent working over MCP. A, C, D,
+  E and F were rendered (reports and previews in `examples/output/film/`); B, G, H and I
+  were not rendered for this release and run in the tests at their quick sizes.
 - **Project format 13** (lens, light, environment and material fields; curve
   `smoothing`, new modifiers, strip `blend_curve`): the migration from 12 writes the
   defaults, which render as before, and rescales back easing's in-out overshoot so stored
   curves keep their shapes. Default renders are unchanged: the CPU path tracer gives
   v0.19.1's bits and the render goldens did not change.
+- **Performance** (measured against v0.19.1 on one machine, [docs/PERFORMANCE.md](docs/PERFORMANCE.md#film-lighting-and-path-tracing-020)):
+  most timings agree within the machine's state. Known regressions:
+  - curves with automatic handles cost about three times as much to build under the new
+    default smoothing (`smoothing="local"` keeps the old cost);
+  - fifty rigs' per-frame rigging pass went from 0.37 to 0.87 ms;
+  - the GPU rasterizer's castle scene supersampled at 1080p takes 30.6 ms of GPU time
+    instead of 10.8 ms;
+  - the GPU path tracer's ray rate is 7-19 % lower against the baseline, machine state
+    included.
 
 ## 0.19.1: character rigging, revised against Blender
 

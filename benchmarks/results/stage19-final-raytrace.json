@@ -1,0 +1,81 @@
+{
+  "hardware": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.20.0",
+    "threads": "single-threaded NumPy"
+  },
+  "scenes": {
+    "sphere ~1k triangles": {
+      "triangles": 960,
+      "instances": 1,
+      "build_seconds": 0.009571230039000511,
+      "rebuild_cached_seconds": 0.00028561800718307495,
+      "nodes": 544,
+      "max_depth": 10,
+      "structure_mib": 0.08916473388671875,
+      "build_peak_mib": 0.4348897933959961,
+      "mrays_per_second": {
+        "camera_closest": 5.023215692652259,
+        "camera_any": 5.238800281250004,
+        "bounce_closest": 1.6486413885985278,
+        "bounce_any": 1.669119144594375
+      },
+      "node_visits_per_ray": 12.083558962350445
+    },
+    "sphere ~100k triangles": {
+      "triangles": 99224,
+      "instances": 1,
+      "build_seconds": 0.3047279400052503,
+      "rebuild_cached_seconds": 0.005488262046128511,
+      "nodes": 59168,
+      "max_depth": 18,
+      "structure_mib": 9.434837341308594,
+      "build_peak_mib": 33.601725578308105,
+      "mrays_per_second": {
+        "camera_closest": 2.8731668546179314,
+        "camera_any": 2.9618112627422173,
+        "bounce_closest": 0.7490432970391031,
+        "bounce_any": 0.786798108213221
+      },
+      "node_visits_per_ray": 22.12858028970701
+    },
+    "sphere ~1M triangles": {
+      "triangles": 998000,
+      "instances": 1,
+      "build_seconds": 3.5122736810008064,
+      "rebuild_cached_seconds": 0.04191887500928715,
+      "nodes": 590784,
+      "max_depth": 23,
+      "structure_mib": 94.56517791748047,
+      "build_peak_mib": 188.57094192504883,
+      "mrays_per_second": {
+        "camera_closest": 1.790199775500142,
+        "camera_any": 1.8624222843829552,
+        "bounce_closest": 0.419880441076615,
+        "bounce_any": 0.42689931230860556
+      },
+      "node_visits_per_ray": 27.4801601780567
+    },
+    "400 instances of a cube": {
+      "triangles": 12,
+      "instances": 400,
+      "build_seconds": 0.010072648001369089,
+      "rebuild_cached_seconds": 0.0025069020339287817,
+      "nodes": 264,
+      "max_depth": 8,
+      "structure_mib": 0.03546142578125,
+      "build_peak_mib": 0.46858692169189453,
+      "mrays_per_second": {
+        "camera_closest": 3.6765508467531753,
+        "camera_any": 4.5140586458805485,
+        "bounce_closest": 3.9223825088440445,
+        "bounce_any": 4.248739152957042
+      },
+      "node_visits_per_ray": 10.247547553960931
+    }
+  }
+}

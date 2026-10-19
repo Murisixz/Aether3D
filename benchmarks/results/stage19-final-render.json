@@ -1,0 +1,197 @@
+{
+  "hardware": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.20.0",
+    "threads": "single-threaded NumPy (no parallel rendering)"
+  },
+  "scenes": {
+    "castle (procedural)": [
+      {
+        "width": 640,
+        "height": 360,
+        "samples": 2,
+        "triangles": 6804,
+        "fragments": 1202482,
+        "samples_covered": 323014,
+        "seconds": 0.18390383198857307,
+        "stages": {
+          "evaluate": 0.0035932500031776726,
+          "textures": 1.6820267774164677e-06,
+          "extract": 0.0011748679680749774,
+          "geometry": 0.002624140994157642,
+          "raster": 0.0664080050191842,
+          "shade": 0.08890152798267081,
+          "output": 0.008207965001929551,
+          "total": 0.1745734479627572
+        },
+        "png_encode_seconds": 0.008778580988291651,
+        "png_bytes": 36854,
+        "peak_mib": 97.21306800842285
+      },
+      {
+        "width": 1280,
+        "height": 720,
+        "samples": 2,
+        "triangles": 6804,
+        "fragments": 4810156,
+        "samples_covered": 1291996,
+        "seconds": 0.5478248429717496,
+        "stages": {
+          "evaluate": 0.0,
+          "textures": 1.6380217857658863e-06,
+          "extract": 0.0003262790269218385,
+          "geometry": 0.002361154998652637,
+          "raster": 0.17177877895301208,
+          "shade": 0.30118834803579375,
+          "output": 0.03424659697338939,
+          "total": 0.515138799964916
+        },
+        "png_encode_seconds": 0.030136356013827026,
+        "png_bytes": 80767,
+        "peak_mib": 146.77206897735596
+      }
+    ],
+    "sphere 65k triangles": [
+      {
+        "width": 640,
+        "height": 360,
+        "samples": 2,
+        "triangles": 65026,
+        "fragments": 262113,
+        "samples_covered": 249371,
+        "seconds": 0.09823799901641905,
+        "stages": {
+          "evaluate": 1.1129304766654968e-06,
+          "textures": 1.200009137392044e-06,
+          "extract": 0.0006190050626173615,
+          "geometry": 0.008626959985122085,
+          "raster": 0.021131461951881647,
+          "shade": 0.05245168099645525,
+          "output": 0.00835247803479433,
+          "total": 0.09233582596061751
+        },
+        "png_encode_seconds": 0.0056045749806798995,
+        "png_bytes": 5807,
+        "peak_mib": 112.3845567703247
+      },
+      {
+        "width": 1280,
+        "height": 720,
+        "samples": 2,
+        "triangles": 65026,
+        "fragments": 1048424,
+        "samples_covered": 997489,
+        "seconds": 0.3280391540029086,
+        "stages": {
+          "evaluate": 0.0,
+          "textures": 1.5230034478008747e-06,
+          "extract": 0.0002763590309768915,
+          "geometry": 0.00854138401336968,
+          "raster": 0.04752653301693499,
+          "shade": 0.2081397509900853,
+          "output": 0.03524938604095951,
+          "total": 0.30353325902251527
+        },
+        "png_encode_seconds": 0.021958788973279297,
+        "png_bytes": 14771,
+        "peak_mib": 167.87528228759766
+      }
+    ],
+    "sphere 1M triangles": [
+      {
+        "width": 640,
+        "height": 360,
+        "samples": 2,
+        "triangles": 1046530,
+        "fragments": 262113,
+        "samples_covered": 249371,
+        "seconds": 0.47412585001438856,
+        "stages": {
+          "evaluate": 1.293024979531765e-06,
+          "textures": 1.5910482034087181e-06,
+          "extract": 0.0009333649650216103,
+          "geometry": 0.18909475213149562,
+          "raster": 0.208495044906158,
+          "shade": 0.05971522000618279,
+          "output": 0.0089062110055238,
+          "total": 0.4680565349990502
+        },
+        "png_encode_seconds": 0.005445529997814447,
+        "png_bytes": 5790,
+        "peak_mib": 258.4940176010132
+      },
+      {
+        "width": 1280,
+        "height": 720,
+        "samples": 2,
+        "triangles": 1046530,
+        "fragments": 1048434,
+        "samples_covered": 997489,
+        "seconds": 0.6990728700184263,
+        "stages": {
+          "evaluate": 0.0,
+          "textures": 1.7730053514242172e-06,
+          "extract": 0.0003190640127286315,
+          "geometry": 0.17512575100408867,
+          "raster": 0.24604902602732182,
+          "shade": 0.2097959359525703,
+          "output": 0.035608244012109935,
+          "total": 0.6720416260068305
+        },
+        "png_encode_seconds": 0.022070394014008343,
+        "png_bytes": 14756,
+        "peak_mib": 316.1382522583008
+      }
+    ],
+    "400 instanced cubes": [
+      {
+        "width": 640,
+        "height": 360,
+        "samples": 2,
+        "triangles": 4800,
+        "fragments": 1736054,
+        "samples_covered": 439353,
+        "seconds": 0.17515508300857618,
+        "stages": {
+          "evaluate": 5.6173361372202635e-05,
+          "textures": 2.027023583650589e-06,
+          "extract": 0.008071452612057328,
+          "geometry": 0.014367155963554978,
+          "raster": 0.05503940500784665,
+          "shade": 0.07787367096170783,
+          "output": 0.008138575998600572,
+          "total": 0.16472359199542552
+        },
+        "png_encode_seconds": 0.010046409035567194,
+        "png_bytes": 77576,
+        "peak_mib": 87.79126644134521
+      },
+      {
+        "width": 1280,
+        "height": 720,
+        "samples": 2,
+        "triangles": 4800,
+        "fragments": 6943980,
+        "samples_covered": 1757237,
+        "seconds": 0.6068712680134922,
+        "stages": {
+          "evaluate": 0.0,
+          "textures": 2.322020009160042e-06,
+          "extract": 0.00027549598598852754,
+          "geometry": 0.014135095989331603,
+          "raster": 0.1941724540083669,
+          "shade": 0.3279328669887036,
+          "output": 0.03366174298571423,
+          "total": 0.5745340030407533
+        },
+        "png_encode_seconds": 0.028323031961917877,
+        "png_bytes": 148435,
+        "peak_mib": 138.16787815093994
+      }
+    ]
+  }
+}

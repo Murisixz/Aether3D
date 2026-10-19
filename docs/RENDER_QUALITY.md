@@ -36,9 +36,11 @@ paths with the CPU's random numbers:
 - **film output**: the `film` view transform, 16-bit and OpenEXR masters with passes,
   and motion vectors ([Color management and output](#color-management-and-output)).
 
-Every default keeps earlier renders bit for bit: the Cornell room of
-`examples/film_g_scene.py` renders identically with v0.19.1 and 0.20.0's CPU path tracer
-(showcase G compares them, [below](#before-and-after-v0191-against-0200)).
+Every default keeps earlier renders bit for bit. The Cornell room of
+`examples/film_g_scene.py`, and a scene with a sized sun and point light, an emitter,
+metal, a dielectric and the sky, render identically with v0.19.1 and 0.20.0's CPU path
+tracer: both releases were run on one machine and compared bit for bit
+([research/2026-10-stage19/DESIGN.md](../research/2026-10-stage19/DESIGN.md#part-eleven-verification-and-compatibility)).
 
 ![Cornell box: rasterizer | path tracer, direct light | path tracer, 8 bounces](../examples/output/cornell_comparison.png)
 
@@ -1143,9 +1145,10 @@ average) and 67.6 s for each 64-sample frame of its 151-frame orbit
 (960 × 540, eight bounces, the GPU path tracer) with the real v0.19.1 release -- run from
 a temporary git worktree of `main` -- and with 0.20.0, each in its own process and timed
 after a warm-up, and measures every image against a 4,096-sample reference made with the
-same pixel filter: equal samples, then equal time. Its report is
-[`examples/output/film/g_renderer/report.json`](../examples/output/film/g_renderer/report.json)
-and its crops [`sheet.png`](../examples/output/film/g_renderer/sheet.png).
+same pixel filter: equal samples, then equal time. It was not run at that size for this
+release, so none of its results are given here; the tests run it at its quick size
+(96 × 54, without the v0.19.1 run). What was measured about Sobol' and adaptive sampling
+is in [Sampling](#samplers-pixel-filters-and-adaptive-sampling-0200).
 
 ## Testing and verification
 
