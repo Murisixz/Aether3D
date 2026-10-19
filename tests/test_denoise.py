@@ -77,8 +77,8 @@ def test_denoising_is_deterministic_and_checked():
     opts = {"width": 32, "height": 24, "backend": "path", "denoise": {"iterations": 2},
             "path": {"samples": 4, "bounces": 1}}  # fmt: skip
     a, b = scene.render(**opts), scene.render(**opts)
-    assert np.array_equal(a.linear, b.linear) and not np.array_equal(a.linear,
-                                                                     a.passes["beauty"])  # fmt: skip
+    assert np.array_equal(a.linear, b.linear)
+    assert not np.array_equal(a.linear, a.passes["beauty"])
     with pytest.raises(RenderError) as info:
         scene.render(width=8, height=8, backend="cpu", denoise=True)
     assert info.value.code == "INVALID_DENOISE"

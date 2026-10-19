@@ -340,10 +340,12 @@ class LightSet:
             inside &= reach & (u >= u0) & (u <= u1) & (w >= w0) & (w <= w1)
             seen = hit & inside
             factor = np.where(seen, light.spread_factor(cos_l), 0.0)
-            pdf = np.where(seen, t * t / (np.where(seen, area, 1.0) * cos_l), 0.0)
+            ts = np.where(seen, t, 0.0)  # (rays that miss may have huge t)
+            pdf = np.where(seen, ts * ts / (np.where(seen, area, 1.0) * cos_l), 0.0)
             return seen & (factor > 0.0), t, pdf, factor
         seen = hit & inside
-        pdf = np.where(seen, t * t / (light.area * cos_l), 0.0)
+        ts = np.where(seen, t, 0.0)  # (rays that miss may have huge t)
+        pdf = np.where(seen, ts * ts / (light.area * cos_l), 0.0)
         return seen, t, pdf, np.ones(o.shape[0])
 
     def receivers_at(self, index: int, inst: np.ndarray) -> np.ndarray | None:
