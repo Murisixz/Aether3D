@@ -1,6 +1,6 @@
 # The `.aether` project format
 
-**Current version: 11** (Aether3D 0.19.0; version 1–10 files are upgraded on load)
+**Current version: 12** (Aether3D 0.19.1; version 1–11 files are upgraded on load)
 
 An `.aether` file stores one scene:
 
@@ -496,7 +496,11 @@ Since version 11 (0.19.0) rig and skin definitions may carry the character-riggi
 `correctives`, `landmarks`, `template`, `info` and `enforce_limits`; constraints of type
 `twist` and IK constraints' `bend_axis`; skins `method` `"blended"` with a per-vertex
 `dq` share, and `locked_joints` / `locked_vertices`. A rig or skin without them is the
-Stage 17 one.
+Stage 17 one. Since version 12 (0.19.1), also optional: joints `span` (`[start, end]`,
+the part of the bone, head to tail, whose segment heat weights use; default `[0, 1]`),
+skins `normals` (`"joints"`, the default when absent, or `"surface"`) and `smooth`
+(corrective smoothing: `{"iterations": 1..100, "strength": (0, 1], "region": "blend" |
+"all", "weights": "cotangent" | "uniform"}`, absent for none).
 
 Only authored data is stored: evaluated poses, deformed meshes and the current time are
 not. Definitions are checked by their item kinds on load as on any change (finite
@@ -590,6 +594,7 @@ copy comes back to the same document.
 | 9 | 0.17.0 | The animation document: `scene.animation` (timeline settings and items). The migration from 8 adds an empty document with the default timeline (24 fps, 0 to 10 s), so every project loads and renders unchanged. |
 | 10 | 0.18.0 | Procedural worlds and outdoor rendering: `scene.worlds`, `scene.world.atmosphere` and optional mesh `colors`. The migration from 9 adds no worlds and the default atmosphere (off), so every project loads and renders unchanged. |
 | 11 | 0.19.0 | Character rigging: optional joint `role` and `deform`, swing-twist and hinge limits, rig `controls`, `correctives`, `landmarks`, `template`, `info`, `enforce_limits`, `twist` constraints and IK `bend_axis`, blended skins (`method: "blended"`, `dq`) and weight locks. The migration from 10 changes nothing: a version 10 document has none of them. |
+| 12 | 0.19.1 | The rigging revision: optional joint `span`, skin `normals` and `smooth`. The migration from 11 changes nothing: a version 11 document has none of them (its skins keep joint normals and no smoothing). |
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged, and Aether3D
 0.6.0 reads and writes version 3 unchanged (GPU rendering added render

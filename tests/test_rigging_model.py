@@ -340,6 +340,39 @@ def test_twist_distribution_takes_a_share_of_the_source_twist():
                                "target": {"object": "Armature"}})  # fmt: skip
 
 
+def test_twists_wait_for_one_forward_kinematics_pass(monkeypatch):
+    """A rig's twist constraints change local rotations only: the forward kinematics runs
+    once after them, or before a constraint that reads the joints' model (an IK switched
+    on here) -- the same joints, skins and normals, bit for bit, as running it after every
+    constraint (``AETHER3D_RIG_LAZY_FK=0``, the path it replaced)."""
+    from aether3d.rendering.overlay import animation_overlay
+    from aether3d.sculpt.implicit import humanoid_shapes, implicit_surface
+
+    mesh = implicit_surface(humanoid_shapes(), 0.03)
+
+    def run():
+        s = Scene("Twists")
+        body = s.add_object("Body", mesh=mesh)
+        a = s.animation
+        a.autorig(body, name="Rig")
+        a.generate("Rig", "walk", forward="-y")
+        a.ik_fk("Rig", "arm_ik.L", "ik", 0.4)
+        assert sum(c.type == "twist" for c in a.rig("Rig").constraints) >= 4
+        out = []
+        for t in (0.0, 0.3, 0.55, 0.9):
+            m = animation_overlay(s, t).meshes[body.id]
+            joints = a.pose_joints("Rig", t, space="armature")
+            out.append((joints, m.positions.copy(), m.normals.copy()))
+        return out
+
+    lazy = run()
+    monkeypatch.setenv("AETHER3D_RIG_LAZY_FK", "0")
+    eager = run()
+    for (j1, p1, n1), (j2, p2, n2) in zip(lazy, eager, strict=True):
+        assert j1.keys() == j2.keys() and all(np.array_equal(j1[k], j2[k]) for k in j1)
+        assert np.array_equal(p1, p2) and np.array_equal(n1, n2)
+
+
 # --------------------------------------------------------------------------------------- #
 # Blended skinning and files
 # --------------------------------------------------------------------------------------- #
@@ -383,10 +416,12 @@ def test_blended_skins_mix_linear_and_dual_quaternion_per_vertex():
     assert got.same(locked)
 
 
-def test_version_10_projects_load_and_save_as_11(tmp_path):
+def test_version_10_projects_load_and_save_as_the_current_version(tmp_path):
+    from aether3d.serialization import FORMAT_VERSION
+
     s, arm, leg, _ = tube_scene()
     doc = scene_to_dict(s)
-    assert doc["format_version"] == 11
+    assert doc["format_version"] == FORMAT_VERSION
     doc["format_version"] = 10  # a Stage 17 rig has nothing new: the v10 form is the same
     old = scene_from_dict(doc)
     assert (
@@ -394,5 +429,97 @@ def test_version_10_projects_load_and_save_as_11(tmp_path):
     )
     path = tmp_path / "leg.aether"
     old.save(path)
-    assert json.loads(path.read_text())["format_version"] == 11
+    assert json.loads(path.read_text())["format_version"] == FORMAT_VERSION
     assert load_scene(path).animation.rig(arm.id) is not None
+
+
+def test_corrective_smoothing_and_surface_normals_are_skin_data(tmp_path):
+    """A skin's delta mush (``smooth``) and surface-following normals (format 12): one undo
+    step to set, the modeled mesh at rest, a different surface only where weights blend,
+    saved and loaded, validated, and reported as what glTF cannot carry."""
+    from aether3d.animation.rig import check_smooth
+    from aether3d.errors import UnsupportedFeatureError
+
+    s, arm, leg, _ = tube_scene()
+    a = s.animation
+    rig = a.rig(arm)
+    base = a._owned[("skin", leg.id)]._definition
+    given = {"indices": base.indices, "weights": base.weights,
+             "joints": [rig.joints[rig.index_of_id(j)].name for j in base.joints]}  # fmt: skip
+    a.keyframe(arm, 'joints["Knee"].rotation_euler', 0.0, [0.0, 0.0, 0.0])
+    a.keyframe(arm, 'joints["Knee"].rotation_euler', 1.0, [80.0, 0.0, 0.0])
+    plain = a.rigging(1.0).meshes[leg.id].positions.copy()
+    n = len(s.history)
+    smooth = {"iterations": 8, "strength": 0.5}
+    a.skin(leg, arm, weights=given, normals="surface", smooth=smooth)
+    assert len(s.history) == n + 1
+    skin = a._owned[("skin", leg.id)]._definition
+    assert skin.smooth == check_smooth(smooth) and skin.normals == "surface"
+    assert json.loads(skin.smooth) == {"iterations": 8, "strength": 0.5, "region": "blend",
+                                       "weights": "cotangent"}  # fmt: skip
+    rest = a.rigging(0.0).meshes[leg.id].positions
+    assert np.abs(rest - leg.mesh.positions).max() < 1e-6  # (the knee at rest)
+    bent = a.rigging(1.0).meshes[leg.id].positions
+    moved = np.linalg.norm(bent - plain, axis=1)
+    top = base.weights.max(axis=1)
+    assert moved[top < 0.8].max() > 1e-3  # (the blend region relaxes)
+    pos = leg.mesh.positions
+    far = (pos[:, 2] > 0.85) | (pos[:, 2] < 0.25)
+    assert np.array_equal(bent[far], plain[far])  # (one joint holds these: untouched)
+    loaded = scene_from_dict(json.loads(json.dumps(scene_to_dict(s))))
+    assert loaded.animation._owned[("skin", leg.id)]._definition.same(skin)
+    for bad in ({"iterations": 0}, {"strength": 1.5}, {"region": "x"}, {"weights": "x"},
+                {"mode": 1}):  # fmt: skip
+        with pytest.raises(AnimationError) as e:
+            a.skin(leg, arm, weights=given, smooth=bad)
+        assert e.value.code == "INVALID_SKIN"
+    assert len(s.history) == n + 1  # (refused: nothing changed)
+    with pytest.raises(UnsupportedFeatureError) as e:
+        s.export(tmp_path / "leg.glb", animation="bake")
+    assert "SKIN_SMOOTHING_LOSSY" in str(e.value)
+    report = s.export(tmp_path / "leg.glb", animation="bake", allow_lossy=True).to_dict()
+    codes = {d["code"]: d for d in report["diagnostics"]}
+    assert codes["SKIN_SMOOTHING_LOSSY"]["lossy"] and not codes["SKIN_NORMALS_DIFFER"]["lossy"]
+    s.history.undo()
+    back = a._owned[("skin", leg.id)]._definition
+    assert back.smooth == "null" and back.normals == "joints"
+
+
+def test_joint_spans_are_rig_data(tmp_path):
+    """A joint's weighting span (format 12): the part of its bone, head to tail, its heat
+    weights use; checked, saved and loaded, kept through glTF as an extra, and the whole
+    bone when absent (a version 11 document)."""
+    s, arm = chain_scene()
+    a = s.animation
+    raw = a.rig(arm).to_json()
+    raw["joints"][0]["span"] = [0.5, 1.0]
+    a.set_rig(arm, raw)
+    rig = a.rig(arm)
+    assert rig.joints[0].span == (0.5, 1.0) and rig.joints[1].span == (0.0, 1.0)
+    starts, ends = rig.deform_segments()
+    model, tails = rig.rest_model(), rig.tails()
+    half = (model[0] @ np.append(0.5 * tails[0], 1.0))[:3]
+    tip = (model[0] @ np.append(tails[0], 1.0))[:3]
+    assert np.allclose(starts[0], half) and np.allclose(ends[0], tip)
+    assert "span" not in rig.to_json()["joints"][1]  # (the default is not written)
+    for bad in ([0.6, 0.2], [0.0, 2.0], [0.5, 0.52], "half"):
+        broken = a.rig(arm).to_json()
+        broken["joints"][0]["span"] = bad
+        with pytest.raises(AnimationError) as e:
+            a.set_rig(arm, broken)
+        assert e.value.code == "INVALID_RIG"
+    doc = json.loads(json.dumps(scene_to_dict(s)))
+    assert scene_from_dict(doc).animation.rig(arm.id).joints[0].span == (0.5, 1.0)
+    old = json.loads(json.dumps(doc))
+    old["format_version"] = 11
+    for item in old["scene"]["animation"]["items"]:
+        for j in item["definition"].get("joints", []):
+            j.pop("span", None)
+    assert all(j.span == (0.0, 1.0) for j in scene_from_dict(old).animation.rig(arm.id).joints)
+    from aether3d import import_gltf
+
+    s.export(tmp_path / "chain.glb")
+    back = import_gltf(tmp_path / "chain.glb").scene
+    arm2 = next(o for o in back.objects if back.animation.rig(o) is not None)
+    joints = {j.name: j.span for j in back.animation.rig(arm2).joints}
+    assert joints["Hip"] == (0.5, 1.0) and joints["Knee"] == (0.0, 1.0)

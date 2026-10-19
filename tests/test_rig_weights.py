@@ -88,7 +88,9 @@ def dense(s, body):
 def test_geodesic_weights_do_not_leak_between_touching_legs():
     s, arm, body = legs_scene()
     a = s.animation
-    rep = a.generate_weights(body, arm, resolution=400)  # (voxels finer than the gap)
+    rep = a.generate_weights(
+        body, arm, method="geodesic", resolution=400
+    )  # (voxels finer than the gap)
     assert rep["unreached_vertices"] == 0 and rep["technique"].startswith("geodesic")
     w, names = dense(s, body)
     p = body.mesh.positions
@@ -102,18 +104,18 @@ def test_geodesic_weights_do_not_leak_between_touching_legs():
     cols2 = [names2.index(n) for n in ("Thigh.R", "Shin.R")]
     assert w2[left_leg][:, cols2].max() > 0.2
     assert any(f["code"] == "CROSS_SIDE_WEIGHTS" for f in a.inspect_weights(body)["findings"])
-    a.generate_weights(body, arm, resolution=400)
+    a.generate_weights(body, arm, method="geodesic", resolution=400)
     assert not any(f["code"] == "CROSS_SIDE_WEIGHTS" for f in a.inspect_weights(body)["findings"])
     # Without the skeleton rule, the other thigh reaches the inner thigh through the
     # pelvis (geodesically near); with too coarse voxels the legs fuse.
-    a.generate_weights(body, arm, resolution=400, hops=0, sides="off")
+    a.generate_weights(body, arm, method="geodesic", resolution=400, hops=0, sides="off")
     w3, n3 = dense(s, body)
     assert w3[left_leg][:, [n3.index("Thigh.R")]].max() > 0.01
-    a.generate_weights(body, arm, resolution=60, hops=0, sides="off")
+    a.generate_weights(body, arm, method="geodesic", resolution=60, hops=0, sides="off")
     w4, n4 = dense(s, body)
     assert w4[left_leg & (p[:, 2] < 0.5)][:, [n4.index("Shin.R")]].max() > 0.01
     # The skeleton and side rules hold even then.
-    a.generate_weights(body, arm, resolution=60)
+    a.generate_weights(body, arm, method="geodesic", resolution=60)
     w5, n5 = dense(s, body)
     assert w5[left_leg][:, [n5.index("Shin.R"), n5.index("Thigh.R")]].max() == 0.0
 
@@ -167,8 +169,15 @@ def test_policies_parts_and_fallbacks():
     a.generate_weights(body, arm, policy="rigid")
     w, names = dense(s, body)
     assert np.all(np.sort(w, axis=1)[:, -1] == 1.0)  # one joint per vertex
-    rep = a.generate_weights(hat, arm, resolution=64)  # no bone runs through the hat
+    rep = a.generate_weights(
+        hat, arm, method="geodesic", resolution=64
+    )  # no bone runs through the hat
     assert rep["unreached_vertices"] == hat.mesh.vertex_count and rep["rigid_parts"] == 1
+    wh, nh = dense(s, hat)
+    assert np.all(wh[:, nh.index("Hips")] == 1.0)
+    # Bone heat: the hat sees only the hips' bone (straight through the air below it).
+    rep = a.generate_weights(hat, arm)
+    assert rep["method"] == "heat" and rep["rays"] > 0
     wh, nh = dense(s, hat)
     assert np.all(wh[:, nh.index("Hips")] == 1.0)
     # The stylized policy blends over a shorter span than the organic one.
@@ -190,11 +199,11 @@ def test_open_meshes_are_closed_and_generation_is_deterministic(monkeypatch):
                                "tail": [0, 0, 0.5]}])  # fmt: skip
     open_tube = merge(tube([0, 0, 0], [0, 0, 1.0], 0.1, caps=False))
     body = s.add_object("Sleeve", mesh=open_tube)
-    rep = s.animation.generate_weights(body, arm, resolution=48)
+    rep = s.animation.generate_weights(body, arm, method="geodesic", resolution=48)
     assert rep["unreached_vertices"] == 0
     w1, _ = dense(s, body)
     monkeypatch.setattr(_native, "module", lambda: None)
-    s.animation.generate_weights(body, arm, resolution=48)
+    s.animation.generate_weights(body, arm, method="geodesic", resolution=48)
     w2, _ = dense(s, body)
     assert np.array_equal(w1, w2)  # NumPy and native agree, bit for bit
 

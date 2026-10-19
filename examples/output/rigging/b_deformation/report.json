@@ -55,355 +55,447 @@
     "environment": "sky (path tracer)",
     "set": "cyclorama (a floor curving into a back wall)"
   },
-  "vertices": 18333,
+  "vertices": 42878,
   "autorig": {
-    "joints": 23,
-    "seconds": 0.6777
+    "joints": 60,
+    "seconds": 2.12
   },
+  "v019": {
+    "joints": 23
+  },
+  "blender": "5.2.2 LTS",
   "methods": {
-    "envelope": "envelope LBS",
-    "geodesic": "geodesic LBS",
-    "dqs": "geodesic DQS",
-    "blended": "verified blend"
+    "v019": "v0.19.0",
+    "heat": "heat",
+    "mush": "heat + mush",
+    "blender": "Blender"
   },
   "backend": "gpu",
   "machine": {
     "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
-    "aether3d": "0.19.0",
+    "aether3d": "0.19.1",
     "python": "3.14.8",
     "native": true,
     "backend": "gpu"
   },
-  "verified_blend": {
-    "proposed": [
-      "Blend dual quaternion skinning into 'Body (verified blend)' around 'ForeArm.L' (keeps volume under bends and twists)"
-    ],
-    "applied": 1,
-    "reverted": 0,
-    "why": null,
-    "method": "blended",
-    "dq_vertices": 1448,
-    "dq_share_max": 0.25,
-    "seconds": 2.95
-  },
   "measurements": {
-    "shoulder_raise_150.L": {
-      "geodesic": {
-        "joint_ring": 0.9044,
-        "flipped_triangles": 62,
-        "stretched_edges": 192,
-        "worst_stretch": 5.4715,
-        "interpenetrating": 28
+    "elbow_bend_140.L": {
+      "heat": {
+        "joint_ring": 0.8751,
+        "new_creases": 12,
+        "sharpest_crease": 168.71,
+        "folded_triangles": 2,
+        "worst_stretch": 1.9836
       },
-      "envelope": {
-        "joint_ring": 0.7065,
-        "flipped_triangles": 104,
-        "stretched_edges": 1486,
-        "worst_stretch": 6.6678,
-        "interpenetrating": 31
+      "mush": {
+        "joint_ring": 0.8699,
+        "new_creases": 10,
+        "sharpest_crease": 176.74,
+        "folded_triangles": 2,
+        "worst_stretch": 1.5814
       },
-      "dqs": {
-        "joint_ring": 1.0,
-        "flipped_triangles": 69,
-        "stretched_edges": 428,
-        "worst_stretch": 8.6906,
-        "interpenetrating": 0
+      "blender": {
+        "joint_ring": 0.8751,
+        "new_creases": 12,
+        "sharpest_crease": 168.66,
+        "folded_triangles": 2,
+        "worst_stretch": 1.9833
       },
-      "blended": {
-        "joint_ring": 0.9226,
-        "flipped_triangles": 59,
-        "stretched_edges": 212,
-        "worst_stretch": 6.2524,
-        "interpenetrating": 23
-      }
-    },
-    "hip_flex_100.L": {
-      "geodesic": {
-        "joint_ring": 0.9015,
-        "flipped_triangles": 215,
-        "stretched_edges": 1544,
-        "worst_stretch": 8.9407,
-        "interpenetrating": 93
-      },
-      "envelope": {
-        "joint_ring": 0.8336,
-        "flipped_triangles": 113,
-        "stretched_edges": 1596,
-        "worst_stretch": 6.9976,
-        "interpenetrating": 163
-      },
-      "dqs": {
-        "joint_ring": 1.0,
-        "flipped_triangles": 240,
-        "stretched_edges": 1944,
-        "worst_stretch": 10.6381,
-        "interpenetrating": 0
-      },
-      "blended": {
-        "joint_ring": 0.9015,
-        "flipped_triangles": 215,
-        "stretched_edges": 1544,
-        "worst_stretch": 8.9407,
-        "interpenetrating": 93
-      }
-    },
-    "wrist_twist_90.L": {
-      "geodesic": {
-        "joint_ring": 0.9944,
-        "flipped_triangles": 5,
-        "stretched_edges": 4,
-        "worst_stretch": 1.7545,
-        "interpenetrating": 0
-      },
-      "envelope": {
-        "joint_ring": 0.9818,
-        "flipped_triangles": 0,
-        "stretched_edges": 0,
-        "worst_stretch": 1.4858,
-        "interpenetrating": 0
-      },
-      "dqs": {
-        "joint_ring": 1.0,
-        "flipped_triangles": 3,
-        "stretched_edges": 8,
-        "worst_stretch": 1.8415,
-        "interpenetrating": 0
-      },
-      "blended": {
-        "joint_ring": 0.9944,
-        "flipped_triangles": 5,
-        "stretched_edges": 4,
-        "worst_stretch": 1.7545,
-        "interpenetrating": 0
+      "v019": {
+        "joint_ring": 0.744,
+        "new_creases": 14,
+        "sharpest_crease": 169.69,
+        "folded_triangles": 0,
+        "worst_stretch": 2.6565
       }
     },
     "knee_bend_140.L": {
-      "geodesic": {
-        "joint_ring": 0.7627,
-        "flipped_triangles": 88,
-        "stretched_edges": 928,
-        "worst_stretch": 5.9017,
-        "interpenetrating": 82
+      "heat": {
+        "joint_ring": 0.8885,
+        "new_creases": 10,
+        "sharpest_crease": 157.87,
+        "folded_triangles": 1,
+        "worst_stretch": 1.8808
       },
-      "envelope": {
-        "joint_ring": 0.8721,
-        "flipped_triangles": 31,
-        "stretched_edges": 542,
-        "worst_stretch": 3.5689,
-        "interpenetrating": 90
+      "mush": {
+        "joint_ring": 0.887,
+        "new_creases": 12,
+        "sharpest_crease": 148.13,
+        "folded_triangles": 0,
+        "worst_stretch": 1.7327
       },
-      "dqs": {
-        "joint_ring": 1.0,
-        "flipped_triangles": 86,
-        "stretched_edges": 1216,
-        "worst_stretch": 6.249,
-        "interpenetrating": 90
+      "blender": {
+        "joint_ring": 0.8885,
+        "new_creases": 10,
+        "sharpest_crease": 157.91,
+        "folded_triangles": 1,
+        "worst_stretch": 1.8809
       },
-      "blended": {
-        "joint_ring": 0.7627,
-        "flipped_triangles": 88,
-        "stretched_edges": 928,
-        "worst_stretch": 5.9017,
-        "interpenetrating": 82
+      "v019": {
+        "joint_ring": 0.7301,
+        "new_creases": 17,
+        "sharpest_crease": 165.87,
+        "folded_triangles": 2,
+        "worst_stretch": 3.5932
       }
     },
-    "elbow_bend_140.L": {
-      "geodesic": {
-        "joint_ring": 0.7459,
-        "flipped_triangles": 26,
-        "stretched_edges": 60,
-        "worst_stretch": 3.0538,
-        "interpenetrating": 31
+    "hip_flex_100.L": {
+      "heat": {
+        "joint_ring": 0.9998,
+        "new_creases": 44,
+        "sharpest_crease": 176.51,
+        "folded_triangles": 2,
+        "worst_stretch": 3.4015
       },
-      "envelope": {
-        "joint_ring": 0.8068,
-        "flipped_triangles": 49,
-        "stretched_edges": 284,
-        "worst_stretch": 5.5044,
-        "interpenetrating": 38
+      "mush": {
+        "joint_ring": 0.9998,
+        "new_creases": 45,
+        "sharpest_crease": 179.93,
+        "folded_triangles": 3,
+        "worst_stretch": 3.3126
       },
-      "dqs": {
-        "joint_ring": 1.0,
-        "flipped_triangles": 40,
-        "stretched_edges": 178,
-        "worst_stretch": 3.2501,
-        "interpenetrating": 28
+      "blender": {
+        "joint_ring": 0.9998,
+        "new_creases": 37,
+        "sharpest_crease": 169.94,
+        "folded_triangles": 1,
+        "worst_stretch": 2.6092
       },
-      "blended": {
-        "joint_ring": 0.802,
-        "flipped_triangles": 28,
-        "stretched_edges": 66,
-        "worst_stretch": 3.1045,
-        "interpenetrating": 41
+      "v019": {
+        "joint_ring": 0.8948,
+        "new_creases": 36,
+        "sharpest_crease": 176.53,
+        "folded_triangles": 1,
+        "worst_stretch": 2.9081
+      }
+    },
+    "shoulder_raise_150.L": {
+      "heat": {
+        "joint_ring": 0.8988,
+        "new_creases": 14,
+        "sharpest_crease": 170.14,
+        "folded_triangles": 0,
+        "worst_stretch": 4.2433
+      },
+      "mush": {
+        "joint_ring": 0.8972,
+        "new_creases": 11,
+        "sharpest_crease": 134.62,
+        "folded_triangles": 0,
+        "worst_stretch": 3.7801
+      },
+      "blender": {
+        "joint_ring": 0.899,
+        "new_creases": 14,
+        "sharpest_crease": 170.13,
+        "folded_triangles": 0,
+        "worst_stretch": 4.2433
+      },
+      "v019": {
+        "joint_ring": 0.9354,
+        "new_creases": 66,
+        "sharpest_crease": 172.07,
+        "folded_triangles": 3,
+        "worst_stretch": 5.8814
+      }
+    },
+    "wrist_twist_90.L": {
+      "heat": {
+        "joint_ring": 0.9922,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.4498
+      },
+      "mush": {
+        "joint_ring": 0.9915,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.2743
+      },
+      "blender": {
+        "joint_ring": 0.9922,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.4497
+      },
+      "v019": {
+        "joint_ring": 0.9959,
+        "new_creases": 3,
+        "sharpest_crease": 65.16,
+        "folded_triangles": 0,
+        "worst_stretch": 1.946
+      }
+    },
+    "elbow_bend_140.R": {
+      "heat": {
+        "joint_ring": 0.8734,
+        "new_creases": 10,
+        "sharpest_crease": 171.0,
+        "folded_triangles": 1,
+        "worst_stretch": 1.9302
+      },
+      "mush": {
+        "joint_ring": 0.8683,
+        "new_creases": 10,
+        "sharpest_crease": 179.1,
+        "folded_triangles": 2,
+        "worst_stretch": 1.5724
+      },
+      "blender": {
+        "joint_ring": 0.8734,
+        "new_creases": 8,
+        "sharpest_crease": 164.77,
+        "folded_triangles": 1,
+        "worst_stretch": 1.9303
+      },
+      "v019": {
+        "joint_ring": 0.7392,
+        "new_creases": 26,
+        "sharpest_crease": 179.63,
+        "folded_triangles": 3,
+        "worst_stretch": 2.3669
+      }
+    },
+    "knee_bend_140.R": {
+      "heat": {
+        "joint_ring": 0.8873,
+        "new_creases": 9,
+        "sharpest_crease": 136.55,
+        "folded_triangles": 1,
+        "worst_stretch": 1.8851
+      },
+      "mush": {
+        "joint_ring": 0.8859,
+        "new_creases": 10,
+        "sharpest_crease": 158.53,
+        "folded_triangles": 0,
+        "worst_stretch": 1.7274
+      },
+      "blender": {
+        "joint_ring": 0.8873,
+        "new_creases": 9,
+        "sharpest_crease": 136.55,
+        "folded_triangles": 1,
+        "worst_stretch": 1.8851
+      },
+      "v019": {
+        "joint_ring": 0.7278,
+        "new_creases": 21,
+        "sharpest_crease": 176.81,
+        "folded_triangles": 2,
+        "worst_stretch": 4.2188
+      }
+    },
+    "hip_flex_100.R": {
+      "heat": {
+        "joint_ring": 0.9998,
+        "new_creases": 43,
+        "sharpest_crease": 179.72,
+        "folded_triangles": 3,
+        "worst_stretch": 3.5418
+      },
+      "mush": {
+        "joint_ring": 0.9997,
+        "new_creases": 48,
+        "sharpest_crease": 176.43,
+        "folded_triangles": 4,
+        "worst_stretch": 3.3722
+      },
+      "blender": {
+        "joint_ring": 0.9998,
+        "new_creases": 30,
+        "sharpest_crease": 176.2,
+        "folded_triangles": 0,
+        "worst_stretch": 2.7566
+      },
+      "v019": {
+        "joint_ring": 0.8927,
+        "new_creases": 42,
+        "sharpest_crease": 176.47,
+        "folded_triangles": 2,
+        "worst_stretch": 3.1332
+      }
+    },
+    "shoulder_raise_150.R": {
+      "heat": {
+        "joint_ring": 0.8988,
+        "new_creases": 16,
+        "sharpest_crease": 175.75,
+        "folded_triangles": 0,
+        "worst_stretch": 4.1495
+      },
+      "mush": {
+        "joint_ring": 0.8972,
+        "new_creases": 13,
+        "sharpest_crease": 153.63,
+        "folded_triangles": 1,
+        "worst_stretch": 3.7611
+      },
+      "blender": {
+        "joint_ring": 0.8992,
+        "new_creases": 16,
+        "sharpest_crease": 175.75,
+        "folded_triangles": 0,
+        "worst_stretch": 4.1412
+      },
+      "v019": {
+        "joint_ring": 0.9275,
+        "new_creases": 31,
+        "sharpest_crease": 137.03,
+        "folded_triangles": 0,
+        "worst_stretch": 3.6484
+      }
+    },
+    "wrist_twist_90.R": {
+      "heat": {
+        "joint_ring": 0.9917,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.4612
+      },
+      "mush": {
+        "joint_ring": 0.9908,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.2561
+      },
+      "blender": {
+        "joint_ring": 0.9917,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.4612
+      },
+      "v019": {
+        "joint_ring": 0.9952,
+        "new_creases": 7,
+        "sharpest_crease": 62.83,
+        "folded_triangles": 0,
+        "worst_stretch": 1.9316
       }
     },
     "torso_twist_60": {
-      "geodesic": {
-        "joint_ring": 0.9645,
-        "flipped_triangles": 15,
-        "stretched_edges": 128,
-        "worst_stretch": 2.305,
-        "interpenetrating": 0
+      "heat": {
+        "joint_ring": 0.967,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.5617
       },
-      "envelope": {
-        "joint_ring": 0.9679,
-        "flipped_triangles": 40,
-        "stretched_edges": 558,
-        "worst_stretch": 5.88,
-        "interpenetrating": 0
+      "mush": {
+        "joint_ring": 0.9666,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.487
       },
-      "dqs": {
-        "joint_ring": 1.0,
-        "flipped_triangles": 22,
-        "stretched_edges": 138,
-        "worst_stretch": 2.347,
-        "interpenetrating": 0
+      "blender": {
+        "joint_ring": 0.9672,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.5619
       },
-      "blended": {
-        "joint_ring": 0.9645,
-        "flipped_triangles": 15,
-        "stretched_edges": 128,
-        "worst_stretch": 2.305,
-        "interpenetrating": 0
+      "v019": {
+        "joint_ring": 0.9695,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 2.2527
+      }
+    },
+    "spine_bend_45": {
+      "heat": {
+        "joint_ring": 1.0016,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.3536
+      },
+      "mush": {
+        "joint_ring": 1.0013,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.3118
+      },
+      "blender": {
+        "joint_ring": 1.0021,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.3536
+      },
+      "v019": {
+        "joint_ring": 0.9941,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.5873
+      }
+    },
+    "head_turn_60": {
+      "heat": {
+        "joint_ring": 0.9489,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.5792
+      },
+      "mush": {
+        "joint_ring": 0.9483,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.4534
+      },
+      "blender": {
+        "joint_ring": 0.9489,
+        "new_creases": 0,
+        "sharpest_crease": 59.91,
+        "folded_triangles": 0,
+        "worst_stretch": 1.5791
+      },
+      "v019": {
+        "joint_ring": 0.9044,
+        "new_creases": 17,
+        "sharpest_crease": 142.73,
+        "folded_triangles": 3,
+        "worst_stretch": 2.6066
       }
     }
   },
-  "measure_seconds": 0.84,
-  "findings": [
-    [
-      "CROSS_SIDE_WEIGHTS",
-      "Body (envelope LBS)",
-      null
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (envelope LBS)",
-      "elbow_bend_140.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (envelope LBS)",
-      "hip_flex_100.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (envelope LBS)",
-      "knee_bend_140.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (envelope LBS)",
-      "shoulder_raise_150.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (envelope LBS)",
-      "torso_twist_60"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic DQS)",
-      "elbow_bend_140.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic DQS)",
-      "hip_flex_100.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic DQS)",
-      "knee_bend_140.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic DQS)",
-      "shoulder_raise_150.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic DQS)",
-      "torso_twist_60"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic DQS)",
-      "wrist_twist_90.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic LBS)",
-      "elbow_bend_140.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic LBS)",
-      "hip_flex_100.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic LBS)",
-      "knee_bend_140.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic LBS)",
-      "shoulder_raise_150.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic LBS)",
-      "torso_twist_60"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (geodesic LBS)",
-      "wrist_twist_90.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (verified blend)",
-      "elbow_bend_140.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (verified blend)",
-      "hip_flex_100.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (verified blend)",
-      "knee_bend_140.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (verified blend)",
-      "shoulder_raise_150.L"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (verified blend)",
-      "torso_twist_60"
-    ],
-    [
-      "FLIPPED_TRIANGLES",
-      "Body (verified blend)",
-      "wrist_twist_90.L"
-    ],
-    [
-      "JOINT_COLLAPSE",
-      "Body (envelope LBS)",
-      "shoulder_raise_150.L"
-    ],
-    [
-      "JOINT_COLLAPSE",
-      "Body (geodesic LBS)",
-      "elbow_bend_140.L"
-    ]
-  ],
+  "totals": {
+    "heat": {
+      "new_creases": 158,
+      "folded_triangles": 10,
+      "worst_stretch": 4.2433
+    },
+    "mush": {
+      "new_creases": 159,
+      "folded_triangles": 12,
+      "worst_stretch": 3.7801
+    },
+    "blender": {
+      "new_creases": 136,
+      "folded_triangles": 6,
+      "worst_stretch": 4.2433
+    },
+    "v019": {
+      "new_creases": 280,
+      "folded_triangles": 16,
+      "worst_stretch": 5.8814
+    }
+  },
+  "measure_seconds": 7.34,
   "renders": {
     "tiles": 24,
-    "seconds": 181.0,
+    "seconds": 209.3,
     "backend": "gpu_path",
     "samples": 96,
     "size": [
@@ -412,9 +504,8 @@
     ]
   },
   "notes": [
-    "keeps: joint_ring, the mean distance of the skin around the measured joint to its pivot, posed over rest (1.00: no collapse; below 0.75 diagnose_rig reports JOINT_COLLAPSE)",
-    "the verified blend adds dual quaternion skinning only where a measured collapse asks for it (here the elbow; the knee keeps more than 0.75)",
-    "jagged dark patches on the twisted torso, in all four methods: the path tracer gives no direct light to a facet facing away from the light, and skinned normals (the rest normals transformed by the blended joint matrices) turn less than the facets where weights change quickly; the rasterizer draws the surface smooth"
+    "keeps: joint_ring, the mean distance of the skin around the bent joint to its pivot, posed over rest (1.00: no collapse; below 0.75 diagnose_rig reports JOINT_COLLAPSE); creases: edges smooth at rest bent past 60 degrees; folds: triangles turned against their posed neighbourhood; stretch: the worst edge length ratio",
+    "v0.19.0 and Blender are data computed for this exact mesh (its hash is checked); every deformation and image here is Aether3D's"
   ],
-  "seconds": 201.0
+  "seconds": 281.5
 }

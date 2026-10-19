@@ -23,7 +23,8 @@ def body_mesh():
 def rigged(mesh, *, soft_knee=False):
     s = Scene("Feedback")
     body = s.add_object("Body", mesh=mesh)
-    s.animation.autorig(body, name="Rig")
+    # (plain linear blend skinning: the collapse the dual quaternion fix is for)
+    s.animation.autorig(body, name="Rig", weights={"corrective": None, "normals": "joints"})
     if soft_knee:  # (weights smoothed by hand far too wide: the knee collapses when bent)
         smooth = {"op": "smooth", "iterations": 200, "joints": ["Thigh.L", "Shin.L"]}
         s.animation.edit_weights(body, [smooth, smooth])
@@ -129,6 +130,18 @@ def test_rig_fix_actions_and_proposals_are_checked_data(body_mesh):
                  policy={"allow_animation": True})  # fmt: skip
     assert e.value.location == "/actions/0/fixes/0"
     assert len(s.history) == steps
+
+
+def test_a_rig_check_can_measure_the_stress_suite(body_mesh):
+    """``poses: "stress"`` (0.19.1) measures the extremes: the findings name its poses."""
+    from aether3d.animation.rig_report import pose_suite
+
+    s = rigged(body_mesh)
+    fs = FeedbackSession(s, expectations({**RIG, "poses": "stress"}), width=48, height=48)
+    findings = fs.diagnose().to_dict()["findings"]
+    poses = {f["evidence"]["rig"].get("pose") for f in findings} - {None}
+    stress = {p["name"] for p in pose_suite(s.animation.rig(s.get_by_name("Rig")), "stress")}
+    assert poses and poses <= stress and "shoulder_raise_150.L" in poses
 
 
 def test_a_rig_check_on_an_unrigged_object_says_so(body_mesh):

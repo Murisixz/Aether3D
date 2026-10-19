@@ -763,13 +763,19 @@ def _validated(validator: dict) -> bool:
          and r["checks"]["summary"]["error"] == 0 and r["reach"]["reachable"]
          and max(r["reach"]["residual_m"]) < 1e-3 and r["reach"]["fk_to_ik"]["mismatch"] < 1e-6
          and r["crouch"]["foot_residual_m"] < 0.01
-         and all(_sliding(f) < 0.01 for f in r["contacts"].values())),
+         and all(_sliding(f) < 0.01 for f in r["contacts"].values())
+         and r["rise"]["foot_pivot"] == "ball+toe" and r["rise"]["leg_residual_m"] < 1e-3
+         and r["rise"]["clavicle_deg"] > 10.0),
+        # (before and after: the revision's default creases and folds less than v0.19.0's
+        # rig of the same mesh and about as much as Blender's weights)
         ("rigging_deformation.py",
-         lambda r: len(r["measurements"]) == 6 and r["verified_blend"]["applied"] >= 1
-         and all(set(row) == {"envelope", "geodesic", "dqs", "blended"}
-                 and row["dqs"]["joint_ring"] > 0.99
-                 and row["blended"]["joint_ring"] >= row["geodesic"]["joint_ring"] - 1e-6
-                 for row in r["measurements"].values())),
+         lambda r: len(r["measurements"]) == 13
+         and all(set(row) == {"v019", "heat", "mush", "blender"}
+                 for row in r["measurements"].values())
+         and r["totals"]["heat"]["new_creases"] < r["totals"]["v019"]["new_creases"]
+         and r["totals"]["heat"]["folded_triangles"] < r["totals"]["v019"]["folded_triangles"]
+         and r["totals"]["heat"]["new_creases"] <= 1.3 * r["totals"]["blender"]["new_creases"]
+         and r["totals"]["mush"]["worst_stretch"] <= r["totals"]["heat"]["worst_stretch"]),
         ("rigging_ikfk.py",
          lambda r: all(r["switches"][k]["joint_mismatch_m"] < 1e-9
                        and r["switches"][k]["skin_displacement_m"] < 1e-3
@@ -833,6 +839,15 @@ def test_committed_rigging_outputs():
         "f_world",
     }
     assert reports["e_rigid"]["bones"] == {"rigs": 0, "skins": 0}
+    # (the outfit's skeleton measured on the body alone: the fingers under the gloves, the
+    # helmet on the head, mirrored pieces on mirrored joints)
+    outfit = reports["d_outfit"]
+    att = outfit["attachments"]
+    assert outfit["autorig"]["joints"] == 60 and att["Helmet"] == "Head"
+    assert att["Shoulder plate.L"][:-2] == att["Shoulder plate.R"][:-2]
+    # (one 1080p encode is committed: the revised figure's showcase, as its report says)
+    hero = RIGGING / "a_autorig" / "autorig_1080p.mp4"
+    assert hero.stat().st_size == reports["a_autorig"]["video"]["mp4"]["bytes"]
     roundtrip = reports["g_roundtrip"]
     assert roundtrip["aether"]["exact"] and roundtrip["glb"]["worst_posed_m"] < 1e-3
     assert _validated(roundtrip["glb"]["validator"])

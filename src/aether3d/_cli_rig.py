@@ -8,8 +8,21 @@
 * ``rig weights PROJECT --mesh BODY [--joint J]`` -- a skin's validity, coverage, leakage.
 * ``rig diagnose PROJECT --armature A [--pose P ...]`` -- the rig and its deformation
   under the diagnostic pose suite and over the timeline.
+* ``rig test PROJECT --armature A [--suite stress|suite] [--sheet OUT.png]`` -- the
+  deformation under a pose suite (the extremes by default): per pose the skin's kept size,
+  new creases, folds and worst stretch; ``--sheet`` writes a stretch map per pose; exit
+  code 3 when a finding is an error.
 * ``rig fix PROJECT --armature A [--safety safe|verify]`` -- apply proposals, verified
   one by one (undone when they do not help), then save.
+* ``rig create PROJECT --armature A --rig RIG.json`` -- a rig document on an object (an
+  empty is made when it does not exist), then save; ``rig edit PROJECT --armature A --op
+  JSON ...`` -- rig operations (one undo step, skins rebound), then save.
+* ``rig bind PROJECT --mesh M --armature A [--method heat|geodesic|envelope|nearest]
+  [--smooth N] [--normals surface|joints]`` -- generate weights and bind, then save;
+  ``rig transfer PROJECT --mesh JACKET --source BODY`` -- weights from a bound mesh.
+* ``rig pose PROJECT --armature A --command JSON ... [--time T]`` -- pose commands as keys
+  (``raise_arm``, ``reach``, ``curl_fingers``, ``roll_foot``...), then save; ``rig ikfk
+  PROJECT --armature A --limb L --mode ik|fk --time T`` -- switch a limb, matched.
 * ``rig preview PROJECT OUT.png --armature A [--mode pose|weights|stretch|skeleton]`` --
   a picture; ``.svg`` writes the skeleton diagram.
 * ``rig parts PROJECT --root R`` -- the parts of a rigid-part character (no bones):
@@ -30,7 +43,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .cli import EXIT_OK, CommandError, CommandOutput, _load_scene, _write_or_dry_run
+from .cli import (
+    EXIT_GEOMETRY_ERRORS,
+    EXIT_OK,
+    CommandError,
+    CommandOutput,
+    _load_scene,
+    _write_or_dry_run,
+)
 
 
 def _engine(exc: Exception) -> CommandError:
@@ -116,6 +136,123 @@ def cmd_rig_diagnose(args: argparse.Namespace) -> CommandOutput:
     lines = [f"{rep['armature']}: {s['error']} errors, {s['warning']} warnings, {s['info']} info"]
     lines += [f"{f['severity']}: {f['code']}: {f['message']}" for f in rep["findings"][:30]]
     return rep, "\n".join(lines), EXIT_OK
+
+
+def cmd_rig_test(args: argparse.Namespace) -> CommandOutput:
+    scene, _ = _load_scene(Path(args.path))
+    a = scene.animation
+    rep = _run(a.diagnose_rig, args.armature, poses=args.suite, time=args.time,
+               animation=False, max_findings=200)  # fmt: skip
+    s = rep["summary"]
+    lines = [f"{rep['armature']} under the {args.suite} poses: {s['error']} errors, "
+             f"{s['warning']} warnings, {s['info']} info",
+             f"{'pose':24s} {'mesh':12s} {'kept':>6s} {'creases':>8s} {'folds':>6s} "
+             f"{'stretch':>8s}"]  # fmt: skip
+    for pose, meshes in rep["poses"].items():
+        for mesh, r in meshes.items():
+            lines.append(f"{pose:24s} {mesh[:12]:12s} {r.get('joint_ring', float('nan')):6.3f} "
+                         f"{r['new_creases']:8d} {r['folded_triangles']:6d} "
+                         f"{r['worst_stretch']:8.2f}")  # fmt: skip
+    lines += [f"{f['severity']}: {f['code']}: {f['message']}" for f in rep["findings"][:20]]
+    if args.sheet:
+        rep["sheet"] = _stress_sheet(a, args.armature, list(rep["poses"]), Path(args.sheet),
+                                     args.force)  # fmt: skip
+        lines.append(f"wrote {args.sheet} (a stretch map per pose)")
+    return rep, "\n".join(lines), EXIT_GEOMETRY_ERRORS if s["error"] else EXIT_OK
+
+
+def _stress_sheet(a, armature: str, poses: list[str], out: Path, force: bool) -> dict:
+    """Stretch maps of the poses, four to a row, labelled (one PNG)."""
+    from .animation.frames import contact_sheet
+    from .rendering.png import encode_png
+
+    if out.exists() and not force:
+        raise CommandError("FileExistsError", f"{out} exists (pass --force)", str(out), {})
+    tiles = [
+        _run(a.rig_preview, armature, mode="stretch", pose=p, view="three_quarter", width=320,
+             height=400)["image"][..., :3]
+        for p in poses
+    ]  # fmt: skip
+    out.write_bytes(encode_png(contact_sheet(tiles, columns=4, labels=poses)))
+    return {"path": str(out), "poses": poses}
+
+
+def cmd_rig_create(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    scene, _ = _load_scene(path, history=True)
+    raw = json.loads(Path(args.rig).read_text(encoding="utf-8"))
+    from .errors import ObjectNotFoundError
+
+    try:
+        obj = scene.get_by_name(args.armature)
+    except ObjectNotFoundError:
+        obj = scene.add_object(args.armature)
+    _run(scene.animation.set_rig, obj, raw)
+    written = _write_or_dry_run(scene, path, args)
+    rig = scene.animation.rig(obj)
+    data = {"path": str(path), "output": written, "armature": obj.name,
+            "joints": [j.name for j in rig.joints]}  # fmt: skip
+    return data, f"{obj.name}: {len(rig.joints)} joints; saved {written}", EXIT_OK
+
+
+def cmd_rig_edit(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    scene, _ = _load_scene(path, history=True)
+    ops = [json.loads(o) for o in args.op]
+    rep = _run(scene.animation.edit_rig, args.armature, ops)
+    written = _write_or_dry_run(scene, path, args)
+    data = {"path": str(path), "output": written, **rep}
+    return data, f"{len(ops)} rig operations; saved {written}", EXIT_OK
+
+
+def cmd_rig_bind(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    scene, _ = _load_scene(path, history=True)
+    options: dict[str, Any] = {"method": args.method, "normals": args.normals}
+    if args.smooth:
+        options["corrective"] = {"iterations": args.smooth, "strength": 0.5}
+    rep = _run(scene.animation.generate_weights, args.mesh, args.armature, **options)
+    written = _write_or_dry_run(scene, path, args)
+    data = {"path": str(path), "output": written, **rep}
+    lines = [f"{args.mesh}: {rep.get('technique', args.method)}",
+             f"{rep.get('joints_used', '?')} joints used; saved {written}"]  # fmt: skip
+    return data, "\n".join(lines), EXIT_OK
+
+
+def cmd_rig_transfer(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    scene, _ = _load_scene(path, history=True)
+    rep = _run(scene.animation.transfer_weights, args.mesh, args.source)
+    written = _write_or_dry_run(scene, path, args)
+    data = {"path": str(path), "output": written, **rep}
+    return data, f"{args.mesh}: weights from {args.source}; saved {written}", EXIT_OK
+
+
+def cmd_rig_pose(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    scene, _ = _load_scene(path, history=True)
+    commands = [json.loads(c) for c in args.command]
+    rep = _run(scene.animation.pose_character, args.armature, commands, time=args.time)
+    written = _write_or_dry_run(scene, path, args)
+    data = {"path": str(path), "output": written, **rep}
+    lines = [f"{c['do']}: {json.dumps({k: v for k, v in c.items() if k != 'do'})[:120]}"
+             for c in rep["commands"]]  # fmt: skip
+    lines.append(f"saved {written}")
+    return data, "\n".join(lines), EXIT_OK
+
+
+def cmd_rig_ikfk(args: argparse.Namespace) -> CommandOutput:
+    path = Path(args.path)
+    scene, _ = _load_scene(path, history=True)
+    rep = _run(scene.animation.ik_fk, args.armature, args.limb, args.mode, args.time)
+    written = _write_or_dry_run(scene, path, args)
+    data = {"path": str(path), "output": written, **rep}
+    return (
+        data,
+        f"{args.limb} -> {args.mode} at {args.time}: mismatch {rep['mismatch']:.3g}; "
+        f"saved {written}",
+        EXIT_OK,
+    )
 
 
 def cmd_rig_fix(args: argparse.Namespace) -> CommandOutput:
@@ -231,6 +368,54 @@ def add_rig_parsers(sub, common, writing) -> None:
     p.add_argument("--pose", action="append", help="a diagnostic pose (repeatable)")
     p.add_argument("--time", type=float)
     p.set_defaults(handler=cmd_rig_diagnose)
+    p = rs.add_parser("test", parents=[common], help="the deformation under a pose suite",
+                      description="Measure the deformation under the stress suite (or the "
+                      "everyday one): per pose the kept size, creases, folds and stretch; "
+                      "exit code 3 when a finding is an error.")  # fmt: skip
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--armature", required=True)
+    p.add_argument("--suite", default="stress", choices=("stress", "suite"))
+    p.add_argument("--time", type=float)
+    p.add_argument("--sheet", help="also write a stretch map per pose (PNG)")
+    p.add_argument("--force", action="store_true", help="overwrite an existing sheet")
+    p.set_defaults(handler=cmd_rig_test)
+    p = rs.add_parser("create", parents=[common, writing], help="a rig document on an object")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--armature", required=True, help="the object (made when missing)")
+    p.add_argument("--rig", required=True, help="a JSON rig document (docs/ANIMATION.md)")
+    p.set_defaults(handler=cmd_rig_create)
+    p = rs.add_parser("edit", parents=[common, writing], help="rig operations")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--armature", required=True)
+    p.add_argument("--op", action="append", required=True, help="a JSON operation (repeatable)")
+    p.set_defaults(handler=cmd_rig_edit)
+    p = rs.add_parser("bind", parents=[common, writing], help="generate weights and bind")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--mesh", required=True)
+    p.add_argument("--armature", required=True)
+    p.add_argument("--method", default="heat", choices=("heat", "geodesic", "envelope", "nearest"))
+    p.add_argument("--smooth", type=int, help="corrective smoothing iterations (delta mush)")
+    p.add_argument("--normals", default="surface", choices=("surface", "joints"))
+    p.set_defaults(handler=cmd_rig_bind)
+    p = rs.add_parser("transfer", parents=[common, writing], help="weights from a bound mesh")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--mesh", required=True, help="the mesh to bind (clothing)")
+    p.add_argument("--source", required=True, help="the bound mesh it takes weights from")
+    p.set_defaults(handler=cmd_rig_transfer)
+    p = rs.add_parser("pose", parents=[common, writing], help="pose commands as keys")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--armature", required=True)
+    p.add_argument("--command", action="append", required=True,
+                   help='a JSON command, e.g. \'{"do": "raise_arm", "side": "L"}\'')  # fmt: skip
+    p.add_argument("--time", type=float, default=0.0)
+    p.set_defaults(handler=cmd_rig_pose)
+    p = rs.add_parser("ikfk", parents=[common, writing], help="switch a limb between IK and FK")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--armature", required=True)
+    p.add_argument("--limb", required=True, help="an IK constraint or one of its controls")
+    p.add_argument("--mode", required=True, choices=("ik", "fk"))
+    p.add_argument("--time", type=float, required=True)
+    p.set_defaults(handler=cmd_rig_ikfk)
     p = rs.add_parser("fix", parents=[common, writing], help="apply verified fixes")
     p.add_argument("path", help="the .aether project")
     p.add_argument("--armature", required=True)

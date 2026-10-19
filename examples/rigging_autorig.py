@@ -1,19 +1,25 @@
-"""Showcase A (Stage 18): an unrigged humanoid, rigged automatically, checked, and animated
--- a walk, a run, a crouch and a reach, with elbows and knees bending visibly.
+"""Showcase A (Stage 18, revised): an unrigged figure, rigged automatically, checked, and
+animated -- a walk, a run, a crouch, a reach and a rise onto tiptoe, with elbows, knees,
+shoulders, feet and fingers bending visibly.
 
-The body begins as a plain mesh: the implicit humanoid of ``aether3d.sculpt.implicit``
-(blended capsules and ellipsoids meshed by marching cubes; an original mannequin, no
-third-party asset) -- no joints, no weights. ``detect_landmarks`` measures it,
-``autorig`` builds the skeleton (swing-twist limits, forearm twist helpers, IK targets,
-poles and a gaze) and generates geodesic weights; ``diagnose_rig`` checks it over the
-diagnostic pose suite. The clothes' edges (waist, cuffs, collar, shoe tops, hairline) are
-cut into the bare mesh from its landmarks before rigging (``tailor``), so the clothes meet
-along clean lines (``dress``). Then:
+The body begins as a plain mesh: the anatomical figure of ``aether3d.sculpt.figure`` (an
+original procedural body with muscles, knees, toes, hands with fingers and a face; no
+third-party asset), meshed by marching cubes and remeshed to even triangles -- no joints,
+no weights. ``detect_landmarks`` measures it (fingers included), ``autorig`` builds the
+skeleton (about 60 joints: a four-joint torso, clavicles, split twist bones, pelvis bones,
+three joints per finger; swing-twist limits, IK targets, poles and a gaze) and generates
+bone heat weights; ``diagnose_rig`` checks it over the diagnostic pose suite. The
+clothes' edges (waist, cuffs, collar, shoe tops, hairline) are cut into the bare mesh from
+its landmarks before rigging (``tailor``), so the clothes meet along clean lines
+(``dress``). Then:
 
 * **walk** and **run** -- the motion generators (planted feet: their sliding is measured);
 * **crouch** -- ``pose_character`` keys a crouch with the feet planted by IK and back;
 * **reach** -- the right hand reaches a lamp by IK (``reach``), the head looks at it, and
-  ``ik_fk`` switches the arm back to FK with a matched pose before it lowers.
+  ``ik_fk`` switches the arm back to FK with a matched pose before it lowers;
+* **rise** -- up on tiptoe (``roll_foot``: the feet roll on their balls, then their toes),
+  both arms raised high in a V (``raise_arm``: the clavicles lift with them) and the hands
+  closing into fists (``curl_fingers``), then down again.
 
 Run from the repository root:
 
@@ -47,10 +53,10 @@ from aether3d import Scene  # noqa: E402
 FEET = ["Foot.L", "Foot.R"]
 
 
-def build(voxel: float) -> tuple[Scene, dict]:
+def build(quick: bool) -> tuple[Scene, dict]:
     scene = Scene("Showcase A")
     lighting = C.studio(scene)
-    body = scene.add_object("Body", mesh=C.humanoid_mesh(voxel))
+    body = scene.add_object("Body", mesh=C.character_mesh(quick))
     a = scene.animation
     before = {
         "rigs": sum(1 for o in scene.objects if a.rig(o) is not None),
@@ -160,6 +166,9 @@ def choreograph(scene: Scene, arm, report: dict) -> list[dict]:
     # Reach: an idle base; the right hand reaches the lamp, then back to FK and down.
     a.generate(arm, "idle", name="Reach", forward="-y", bind=False)
     segments.append({"name": "reach", "clip": "Reach", "duration": 3.4, "facts": None})
+    # Rise: an idle base; tiptoe, arms up, fists, and back.
+    a.generate(arm, "idle", name="Rise", forward="-y", bind=False)
+    segments.append({"name": "rise", "clip": "Rise", "duration": 3.4, "facts": None})
     report["motions"] = {
         s["name"]: {
             k: s["facts"][k]
@@ -182,8 +191,44 @@ def play(scene: Scene, arm, seg: dict, report: dict) -> None:
         arm.position = (-3.2 if seg["name"] == "walk" else -4.2, 0.0, 0.0)
         return
     # The crouch in three-quarter profile (the knees read), the reach facing the camera.
-    arm.rotation_euler = (0.0, 0.0, 65.0 if seg["name"] == "crouch" else 30.0)
+    arm.rotation_euler = (0.0, 0.0, {"crouch": 65.0, "rise": 20.0}.get(seg["name"], 30.0))
     arm.position = (0.0, 0.0, 0.0)
+    if seg["name"] == "rise" and not seg.get("keyed"):
+        # (the idle breathes in the torso; the arms, hands and feet are the keys' alone)
+        limbs = ("Shoulder.", "UpperArm", "ForeArm", "Hand.", "Thumb", "Index", "Middle",
+                 "Ring", "Pinky", "Foot.", "Toe.")  # fmt: skip
+        for path, _ in list(a.clip("Rise").data.channels):
+            if any(f'joints["{n}' in path for n in limbs):
+                a.set_channel(arm, path, None)
+        # (time, arms, feet, fists)
+        keys = [(0.0, -25.0, 0.0, 0.0), (0.5, -25.0, 0.0, 0.0), (1.5, 140.0, 50.0, 1.0),
+                (2.3, 140.0, 50.0, 1.0), (3.3, -25.0, 0.0, 0.0)]  # fmt: skip
+        out = []
+        fingers = a.rig(arm).role_index("index.1.L") is not None  # (quick: no fingers)
+        for t, arms, feet, fist in keys:
+            cmds = []
+            for side in ("L", "R"):
+                cmds += [
+                    {"do": "raise_arm", "side": side, "angle": arms, "direction": "side"},
+                    {"do": "roll_foot", "side": side, "angle": feet},
+                ]
+                if fingers:
+                    cmds.append({"do": "curl_fingers", "side": side, "shape": "fist",
+                                 "amount": fist})  # fmt: skip
+            out.append(a.pose_character(arm, cmds, time=t))
+        top = out[2]["commands"]  # (the peak)
+        report["rise"] = {
+            "keys": [
+                {"time": t, "arms_deg": w, "feet_deg": f, "fists": bool(k)} for t, w, f, k in keys
+            ],  # fmt: skip
+            "clavicle_deg": top[0].get("clavicle_angle"),
+            "foot_pivot": top[1].get("pivot"),
+            "finger_joints": sum(
+                len(c.get("joints", [])) for c in top if c["do"] == "curl_fingers"
+            ),
+            "leg_residual_m": max(out[2]["residuals"].get(f"leg_ik.{s}", 0.0) for s in "LR"),
+        }
+        seg["keyed"] = True
     if seg["name"] == "crouch" and not seg.get("keyed"):
         poses = [(0.5, 0.0, 0.0), (1.2, 0.4, 18.0), (1.9, 0.4, 18.0), (2.6, 0.0, 0.0)]
         out = []
@@ -244,8 +289,11 @@ def track(scene: Scene, arm, seg: dict, cam) -> None:
             end=seg["duration"],
         )
     else:
-        cam.position = (1.2, -3.5, 1.3) if seg["name"] == "reach" else (2.0, -3.9, 1.0)
-        cam.look_at((-0.1, -0.2, 1.05) if seg["name"] == "reach" else (0.0, 0.0, 0.62))
+        placed = {"reach": ((1.2, -3.5, 1.3), (-0.1, -0.2, 1.05)),
+                  "crouch": ((2.0, -3.9, 1.0), (0.0, 0.0, 0.62)),
+                  "rise": ((0.9, -4.4, 1.25), (0.0, 0.0, 1.05))}[seg["name"]]  # fmt: skip
+        cam.position = placed[0]
+        cam.look_at(placed[1])
 
 
 def main(argv: list[str]) -> int:
@@ -263,7 +311,7 @@ def main(argv: list[str]) -> int:
     size = (320, 180) if args.quick else (1920, 1080)
     fps = 12 if args.quick else args.fps
     t_all = time.perf_counter()
-    scene, report = build(0.02 if args.quick else 0.012)
+    scene, report = build(args.quick)
     report["backend"] = backend
     report["machine"] = C.machine()
     body = scene.get_by_name("Body")
@@ -333,7 +381,7 @@ def main(argv: list[str]) -> int:
             sheet_images.append(frames_dir / f"frame_{first + k:05d}.png")
             sheet_labels.append(f"{seg['name']} {k / fps:.2f}s")
         first += info["frames"]
-        hero_t = {"walk": 0.55, "run": 0.3, "crouch": 1.5, "reach": 1.5}[seg["name"]]
+        hero_t = {"walk": 0.55, "run": 0.3, "crouch": 1.5, "reach": 1.5, "rise": 1.9}[seg["name"]]
         hero_t = min(hero_t, duration - 1.0 / fps)
         samples = 16 if args.quick else args.samples
         stills.append(

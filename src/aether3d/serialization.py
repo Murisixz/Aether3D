@@ -36,7 +36,7 @@ from .transform import Transform
 FORMAT_ID = "aether3d.project"
 """Value of the top-level ``format`` field identifying an Aether3D project."""
 
-FORMAT_VERSION = 11
+FORMAT_VERSION = 12
 """Version written by this release. Files with a higher version are rejected.
 
 * Version 2 (Aether3D 0.4.0) adds procedural geometry: ``scene.parameters``,
@@ -62,6 +62,9 @@ FORMAT_VERSION = 11
 * Version 11 (Aether3D 0.19.0) extends rigs (joint roles, helper joints, swing-twist and
   hinge limits, controls, correctives, landmarks, info) and skins (blended LBS/DQS
   skinning, weight locks).
+* Version 12 (Aether3D 0.19.1, the Stage 18 revision) adds a joint's weighting ``span``
+  (the part of its bone its skin weights cover) and skins' surface-following normals and
+  corrective smoothing.
 
 Older files are upgraded on load by the functions in :data:`MIGRATIONS`.
 """
@@ -221,6 +224,13 @@ def _migrate_v10_to_v11(document: dict[str, Any]) -> dict[str, Any]:
     return dict(document)
 
 
+def _migrate_v11_to_v12(document: dict[str, Any]) -> dict[str, Any]:
+    """v11 -> v12: joints may give a weighting span, skins surface-following normals and
+    corrective smoothing. A v11 document has none of them (whole bones, rest normals
+    carried by the joints, no smoothing): nothing changes."""
+    return dict(document)
+
+
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -232,6 +242,7 @@ MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     8: _migrate_v8_to_v9,
     9: _migrate_v9_to_v10,
     10: _migrate_v10_to_v11,
+    11: _migrate_v11_to_v12,
 }
 """``MIGRATIONS[n]`` upgrades a version-``n`` document to version ``n + 1``."""
 

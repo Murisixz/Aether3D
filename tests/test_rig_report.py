@@ -75,7 +75,9 @@ def test_linear_twists_collapse_and_dual_quaternions_do_not(body_mesh):
 def test_bind_mismatch_is_found_and_fixed_by_a_verified_rebind(body_mesh):
     s, arm, body = rigged(body_mesh)
     a = s.animation
-    a.move_joint(arm, "Shin.L", [0.0, 0.0, 0.03], space="parent", skins="keep_bind")
+    # (a joint the pose suite does not bend: moving a knee would also change how the knee
+    # bends, which no rebind can repair and the verification rightly refuses)
+    a.move_joint(arm, "Toe.L", [0.0, -0.03, 0.0], space="parent", skins="keep_bind")
     d = a.diagnose_rig(arm, poses=None, animation=False)
     found = [f for f in d["findings"] if f["code"] == "BIND_MISMATCH"]
     assert found and found[0]["magnitude"] > 0.01
@@ -196,3 +198,37 @@ def test_custom_poses_are_data_for_diagnosis_and_verified_fixes():
         with pytest.raises(AnimationError):
             a.diagnose_rig("Rig", poses=[bad], animation=False)
     assert len(s.history) == steps
+
+
+def test_creases_and_folds_are_measured_and_smoothing_is_proposed_as_a_choice(body_mesh):
+    """The stress suite's creases and folds (from the geometry alone) find what linear
+    blend skinning does to a twisted torso; corrective smoothing is proposed for them as
+    an approval (a trade-off: a dry run shows the measured changes), applies as one undo
+    step and is refused when malformed."""
+    s = Scene("Creases")
+    body = s.add_object("Body", mesh=body_mesh)
+    a = s.animation
+    a.autorig(body, name="Rig", weights={"corrective": None})
+    poses = ["torso_twist_60", "spine_bend_45", "elbow_bend_140.L"]
+    d = a.diagnose_rig("Rig", poses=poses, animation=False)
+    for pose in poses:
+        rec = d["poses"][pose]["Body"]
+        assert {"new_creases", "sharpest_crease", "folded_triangles"} <= set(rec)
+        assert 0.0 <= rec["sharpest_crease"] <= 180.0
+    props = a.propose_rig_fix("Rig", poses=poses, animation=False)["proposals"]
+    smooth = [p for p in props if p["operations"][0]["call"] == "smooth_skin"]
+    assert smooth and all(p["safety"] == "approval" for p in smooth)
+    n = len(s.history)
+    dry = a.apply_rig_fix("Rig", [smooth[0]], poses=poses, animation=False, dry_run=True)
+    assert dry["applied"] and len(s.history) == n
+    assert any(k.endswith("/new_creases") for k in dry["changes"])
+    rep = a.apply_rig_fix("Rig", [smooth[0]], poses=poses, animation=False)
+    assert rep["applied"] and len(s.history) == n + 1
+    assert a._owned[("skin", body.id)]._definition.smooth != "null"
+    bad = {**smooth[0], "operations": [{"call": "smooth_skin", "mesh": "Body",
+                                        "smooth": {"iterations": 500}}]}  # fmt: skip
+    with pytest.raises(AnimationError):
+        a.apply_rig_fix("Rig", [bad], poses=poses, animation=False)
+    assert len(s.history) == n + 1
+    s.history.undo()
+    assert a._owned[("skin", body.id)]._definition.smooth == "null"

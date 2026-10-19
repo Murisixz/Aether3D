@@ -486,7 +486,9 @@ def detect(
     elif template == "quadruped":
         _quadruped(det, grid, c_centers, solid_flat, keep, height)
     else:
-        _humanoid(det, grid, c_centers, solid_flat, keep, height, template, (to_c, shift))
+        mesh_c = (det.canonical(p), np.asarray(triangles, np.int64))
+        det.info["_symmetric"] = symmetry == "auto" and sym >= 0.75  # (sides symmetrized)
+        _humanoid(det, grid, c_centers, solid_flat, keep, height, template, (to_c, shift), mesh_c)
     if symmetry == "auto" and sym >= 0.75:
         _symmetrize(det, height)
     if overrides:
@@ -571,34 +573,29 @@ def _symmetrize(det: Detection, height: float) -> None:
 # --------------------------------------------------------------------------------------- #
 
 
-def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame) -> None:
-    unit = grid.h / 3.0
-    sid = grid.sid()
-    to_c, shift = frame
-    nx, ny, _ = grid.dims
-    # Depth inside the solid (distance to the surface), from the full solid.
-    surface_flat = np.flatnonzero(grid.surface.transpose(2, 1, 0).reshape(-1))
-    depth = V.geodesic(grid, [surface_flat], solid_flat)[:, 0].astype(np.float64)
+def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame, mesh_c) -> None:
+    from .anatomy import Probe
 
-    def probe(points: np.ndarray) -> np.ndarray:
-        """Depth (m) inside the solid at canonical points (0 outside)."""
+    to_c, shift = frame
+    full = grid.solid  # (nx, ny, nz), provisional frame
+
+    def inside(points: np.ndarray) -> np.ndarray:
+        """Whether canonical points lie in the voxelized solid."""
         prov = np.atleast_2d(points) @ to_c + shift
         idx = np.floor((prov - grid.origin) / grid.h).astype(np.int64)
         ok = np.all((idx >= 0) & (idx < np.array(grid.dims)), axis=1)
-        out = np.zeros(len(prov))
-        f = idx[ok, 0] + nx * (idx[ok, 1] + ny * idx[ok, 2])
-        si = sid[f]
-        good = si >= 0
-        vals = np.zeros(si.size)
-        vals[good] = np.maximum(depth[si[good]], 0.0) * unit
-        out[ok] = vals
+        out = np.zeros(len(prov), bool)
+        out[ok] = full[idx[ok, 0], idx[ok, 1], idx[ok, 2]]
         return out
 
+    probe = Probe(mesh_c[0], mesh_c[1], inside)
     det.info["_probe"] = probe
+    det.info["_mesh_c"] = mesh_c
     # The analysis solid: eroded by a voxel, so limbs that merely touch (a hand on a
     # thigh) separate -- unless that would break a substantial part off the body.
     agrid, a_flat, a_centers, contacts = _analysis_solid(grid, solid_flat, centers, keep)
     det.info["contacts_broken"] = contacts
+    unit = grid.h / 3.0
     z = a_centers[:, 2]
     a_depth = V.geodesic(
         agrid, [np.flatnonzero(agrid.surface.transpose(2, 1, 0).reshape(-1))], a_flat
@@ -634,8 +631,10 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame) -> None:
         others = [x for x in others if x[0] != head[0]]
     hands = {}
     for side, sign in (("L", 1.0), ("R", -1.0)):
+        # (hanging arms touch the hips: the path from the chest to a hand may then be
+        # shorter than the arm)
         cand = [
-            x for x in others if sign * a_centers[x[0], 0] > 0.06 * H and g_core[x[0]] > 0.3 * H
+            x for x in others if sign * a_centers[x[0], 0] > 0.06 * H and g_core[x[0]] > 0.2 * H
         ]
         if cand:
             hands[side] = max(cand, key=lambda x: g_core[x[0]])
@@ -676,16 +675,18 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame) -> None:
             }
         return ch
 
-    sections = _Sections(centers[keep], grid.h)
-    # Head and neck first (shoulders hang from the neck's base).
+    pts_all = mesh_c[0]
+    # Head and neck first (shoulders and clavicles hang from the neck's base).
     if head is not None:
         e, _ = head
-        _head(det, branch(e, "head"), _tip(a_centers[e], branch(e, "head"), grid.h), H)
+        ch = branch(e, "head")
+        _head_neck(det, ch, pts_all, probe, H)
     else:
         det.diag("HEAD_NOT_FOUND", "warning", "no head top found; the neck and head use priors")
         det.add("head_top", [0, 0, H], 0.4, "proportion", "the top of the mesh")
-        det.add("head", [0, 0, PRIOR["chin"] * H], 0.4, "proportion", "chin height prior")
-        det.add("neck", [0, 0, (PRIOR["shoulder"] + 0.03) * H], 0.4, "proportion", "prior")
+        det.add("head", [0, 0, PRIOR["chin"] * H + 0.04 * H], 0.4, "proportion",
+                "the skull's base above the chin height prior")  # fmt: skip
+        det.add("neck", [0, 0, (PRIOR["shoulder"] + 0.015) * H], 0.4, "proportion", "prior")
     # Legs.
     for side, sign in (("L", 1.0), ("R", -1.0)):
         if side not in foot:
@@ -694,17 +695,7 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame) -> None:
             continue
         e, _ = foot[side]
         ch = branch(e, f"leg.{side}")
-        _leg(
-            det,
-            side,
-            sign,
-            ch,
-            _tip(a_centers[e], ch, grid.h),
-            centers[keep],
-            sections,
-            H,
-            float(a_centers[core][2]),
-        )
+        _leg(det, side, sign, ch, _tip(a_centers[e], ch, grid.h), centers[keep], probe, H)
     # Arms.
     for side, sign in (("L", 1.0), ("R", -1.0)):
         if side not in hands:
@@ -714,8 +705,9 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame) -> None:
             continue
         e, _ = hands[side]
         ch = branch(e, f"arm.{side}")
-        _arm(det, side, sign, ch, _tip(a_centers[e], ch, grid.h), sections, H)
-    _spine(det, centers, keep, H)
+        _arm(det, side, sign, ch, _tip(a_centers[e], ch, grid.h), probe, H)
+    _spine(det, probe, H)
+    _fingers(det, mesh_c, H)
     det.info["_regions"] = {
         "parts": regions,
         "torso": a_flat,
@@ -730,10 +722,105 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame) -> None:
         det.info["pose"] = "T-pose" if ang > 70 else ("A-pose" if ang > 20 else "arms down")
 
 
+FINGER_AGREE = 0.015  # of the height: a symmetric body's hands find each finger this close
+# Of the height: the middle finger's tip lies within this of the hand's tip (the longest
+# finger; measured within 1.9 % on resolved hands, 4 % where fused fingers were misnamed).
+MIDDLE_AT_TIP = 0.03
+
+
+def _fingers(det, mesh_c, H) -> None:
+    """Fingers and thumbs (:func:`.anatomy.hand_fingers`) as landmarks: ``thumb.1.L`` ..
+    ``thumb.tip.L``, ``index.1.L`` (the knuckle) .. ``index.tip.L``, likewise ``middle``,
+    ``ring``, ``pinky``; a hand whose fingers do not part (a mitten) gets none, and the
+    detection says so. All or none: the fingers are kept only when confirmed -- the
+    middle finger's tip at the hand's tip, and on a symmetric body both hands found and
+    each finger matching its mirror image (``FINGERS_UNCERTAIN`` otherwise)."""
+    from .anatomy import hand_fingers
+
+    found: dict[str, Any] = {}
+    hands: dict[str, dict[str, Any]] = {}
+    for side in ("L", "R"):
+        wr, tip = det.landmarks.get(f"wrist.{side}"), det.landmarks.get(f"hand_tip.{side}")
+        if wr is None or tip is None or wr.method == "proportion":
+            continue
+        res = hand_fingers(mesh_c[0], mesh_c[1], wr.position, tip.position, H)
+        found[side] = {"tips": res["count"], "mitten": res["mitten"]}
+        if "edge" in res:
+            found[side]["finger_radius_in_edges"] = round(
+                res["finger_radius"] / max(res["edge"], 1e-12), 3
+            )
+        if not res["mitten"]:
+            hands[side] = {**res["fingers"], "thumb": res["thumb"]}
+    # The hands of a symmetric body (its sides are symmetrized) must find the same
+    # fingers: a finger one hand misses or places farther than FINGER_AGREE from its
+    # mirror image is not resolved by the mesh (too coarse for its width; measured: such
+    # fingers were 2 to 8 % of the height off) and is left out of both.
+    mirror = np.array([-1.0, 1.0, 1.0])
+    symmetric = bool(det.info.get("_symmetric"))
+    pair = {"L", "R"} <= set(found) and symmetric
+    dropped = []
+    # The fingers are named by their order across the hand; the middle finger's tip must
+    # then be the hand's tip (where fused fingers are told apart wrongly, it is not).
+    for side, fingers in hands.items():
+        middle, tip = fingers.get("middle"), det.landmarks.get(f"hand_tip.{side}")
+        if middle is not None and tip is not None:
+            off = float(np.linalg.norm(np.asarray(middle[-1]) - tip.position))
+            found[side]["middle_tip_off"] = round(off / H, 5)
+            if not off < MIDDLE_AT_TIP * H:
+                dropped.append(f"middle.{side}")
+    if symmetric and hands and not pair:
+        # (one hand found: its fingers cannot be checked against the other's)
+        dropped.extend(f"{n}.{side}" for side in hands for n in sorted(hands[side]))
+    if pair and hands and not dropped:
+        names = sorted({n for h in hands.values() for n in h if h[n] is not None})
+        for name in names:
+            a = hands.get("L", {}).get(name)
+            b = hands.get("R", {}).get(name)
+            gap = (
+                max(
+                    float(np.linalg.norm(np.asarray(pa) * mirror - np.asarray(pb)))
+                    for pa, pb in zip(a, b, strict=True)
+                )
+                if a is not None and b is not None
+                else np.inf
+            )
+            found.setdefault("mirror_gaps", {})[name] = round(gap / H, 5)
+            if not gap < FINGER_AGREE * H:
+                dropped.append(name)
+    if dropped:
+        # (all or none: a hand whose other fingers bend while these cannot is worse
+        # than one without finger joints, which landmarks can complete)
+        hands = {}
+        det.diag(
+            "FINGERS_UNCERTAIN",
+            "warning",
+            f"the hands' {', '.join(dropped)} could not be confirmed (a finger that does "
+            "not match its mirror image, a middle finger whose tip is not the hand's, or "
+            "a hand without its pair: the mesh is too coarse for them, or a hand is "
+            "against the body): the hands have no finger landmarks",
+            fingers=dropped,
+            hint="remesh finer (fingers need edges about as short as their radius), move "
+            "the hands away from the body, or give finger landmarks",
+        )
+    for side, fingers in hands.items():
+        for name, pts in fingers.items():
+            if pts is None:
+                continue
+            notes = ("its base", "its middle joint", "its last joint", "its tip")
+            if name != "thumb":
+                notes = ("its knuckle", "its middle joint", "its last joint", "its tip")
+            for k, (key, note) in enumerate(zip(("1", "2", "3", "tip"), notes, strict=True)):
+                conf = 0.8 if key == "tip" else 0.65
+                how = f"the {name} finger's {note[4:]}, on its measured axis"
+                det.add(f"{name}.{key}.{side}", pts[k], conf, "finger", how)
+    if dropped:
+        found["dropped"] = dropped
+    det.info["fingers"] = found
+
+
 def _analysis_solid(grid, solid_flat, centers, keep):
     """``(grid, solid flat indices, canonical centres, contacts broken?)`` of the solid
     the extremities and limbs are measured on (see :func:`_humanoid`)."""
-    nx, ny, _ = grid.dims
     full = np.zeros(grid.solid_flat().size, bool)
     full[solid_flat[keep]] = True
     solid3 = full.reshape(grid.solid.shape[::-1]).transpose(2, 1, 0)
@@ -751,8 +838,6 @@ def _analysis_solid(grid, solid_flat, centers, keep):
     surf = mask & ~V.erode(mask, 1)
     g = V.VoxelGrid(grid.origin, grid.h, mask, surf)
     flat = np.flatnonzero(g.solid_flat())
-    pos = {int(f): i for i, f in enumerate(solid_flat.tolist())} if False else None
-    del pos
     lookup = np.full(full.size, -1, np.int64)
     lookup[solid_flat] = np.arange(solid_flat.size)
     a_centers = centers[lookup[flat]]
@@ -768,87 +853,168 @@ def _tip(point: np.ndarray, ch: Chain, h: float) -> np.ndarray:
     return point if n < 1e-9 else point + d / n * h
 
 
-class _Sections:
-    """Horizontal sections of the solid (canonical voxel centres): widths about x = 0."""
-
-    def __init__(self, centers: np.ndarray, h: float) -> None:
-        self.c = centers
-        self.h = h
-
-    def half_width(self, z: float, y: float | None = None, band: float | None = None) -> float:
-        """Half width of the central run of solid at height ``z`` (and depth ``y``): the
-        torso's, not an arm hanging beside it."""
-        b = self.h if band is None else band
-        sel = self.c[np.abs(self.c[:, 2] - z) <= b]
-        if y is not None:
-            sel = sel[np.abs(sel[:, 1] - y) <= 2 * self.h]
-        if not len(sel):
-            return 0.0
-        xs = np.unique(np.round(sel[:, 0] / self.h).astype(np.int64))
-        out = []
-        for direction in (1, -1):
-            k = 0
-            while (direction * (k + 1)) in set(xs.tolist()) or (k == 0 and 0 in set(xs.tolist())):
-                k += 1
-                if k > 10_000:
-                    break
-            out.append(k * self.h)
-        return float(np.mean(out))
-
-    def widest(self, z0: float, z1: float, y: float = 0.0) -> tuple[float, float]:
-        """``(z, half width)`` of the widest central section between ``z0`` and ``z1``."""
-        best = (0.5 * (z0 + z1), 0.0)
-        for z in np.arange(z0, z1, self.h):
-            w = self.half_width(float(z), y)
-            if w > best[1]:
-                best = (float(z), w)
-        return best
-
-
-def _enter(
-    pts: np.ndarray,
-    s: np.ndarray,
-    radius: float,
-    probe,
-    *,
-    frac: float = 0.35,
-    factor: float = 1.3,
-    most: float = 4.0,
-) -> tuple[np.ndarray, float, str]:
-    """Where a limb's axis (the line through the last ``frac`` of its centreline) enters
-    the body: the first point beyond the limb's end, going inward, at least ``factor``
-    limb radii deep. Returns ``(point, radii travelled, how)``."""
-    start, d = _axis_line(pts, s, frac)
-    steps = np.linspace(0.0, most * radius, 33)
-    q = start[None] + steps[:, None] * d[None]
-    deep = probe(q)
-    hit = np.flatnonzero(deep >= factor * radius)
-    if hit.size:
-        k = int(hit[0])
-        return q[k], float(steps[k] / max(radius, 1e-9)), "the limb's axis entering the body"
-    k = int(np.argmax(deep))
-    return q[k], float(steps[k] / max(radius, 1e-9)), "the deepest point on the limb's axis"
-
-
 def _axis_line(pts: np.ndarray, s: np.ndarray, frac: float) -> tuple[np.ndarray, np.ndarray]:
     """``(point at the limb's end, inward direction)`` of the line fitted to the last
     ``frac`` of a centreline."""
     tail = pts[s >= s[-1] - frac * (s[-1] - s[0])]
     if len(tail) < 3:
         tail = pts[-3:]
-    c = tail.mean(axis=0)
-    _, _, vt = np.linalg.svd(tail - c)
+    return _fit_line(tail)
+
+
+def _fit_line(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """``(the last point projected on the line, the direction from the first point
+    toward the last)`` of the least-squares line through ``points``."""
+    c = points.mean(axis=0)
+    _, _, vt = np.linalg.svd(points - c)
     d = vt[0]
-    if d @ (tail[-1] - tail[0]) < 0:
+    if d @ (points[-1] - points[0]) < 0:
         d = -d
-    return c + ((pts[-1] - c) @ d) * d, d
+    return c + ((points[-1] - c) @ d) * d, d
 
 
-def _leg(det, side, sign, ch: Chain, toe_tip, centers, sections, H, core_z: float) -> None:
+def _tangents(pts: np.ndarray) -> np.ndarray:
+    """Unit directions of a polyline at its points (central differences)."""
+    d = np.gradient(pts, axis=0)
+    n = np.linalg.norm(d, axis=1, keepdims=True)
+    return np.where(n > 1e-12, d / np.maximum(n, 1e-12), np.array([0.0, 0.0, 1.0]))
+
+
+# --------------------------------------------------------------------------------------- #
+# Head, neck, spine: horizontal sections through the mirror plane
+# --------------------------------------------------------------------------------------- #
+
+# The skull's pivot (atlanto-occipital joint) lies about 30 % of the head's height above
+# the chin (the rule of thirds puts the nose's base 27 % up; the occipital condyles sit
+# just above it); the neck's base (C7) about 1.2 % of the stature under the height where
+# the horizontal section widens into the shoulders.
+HEAD_PIVOT = 0.30
+NECK_BELOW_SHOULDERS = 0.012
+# Spine joints lie toward the back: this fraction of the way from a section's centre to
+# its back surface (Rigify's metarig and the vertebral column alike sit behind the
+# centre of the torso).
+SPINE_DEPTH = 0.35
+
+
+def _head_neck(det, ch: Chain, pts_c: np.ndarray, probe, H: float) -> None:
+    from .anatomy import Midline
+
+    chain = ch.centroids
+    # The crown: the highest point of the mesh near the head's chain, on the mirror plane.
+    near = np.linalg.norm(pts_c[:, :2] - chain[0][:2], axis=1) < 0.12 * H
+    z_top = float(pts_c[near, 2].max()) if near.any() else float(chain[0][2])
+    step = 0.002 * H
+    zs = np.arange(z_top - 0.42 * H, z_top - 0.004 * H, step)
+    order = np.argsort(chain[:, 2])
+    y0 = np.interp(zs, chain[order, 2], chain[order, 1])
+    sec = Midline(probe, H).section(zs, y0)
+    hw, front, depth = sec["half_width"], sec["front"], sec["back"] - sec["front"]
+    ok = sec["inside"]
+    # The head's widest section, then down to where the section widens into the
+    # shoulders (2.5 times the narrowest width of the neck above it).
+    # (the head's own centreline, from the crown down to where it joins the shoulders: the
+    # shoulders are deeper than the head)
+    head_band = ok & (zs > max(float(chain[:, 2].min()), z_top - 0.2 * H))
+    k_head = int(np.flatnonzero(head_band)[np.argmax(depth[head_band])]) if head_band.any() else (
+        len(zs) - 1
+    )  # fmt: skip
+    k_wide, running = None, np.inf
+    for k in range(k_head, -1, -1):
+        if not ok[k]:
+            continue
+        running = min(running, hw[k])
+        if hw[k] > 2.5 * running and running < 0.06 * H:
+            k_wide = k
+            break
+    if k_wide is None:
+        det.diag("NECK_NOT_FOUND", "warning", "no shoulders under the head: the neck uses priors")
+        z_wide = z_top - 0.16 * H
+        k_wide = int(np.argmin(np.abs(zs - z_wide)))
+        neck_conf = 0.4
+    else:
+        z_wide = float(zs[k_wide])
+        neck_conf = 0.75
+    # The throat: the front surface's most retreated point between the shoulders and the
+    # head; the chin: the first height above it where the front steps forward fastest.
+    lo, hi = k_wide + 2, k_head
+    if hi - lo >= 4:
+        kk = np.arange(lo, hi)
+        kk = kk[ok[kk]]
+        k_throat = int(kk[np.argmax(front[kk])]) if kk.size else lo
+        win = np.arange(k_throat, min(hi, k_throat + int(0.08 * H / step)))
+        fwd = -np.diff(front[win]) if win.size > 1 else np.zeros(0)
+        if fwd.size and fwd.max() > 0.0005 * H:
+            k_chin = int(win[np.flatnonzero(fwd >= 0.5 * fwd.max())[0]])
+            chin_conf, chin_how = 0.8, "where the front of the jaw steps out over the throat"
+        else:
+            k_chin = int(win[len(win) // 3]) if win.size else k_throat
+            chin_conf, chin_how = 0.5, "a third up from the throat (no jaw line measured)"
+    else:
+        k_chin = min(len(zs) - 1, k_wide + 3)
+        chin_conf, chin_how = 0.4, "just above the shoulders (no neck measured)"
+    z_chin = float(zs[k_chin])
+    z_head = z_chin + HEAD_PIVOT * (z_top - z_chin)
+    z_neck = z_wide - NECK_BELOW_SHOULDERS * H
+    upper = Midline(probe, H).section(
+        np.array([z_head, z_neck, 0.5 * (z_head + z_top)]),
+        np.interp([z_head, z_neck, 0.5 * (z_head + z_top)], chain[order, 2], chain[order, 1]),
+    )
+
+    def depth_y(i: int, frac: float) -> float:
+        c, b = float(upper["centre"][i]), float(upper["back"][i])
+        return c + frac * (b - c) if upper["inside"][i] else c
+
+    det.add("head_top", [0.0, depth_y(2, 0.0), z_top], 0.9, "extremity",
+            "the top of the head, on the mirror plane")  # fmt: skip
+    det.add("chin", [0.0, float(sec["front"][k_chin]), z_chin], chin_conf, "profile", chin_how)
+    det.add("head", [0.0, depth_y(0, 0.0), z_head], min(chin_conf, 0.8), "section",
+            f"the skull's pivot, {HEAD_PIVOT:.0%} of the head's height above the chin")  # fmt: skip
+    det.add("neck", [0.0, depth_y(1, SPINE_DEPTH), z_neck], neck_conf, "section",
+            "the neck's base, just under where the section widens into the shoulders")  # fmt: skip
+    det.info["_neck"] = {"z_wide": z_wide, "front": float(np.interp(z_neck, zs, front))}
+
+
+def _spine(det, probe, H: float) -> None:
+    from .anatomy import Midline
+
+    lm = det.landmarks
+    hips = 0.5 * (lm["hip.L"].position + lm["hip.R"].position)
+    neck = lm["neck"].position
+    z0, z1 = float(hips[2]), float(neck[2])
+    fracs = {"pelvis": None, "spine": 0.27, "chest": 0.52, "upper_chest": 0.76}
+    zs = np.array([z0 + 0.03 * H] + [z0 + f * (z1 - z0) for f in (0.27, 0.52, 0.76)])
+    sec = Midline(probe, H).section(zs, np.full(zs.size, float(hips[1])))
+    notes = {
+        "pelvis": "above the hip joints, toward the back of the pelvis's section",
+        "spine": "27 % up the torso, toward the back of its section",
+        "chest": "52 % up the torso, toward the back of its section",
+        "upper_chest": "76 % up the torso, toward the back of its section",
+    }
+    for i, name in enumerate(fracs):
+        c, b = float(sec["centre"][i]), float(sec["back"][i])
+        y = c + SPINE_DEPTH * (b - c) if sec["inside"][i] else float(hips[1])
+        det.add(name, [0.0, y, float(zs[i])], 0.75 if sec["inside"][i] else 0.4, "section",
+                notes[name])  # fmt: skip
+    # Clavicles: from beside the sternal notch (the front of the neck's base) to the
+    # shoulder joint.
+    info = det.info.get("_neck", {})
+    front = info.get("front", float(sec["centre"][-1]) - 0.04 * H)
+    for side, sign in (("L", 1.0), ("R", -1.0)):
+        det.add(f"clavicle.{side}", [sign * 0.012 * H, front + 0.012 * H, z1 - 0.012 * H], 0.6,
+                "section", "beside the sternal notch, at the front of the neck's base")  # fmt: skip
+
+
+# --------------------------------------------------------------------------------------- #
+# Legs
+# --------------------------------------------------------------------------------------- #
+
+# The knee splits the measured hip-to-ankle length in about equal parts (thigh 0.245 and
+# shank 0.246 of the stature: Drillis and Contini, after Winter 2009).
+KNEE_FRACTION = 0.50
+
+
+def _leg(det, side, sign, ch: Chain, toe_tip, centers, probe, H) -> None:
     pts = _smooth(ch.centroids)
-    s = _arc(pts)
-    vs = det.info["voxel_size"]
-    radius = np.sqrt(np.maximum(ch.sizes, 1.0)) * vs / 1.6
     # The ankle: where the centreline rises above the foot (at least the prior height).
     rise = pts[:, 2]
     ankle_z = max(PRIOR["ankle"] * H, float(np.median(rise[: max(2, len(rise) // 6)])) * 1.6)
@@ -856,57 +1022,40 @@ def _leg(det, side, sign, ch: Chain, toe_tip, centers, sections, H, core_z: floa
     k_a = int(upward[0]) if upward.size else len(pts) // 5
     ankle = pts[k_a].copy()
     ankle_conf = 0.8 if upward.size else 0.5
-    # The hip: on the thigh's axis entering the pelvis -- unless the legs fuse below the
-    # hips (thick thighs): then at the widest section of the hips.
-    r_leg = float(np.median(radius[len(radius) // 3 :]))
-    top = float(pts[-1][2])
-    widest_z, _ = sections.widest(min(top, core_z - 0.05 * H), core_z)
-    fused = ch.junction is None or top < 0.6 * widest_z
-    if not fused:
-        hip, travel, how = _enter(pts, s, r_leg, det.info["_probe"])
-        hip_conf, hip_how, hip_method = 0.75, f"{how}, {travel:.1f} thigh radii up", "junction"
-    else:
-        start, d = _axis_line(pts, s, 0.35)
-        t = (widest_z - 0.035 * H - start[2]) / d[2] if abs(d[2]) > 1e-6 else 0.0
-        hip = start + max(t, 0.0) * d
-        hip_conf, hip_how, hip_method = (
-            0.55,
-            "the legs join below the hips: below the hips' widest section",
-            "section",
-        )
-        det.diag(
-            "LEGS_FUSED",
-            "info",
-            f"the {side} leg joins the body below the hips; the hip sits below the "
-            "hips' widest section",
-            leg=side,
-        )
-    # The knee: the strongest bend if the rest pose bends, else the proportion by height.
-    frac = (PRIOR["knee"] - PRIOR["ankle"]) / (PRIOR["hip"] - PRIOR["ankle"])
-    k_h = int(np.argmin(np.abs(pts[:, 2] - hip[2]))) if pts[-1][2] >= hip[2] else len(pts) - 1
-    lo, hi = s[k_a] + 0.3 * (s[k_h] - s[k_a]), s[k_a] + 0.75 * (s[k_h] - s[k_a])
-    bend_at, bend = _bend(pts, s, lo, hi)
+    # The leg's slant in the frontal plane, from its free centreline (thighs that touch
+    # down to the knees leave only the shin: the slant is the shin's).
+    free = pts[pts[:, 2] >= ankle[2] + 0.04 * H]
+    if len(free) >= 6 and free[-1, 2] - ankle[2] > 0.3 * H:  # (the thigh's own slant)
+        free = free[free[:, 2] >= 0.5 * (free[0, 2] + free[-1, 2])]
+    slope = float(np.polyfit(free[:, 2], free[:, 0], 1)[0]) if len(free) >= 3 else 0.0
+    slope = float(np.clip(slope, -0.4, 0.4))
+    r_top = float(np.sqrt(max(ch.sizes[-1], 1.0))) * det.info["voxel_size"] / 1.6
+    hip, hip_conf, hip_method, hip_how = _hip(det, pts[-1], slope, side, sign, probe, H, r_top)
+    # The knee: the strongest bend if the rest pose bends, else the proportion of the
+    # measured leg.
+    poly = np.vstack([pts[pts[:, 2] < hip[2]], hip[None]])
+    sp = _arc(poly)
+    k0 = int(np.argmin(np.linalg.norm(poly - ankle, axis=1)))
+    lo = sp[k0] + 0.3 * (sp[-1] - sp[k0])
+    hi_ = sp[k0] + 0.70 * (sp[-1] - sp[k0])
+    # (bends measured on the leg's own centreline: the step from where the thighs part to
+    # the hip joint above is no knee)
+    measured = sp[-2] if len(sp) > 2 else sp[-1]
+    bend_at, bend = _bend(poly[:-1], sp[:-1], lo, min(hi_, measured - 0.03 * H))
+    if not lo < measured - 0.03 * H:
+        bend = 0.0
+    # (a bend away from where a knee can be -- a centreline curving where the thighs
+    # merge -- is not one)
+    frac = (bend_at - sp[k0]) / max(sp[-1] - sp[k0], 1e-9)
+    if abs(frac - KNEE_FRACTION) > 0.15:
+        bend = 0.0
     if bend > 6.0:
-        knee, knee_conf, knee_how, knee_method = (
-            _at(pts, s, bend_at),
-            0.85,
-            f"the leg bends {bend:.0f} degrees here",
-            "bend",
-        )
+        knee, knee_conf, knee_method = _at(poly, sp, bend_at), 0.85, "bend"
+        knee_how = f"the leg bends {bend:.0f} degrees here"
     else:
-        target = ankle[2] + frac * (hip[2] - ankle[2])
-        legpts = pts[k_a:]
-        if len(legpts) >= 2 and legpts[-1][2] >= target:
-            k = int(np.argmin(np.abs(legpts[:, 2] - target)))
-            knee = legpts[k].copy()
-            knee[2] = target
-        else:
-            knee = ankle + frac * (hip - ankle)
-        knee_conf, knee_how, knee_method = (
-            0.7,
-            "straight leg: at the anatomical fraction of its height",
-            "proportion_of_measured",
-        )
+        knee = _at(poly, sp, sp[k0] + KNEE_FRACTION * (sp[-1] - sp[k0]))
+        knee_conf, knee_method = 0.7, "proportion_of_measured"
+        knee_how = "straight leg: halfway along the measured hip-to-ankle length"
     # Heel and ball on the sole.
     foot_vox = centers[(centers[:, 2] < ankle[2]) & (np.abs(centers[:, 0] - ankle[0]) < 0.08 * H)]
     if len(foot_vox):
@@ -914,11 +1063,11 @@ def _leg(det, side, sign, ch: Chain, toe_tip, centers, sections, H, core_z: floa
         heel = np.array([ankle[0], back[1], 0.0])
     else:
         heel = np.array([ankle[0], ankle[1] + 0.03 * H, 0.0])
-    ball = toe_tip + 0.3 * (heel - toe_tip)
+    ball = toe_tip + 0.27 * (heel - toe_tip)
     ball[2] = max(ball[2], 0.3 * ankle[2])
     det.add(f"toe_tip.{side}", toe_tip, 0.9, "extremity", "the farthest point of the foot")
     det.add(
-        f"ball.{side}", ball, 0.7, "proportion_of_measured", "30 % from the toe tip to the heel"
+        f"ball.{side}", ball, 0.7, "proportion_of_measured", "27 % from the toe tip to the heel"
     )
     det.add(f"heel.{side}", heel, 0.75, "sole", "the back of the foot at the ground")
     det.add(
@@ -926,6 +1075,116 @@ def _leg(det, side, sign, ch: Chain, toe_tip, centers, sections, H, core_z: floa
     )
     det.add(f"knee.{side}", knee, knee_conf, knee_method, knee_how)
     det.add(f"hip.{side}", hip, hip_conf, hip_method, hip_how)
+
+
+def _column(probe, x: np.ndarray, zs: np.ndarray, H: float) -> dict[str, np.ndarray]:
+    """Front-to-back sections of vertical lines through the body at ``x`` (per height):
+    an interior point (the middle of the longest run of the voxel solid along y), and
+    from it the exact front, back and outer surfaces."""
+    ys = np.arange(-0.35 * H, 0.35 * H, 0.004 * H)
+    n = zs.size
+    grid = np.stack([np.repeat(x, ys.size), np.tile(ys, n), np.repeat(zs, ys.size)], axis=1)
+    ins = probe.inside(grid).reshape(n, ys.size)
+    mid = np.full(n, np.nan)
+    for i in range(n):
+        row = ins[i]
+        if not row.any():
+            continue
+        edges = np.diff(np.concatenate([[0], row.astype(np.int8), [0]]))
+        starts, ends = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+        k = int(np.argmax(ends - starts))
+        mid[i] = 0.5 * (ys[starts[k]] + ys[ends[k] - 1])
+    ok = np.isfinite(mid)
+    pts = np.stack([x, np.where(ok, mid, 0.0), zs], axis=1)
+    most = 0.5 * H
+    back = probe.reach(pts, np.broadcast_to(np.array([0.0, 1.0, 0.0]), pts.shape), most)
+    front = probe.reach(pts, np.broadcast_to(np.array([0.0, -1.0, 0.0]), pts.shape), most)
+    ok &= (back > 0) & (front > 0)
+    return {"ok": ok, "points": pts, "back": pts[:, 1] + back, "front": pts[:, 1] - front}
+
+
+# Where the legs part high enough to show a crotch, the hip joint lies about this many
+# thigh radii above it (a femoral head is about a thigh's radius above the perineum).
+CROTCH_TO_HIP = 0.8
+
+
+def _crotch(probe, top, H: float) -> float | None:
+    """The crotch's height on the exact mesh: a ray up the mirror plane from between the
+    legs, just under where the voxels part them, enters the body at the crotch. ``None``
+    when that start is inside the body (the legs fused there: the voxels' parting is the
+    crotch) or the ray meets nothing."""
+    start = np.array([[0.0, float(top[1]), float(top[2]) - 0.01 * H]])
+    up = np.array([[0.0, 0.0, 1.0]])
+    hits = probe.accel.closest_hit(start, up, 0.0, 0.25 * H)
+    if int(hits.inst[0]) < 0 or float(probe.normals[int(hits.prim[0])] @ up[0]) >= 0.0:
+        return None
+    return float(start[0, 2] + hits.t[0])
+
+
+def _hip(det, top, slope: float, side, sign, probe, H, r_thigh: float = 0.0):
+    """The hip joint, from up to three measured cues: the height of the buttock's most
+    prominent part (the gluteal mass covers the femoral head); just under where the hip
+    is widest from the leg's axis (the greater trochanter); and, when the legs part high
+    enough to show it, the crotch plus :data:`CROTCH_TO_HIP` thigh radii. The buttock
+    decides when it is there, else the median of the others; across, the hip lies on the
+    leg's slant from its free centreline, in depth in the middle of the body's section."""
+    zs = np.arange(max(0.36 * H, float(top[2]) - 0.02 * H), 0.62 * H, 0.004 * H)
+    x = float(top[0]) + slope * (zs - float(top[2]))
+    col = _column(probe, x, zs, H) if zs.size else None
+    cues = {}
+    if col is not None and col["ok"].sum() >= 6:
+        ok = col["ok"]
+        y_back = np.where(ok, col["back"], -np.inf)
+        k = int(np.argmax(y_back))
+        top_k = np.flatnonzero(ok & (y_back >= y_back[k] - 0.0025 * H))
+        above = ok & (zs > zs[k])
+        # A buttock: the back surface recedes again above its most prominent part.
+        if above.any() and y_back[above].min() < y_back[k] - 0.008 * H:
+            cues["buttock"] = float(zs[top_k].mean())
+        pts = col["points"]
+        lateral = probe.reach(pts, np.broadcast_to(np.array([sign, 0.0, 0.0]), pts.shape), 0.5 * H)
+        good = ok & (lateral > 0)
+        if good.any():  # (a hand or forearm against the hip is not the hip's width)
+            good &= lateral < 1.6 * float(np.median(lateral[good]))
+        # (measured from the leg's slanted axis: a wide stance slants the thighs out)
+        x_lat = np.where(good, lateral, -np.inf)
+        k2 = int(np.argmax(x_lat))
+        top2 = np.flatnonzero(good & (x_lat >= x_lat[k2] - 0.002 * H))
+        if top2.size:
+            cues["trochanter"] = float(zs[top2].min()) - 0.01 * H
+    if float(top[2]) > 0.40 * H and r_thigh > 0:
+        # (the voxels part the legs only where the gap between them exceeds a voxel --
+        # lower than the crotch when the thighs nearly touch -- so it is measured)
+        z_crotch = _crotch(probe, top, H)
+        z0 = float(top[2]) if z_crotch is None else max(float(top[2]), z_crotch)
+        cues["crotch"] = z0 + CROTCH_TO_HIP * r_thigh
+    if "buttock" in cues:
+        z = cues["buttock"]
+        conf, method = 0.75, "buttock"
+        how = "level with the buttock's most prominent part, on the leg's slant"
+    elif cues:
+        z = float(np.median(list(cues.values())))
+        conf, method = 0.6, "+".join(sorted(cues))
+        how = "between where the hip is widest and the crotch below it, on the leg's slant"
+    else:
+        z = PRIOR["hip"] * H
+        conf, method = 0.35, "proportion"
+        how = "the stature's proportion (no hip measured)"
+        det.diag("HIP_NOT_MEASURED", "warning", f"the {side} hip uses a proportion prior")
+    xh = float(top[0]) + slope * (z - float(top[2]))
+    if col is not None and zs.size:
+        k = int(np.argmin(np.abs(zs - z)))
+        yh = 0.5 * (col["front"][k] + col["back"][k]) if col["ok"][k] else float(top[1])
+    else:
+        yh = float(top[1])
+    det.info.setdefault("_hip_cues", {})[side] = {k_: round(v, 4) for k_, v in cues.items()}
+    return np.array([xh, yh, z]), conf, method, how
+
+
+def plateau_start_index(values: np.ndarray, fraction: float) -> int:
+    from .anatomy import plateau_start
+
+    return plateau_start(values, fraction)
 
 
 def _leg_prior(det, side, sign, H) -> None:
@@ -938,57 +1197,195 @@ def _leg_prior(det, side, sign, H) -> None:
     det.add(f"toe_tip.{side}", [x, -0.12 * H, 0.01 * H], 0.3, "proportion", "prior")
 
 
-def _arm(det, side, sign, ch: Chain, tip, sections, H) -> None:
+# --------------------------------------------------------------------------------------- #
+# Arms
+# --------------------------------------------------------------------------------------- #
+
+# The elbow splits the shoulder-to-wrist length as the upper arm (0.186 of the stature)
+# and the forearm (0.146) do.
+ELBOW_FRACTION = 0.186 / (0.186 + 0.146)
+# Raised less than about 40 degrees from hanging, the upper arm's axis leaves the body
+# over the shoulder: the joint lies SHOULDER_EXIT arm radii before that point. Raised
+# more, the axis runs on into the chest and the joint lies above the armpit (where the
+# reach under the arm jumps to the torso), by ARMPIT[0] - ARMPIT[1] (angle - 35) arm
+# radii along the axis (measured on both of Aether3D's test characters from 35 to 88
+# degrees: 1.26 radii in an A-pose, about none at 72 degrees, -0.4 in a T-pose).
+SHOULDER_EXIT = 1.6
+ARMPIT = (1.26, 0.031)
+EXIT_POSE = (38.0, 50.0)
+
+
+def _arm(det, side, sign, ch: Chain, tip, probe, H) -> None:
     pts = _smooth(ch.centroids)
-    s = _arc(pts)
-    vs = det.info["voxel_size"]
-    radius = np.sqrt(np.maximum(ch.sizes, 1.0)) * vs / 1.6
-    # The wrist: the narrowest section 0.05..0.17 H from the tip.
-    window = (s > 0.05 * H) & (s < 0.17 * H)
-    if window.sum() >= 3:
-        k_w = int(np.flatnonzero(window)[np.argmin(radius[window])])
-        wrist, w_conf, w_how = pts[k_w], 0.75, "the narrowest section above the hand"
-    else:
-        wrist = _at(pts, s, PRIOR["hand"] * H)
-        w_conf, w_how = 0.5, "a hand length from the tip (prior)"
-    # The shoulder: on the upper arm's axis, nearest an anchor beside the neck's base
-    # (the joint is under the shoulder's top, at the chest's width).
-    neck = det.landmarks["neck"].position
-    start, d = _axis_line(pts, s, 0.35)
-    z_a = float(neck[2]) - 0.025 * H
-    chest_z = float(neck[2]) - 0.12 * H
-    w_c = sections.half_width(chest_z, float(np.median(pts[:, 1])), 2 * vs)
-    if w_c <= 0:
-        w_c = PRIOR["shoulder_half_width"] * H
-    anchor = np.array([sign * w_c, start[1], z_a])
-    t = float((anchor - start) @ d)
-    shoulder = start + max(t, 0.0) * d
-    s_conf = 0.7 if ch.junction is not None else 0.45
-    s_how = f"on the upper arm's axis beside the neck's base (chest half width {w_c:.3f})"
-    # The elbow: the strongest bend, else the anatomical fraction from wrist to shoulder.
-    k_w = int(np.argmin(np.linalg.norm(pts - wrist, axis=1)))
-    poly = np.vstack([pts[k_w:], shoulder[None]])
+    # The hand's tip, measured on the mesh: thin fingers vanish from the voxel solid the
+    # centreline comes from, so the farthest vertex beyond the centreline's end, along
+    # the hand's direction, is the tip.
+    out = pts[0] - pts[min(3, len(pts) - 1)]
+    out = out / max(float(np.linalg.norm(out)), 1e-12)
+    mesh = det.info["_mesh_c"][0]
+    rel = mesh - pts[0]
+    along = rel @ out
+    across = np.linalg.norm(rel - along[:, None] * out[None], axis=1)
+    # (within a cylinder about the hand's axis: not a thigh the hand hangs beside)
+    near = (along > -0.02 * H) & (along < 0.16 * H) & (across < 0.045 * H)
+    tip_how = "the farthest point of the hand"
+    if near.any() and along[near].max() > 0:
+        tip = mesh[near][int(np.argmax(along[near]))].copy()
+        tip_how = "the farthest point of the hand along its direction"
+    # The hand and the arm as one polyline from the tip, resampled finely; the section
+    # radii along it (mean and widest reach around the local direction).
+    poly = np.vstack([tip[None], pts])
     sp = _arc(poly)
-    frac = PRIOR["forearm"] / (PRIOR["forearm"] + PRIOR["upper_arm"])
-    bend_at, bend = _bend(poly, sp, 0.3 * sp[-1], 0.65 * sp[-1])
-    if bend > 8.0:
-        elbow, e_conf, e_how, e_method = (
-            _at(poly, sp, bend_at),
-            0.85,
-            f"the arm bends {bend:.0f} degrees here",
-            "bend",
-        )
+    step = 0.004 * H
+    s = np.arange(0.0, float(sp[-1]), step)
+    line = np.stack([np.interp(s, sp, poly[:, i]) for i in range(3)], axis=1)
+    tan = _tangents(_smooth(line, 3))
+    most = 0.2 * H
+    radius = probe.radius(line, tan, np.array([0.0, 0.0, 1.0]), most)
+    widest = _widest(probe, line, tan, most)
+    # The wrist: the narrowest section after the palm (the hand's widest part), going in.
+    w_conf, w_how = 0.5, "a hand's length from the tip (prior)"
+    k_w = int(np.argmin(np.abs(s - PRIOR["hand"] * H)))
+    palm = np.flatnonzero((s > 0.02 * H) & (s < 0.10 * H) & (radius > 0))
+    if palm.size >= 3:
+        k_palm = int(palm[np.argmax(widest[palm])])
+        win = np.flatnonzero((s > s[k_palm] + 0.008 * H) & (s < s[k_palm] + 0.07 * H)
+                             & (radius > 0))  # fmt: skip
+        if win.size >= 3:
+            k = int(win[np.argmin(radius[win])])
+            if radius[k] < 0.95 * radius[win].max():
+                k_w, w_conf = k, 0.8
+                w_how = "the narrowest section between the palm and the forearm"
+    wrist = line[k_w].copy()
+    # The upper arm's axis (through the centreline between the wrist's side and the
+    # armpit), refined once the elbow is known.
+    k_end = len(line) - 1
+    rest = s[k_end] - s[k_w]
+    if rest >= 0.20 * H:
+        sel = s >= s[k_w] + 0.55 * rest
     else:
-        elbow = _at(poly, sp, frac * sp[-1])
-        e_conf, e_how, e_method = (
-            0.7,
-            "straight arm: at the anatomical fraction",
-            "proportion_of_measured",
-        )
-    det.add(f"hand_tip.{side}", tip, 0.9, "extremity", "the farthest point of the hand")
+        # A short free arm (hanging, its upper arm against the chest): the forearm's
+        # axis, extended, stands for the upper arm's (a nearly straight arm).
+        sel = s >= s[k_w] + 0.15 * rest
+        det.diag("ARM_AGAINST_BODY", "info", f"the {side} upper arm touches the body; its "
+                 "axis continues the forearm's", side=side)  # fmt: skip
+    fused = rest < 0.20 * H
+    a0, d = _fit_line(line[sel] if sel.sum() >= 3 else line[-3:])
+    shoulder, s_conf, s_how, r_arm = _shoulder_on_axis(det, side, line, s, sel, a0, d, probe,
+                                                        radius, H, fused)  # fmt: skip
+    arm = np.vstack([line[k_w:], shoulder[None]])
+    sa = _arc(arm)
+    bend_at, bend = _bend(arm, sa, 0.3 * sa[-1], 0.7 * sa[-1])
+    if abs(bend_at / max(sa[-1], 1e-9) - (1.0 - ELBOW_FRACTION)) > 0.15:
+        bend = 0.0
+    if bend > 8.0:
+        elbow, e_conf, e_method = _at(arm, sa, bend_at), 0.85, "bend"
+        e_how = f"the arm bends {bend:.0f} degrees here"
+    else:
+        elbow = _at(arm, sa, (1.0 - ELBOW_FRACTION) * sa[-1])
+        e_conf, e_method = 0.7, "proportion_of_measured"
+        e_how = "straight arm: at the anatomical fraction of the measured arm"
+    # Refit the upper arm's axis between the elbow and the armpit, and place the
+    # shoulder again on it.
+    k_e = int(np.argmin(np.linalg.norm(line - elbow, axis=1)))
+    sel2 = np.arange(len(line)) >= k_e + max(1, (k_end - k_e) // 5)
+    if sel2.sum() >= 3:
+        a0, d = _fit_line(np.vstack([elbow[None], line[sel2]]))
+        shoulder, s_conf, s_how, r_arm = _shoulder_on_axis(det, side, line, s, sel2, a0, d,
+                                                            probe, radius, H, fused)  # fmt: skip
+        if bend <= 8.0:
+            arm = np.vstack([line[k_w:], shoulder[None]])
+            sa = _arc(arm)
+            elbow = _at(arm, sa, (1.0 - ELBOW_FRACTION) * sa[-1])
+    det.add(f"hand_tip.{side}", tip, 0.9, "extremity", tip_how)
     det.add(f"wrist.{side}", wrist, w_conf, "narrowest", w_how)
     det.add(f"elbow.{side}", elbow, e_conf, e_method, e_how)
-    det.add(f"shoulder.{side}", shoulder, s_conf, "axis_anchor", s_how)
+    det.add(f"shoulder.{side}", shoulder, s_conf, "axis", s_how)
+    det.info.setdefault("_arm_radius", {})[side] = r_arm
+    det.info.setdefault("_hand", {})[side] = {"line": line[: k_w + 1], "radius": radius[: k_w + 1]}
+
+
+def _widest(probe, points, axes, most, n: int = 8) -> np.ndarray:
+    """The widest reach of each point around its axis (a flat palm's half width)."""
+    a = axes / np.maximum(np.linalg.norm(axes, axis=1, keepdims=True), 1e-12)
+    ref = np.array([0.0, 0.0, 1.0])
+    u = ref - (a @ ref)[:, None] * a
+    bad = np.linalg.norm(u, axis=1) < 1e-6
+    u[bad] = np.cross(a[bad], np.array([1.0, 0.0, 0.0]))
+    u /= np.linalg.norm(u, axis=1, keepdims=True)
+    v = np.cross(a, u)
+    best = np.zeros(points.shape[0])
+    for k in range(n):
+        ang = np.pi * k / n  # (opposite directions together: the full width)
+        dd = np.cos(ang) * u + np.sin(ang) * v
+        both = probe.reach(points, dd, most) + probe.reach(points, -dd, most)
+        best = np.maximum(best, both)
+    return 0.5 * best
+
+
+def _shoulder_on_axis(det, side, pts, s, sel, a0, d, probe, radius, H, fused=False):
+    """The shoulder joint on the upper arm's axis (``a0``: a point of it near the armpit,
+    ``d``: toward the torso). ``fused``: the upper arm lies against the chest, so its
+    radius is measured from the axis outward, forward and back (away from the torso)."""
+    r_sel = radius[sel]
+    r_arm = float(np.median(r_sel[r_sel > 0])) if np.any(r_sel > 0) else 0.03 * H
+    # From the elbow's side: hanging = 0 degrees, T-pose = 90.
+    angle = float(np.degrees(np.arccos(np.clip(d[2], -1.0, 1.0))))
+    t = np.arange(-0.05 * H, 0.35 * H, 0.002 * H)
+    line = a0[None] + t[:, None] * d[None]
+    inside = probe.inside(line)
+    first_in = np.flatnonzero(inside)
+    exit_pt = None
+    if first_in.size:
+        after = np.flatnonzero(~inside & (np.arange(t.size) > first_in[0]))
+        if after.size:
+            exit_pt = line[after[0]]
+            if fused:
+                sign = 1.0 if pts[0][0] > 0 else -1.0
+                out = np.array([sign, 0.0, 0.0]) - sign * d[0] * d
+                out /= max(float(np.linalg.norm(out)), 1e-12)
+                fwd = np.cross(d, out)
+                band = (t > t[after[0]] - 0.14 * H) & (t < t[after[0]] - 0.05 * H)
+                q = line[band]
+                if len(q):
+                    r3 = np.stack([probe.reach(q, np.broadcast_to(v, q.shape), 0.3 * H)
+                                   for v in (out, fwd, -fwd)], axis=1)  # fmt: skip
+                    good = np.all(r3 > 0, axis=1)
+                    if good.any():
+                        r_arm = float(np.median(r3[good].mean(axis=1)))
+    down = np.array([0.0, 0.0, -1.0]) - (-d[2]) * d
+    nd = float(np.linalg.norm(down))
+    armpit = None
+    if nd > 1e-6:
+        down /= nd
+        reach = probe.reach(line, np.broadcast_to(down, line.shape), 0.5 * H)
+        start = np.flatnonzero(inside)
+        if start.size:
+            jump = np.flatnonzero((np.arange(t.size) >= start[0]) & (reach > 2.5 * r_arm))
+            if jump.size:
+                armpit = line[jump[0]]
+    by_exit = None if exit_pt is None else exit_pt - SHOULDER_EXIT * r_arm * d
+    if armpit is not None:
+        armpit = armpit + (ARMPIT[0] - ARMPIT[1] * (angle - 35.0)) * r_arm * d
+    lo, hi = EXIT_POSE
+    w = 0.0 if angle <= lo else 1.0 if angle >= hi else (angle - lo) / (hi - lo)
+    if by_exit is not None and armpit is not None:
+        w = w * w * (3 - 2 * w)
+        p = (1 - w) * by_exit + w * armpit
+        how = (
+            f"on the upper arm's axis, {SHOULDER_EXIT:g} arm radii inside where it leaves the "
+            "shoulder"
+            if w < 0.5
+            else "on the upper arm's axis above the armpit"
+        )
+        return p, 0.75, how, r_arm
+    if by_exit is not None and w < 1.0:
+        return by_exit, 0.7, (f"on the upper arm's axis, {SHOULDER_EXIT:g} arm radii inside "
+                              "where it leaves the shoulder"), r_arm  # fmt: skip
+    if armpit is not None:
+        return armpit, 0.65, "on the upper arm's axis above the armpit", r_arm
+    det.diag("SHOULDER_NOT_MEASURED", "warning", f"the {side} shoulder is at the arm's end")
+    return pts[-1].copy(), 0.4, "the end of the arm's centreline", r_arm
 
 
 def _arm_prior(det, side, sign, H) -> None:
@@ -1010,69 +1407,6 @@ def _arm_prior(det, side, sign, H) -> None:
         "proportion",
         "prior",
     )
-
-
-def _head(det, ch: Chain, tip, H) -> None:
-    pts = _smooth(ch.centroids)
-    vs = det.info["voxel_size"]
-    radius = np.sqrt(np.maximum(ch.sizes, 1.0)) * vs / 1.6
-    n = len(pts)
-    # The neck: the narrowest section below the head (the lower part of the chain).
-    lower = (np.arange(n) >= n // 4) & (pts[:, 2] < tip[2] - 0.06 * H)
-    if not lower.any():
-        lower = np.arange(n) >= n // 4
-    k_n = int(np.flatnonzero(lower)[np.argmin(radius[lower])]) if lower.any() else n - 1
-    r_n = radius[k_n]
-    # The head joint (skull base): going up from the neck, where the section widens 30 %.
-    k_h = k_n
-    for k in range(k_n, -1, -1):
-        if radius[k] > 1.3 * r_n:
-            k_h = k
-            break
-    head = 0.5 * (pts[k_h] + pts[k_n])
-    # The neck's base: going down from the neck, where the section widens by half.
-    k_b = n - 1
-    for k in range(k_n, n):
-        if radius[k] > 1.5 * r_n:
-            k_b = k
-            break
-    neck = pts[k_b].copy()
-    det.add("head_top", tip, 0.9, "extremity", "the top of the head")
-    det.add("head", head, 0.7, "narrowest", "the top of the neck, where the head widens")
-    det.add(
-        "neck",
-        neck,
-        0.7 if k_b < n - 1 else 0.5,
-        "widening",
-        "the neck's base, where the section widens into the shoulders",
-    )
-
-
-def _spine(det, centers, keep, H) -> None:
-    lm = det.landmarks
-    hips = 0.5 * (lm["hip.L"].position + lm["hip.R"].position)
-    neck = lm["neck"].position
-    z0, z1 = float(hips[2]), float(neck[2])
-    torso = keep.copy()
-    sh_w = 0.6 * max(abs(lm["shoulder.L"].position[0]), abs(lm["shoulder.R"].position[0]), 0.08 * H)
-    torso &= np.abs(centers[:, 0]) < sh_w
-    out = []
-    for f in (0.0, 0.35, 0.7):
-        zz = z0 + f * (z1 - z0) + 0.025 * H * (f == 0.0)
-        sl = centers[torso & (np.abs(centers[:, 2] - zz) < 0.02 * H)]
-        y = float(np.median(sl[:, 1])) if len(sl) > 5 else float(hips[1])
-        out.append(np.array([0.0, y, zz]))
-    det.add(
-        "pelvis", out[0], 0.75, "section_centroid", "between the hip joints, centred in the pelvis"
-    )
-    det.add("spine", out[1], 0.65, "section_centroid", "35 % up the torso, centred in its section")
-    det.add("chest", out[2], 0.65, "section_centroid", "70 % up the torso, centred in its section")
-    for side, sign in (("L", 1.0), ("R", -1.0)):
-        sh = lm[f"shoulder.{side}"].position
-        base = np.array([sign * 0.02 * H, 0.5 * (neck[1] + sh[1]) - 0.005 * H, neck[2] - 0.035 * H])
-        det.add(
-            f"clavicle.{side}", base, 0.6, "between", "beside the neck's base, toward the shoulder"
-        )
 
 
 def _blocky(det, grid, centers, solid_flat, keep, H) -> None:

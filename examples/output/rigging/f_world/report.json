@@ -2,15 +2,15 @@
   "backend": "gpu",
   "machine": {
     "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
-    "aether3d": "0.19.0",
+    "aether3d": "0.19.1",
     "python": "3.14.8",
     "native": true,
     "backend": "gpu"
   },
   "walker": {
-    "speed": 0.9974322031063739,
+    "speed": 1.0162053974260508,
     "period": 1.1111111111111112,
-    "keys": 735
+    "keys": 760
   },
   "kit": {
     "speed": 3.15,
@@ -34,9 +34,9 @@
     "level_m": 90.21
   },
   "walker_lane": {
-    "speed_m_s": 0.9974,
+    "speed_m_s": 1.0162,
     "from_m": 6.0,
-    "to_m": 14.98
+    "to_m": 15.15
   },
   "kit_lane": {
     "speed_m_s": 3.15,
@@ -45,12 +45,12 @@
   },
   "walker_contacts": {
     "Foot.L": {
-      "sliding_m": 0.00202,
+      "sliding_m": 0.00141,
       "penetration_m": 0.0,
       "contacts": 9
     },
     "Foot.R": {
-      "sliding_m": 0.00212,
+      "sliding_m": 0.00122,
       "penetration_m": 0.0,
       "contacts": 9
     }
@@ -80,24 +80,24 @@
         "start": 0.0,
         "end": 3.0,
         "frames": 180,
-        "seconds": 108.4,
-        "seconds_per_frame_median": 0.562
+        "seconds": 110.6,
+        "seconds_per_frame_median": 0.576
       },
       {
         "shot": "tracking",
         "start": 3.0,
         "end": 6.0,
         "frames": 180,
-        "seconds": 99.3,
-        "seconds_per_frame_median": 0.538
+        "seconds": 101.1,
+        "seconds_per_frame_median": 0.548
       },
       {
         "shot": "ahead",
         "start": 6.0,
         "end": 9.0,
         "frames": 180,
-        "seconds": 98.3,
-        "seconds_per_frame_median": 0.533
+        "seconds": 100.1,
+        "seconds_per_frame_median": 0.546
       }
     ],
     "total": 540,
@@ -110,7 +110,7 @@
   "stills": [
     {
       "path": "examples/output/rigging/f_world/hero_crane.png",
-      "seconds": 0.64,
+      "seconds": 0.75,
       "backend": "gpu",
       "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
       "diagnostics": [
@@ -119,7 +119,7 @@
     },
     {
       "path": "examples/output/rigging/f_world/hero_tracking.png",
-      "seconds": 0.53,
+      "seconds": 0.52,
       "backend": "gpu",
       "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
       "diagnostics": [
@@ -128,7 +128,7 @@
     },
     {
       "path": "examples/output/rigging/f_world/hero_ahead.png",
-      "seconds": 0.52,
+      "seconds": 0.53,
       "backend": "gpu",
       "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
       "diagnostics": [
@@ -144,22 +144,22 @@
     },
     "mp4": {
       "path": "examples/output/rigging/f_world/world_1080p.mp4",
-      "bytes": 18600789,
+      "bytes": 18770921,
       "seconds": 8.9
     },
     "preview": {
       "path": "examples/output/rigging/f_world/world_preview.mp4",
-      "bytes": 965459,
-      "seconds": 2.7
+      "bytes": 975056,
+      "seconds": 2.6
     },
     "master": {
       "path": "examples/output/rigging/f_world/world_master.mkv",
-      "bytes": 470687891,
+      "bytes": 471507283,
       "seconds": 5.1
     },
     "verify": {
-      "psnr": "PSNR r:42.495833 g:43.506088 b:40.221362 average:41.850323 min:40.267792 max:43.178528",
-      "ssim": "SSIM R:0.989069 (19.613288) G:0.993485 (21.861172) B:0.978070 (16.589691) All:0.986875 (18.818960)"
+      "psnr": "PSNR r:42.460633 g:43.500316 b:40.234281 average:41.845115 min:40.284598 max:43.240643",
+      "ssim": "SSIM R:0.989086 (19.620240) G:0.993483 (21.859547) B:0.978071 (16.589895) All:0.986880 (18.820734)"
     },
     "verify_master": {
       "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
@@ -173,20 +173,20 @@
     "tiles_generated": 120,
     "tile_hits": 144209,
     "tiles_evicted": 0,
-    "generation_seconds": 3.3776,
+    "generation_seconds": 3.4757,
     "regional_computed": 1,
     "regional_cached": 1,
     "last_frame": {
-      "parts": 13712,
+      "parts": 13711,
       "meshes": 220,
-      "triangles": 1237991,
-      "seconds": 0.0797
+      "triangles": 1237857,
+      "seconds": 0.0793
     },
     "vegetation": {
       "tiles_placed": 1353,
       "plants_placed": 45385,
       "candidates": 195564,
-      "seconds": 3.8775,
+      "seconds": 3.955,
       "bytes": 3086180,
       "tiles_evicted": 0,
       "tiles_cached": 1353
@@ -215,13 +215,13 @@
       },
       "cached_total": 43336904,
       "rendered": {
-        "parts": 13712,
+        "parts": 13711,
         "meshes": 220,
-        "triangles": 1237991,
-        "seconds": 0.0797
+        "triangles": 1237857,
+        "seconds": 0.0793
       },
-      "process_rss_bytes": 668852224
+      "process_rss_bytes": 934088704
     }
   },
-  "seconds": 533.8
+  "seconds": 591.0
 }

@@ -1,9 +1,11 @@
 """Shared pieces of the Stage 18 rigging showcases (``examples/rigging_*.py``).
 
 Everything is modeled, rigged, posed, animated and rendered by Aether3D: the character is
-the implicit humanoid of ``aether3d.sculpt.implicit`` (smooth blended shapes meshed by
-marching cubes -- an original mannequin, no third-party asset), rigged by ``autorig``;
-clothing is meshed the same way. FFmpeg only encodes the PNG frames Aether3D rendered.
+the anatomical figure of ``aether3d.sculpt.figure`` (an original procedural body -- pelvis,
+ribcage, muscles, knees, feet with toes, hands with fingers and a thumb, a face; no
+third-party asset), meshed by marching cubes and remeshed to even triangles, rigged by
+``autorig``; clothing is its shapes inflated (``figure_garment``). FFmpeg only encodes the
+PNG frames Aether3D rendered.
 
 Lighting (``studio``): a warm key light from the front left with a soft disc, a cool fill
 from the right, a strong rim from behind, cool ambient light, and a matte studio floor;
@@ -101,8 +103,77 @@ def render_options(*, width: int, height: int, path_samples: int = 0) -> dict[st
 # --------------------------------------------------------------------------- #
 
 
+CHARACTER_VOXEL = 0.007  # the figure's mesh at full quality: 7 mm, remeshed to 7 mm edges
+QUICK_VOXEL = 0.02  # ... and for quick runs (marching cubes only: no fingers resolved)
+
+
+def character_mesh(quick: bool = False, **options: Any):
+    """The showcases' character: the anatomical figure (``figure_mesh``), remeshed to even
+    7 mm triangles at full quality (cleaner shading and deformation; about 43,000
+    vertices, fingers rigged), marching cubes at 20 mm for quick runs."""
+    from aether3d.sculpt.figure import figure_mesh
+
+    if quick:
+        return figure_mesh(QUICK_VOXEL, **options)
+    return figure_mesh(CHARACTER_VOXEL, remesh=CHARACTER_VOXEL, **options)
+
+
+def waist() -> float:
+    """The figure's waistline (metres): where a jacket overlaps the trousers."""
+    from aether3d.sculpt.figure import FIGURE_DEFAULTS, figure_joints
+
+    return float(figure_joints()["pelvis"][2] + 0.04 * FIGURE_DEFAULTS["height"])
+
+
+def garment(parts: tuple[str, ...], by: float, quick: bool = False, **options: Any):
+    """Clothing or armour over the figure's ``parts`` (``aether3d.sculpt.figure.PARTS``):
+    their shapes inflated by ``by`` metres (``top``/``bottom``: cut flat there)."""
+    from aether3d.sculpt.figure import figure_garment
+
+    return figure_garment(parts, by, 0.024 if quick else 0.009, **options)
+
+
+def armour(body_mesh: Any, quick: bool = False) -> dict[str, Any]:
+    """A helmet (a shell over the figure's cranium, open at the face), shoulder plates over
+    the shoulders and a backpack on the measured back -- meshes placed from the figure's
+    joints and its surface."""
+    from aether3d.sculpt.figure import FIGURE_DEFAULTS, figure_joints
+    from aether3d.sculpt.implicit import implicit_surface
+
+    voxel = 0.024 if quick else 0.009
+    J = figure_joints()
+    H = FIGURE_DEFAULTS["height"]
+    hr = 0.13 * H * FIGURE_DEFAULTS["head"]  # (the figure's head height, chin to crown)
+    top = J["head_top"][2]
+    out = {
+        "Helmet": implicit_surface([
+            {"type": "ellipsoid", "center": [0.0, 0.012 * hr, top - 0.40 * hr],
+             "radii": [0.40 * hr, 0.47 * hr, 0.47 * hr]},
+            {"type": "box", "center": [0.0, -0.30 * hr, top - 0.72 * hr],
+             "size": [0.62 * hr, 0.5 * hr, 0.42 * hr], "subtract": True, "blend": 0.01},
+            {"type": "box", "center": [0.0, 0.0, top - 0.98 * hr],
+             "size": [hr, hr, 0.3 * hr], "subtract": True, "blend": 0.01},
+        ], voxel),
+    }  # fmt: skip
+    for side, x in (("L", 1.0), ("R", -1.0)):
+        sh = J[f"shoulder.{side}"]
+        out[f"Shoulder plate.{side}"] = implicit_surface(
+            [{"type": "ellipsoid", "center": [float(sh[0] + 0.012 * x), float(sh[1]),
+                                              float(sh[2] + 0.035)],
+              "radii": [0.075, 0.085, 0.045]}], voxel)  # fmt: skip
+    p = np.asarray(body_mesh.positions, np.float64)
+    z = float(J["upper_chest"][2]) - 0.08
+    band = (np.abs(p[:, 2] - z) < 0.06) & (np.abs(p[:, 0]) < 0.1)
+    back = float(p[band, 1].max())  # (the back's surface behind the upper chest)
+    out["Backpack"] = implicit_surface(
+        [{"type": "box", "center": [0.0, back + 0.075, z], "size": [0.3, 0.13, 0.38],
+          "blend": 0.04}], voxel)  # fmt: skip
+    return out
+
+
 def humanoid_mesh(voxel: float = 0.012, **shape: Any):
-    """The implicit humanoid recipe meshed at ``voxel`` metres (no rig)."""
+    """The implicit humanoid recipe meshed at ``voxel`` metres (no rig; v0.19's showcase
+    character, kept for the revision's Blender experiment)."""
     from aether3d.sculpt.implicit import humanoid_shapes, implicit_surface
 
     return implicit_surface(humanoid_shapes(**shape), voxel)

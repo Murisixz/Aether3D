@@ -189,7 +189,7 @@ def test_autorig_builds_a_controlled_weighted_humanoid(bodies):
     assert ik["forearm_twist.L"].type == "twist"
     # The skin uses deforming joints only, all vertices weighted.
     w = a.inspect_weights(body)
-    assert w["valid"] and w["max_influences"] <= 4
+    assert w["valid"] and w["max_influences"] <= 8  # (heat weights keep up to eight)
     assert not any(f["code"] in ("CROSS_SIDE_WEIGHTS", "HELPER_JOINT_WEIGHTED")
                    for f in w["findings"])  # fmt: skip
     # Nothing moved at rest; undo removes everything.
@@ -262,6 +262,16 @@ def test_blocky_characters_rig_part_by_part():
     assert head[2] == pytest.approx(24 * px, abs=1.5 * px)  # the head turns on the body's top
     g = s.animation.generate(arm, "walk", forward="-y")
     assert g["keys"] > 0
+    # The same blocks as separate objects: attached by default, and measured (they are
+    # the body), so the skeleton is the single mesh's.
+    s2 = Scene("Blocks")
+    blocks = [s2.add_object(f"Block{i}", mesh=Mesh(p.astype(np.float32), t.astype(np.uint32)))
+              for i, (p, t) in enumerate(parts)]  # fmt: skip
+    rep2 = s2.animation.autorig(blocks, template="blocky", forward="-y")
+    assert rep2["measured"] == [b.name for b in blocks]
+    assert set(rep2["parts"].values()) == {"attach"}
+    assert np.allclose([j["position"] for j in rep2["joints"]],
+                       [j["position"] for j in rep["joints"]], atol=1e-9)  # fmt: skip
 
 
 def test_quadrupeds_rig():
@@ -294,6 +304,65 @@ def test_dry_runs_change_nothing_and_parts_bind_their_way(bodies):
     assert dominant == {"Head"}
     with pytest.raises(AnimationError):
         s.animation.autorig(body, parts={"Nope": "rigid"})
+
+
+def test_clothing_and_armour_do_not_move_the_skeleton(bodies):
+    """The landmarks are measured on the body: the pieces ``parts`` transfers, attaches
+    or binds rigidly follow it and leave its joints exactly where the bare body puts
+    them (measured with it, a helmet over the head raises the skull's pivot)."""
+    s = Scene("Dressed")
+    body = s.add_object("Body", mesh=bodies["a_pose"])
+    helmet = s.add_object("Helmet", mesh=implicit_surface(
+        [{"type": "ellipsoid", "center": [0, 0, 1.64], "radii": [0.11, 0.12, 0.13]},
+         {"type": "ellipsoid", "center": [0, 0, 1.6], "radii": [0.1, 0.11, 0.1],
+          "subtract": True}], 0.012))  # fmt: skip
+    pack = s.add_object("Pack", mesh=implicit_surface(
+        [{"type": "box", "center": [0, 0.17, 1.25], "size": [0.3, 0.12, 0.36]}], 0.02))  # fmt: skip
+    bare = s.animation.autorig(body, dry_run=True)
+    dressed = s.animation.autorig(
+        [body, helmet, pack], parts={"Helmet": "attach", "Pack": "rigid"}, dry_run=True
+    )
+    assert bare["measured"] == dressed["measured"] == ["Body"]
+    assert [j["position"] for j in dressed["joints"]] == [j["position"] for j in bare["joints"]]
+    assert [d["code"] for d in dressed["diagnostics"]] == [d["code"] for d in bare["diagnostics"]]
+    # (generated with the body, the pieces are measured with it and move its joints)
+    mixed = s.animation.autorig([body, helmet, pack], dry_run=True)
+    assert mixed["measured"] == ["Body", "Helmet", "Pack"]
+
+    def head(r):
+        return next(j["position"] for j in r["joints"] if j["name"] == "Head")
+
+    assert abs(head(mixed)[2] - head(bare)[2]) > 0.01
+    # Every part skipped but one: that one is measured, whatever its mode.
+    only = s.animation.autorig(
+        [body, helmet], parts={"Body": "skip", "Helmet": "attach"}, dry_run=True
+    )
+    assert only["measured"] == ["Helmet"]
+
+
+def test_mirrored_pieces_attach_to_mirrored_joints(bodies):
+    """A plate over a shoulder is as near the clavicle (which ends there) as the upper arm
+    (which starts there), up to rounding: such ties (within a micrometre) go to the bone
+    nearest the root, on both sides alike -- the strictly nearest bone had sent a
+    showcase's two plates to different bones."""
+    s = Scene("Plates")
+    body = s.add_object("Body", mesh=bodies["a_pose"])
+    plan = s.animation.autorig(body, dry_run=True)
+    at = {j["name"]: np.array(j["position"]) for j in plan["joints"]}
+    plates = []
+    for side in ("L", "R"):
+        j, fore = at[f"UpperArm.{side}"], at[f"ForeArm.{side}"]
+        u = (fore - j) / np.linalg.norm(fore - j)
+        v = (j - at[f"Shoulder.{side}"]) / np.linalg.norm(j - at[f"Shoulder.{side}"])
+        n = v - (v @ u) * u
+        n /= np.linalg.norm(n)
+        # (beyond the clavicle's end, over the upper arm's start: 5e-7 m nearer the arm)
+        c = j + 0.035 * n + 1.9e-4 * u
+        plates.append(s.add_object(f"Plate.{side}", mesh=create_cube(1.0), position=tuple(c),
+                                   scale=(0.1, 0.1, 0.04)))  # fmt: skip
+    rep = s.animation.autorig([body, *plates], parts={p.name: "attach" for p in plates})
+    assert rep["weights"]["Plate.L"]["joint"] == "Shoulder.L"
+    assert rep["weights"]["Plate.R"]["joint"] == "Shoulder.R"
 
 
 def test_attached_parts_move_with_the_placed_character(bodies):

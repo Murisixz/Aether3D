@@ -1206,8 +1206,9 @@ class _Reader:
         return arm
 
     def joint_semantics(self, joint: dict[str, Any], stored: dict[str, Any], where: str) -> None:
-        """Aether3D's joint extras (Stage 18): role, helper flag and limits -- each checked
-        as the rig checks it; what does not pass is reported and left out."""
+        """Aether3D's joint extras (Stage 18): role, helper flag, weighting span and
+        limits -- each checked as the rig checks it; what does not pass is reported and
+        left out."""
         from ..animation.rig import _check_limits
 
         role = stored.get("role")
@@ -1222,6 +1223,18 @@ class _Reader:
                 joint["deform"] = deform
             else:
                 self.note("JOINT_EXTRAS_IGNORED", INFO, "deform is a boolean", f"{where}/deform")
+        span = stored.get("span")
+        if span is not None:
+            if (
+                isinstance(span, list)
+                and len(span) == 2
+                and all(_is_number(v) for v in span)
+                and 0.0 <= float(span[0]) < float(span[1]) <= 1.0
+                and float(span[1]) - float(span[0]) >= 0.05
+            ):
+                joint["span"] = [float(v) for v in span]
+            else:
+                self.note("JOINT_EXTRAS_IGNORED", INFO, "an invalid joint span", f"{where}/span")
         limits = stored.get("limits")
         if limits is not None:
             try:

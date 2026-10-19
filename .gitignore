@@ -75,3 +75,5 @@ examples/output/rigging/*/*.glb
 examples/output/rigging/*/hero_*.png
 !examples/output/rigging/*/hero_*_preview.png
 !examples/output/rigging/e_rigid/kit.aether
+# ... except one 1080p encode (0.19.1): the revised auto-rigged figure's showcase video
+!examples/output/rigging/a_autorig/autorig_1080p.mp4

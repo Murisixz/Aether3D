@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from .. import _features
 from ..diagnostics import WARNING, Diagnostic
 from . import ik
 from . import rotation as R
@@ -355,6 +356,9 @@ def _run_rig(
     model = forward_kinematics(local, parents, depth)
     armature_world = worlds.world[arm_id]
     influences = pose.influences.get(arm_id, {})
+    # (twists change local rotations only: the joints' model can wait for them)
+    lazy = _features.enabled("AETHER3D_RIG_LAZY_FK")
+    stale = False
     for i in constraint_order(rig):
         c = rig.constraints[i]
         if c.mute:
@@ -363,6 +367,11 @@ def _run_rig(
         if w <= 0.0:
             continue
         try:
+            if c.type == "twist" and lazy:
+                local, stale = _twist(c.p, w, rig, local), True
+                continue
+            if stale:
+                model, stale = forward_kinematics(local, parents, depth), False
             local, model = _joint_constraint(
                 c, w, rig, local, model, armature_world, worlds, result, scene, arm
             )
@@ -374,6 +383,8 @@ def _run_rig(
                     f"objects[{arm.name}].constraints[{c.name}]",
                 )
             )
+    if stale:
+        model = forward_kinematics(local, parents, depth)
     if rig.enforce_limits == "always":
         limited = False
         for k, j in enumerate(rig.joints):
@@ -475,7 +486,8 @@ def _joint_constraint(
 ) -> tuple[np.ndarray, np.ndarray]:  # fmt: skip
     p = c.p
     if c.type == "twist":  # (local rotations only: no targets, no armature space)
-        return _twist(p, w, rig, local)
+        new_local = _twist(p, w, rig, local)
+        return new_local, forward_kinematics(new_local, rig.parents, rig.depth)
     inv_a = np.linalg.inv(armature_world)
     rig_model = (rig, model, armature_world)
     target = _target_world(p.get("target"), worlds, result, scene, rig_model)
@@ -562,11 +574,13 @@ def _joint_constraint(
     return new_local, new_model
 
 
-def _twist(p: dict[str, Any], w: float, rig: Rig, local: np.ndarray):
+def _twist(p: dict[str, Any], w: float, rig: Rig, local: np.ndarray) -> np.ndarray:
     """A twist constraint: the joint turns about its ``axis`` by ``factor`` times the source
     joint's twist about it (relative to rest; :func:`.limits.twist_angle`); the influence
     scales the angle (the same rotation as blending toward it, along the shortest arc).
-    Scalar arithmetic: two of these run per character and frame."""
+    Scalar arithmetic: six of these run per character and frame. Returns the new local
+    matrices; it reads and writes local rotations only, so the joints' model waits until a
+    constraint needs it (one forward kinematics pass after several twists)."""
     from . import limits as L
 
     src = rig.index(p["target"]["joint"])
@@ -587,7 +601,7 @@ def _twist(p: dict[str, Any], w: float, rig: Rig, local: np.ndarray):
     proj = (x * ax + y * ay + z * az) / n
     w_rel = v / n
     if abs(proj) < 1e-15 and abs(w_rel) < 1e-15:
-        return local, forward_kinematics(local, rig.parents, rig.depth)
+        return local
     angle = 2.0 * math.atan2(proj, w_rel) * p["factor"] * w
     new_local = local.copy()
     if angle != 0.0:
@@ -598,7 +612,7 @@ def _twist(p: dict[str, Any], w: float, rig: Rig, local: np.ndarray):
         kx = np.array([[0.0, -az, ay], [az, 0.0, -ax], [-ay, ax, 0.0]])
         turn = np.eye(3) + s_ * kx + (1.0 - c) * (kx @ kx)
         new_local[k][:3, :3] = ((mk / scale) @ turn) * scale
-    return new_local, forward_kinematics(new_local, rig.parents, rig.depth)
+    return new_local
 
 
 def _quat_of(m: list) -> tuple[float, float, float, float]:
@@ -867,9 +881,41 @@ def _run_skin(
             )
         )
         return
+    if skin.smooth != "null" or skin.normals == "surface":
+        pos, nrm = _post_skin(system, oid, skin, mesh, pos, nrm)
     result.meshes[oid] = Mesh._from_arrays(
         pos, mesh.triangles, nrm, mesh.uvs, mesh.groups, mesh.colors
     )
+
+
+def _post_skin(system, oid: str, skin: Any, mesh: Any, pos: np.ndarray, nrm: Any):
+    """Corrective smoothing (delta mush) and surface-following normals of a skinned mesh
+    (``skin.smooth``, ``skin.normals``), from rest data cached per scene revision."""
+    from .rig import delta_mush, surface_normals
+
+    rest = _cached(system.scene, f"skin_rest:{oid}", lambda _s: _skin_rest(mesh, skin))
+    tris = rest["triangles"]
+    if skin.smooth != "null":
+        pos = delta_mush(pos, rest["mush"])
+    if skin.normals == "surface" and mesh.normals is not None:
+        nrm = surface_normals(rest["frame"], pos, tris, mesh.normals)
+    return pos, nrm
+
+
+def _skin_rest(mesh: Any, skin: Any) -> dict[str, Any]:
+    import json
+
+    from .rig import face_normal_sums, mush_rest
+
+    tris = np.asarray(mesh.triangles, np.int64)
+    p0 = mesh.positions.astype(np.float64)
+    f = face_normal_sums(p0, tris)
+    length = np.sqrt(np.sum(f * f, axis=1))
+    frame = np.where(length[:, None] > 0, f / np.where(length > 0, length, 1.0)[:, None], 0.0)
+    out: dict[str, Any] = {"triangles": tris, "frame": frame}
+    if skin.smooth != "null":
+        out["mush"] = mush_rest(p0, tris, skin.weights, json.loads(skin.smooth))
+    return out
 
 
 def _morphed(

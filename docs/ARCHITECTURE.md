@@ -73,6 +73,9 @@ Aether3D/
 │   │   ├── remesh.py      Isotropic remeshing and dynamic topology per dab
 │   │   ├── voxel.py       Voxel remeshing: narrow-band distances, signs, marching cubes
 │   │   ├── symmetry.py    Symmetrize by cutting and mirroring
+│   │   ├── implicit.py    Implicit surfaces: blended shapes meshed by marching cubes
+│   │   ├── figure.py      The anatomical test figure (0.19.1): known joints, body parts,
+│   │   │                  garments
 │   │   ├── validate.py    check_mesh, validity tiers, welds, self-intersections
 │   │   ├── session.py     SculptSession and SourceSculptSession: commits to the scene
 │   │   ├── script.py      Declarative JSON sculpt scripts
@@ -226,6 +229,8 @@ Aether3D/
 │   │   │                                   contacts and planting, retargeting
 │   │   ├── limits.py                       Swing-twist and hinge joint limits (0.19.0)
 │   │   ├── voxels.py, landmarks.py         Voxels, geodesic distances; landmark detection
+│   │   ├── anatomy.py                      Probes, sections, fingers on the exact mesh (0.19.1)
+│   │   ├── heat.py                         Bone heat weights (0.19.1)
 │   │   ├── autorig.py, weights.py          Automatic rigs; skin weights (generate, edit,
 │   │   │                                   transfer, inspect)
 │   │   ├── rig_edit.py, controls.py        Structural rig edits; controls, IK/FK, poses
@@ -285,7 +290,8 @@ Aether3D/
 │                          suite (bench_engine.py) and its saved runs (results/)
 ├── native/                aether3d-native: optional Rust kernels (PyO3, maturin), exact
 │                          counterparts of NumPy code (ray traversal, hierarchies, PNG filters,
-│                          LDL^T, packing, triangulation, linear blend skinning)
+│                          LDL^T, packing, triangulation, skinning, geodesic distances,
+│                          hydrology, delta mush)
 ├── research/              The October 2026 architecture audit and the performance
 │                          modernization's investigations (not part of the package)
 ├── docs/                  API, file formats, glTF, inspection, architecture, install
@@ -1090,7 +1096,7 @@ Stage 17 was built before Stage 16, which is postponed. Key decisions:
   schema-described; the CLI, the MCP tools, the scene-plan operation and the feedback
   checks reuse them.
 
-## Character rigging (v0.19.0)
+## Character rigging (v0.19.0, revised in v0.19.1)
 
 Stage 18 extends `aether3d.animation` into a character authoring system; see
 [CHARACTER_RIGGING.md](CHARACTER_RIGGING.md) and the design record
@@ -1118,6 +1124,19 @@ Stage 18 extends `aether3d.animation` into a character authoring system; see
   quaternion and blended skinning, and the geodesic chamfer distances of weighting --
   bitwise equal to their NumPy twins; no WGSL: CPU skinning of 50 characters fits a frame
   and GPU skinning would not change any result (measured, see PERFORMANCE.md).
+- **The revision (0.19.1) measured against a reference.** Blender 5.2's Automatic Weights
+  and Corrective Smooth, run headless on the same meshes and bones, are the yardstick
+  ([research/2026-10-stage18-revision/DESIGN.md](../research/2026-10-stage18-revision/DESIGN.md));
+  nothing in the package imports Blender. Bone heat (`heat.py`) is one symmetric sparse
+  system per mesh, assembled in NumPy, made visible by the existing ray traversal and
+  solved by the existing nested-dissection LDL^T (Rust twin): no new solver. Landmarks are
+  measured on the exact mesh (`anatomy.py`: probes, sections, surface distances). The
+  new per-frame costs have Rust kernels (ABI 8) bitwise equal to their NumPy references:
+  delta mush, and surface-following normals (the crowd benchmark found them most of a
+  walking character's frame: 8.3 ms in NumPy, 0.95 ms native at 41,000 vertices). The test
+  figure (`sculpt/figure.py`) has known joint centres, so landmarks and deformation are
+  checked against truth, and project format 12 adds joint spans and skin normals and
+  smoothing (an identity migration).
 
 ## Procedural worlds and massive environments (v0.18.0)
 

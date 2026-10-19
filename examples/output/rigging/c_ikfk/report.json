@@ -2,7 +2,7 @@
   "backend": "gpu",
   "machine": {
     "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
-    "aether3d": "0.19.0",
+    "aether3d": "0.19.1",
     "python": "3.14.8",
     "native": true,
     "backend": "gpu"
@@ -65,32 +65,32 @@
   },
   "goals": {
     "arm_length_m": {
-      "R": 0.5362,
-      "L": 0.5362
+      "R": 0.5674,
+      "L": 0.5674
     },
     "hands": {
       "1.6": {
         "arm_ik.R": [
-          -0.3059,
-          -0.3613,
-          1.6713
+          -0.31,
+          -0.3915,
+          1.7005
         ],
         "arm_ik.L": [
-          0.5935,
-          -0.1118,
-          1.1364
+          0.5564,
+          -0.1012,
+          1.1627
         ]
       },
       "2.6": {
         "arm_ik.R": [
-          -0.1356,
-          -0.4622,
-          1.2823
+          -0.1249,
+          -0.4928,
+          1.2943
         ],
         "arm_ik.L": [
-          0.456,
-          -0.3811,
-          1.2443
+          0.4495,
+          -0.3777,
+          1.2494
         ]
       }
     },
@@ -99,15 +99,15 @@
   "switches": {
     "fk_to_ik": {
       "time": 0.6,
-      "joint_mismatch_m": 6.6591298491655e-16,
-      "skin_displacement_m": 2.625584602355957e-05,
-      "joints_moved_m": 2.4147783321382308e-05
+      "joint_mismatch_m": 6.972315263620695e-16,
+      "skin_displacement_m": 2.298504114151001e-05,
+      "joints_moved_m": 3.29411108861534e-05
     },
     "ik_to_fk": {
       "time": 3.4,
-      "joint_mismatch_m": 3.8559277963506344e-16,
-      "skin_displacement_m": 3.10409814119339e-05,
-      "joints_moved_m": 1.4685668356137505e-05
+      "joint_mismatch_m": 6.77599954797753e-16,
+      "skin_displacement_m": 3.591831773519516e-05,
+      "joints_moved_m": 1.684243799326012e-05
     },
     "legs_held": {
       "idle_channels_removed": 23,
@@ -130,10 +130,10 @@
       }
     },
     "worst_over_ik_interval_m": {
-      "arm_ik.L": 3.3422138886441676e-16,
-      "arm_ik.R": 4.552252871008668e-16,
-      "leg_ik.L": 2.237726045655905e-16,
-      "leg_ik.R": 2.498016863724722e-16
+      "arm_ik.L": 3.3335590258932494e-16,
+      "arm_ik.R": 4.449557262054371e-16,
+      "leg_ik.L": 2.706168622523819e-16,
+      "leg_ik.R": 2.9145419470240865e-16
     },
     "samples": 41
   },
@@ -143,8 +143,8 @@
     "fps": 60,
     "start": 0.0,
     "end": 5.0,
-    "seconds": 105.0,
-    "seconds_per_frame_median": 0.351,
+    "seconds": 118.7,
+    "seconds_per_frame_median": 0.39,
     "size": [
       1920,
       1080
@@ -158,27 +158,27 @@
     },
     "mp4": {
       "path": "examples/output/rigging/c_ikfk/ikfk_1080p.mp4",
-      "bytes": 1111296,
-      "seconds": 1.9
+      "bytes": 1301589,
+      "seconds": 2.2
     },
     "preview": {
       "path": "examples/output/rigging/c_ikfk/ikfk_preview.mp4",
-      "bytes": 122760,
-      "seconds": 1.0
+      "bytes": 135362,
+      "seconds": 1.1
     },
     "master": {
       "path": "examples/output/rigging/c_ikfk/ikfk_master.mkv",
-      "bytes": 44711832,
-      "seconds": 1.6
+      "bytes": 46608640,
+      "seconds": 1.8
     },
     "verify": {
-      "psnr": "PSNR r:44.865090 g:43.441264 b:40.944141 average:42.774807 min:42.549303 max:42.904391",
-      "ssim": "SSIM R:0.996470 (24.522354) G:0.999044 (30.194225) B:0.993105 (21.614565) All:0.996206 (24.209283)"
+      "psnr": "PSNR r:44.641469 g:43.426657 b:40.871383 average:42.686968 min:42.467965 max:42.841916",
+      "ssim": "SSIM R:0.996257 (24.267646) G:0.999025 (30.110313) B:0.993177 (21.660027) All:0.996153 (24.148629)"
     },
     "verify_master": {
       "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
       "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
     }
   },
-  "seconds": 226.2
+  "seconds": 286.4
 }

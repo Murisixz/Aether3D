@@ -122,6 +122,7 @@ is an error naming the variable). Benchmark records include their state.
 | `AETHER3D_NATIVE` | on | use the native kernels of `aether3d-native` when installed (`aether3d/_native.py`: ray traversal, transform hierarchies, PNG filters; since 0.14.0 the sparse LDL^T factorization and solves of UV parameterization and the packing placement); `0` uses the NumPy implementations, which give the same bits |
 | `AETHER3D_NATIVE_THREADS` | `1` | threads of the native ray traversal (`0`: one per CPU); results do not depend on it (a count, not an on/off switch). Bakes use one thread per CPU unless it is set (0.14.0) |
 | `AETHER3D_EDITING_BULK` | on | build an `EditableMesh`'s faces, edges and corner layers from a `Mesh` in bulk with NumPy (`editing/core.py`, `MeshCore._bulk_faces`); `0` adds one face at a time |
+| `AETHER3D_RIG_LAZY_FK` | on | run a rig's twist constraints on its local rotations and its forward kinematics once after them, or before a constraint that reads the joints (`animation/rigging.py`, `_run_rig`; 0.19.1); `0` runs the kinematics after every constraint |
 
 ## Phase 0: foundation and baseline
 
@@ -1046,3 +1047,55 @@ Known slow spots: weight transfer finds closest points in NumPy (1.4 s for a
 10,000-vertex jacket); `diagnose_rig` deforms every bound mesh in every pose and samples
 the timeline (1 s for 13 poses); a baked glTF export evaluates the whole rigging pass at
 every frame (0.9 s for a clothed, walking character).
+
+### The revision (0.19.1)
+
+The revision ([research/2026-10-stage18-revision/DESIGN.md](../research/2026-10-stage18-revision/DESIGN.md))
+changed what a rig is: bone heat weights with up to eight influences instead of geodesic
+weights with four, about 60 joints instead of 23 (30 without fingers), split twist bones
+with six twist constraints, surface-following normals by default, landmarks measured on
+the exact mesh. Measured with `benchmarks/bench_rigging.py` on the machine of the 0.19.0
+run above (`benchmarks/results/stage18-revision-rigging.json`, `--compare
+benchmarks/results/stage18-rigging.json`):
+
+| Workload | Size | 0.19.0 | 0.19.1 |
+| --- | --- | ---: | ---: |
+| auto-rig (landmarks, skeleton, controls, weights) | 6,488 / 18,008 vertices | 0.47 / 0.67 s | 0.42 / 0.77 s (detection 0.31 / 0.42, binding 0.11 / 0.35) |
+| auto-rig of the anatomical figure, 60 joints | 41,080 vertices | -- | 1.92 s (detection 0.83, binding 1.08) |
+| landmarks at 96 / 128 cells | 18,008 vertices | 138 / 296 ms | 274 / 424 ms |
+| weights: bone heat / geodesic | 18,008 vertices | -- / 206 ms | 349 / 242 ms |
+| weights: bone heat (the solve) / geodesic | 41,080 vertices, 60 joints | -- | 1,080 (773) / 768 ms |
+| weights: smooth 4 iterations / transfer to a jacket / inspect | 18,008; jacket 9,994 | 106 / 1,375 / 28 ms | 122 / 1,335 / 34 ms |
+| delta mush per frame: native / NumPy (bitwise equal); its rest data | 41,080 vertices | -- | 9.6 / 41.4 ms; 226 ms |
+| surface-following normals per frame: native / NumPy (bitwise equal) | 41,080 vertices | -- | 0.95 / 8.3 ms |
+| auto-rigged characters walking, per frame | 1 / 10 / 50 characters of 6,488 vertices | 1.15 / 4.12 / 16.9 ms | 1.48 / 7.38 / 33.9 ms |
+| `diagnose_rig` (13 poses) / `apply_rig_fix` verified | 6,488 vertices | 1.00 / 3.87 s | 1.13 / 4.45 s |
+| the stress suite (13 poses: creases, folds, stretch) | 41,080 vertices | -- | 1.39 s |
+| IK/FK switch / 4 pose commands | | 8.4 / 96 ms | 9.7 / 114 ms |
+| GPU rasterizer frame: posed / at rest | 6,488 vertices | 12.2 / 11.0 ms | 12.1 / 10.6 ms |
+| glTF: baked export / import; size | | 884 / 8.7 ms; 691 kB | 1,079 / 9.6 ms; 910 kB |
+
+Dual quaternion skinning, the three Minecraft-style workflows and every other group are
+unchanged within noise. Bone heat binds the small body faster than the geodesic voxels did
+and the 18,000-vertex one 1.7 times slower (one sparse factorization per mesh; the geodesic
+method stays, `method="geodesic"`); measuring landmarks on the mesh (probes, sections,
+surface distances) costs 1.4-2 times the voxel analysis alone; a frame of 50 walkers costs
+twice what it did -- twice the influences to blend, surface normals, 30 joints and six
+twist constraints per character, the price of the deformation the revision measured.
+
+Optimizations made during the revision, each measured before and after (in one session
+each: the 50 walkers measured 33.9 ms in the full run above) and checked equal to the code
+it replaced:
+
+| Change | Before | After |
+| --- | ---: | ---: |
+| surface-following normals in Rust (`native/src/normals.rs`, ABI 8; NumPy stays the reference, bitwise equal): 41,080 vertices | 8.3 ms | 0.95 ms |
+| ... the same, 50 walking characters per frame (they were 59 % of it) | 88.2 ms | 34.7 ms |
+| twist constraints defer the forward kinematics to the next constraint that reads the joints (switch `AETHER3D_RIG_LAZY_FK`, bitwise the same joints and skins): 50 walking characters per frame | 34.7 ms | 33.7 ms |
+| delta mush in Rust (`native/src/mush.rs`, bitwise equal to NumPy): 41,080 vertices | 41.4 ms | 9.6 ms |
+
+The surface normals were planned in NumPy as "not worth a kernel"; the crowd benchmark
+showed otherwise. Known slow spots: weight transfer still finds closest points in NumPy
+(1.3 s for a 10,000-vertex jacket); bone heat's factorization grows with the mesh (0.77 s
+at 41,000 vertices); the stress suite and verified fixes deform every bound mesh in every
+pose (1-4 s).

@@ -18,6 +18,8 @@ mod geodesic;
 mod hierarchy;
 mod hydro;
 mod ldl;
+mod mush;
+mod normals;
 mod pack;
 mod png;
 mod skin;
@@ -27,7 +29,7 @@ use buffers::Arrays;
 
 /// The calling convention between `aether3d._native` and this module: a module whose
 /// `ABI` differs from what Aether3D expects is not used.
-const ABI: u32 = 6;
+const ABI: u32 = 8;
 
 fn check(ok: bool, message: impl FnOnce() -> String) -> PyResult<()> {
     if ok {
@@ -732,6 +734,128 @@ fn skin_linear(
     Ok(())
 }
 
+/// Delta mush (`animation.rig.delta_mush`): `out` (n, 3) float32 from skinned `pos` (n, 3)
+/// float64, the smoothing graph (`dst`, `src`: directed edges sorted by destination; `w`
+/// their weights, `wsum` (n) each vertex's sum), `tris` (t, 3) int64, the rest detail
+/// `delta` (3 t, 3: one row per triangle corner) and the `mask` (n), smoothed `iterations`
+/// times with strength `lam`.
+#[pyfunction]
+#[pyo3(signature = (pos, dst, src, w, wsum, tris, delta, mask, iterations, lam, out, threads=1))]
+#[allow(clippy::too_many_arguments)]
+fn delta_mush(
+    py: Python<'_>,
+    pos: &Bound<'_, PyAny>,
+    dst: &Bound<'_, PyAny>,
+    src: &Bound<'_, PyAny>,
+    w: &Bound<'_, PyAny>,
+    wsum: &Bound<'_, PyAny>,
+    tris: &Bound<'_, PyAny>,
+    delta: &Bound<'_, PyAny>,
+    mask: &Bound<'_, PyAny>,
+    iterations: usize,
+    lam: f64,
+    out: &Bound<'_, PyAny>,
+    threads: usize,
+) -> PyResult<()> {
+    let _ = threads; // (one thread: a few million additions a frame)
+    let mut arrays = Arrays::new();
+    let p = arrays.input::<f64>(pos, "pos", None)?;
+    let n = unsafe { p.slice() }.len() / 3;
+    check(unsafe { p.slice() }.len() == 3 * n, || {
+        "pos: not (n, 3)".into()
+    })?;
+    let ds = arrays.input::<i64>(dst, "dst", None)?;
+    let e = unsafe { ds.slice() }.len();
+    let sr = arrays.input::<i64>(src, "src", Some(e))?;
+    let wt = arrays.input::<f64>(w, "w", Some(e))?;
+    let ws = arrays.input::<f64>(wsum, "wsum", Some(n))?;
+    let tr = arrays.input::<i64>(tris, "tris", None)?;
+    let t = unsafe { tr.slice() }.len() / 3;
+    check(unsafe { tr.slice() }.len() == 3 * t, || {
+        "tris: not (t, 3)".into()
+    })?;
+    let dl = arrays.input::<f64>(delta, "delta", Some(9 * t))?;
+    let mk = arrays.input::<f64>(mask, "mask", Some(n))?;
+    check(iterations <= 1000, || {
+        format!("iterations = {iterations}: at most 1000")
+    })?;
+    check(lam.is_finite(), || "lam: not finite".into())?;
+    let (dsv, srv) = unsafe { (ds.slice(), sr.slice()) };
+    for k in 0..e {
+        check(dsv[k] >= 0 && (dsv[k] as usize) < n, || {
+            format!("dst[{k}] = {}: not a vertex (0..{n})", dsv[k])
+        })?;
+        check(k == 0 || dsv[k - 1] <= dsv[k], || {
+            format!("dst[{k}] = {}: not sorted", dsv[k])
+        })?;
+        check(srv[k] >= 0 && (srv[k] as usize) < n, || {
+            format!("src[{k}] = {}: not a vertex (0..{n})", srv[k])
+        })?;
+    }
+    for (k, &v) in unsafe { tr.slice() }.iter().enumerate() {
+        check(v >= 0 && (v as usize) < n, || {
+            format!("tris[{k}] = {v}: not a vertex (0..{n})")
+        })?;
+    }
+    let o = arrays.output::<f32>(out, "out", Some(3 * n))?;
+    arrays.check_overlaps()?;
+    py.detach(|| unsafe {
+        mush::delta_mush(
+            p.slice(),
+            ds.slice(),
+            sr.slice(),
+            wt.slice(),
+            ws.slice(),
+            tr.slice(),
+            dl.slice(),
+            mk.slice(),
+            iterations,
+            lam,
+            o.slice(),
+        )
+    });
+    drop(arrays);
+    Ok(())
+}
+
+/// Surface-following normals (`animation.rig.surface_normals`): `out` (n, 3) float32 from
+/// the rest area-weighted unit normals `frame` (n, 3) float64, the skinned `posed` (n, 3)
+/// float64, `tris` (t, 3) int64 and the rest `normals` (n, 3) float32.
+#[pyfunction]
+fn surface_normals(
+    py: Python<'_>,
+    frame: &Bound<'_, PyAny>,
+    posed: &Bound<'_, PyAny>,
+    tris: &Bound<'_, PyAny>,
+    normals: &Bound<'_, PyAny>,
+    out: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let mut arrays = Arrays::new();
+    let q = arrays.input::<f64>(posed, "posed", None)?;
+    let n = unsafe { q.slice() }.len() / 3;
+    check(unsafe { q.slice() }.len() == 3 * n, || {
+        "posed: not (n, 3)".into()
+    })?;
+    let f = arrays.input::<f64>(frame, "frame", Some(3 * n))?;
+    let x = arrays.input::<f32>(normals, "normals", Some(3 * n))?;
+    let tr = arrays.input::<i64>(tris, "tris", None)?;
+    check(unsafe { tr.slice() }.len() % 3 == 0, || {
+        "tris: not (t, 3)".into()
+    })?;
+    for (k, &v) in unsafe { tr.slice() }.iter().enumerate() {
+        check(v >= 0 && (v as usize) < n, || {
+            format!("tris[{k}] = {v}: not a vertex (0..{n})")
+        })?;
+    }
+    let o = arrays.output::<f32>(out, "out", Some(3 * n))?;
+    arrays.check_overlaps()?;
+    py.detach(|| unsafe {
+        normals::surface_normals(f.slice(), q.slice(), tr.slice(), x.slice(), o.slice())
+    });
+    drop(arrays);
+    Ok(())
+}
+
 /// Dual quaternion skinning (`animation.rig.skin_dual_quaternion`): `out_p` (n, 3)
 /// float32 from `pos` (n, 3) float32, `idx` (n, k) int32, `w` (n, k) float64 and per joint
 /// `q`, `d` (m, 4) and `kmat` (m, 9) float64; with `pal` (m, 12) and `blend` (n), mixed
@@ -1133,6 +1257,8 @@ fn aether3d_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(triangulate, m)?)?;
     m.add_function(wrap_pyfunction!(skin_linear, m)?)?;
     m.add_function(wrap_pyfunction!(skin_dual_quaternion, m)?)?;
+    m.add_function(wrap_pyfunction!(delta_mush, m)?)?;
+    m.add_function(wrap_pyfunction!(surface_normals, m)?)?;
     m.add_function(wrap_pyfunction!(geodesic_voxels, m)?)?;
     m.add_function(wrap_pyfunction!(priority_flood, m)?)?;
     m.add_function(wrap_pyfunction!(accumulate, m)?)?;

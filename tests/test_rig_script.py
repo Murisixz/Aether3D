@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from aether3d import Scene
+from aether3d import Scene, load_scene
 from aether3d.animation.script import AnimationScriptError, run_animation_script
 from aether3d.cli import main
 from aether3d.sculpt.implicit import humanoid_shapes, implicit_surface
@@ -108,6 +108,41 @@ def test_the_rig_command_line(body_mesh, tmp_path, capsys):
     assert code == 0 and (tmp_path / "w.png").read_bytes()[:4] == b"\x89PNG"
     code, out = run_json("rig", "guide")
     assert "Rigid-part characters need no bones" in out["guide"]
+    # The revision's verbs: test (the stress suite, a sheet), pose, ikfk, bind, transfer,
+    # edit and create -- each one undo step, saved.
+    code, out = run_json("rig", "test", str(path), "--armature", "Hero", "--sheet",
+                         str(tmp_path / "sheet.png"))  # fmt: skip
+    assert code == 0 and "elbow_bend_140.L" in out["poses"]
+    assert {"joint_ring", "new_creases", "folded_triangles"} <= set(
+        out["poses"]["elbow_bend_140.L"]["Body"])  # fmt: skip
+    assert out["sheet"]["poses"][0] == "elbow_bend_140.L"
+    assert (tmp_path / "sheet.png").read_bytes()[:4] == b"\x89PNG"
+    code, out = run_json("rig", "pose", str(path), "--armature", "Hero", "--time", "1", "--command",
+                         '{"do": "raise_arm", "side": "L", "angle": 120}', "--command",
+                         '{"do": "roll_foot", "side": "R", "angle": 25}')  # fmt: skip
+    assert code == 0 and [c["do"] for c in out["commands"]] == ["raise_arm", "roll_foot"]
+    assert out["commands"][0]["clavicle_angle"] == 15.0
+    code, out = run_json("rig", "ikfk", str(path), "--armature", "Hero", "--limb", "arm_ik.R",
+                         "--mode", "ik", "--time", "2")  # fmt: skip
+    assert code == 0 and out["mismatch"] < 1e-9
+    code, out = run_json("rig", "bind", str(path), "--mesh", "Body", "--armature", "Hero",
+                         "--smooth", "8")  # fmt: skip
+    assert code == 0 and out["technique"].startswith("bone heat")
+    loaded = load_scene(path)
+    skin = loaded.animation._owned[("skin", loaded.get_by_name("Body")._id)]._definition
+    assert json.loads(skin.smooth)["iterations"] == 8 and skin.normals == "surface"
+    code, out = run_json("rig", "edit", str(path), "--armature", "Hero", "--op",
+                         '{"op": "rename_joint", "joint": "Head", "name": "Skull"}')  # fmt: skip
+    assert code == 0
+    assert load_scene(path).animation.rig("Hero").index("Skull") is not None
+    rig_file = tmp_path / "rig.json"
+    rig_file.write_text(json.dumps({"joints": [{"name": "Root", "position": [0, 0, 1]}]}))
+    code, out = run_json("rig", "create", str(path), "--armature", "Prop", "--rig",
+                         str(rig_file))  # fmt: skip
+    assert code == 0 and out["joints"] == ["Root"]
+    code, out = run_json("rig", "pose", str(path), "--armature", "Hero", "--command",
+                         '{"do": "fly"}')  # fmt: skip
+    assert code != 0 and out["error"]["code"] == "INVALID_ARGUMENT"
     code, out = run_json("rig", "info", str(path), "--armature", "Nope")
     assert code != 0
     code, out = run_json("rig", "info", str(path), "--armature", "Body")

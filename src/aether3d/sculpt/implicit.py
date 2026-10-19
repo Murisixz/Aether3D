@@ -249,8 +249,23 @@ def implicit_surface(
             int(i1[0] - i0[0]), int(i1[1] - i0[1]), int(i1[2] - i0[2])
         )
         first = False
-    values = np.where(np.isfinite(field), field, 4.0 * h).reshape(-1, order="F")
-    keys = np.flatnonzero(np.abs(values) < 2.5 * h)  # the band the surface crosses
+    field = np.where(np.isfinite(field), field, 4.0 * h)
+    # The band the surface crosses: the points near it, and every corner of every cell
+    # whose corners change sign -- the blended field is not an exact distance (a thin
+    # finger's gradient can exceed 1), and a crossing cell with a corner outside the band
+    # would be skipped, leaving a hole.
+    band = np.abs(field) < 2.5 * h
+    neg = field < 0
+    nx1, ny1, nz1 = nx - 1, ny - 1, nz - 1
+    corner = [(i & 1, (i >> 1) & 1, (i >> 2) & 1) for i in range(8)]
+    first_corner = neg[:nx1, :ny1, :nz1]
+    mixed = np.zeros((nx1, ny1, nz1), bool)
+    for dx, dy, dz in corner[1:]:
+        mixed |= neg[dx : nx1 + dx, dy : ny1 + dy, dz : nz1 + dz] != first_corner
+    for dx, dy, dz in corner:
+        band[dx : nx1 + dx, dy : ny1 + dy, dz : nz1 + dz] |= mixed
+    values = field.reshape(-1, order="F")
+    keys = np.flatnonzero(band.reshape(-1, order="F"))
     positions, triangles = marching_cubes(keys, values[keys], dims, lo, h)
     if len(triangles) == 0:
         raise ValidationError("the shapes enclose no volume at this voxel size")
