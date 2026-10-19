@@ -1132,8 +1132,9 @@ textures, normal maps, procedural and triplanar materials.
 
 **Stage 19 at 1080p** (RTX 4060 Laptop GPU, one run each): the studio showcase's set
 (glass, metals, area lights, an image environment, six bounces, depth of field,
-Blackman-Harris filtering, adaptive sampling, the denoiser) took about 7 minutes for its
-512-sample hero still at 1920 × 1080 and 68 s for each 64-sample frame of its orbit
+Blackman-Harris filtering, adaptive sampling, the denoiser) took 473 s for its
+512-sample hero still at 1920 × 1080 (adaptive sampling spent 496 samples per pixel on
+average) and 67.6 s for each 64-sample frame of its 151-frame orbit
 ([`film_e_studio.py`](../examples/film_e_studio.py); its report records every frame).
 
 ## Before and after: v0.19.1 against 0.20.0

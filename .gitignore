@@ -85,4 +85,6 @@ examples/output/film/*/frames/
 examples/output/film/*/*_master.mkv
 examples/output/film/*/*_1080p.mp4
 examples/output/film/*/hero.png
+examples/output/film/b_character/closeup.png
 examples/output/film/e_studio/presets/
+examples/output/film/i_mcp_agent/workspace/

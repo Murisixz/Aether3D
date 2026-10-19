@@ -1,0 +1,229 @@
+{
+ "showcase": "E studio lighting",
+ "quick": false,
+ "hero": {
+  "path": "output/film/e_studio/hero.png",
+  "seconds": 472.57,
+  "size": [
+   1920,
+   1080
+  ],
+  "backend": "gpu_path",
+  "device": "gpu",
+  "samples_per_pixel": 512,
+  "samples_mean": 495.80586419753087,
+  "noise": 0.016994344481907706,
+  "codes": [
+   "DENOISED"
+  ]
+ },
+ "hero_preview": "output/film/e_studio/hero_preview.png",
+ "presets": {
+  "three_point": {
+   "ratio": 4.0,
+   "lights": [
+    {
+     "name": "Key",
+     "role": "key",
+     "azimuth": 45.0,
+     "elevation": 35.0,
+     "intensity": 1.6580268566562684
+    },
+    {
+     "name": "Fill",
+     "role": "fill",
+     "azimuth": -50.0,
+     "elevation": 15.0,
+     "intensity": 0.6052555011151235
+    },
+    {
+     "name": "Rim",
+     "role": "rim",
+     "azimuth": 160.0,
+     "elevation": 40.0,
+     "intensity": 2.2775749144356605
+    }
+   ],
+   "removed": []
+  },
+  "rembrandt": {
+   "ratio": 8.0,
+   "lights": [
+    {
+     "name": "Key",
+     "role": "key",
+     "azimuth": 50.0,
+     "elevation": 45.0,
+     "intensity": 1.9343646660989802
+    },
+    {
+     "name": "Fill",
+     "role": "fill",
+     "azimuth": -45.0,
+     "elevation": 10.0,
+     "intensity": 0.30262775055756164
+    }
+   ],
+   "removed": [
+    "Rim"
+   ]
+  },
+  "butterfly": {
+   "ratio": 3.0,
+   "lights": [
+    {
+     "name": "Key",
+     "role": "key",
+     "azimuth": 0.0,
+     "elevation": 45.0,
+     "intensity": 1.473801650361128
+    },
+    {
+     "name": "Fill",
+     "role": "fill",
+     "azimuth": 0.0,
+     "elevation": -15.0,
+     "intensity": 0.8070073348201644
+    },
+    {
+     "name": "Rim",
+     "role": "rim",
+     "azimuth": 180.0,
+     "elevation": 45.0,
+     "intensity": 2.024511035053921
+    }
+   ],
+   "removed": []
+  },
+  "high_key": {
+   "ratio": 2.0,
+   "lights": [
+    {
+     "name": "Key",
+     "role": "key",
+     "azimuth": 30.0,
+     "elevation": 30.0,
+     "intensity": 1.1053512377708454
+    },
+    {
+     "name": "Fill",
+     "role": "fill",
+     "azimuth": -30.0,
+     "elevation": 10.0,
+     "intensity": 1.2105110022302463
+    },
+    {
+     "name": "Rim",
+     "role": "rim",
+     "azimuth": 180.0,
+     "elevation": 45.0,
+     "intensity": 1.5183832762904406
+    }
+   ],
+   "removed": []
+  },
+  "low_key": {
+   "ratio": 16.0,
+   "lights": [
+    {
+     "name": "Key",
+     "role": "key",
+     "azimuth": 60.0,
+     "elevation": 30.0,
+     "intensity": 2.072533570820335
+    },
+    {
+     "name": "Fill",
+     "role": "fill",
+     "azimuth": -60.0,
+     "elevation": 5.0,
+     "intensity": 0.15131387527878082
+    },
+    {
+     "name": "Rim",
+     "role": "rim",
+     "azimuth": 150.0,
+     "elevation": 30.0,
+     "intensity": 2.846968643044576
+    }
+   ],
+   "removed": []
+  },
+  "silhouette": {
+   "ratio": null,
+   "lights": [
+    {
+     "name": "Rim 1",
+     "role": "rim",
+     "azimuth": 150.0,
+     "elevation": 25.0,
+     "intensity": 3.0367665525808833
+    },
+    {
+     "name": "Rim 2",
+     "role": "rim",
+     "azimuth": -150.0,
+     "elevation": 25.0,
+     "intensity": 3.0367665525808833
+    }
+   ],
+   "removed": [
+    "Key",
+    "Fill",
+    "Rim"
+   ]
+  }
+ },
+ "presets_sheet": "output/film/e_studio/presets_sheet.png",
+ "camera_quality": {
+  "set": [],
+  "vase_hold": [],
+  "cube_hold": []
+ },
+ "orbit": {
+  "frames": 151,
+  "fps": 60,
+  "seconds": 10202.4,
+  "seconds_per_frame": 67.57,
+  "resumed": 0,
+  "manifest": "output/film/e_studio/frames/orbit/frames.json",
+  "video": {
+   "mp4": {
+    "path": "output/film/e_studio/orbit_1080p.mp4",
+    "bytes": 4891827,
+    "command": "-y -framerate 60/1 -i output/film/e_studio/frames/orbit/frame_%05d.png -c:v libx264 -preset slow -crf 10 -vf pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -movflags +faststart output/film/e_studio/orbit_1080p.mp4"
+   },
+   "master": {
+    "path": "output/film/e_studio/orbit_master.mkv",
+    "bytes": 108075507
+   },
+   "preview": {
+    "path": "output/film/e_studio/orbit_preview.mp4",
+    "bytes": 70807
+   },
+   "verify": {
+    "psnr": "PSNR r:45.416572 g:43.730835 b:43.038681 average:43.951948 min:43.751571 max:44.161887",
+    "ssim": "SSIM R:0.992541 (21.272933) G:0.995158 (23.149475) B:0.992319 (21.145832) All:0.993339 (21.764662)"
+   },
+   "verify_master": {
+    "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+    "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+   }
+  }
+ },
+ "seconds": {
+  "hero_and_orbit_run": 10766.7,
+  "presets_run": 74.8
+ },
+ "presets_lighting": "each rig alone: the environment at 5% and the backdrop glow off",
+ "machine": {
+  "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+  "aether3d": "0.20.0",
+  "native": true,
+  "python": "3.14.8"
+ },
+ "provenance": {
+  "hero_and_orbit": "rendered 2026-10-19 13:32-16:32 by the Stage 19 tree at commit 4a943b0, before the version string became 0.20.0; the later rendering changes do not alter these images (the adaptive-sampling test's explicit sums decided as the earlier form did on 5.2 million test pixels; the other changes concern files, the world and studio rigs)",
+  "presets": "re-rendered 2026-10-19 16:33 by commit 0321140 (0.20.0), each rig alone"
+ }
+}
