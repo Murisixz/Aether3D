@@ -75,7 +75,9 @@ def test_linear_twists_collapse_and_dual_quaternions_do_not(body_mesh):
 def test_bind_mismatch_is_found_and_fixed_by_a_verified_rebind(body_mesh):
     s, arm, body = rigged(body_mesh)
     a = s.animation
-    a.move_joint(arm, "Shin.L", [0.0, 0.0, 0.03], space="parent", skins="keep_bind")
+    # (a joint the pose suite does not bend: moving a knee would also change how the knee
+    # bends, which no rebind can repair and the verification rightly refuses)
+    a.move_joint(arm, "Toe.L", [0.0, -0.03, 0.0], space="parent", skins="keep_bind")
     d = a.diagnose_rig(arm, poses=None, animation=False)
     found = [f for f in d["findings"] if f["code"] == "BIND_MISMATCH"]
     assert found and found[0]["magnitude"] > 0.01

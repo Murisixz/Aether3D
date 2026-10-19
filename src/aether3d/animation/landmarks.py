@@ -706,6 +706,7 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame, mesh_c) 
         ch = branch(e, f"arm.{side}")
         _arm(det, side, sign, ch, _tip(a_centers[e], ch, grid.h), probe, H)
     _spine(det, probe, H)
+    _fingers(det, mesh_c, H)
     det.info["_regions"] = {
         "parts": regions,
         "torso": a_flat,
@@ -718,6 +719,35 @@ def _humanoid(det, grid, centers, solid_flat, keep, H, template, frame, mesh_c) 
         ang = math.degrees(math.atan2(abs(d[0]), -d[2])) if np.linalg.norm(d) > 0 else 0.0
         det.info["arm_angle"] = round(ang, 1)
         det.info["pose"] = "T-pose" if ang > 70 else ("A-pose" if ang > 20 else "arms down")
+
+
+def _fingers(det, mesh_c, H) -> None:
+    """Fingers and thumbs (:func:`.anatomy.hand_fingers`) as landmarks: ``thumb.1.L`` ..
+    ``thumb.tip.L``, ``index.1.L`` (the knuckle) .. ``index.tip.L``, likewise ``middle``,
+    ``ring``, ``pinky``; a hand whose fingers do not part (a mitten) gets none, and the
+    detection says so."""
+    from .anatomy import hand_fingers
+
+    found = {}
+    for side in ("L", "R"):
+        wr, tip = det.landmarks.get(f"wrist.{side}"), det.landmarks.get(f"hand_tip.{side}")
+        if wr is None or tip is None or wr.method == "proportion":
+            continue
+        res = hand_fingers(mesh_c[0], mesh_c[1], wr.position, tip.position, H)
+        found[side] = {"tips": res["count"], "mitten": res["mitten"]}
+        if res["mitten"]:
+            continue
+        for name, pts in [*res["fingers"].items(), ("thumb", res["thumb"])]:
+            if pts is None:
+                continue
+            notes = ("its base", "its middle joint", "its last joint", "its tip")
+            if name != "thumb":
+                notes = ("its knuckle", "its middle joint", "its last joint", "its tip")
+            for k, (key, note) in enumerate(zip(("1", "2", "3", "tip"), notes, strict=True)):
+                conf = 0.8 if key == "tip" else 0.65
+                how = f"the {name} finger's {note[4:]}, on its measured axis"
+                det.add(f"{name}.{key}.{side}", pts[k], conf, "finger", how)
+    det.info["fingers"] = found
 
 
 def _analysis_solid(grid, solid_flat, centers, keep):

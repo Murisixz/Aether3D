@@ -88,157 +88,161 @@ def _flexion(bend: float, most: float = 150.0, beyond: float = 5.0) -> list[floa
     return [-(bend + beyond), max(most - bend, 1.0)]
 
 
+FINGER_NAMES = (("thumb", "Thumb"), ("index", "Index"), ("middle", "Middle"),
+                ("ring", "Ring"), ("pinky", "Pinky"))  # fmt: skip
+# The share of a limb's twist its shoulder- or hip-side half keeps (that half's helper
+# turns back by the rest): Rigify's split deforming bones spread a twist the same way.
+UPPER_TWIST = 0.5
+FOREARM_TWIST = 0.5
+CORRECTIVE = {"iterations": 12, "strength": 0.5, "region": "blend"}
+# The pelvis side bone's end: this many times the hip joint's distance from the mirror
+# plane out, and this fraction of the stature above the hip joint (the iliac crest).
+PELVIS_CREST = (1.45, 0.06)
+
+
 def _humanoid_joints(det: LM.Detection, twist: bool) -> list[dict[str, Any]]:
+    """The humanoid template on the landmarks: a four-joint torso along the back (Hips,
+    Spine, Chest, UpperChest), Neck, Head; clavicles (Shoulder) from the upper chest;
+    UpperArm, ForeArm, Hand; Thigh, Shin, Foot, Toe; fingers and thumbs where the hands
+    show them. With ``twist``, each upper arm, forearm and thigh is split for twist as
+    Rigify splits its deforming bones: the upper arm and thigh keep their whole bones
+    for animation but weigh only on the half toward the next joint (``span``), the half
+    toward the torso weighs on a helper that turns back :data:`UPPER_TWIST` of the
+    limb's twist; the forearm's wrist half weighs on a helper that takes
+    :data:`FOREARM_TWIST` of the hand's twist."""
     P = det.point
+    lm = det.landmarks
+    has_upper = "upper_chest" in lm
     J: list[dict[str, Any]] = [
-        {
-            "name": "Hips",
-            "at": P("pelvis"),
-            "role": "hips",
-            "lean": FORWARD,
-            "end": "Spine",
-            "limits": {"swing": {"cone": 40}, "twist": [-40, 40]},
-        },
-        {
-            "name": "Spine",
-            "parent": "Hips",
-            "at": P("spine"),
-            "role": "spine",
-            "lean": FORWARD,
-            "end": "Chest",
-            "limits": {"swing": {"cone": 45}, "twist": [-40, 40]},
-        },
-        {
-            "name": "Chest",
-            "parent": "Spine",
-            "at": P("chest"),
-            "role": "chest",
-            "lean": FORWARD,
-            "end": "Neck",
-            "limits": {"swing": {"cone": 40}, "twist": [-40, 40]},
-        },
-        {
-            "name": "Neck",
-            "parent": "Chest",
-            "at": P("neck"),
-            "role": "neck",
-            "lean": FORWARD,
-            "end": "Head",
-            "limits": {"swing": {"cone": 50}, "twist": [-60, 60]},
-        },
-        {
-            "name": "Head",
-            "parent": "Neck",
-            "at": P("head"),
-            "role": "head",
-            "lean": FORWARD,
-            "tip": P("head_top"),
-            "limits": {"swing": {"cone": 45}, "twist": [-70, 70]},
-        },
-    ]
-    for side, sign in (("L", 1.0), ("R", -1.0)):
+        {"name": "Hips", "at": P("pelvis"), "role": "hips", "lean": FORWARD, "end": "Spine",
+         "limits": {"swing": {"cone": 40}, "twist": [-40, 40]}},
+        {"name": "Spine", "parent": "Hips", "at": P("spine"), "role": "spine", "lean": FORWARD,
+         "end": "Chest", "limits": {"swing": {"cone": 40}, "twist": [-35, 35]}},
+        {"name": "Chest", "parent": "Spine", "at": P("chest"), "role": "chest", "lean": FORWARD,
+         "end": "UpperChest" if has_upper else "Neck",
+         "limits": {"swing": {"cone": 35}, "twist": [-35, 35]}},
+    ]  # fmt: skip
+    top = "Chest"
+    if has_upper:
+        J.append({"name": "UpperChest", "parent": "Chest", "at": P("upper_chest"),
+                  "role": "upper_chest", "lean": FORWARD, "end": "Neck",
+                  "limits": {"swing": {"cone": 30}, "twist": [-30, 30]}})  # fmt: skip
+        top = "UpperChest"
+    J += [
+        {"name": "Neck", "parent": top, "at": P("neck"), "role": "neck", "lean": FORWARD,
+         "end": "Head", "limits": {"swing": {"cone": 50}, "twist": [-60, 60]}},
+        {"name": "Head", "parent": "Neck", "at": P("head"), "role": "head", "lean": FORWARD,
+         "tip": P("head_top"), "limits": {"swing": {"cone": 45}, "twist": [-70, 70]}},
+    ]  # fmt: skip
+    for side in ("L", "R"):
         out = -1.0 if side == "L" else 1.0  # (a left thigh abducts toward -z swing)
-        elbow, wrist = P(f"elbow.{side}"), P(f"wrist.{side}")
-        elbow_bend = _rest_bend(P(f"shoulder.{side}"), elbow, wrist)
-        knee_bend = _rest_bend(P(f"hip.{side}"), P(f"knee.{side}"), P(f"ankle.{side}"))
-        J += [
-            {
-                "name": f"Shoulder.{side}",
-                "parent": "Chest",
-                "at": P(f"clavicle.{side}"),
-                "role": f"clavicle.{side}",
-                "lean": FORWARD,
-                "end": f"UpperArm.{side}",
-                "limits": {"swing": {"cone": 25}, "twist": [-10, 10]},
-            },
-            {
-                "name": f"UpperArm.{side}",
-                "parent": f"Shoulder.{side}",
-                "at": P(f"shoulder.{side}"),
-                "role": f"upper_arm.{side}",
-                "lean": FORWARD,
-                "end": f"ForeArm.{side}",
-                "limits": {"swing": {"cone": 130}, "twist": [-90, 90]},
-            },
-            {
-                "name": f"ForeArm.{side}",
-                "parent": f"UpperArm.{side}",
-                "at": elbow,
-                "role": f"lower_arm.{side}",
-                "lean": FORWARD,
-                "end": f"ForeArmTwist.{side}" if twist else f"Hand.{side}",
-                "limits": {
-                    "swing": {"x": _flexion(elbow_bend), "z": [-5, 5]},
-                    "twist": [-80, 80],
-                },
-            },
-        ]
+        shoulder, elbow, wrist = P(f"shoulder.{side}"), P(f"elbow.{side}"), P(f"wrist.{side}")
+        hip, knee, ankle = P(f"hip.{side}"), P(f"knee.{side}"), P(f"ankle.{side}")
+        elbow_bend = _rest_bend(shoulder, elbow, wrist)
+        knee_bend = _rest_bend(hip, knee, ankle)
+        fingers = [(key, cap) for key, cap in FINGER_NAMES if f"{key}.1.{side}" in lm]
+        hand_tip = P(f"middle.1.{side}") if f"middle.1.{side}" in lm else P(f"hand_tip.{side}")
+        J.append({"name": f"Shoulder.{side}", "parent": top, "at": P(f"clavicle.{side}"),
+                  "role": f"clavicle.{side}", "lean": FORWARD, "end": f"UpperArm.{side}",
+                  "limits": {"swing": {"cone": 30}, "twist": [-10, 10]}})  # fmt: skip
+        upper = {"name": f"UpperArm.{side}", "parent": f"Shoulder.{side}", "at": shoulder,
+                 "role": f"upper_arm.{side}", "lean": FORWARD, "end": f"ForeArm.{side}",
+                 "limits": {"swing": {"cone": 130}, "twist": [-90, 90]}}  # fmt: skip
+        fore = {"name": f"ForeArm.{side}", "parent": f"UpperArm.{side}", "at": elbow,
+                "role": f"lower_arm.{side}", "lean": FORWARD, "end": f"Hand.{side}",
+                "limits": {"swing": {"x": _flexion(elbow_bend), "z": [-5, 5]},
+                           "twist": [-80, 80]}}  # fmt: skip
+        thigh = {"name": f"Thigh.{side}", "parent": "Hips", "at": hip, "role": f"thigh.{side}",
+                 "lean": BACKWARD, "end": f"Shin.{side}",
+                 "limits": {"swing": {"x": [-120, 35], "z": [-45, 25] if out < 0 else [-25, 45]},
+                            "twist": [-40, 40]}}  # fmt: skip
         if twist:
-            J.append(
-                {
-                    "name": f"ForeArmTwist.{side}",
-                    "parent": f"ForeArm.{side}",
-                    "at": 0.5 * (elbow + wrist),
-                    "role": f"forearm_twist.{side}",
-                    "lean": FORWARD,
-                    "tip": wrist,
-                }
-            )
+            upper["span"] = [0.5, 1.0]
+            fore["span"] = [0.0, 0.5]
+            thigh["span"] = [0.5, 1.0]
+        J += [upper, fore]
+        if twist:
+            J += [
+                {"name": f"UpperArmTwist.{side}", "parent": f"UpperArm.{side}", "at": shoulder,
+                 "role": f"upper_arm_twist.{side}", "lean": FORWARD,
+                 "tip": 0.5 * (shoulder + elbow)},
+                {"name": f"ForeArmTwist.{side}", "parent": f"ForeArm.{side}",
+                 "at": 0.5 * (elbow + wrist), "role": f"forearm_twist.{side}",
+                 "lean": FORWARD, "tip": wrist},
+            ]  # fmt: skip
+        J.append({"name": f"Hand.{side}", "parent": f"ForeArm.{side}", "at": wrist,
+                  "role": f"hand.{side}", "lean": FORWARD, "tip": hand_tip,
+                  "limits": {"swing": {"x": [-70, 80], "z": [-30, 30]},
+                             "twist": [-25, 25]}})  # fmt: skip
+        if fingers:
+            palm = _palm_normal(det, side)
+            for key, cap in fingers:
+                pts = [P(f"{key}.{k}.{side}") for k in ("1", "2", "3", "tip")]
+                parent = f"Hand.{side}"
+                for i in range(3):
+                    name = f"{cap}{i + 1}.{side}"
+                    if key == "thumb":
+                        limits = (
+                            {"swing": {"cone": 50}, "twist": [-30, 30]}
+                            if i == 0
+                            else {"hinge": {"axis": "+x", "min": -20, "max": 70, "play": 5}}
+                        )
+                    else:
+                        limits = ({"swing": {"x": [-25, 90], "z": [-20, 20]}, "twist": [-10, 10]}
+                                  if i == 0 else
+                                  {"hinge": {"axis": "+x", "min": -5, "max": 105 - 20 * (i - 1),
+                                             "play": 3}})  # fmt: skip
+                    joint = {"name": name, "parent": parent, "at": pts[i],
+                             "role": f"{key}.{i + 1}.{side}", "lean": palm,
+                             "limits": limits}  # fmt: skip
+                    if i < 2:
+                        joint["end"] = f"{cap}{i + 2}.{side}"
+                    else:
+                        joint["tip"] = pts[3]
+                    J.append(joint)
+                    parent = name
+        # The pelvis's side, from the root out to the hip's crest (Rigify's DEF-pelvis): the
+        # flank and the top of the buttock follow the hips, not the thigh (a thigh's bone
+        # starts at the hip joint, nearer to the flank than the spine's bones are).
+        pelvis = P("pelvis")
+        crest = np.array([PELVIS_CREST[0] * hip[0], 0.5 * (pelvis[1] + hip[1]),
+                          hip[2] + PELVIS_CREST[1] * det.height])  # fmt: skip
+        J.append({"name": f"Pelvis.{side}", "parent": "Hips", "at": pelvis,
+                  "role": f"pelvis.{side}", "lean": FORWARD, "tip": crest})  # fmt: skip
+        J.append(thigh)
+        if twist:
+            J.append({"name": f"ThighTwist.{side}", "parent": f"Thigh.{side}", "at": hip,
+                      "role": f"thigh_twist.{side}", "lean": BACKWARD,
+                      "tip": 0.5 * (hip + knee)})  # fmt: skip
         J += [
-            {
-                "name": f"Hand.{side}",
-                "parent": f"ForeArm.{side}",
-                "at": wrist,
-                "role": f"hand.{side}",
-                "lean": FORWARD,
-                "tip": P(f"hand_tip.{side}"),
-                "limits": {"swing": {"x": [-70, 80], "z": [-30, 30]}, "twist": [-25, 25]},
-            },
-            {
-                "name": f"Thigh.{side}",
-                "parent": "Hips",
-                "at": P(f"hip.{side}"),
-                "role": f"thigh.{side}",
-                "lean": BACKWARD,
-                "end": f"Shin.{side}",
-                "limits": {
-                    "swing": {"x": [-120, 35], "z": [-45, 25] if out < 0 else [-25, 45]},
-                    "twist": [-40, 40],
-                },
-            },
-            {
-                "name": f"Shin.{side}",
-                "parent": f"Thigh.{side}",
-                "at": P(f"knee.{side}"),
-                "role": f"shin.{side}",
-                "lean": BACKWARD,
-                "end": f"Foot.{side}",
-                "limits": {
-                    "swing": {"x": _flexion(knee_bend, beyond=3.0), "z": [-5, 5]},
-                    "twist": [-15, 15],
-                },
-            },
-            {
-                "name": f"Foot.{side}",
-                "parent": f"Shin.{side}",
-                "at": P(f"ankle.{side}"),
-                "role": f"foot.{side}",
-                "lean": UP,
-                "end": f"Toe.{side}",
-                "limits": {"swing": {"x": [-50, 30], "z": [-25, 25]}, "twist": [-15, 15]},
-            },
-            {
-                "name": f"Toe.{side}",
-                "parent": f"Foot.{side}",
-                "at": P(f"ball.{side}"),
-                "role": f"toe.{side}",
-                "lean": UP,
-                "tip": P(f"toe_tip.{side}"),
-                "limits": {"hinge": {"axis": "+x", "min": -30, "max": 60}},
-            },
-        ]
-        del sign
+            {"name": f"Shin.{side}", "parent": f"Thigh.{side}", "at": knee,
+             "role": f"shin.{side}", "lean": BACKWARD, "end": f"Foot.{side}",
+             "limits": {"swing": {"x": _flexion(knee_bend, beyond=3.0), "z": [-5, 5]},
+                        "twist": [-15, 15]}},
+            {"name": f"Foot.{side}", "parent": f"Shin.{side}", "at": ankle, "role": f"foot.{side}",
+             "lean": UP, "end": f"Toe.{side}",
+             "limits": {"swing": {"x": [-50, 30], "z": [-25, 25]}, "twist": [-15, 15]}},
+            {"name": f"Toe.{side}", "parent": f"Foot.{side}", "at": P(f"ball.{side}"),
+             "role": f"toe.{side}", "lean": UP, "tip": P(f"toe_tip.{side}"),
+             "limits": {"hinge": {"axis": "+x", "min": -30, "max": 60}}},
+        ]  # fmt: skip
     return J
+
+
+def _palm_normal(det: LM.Detection, side: str) -> np.ndarray:
+    """The way a hand's palm faces (canonical frame): across its knuckles and along it."""
+    P = det.point
+    wrist = P(f"wrist.{side}")
+    knuckles = [P(f"{k}.1.{side}") for k in ("index", "middle", "ring", "pinky")
+                if f"{k}.1.{side}" in det.landmarks]  # fmt: skip
+    if len(knuckles) < 2:
+        return FORWARD
+    along = np.mean(knuckles, axis=0) - wrist
+    along /= max(float(np.linalg.norm(along)), 1e-12)
+    across = knuckles[0] - knuckles[-1]  # toward the thumb
+    n = np.cross(along, across) * (1.0 if side == "L" else -1.0)
+    norm = float(np.linalg.norm(n))
+    return FORWARD if norm < 1e-9 else n / norm
 
 
 def _blocky_joints(det: LM.Detection) -> list[dict[str, Any]]:
@@ -498,14 +502,27 @@ def autorig(
             if template == "blocky":
                 opts.setdefault("rigid_parts", "all")
             body = [o for o, m in part_modes if m == "geodesic"]
+            method = opts.get("method", "heat")
             for obj, mode in part_modes:
                 if mode == "skip":
                     continue
                 if mode == "geodesic":
                     mask = None
-                    if template in ("humanoid", "stylized") and opts.get("regions", True):
+                    # (body-part regions and spine smoothing repair voxel distances; heat
+                    # weights are a smooth diffusion and need neither)
+                    if (
+                        method == "geodesic"
+                        and template in ("humanoid", "stylized")
+                        and opts.get("regions", True)
+                    ):
                         mask = _region_mask(system, det, arm, obj)
                     gen = {k: v for k, v in opts.items() if k != "regions"}
+                    # Organic characters relax their skinning with delta mush where the
+                    # weights blend (LBS folds and pinches; measured in the revision's
+                    # design record) and shade with normals that follow the surface.
+                    if template in ("humanoid", "stylized") and skinning != "rigid":
+                        gen.setdefault("corrective", dict(CORRECTIVE))
+                    gen.setdefault("normals", "surface")
                     rep = system.generate_weights(
                         obj,
                         arm,
@@ -550,10 +567,11 @@ def autorig(
 # Which joints may weigh on each body part (the Reeb branches of the detection), and
 # which joints join them across a band around the part's junction with the torso.
 _PART_JOINTS = {
-    "arm": ("Shoulder", "UpperArm", "ForeArm", "ForeArmTwist", "Hand"),
-    "leg": ("Thigh", "Shin", "Foot", "Toe"),
-}
-_TORSO = ("Hips", "Spine", "Chest", "Neck", "Shoulder.L", "Shoulder.R")
+    "arm": ("Shoulder", "UpperArm", "UpperArmTwist", "ForeArm", "ForeArmTwist", "Hand",
+            *(f"{cap}{i}" for _, cap in FINGER_NAMES for i in (1, 2, 3))),
+    "leg": ("Pelvis", "Thigh", "ThighTwist", "Shin", "Foot", "Toe"),
+}  # fmt: skip
+_TORSO = ("Hips", "Spine", "Chest", "UpperChest", "Neck", "Shoulder.L", "Shoulder.R")
 _ACROSS = {"arm": ("Chest", "UpperArm"), "leg": ("Hips", "Thigh"), "head": ("Chest", "Neck")}
 # How far (limb radii) a part's root joint reaches into the torso, and the torso's joint
 # into the part: wide at the hips (the thigh moves the pelvis's skin: groin and buttock),
@@ -571,7 +589,7 @@ _UNREACHED_BAND = 3.0
 # Extra smoothing of the spine's weights among themselves (a torso twisted 60 degrees:
 # 38 -> 15 flipped triangles, the worst stretch 2.7 -> 2.3; bending it 45: 2.2 -> 1.9;
 # the limbs' poses unchanged; 60 iterations gain nothing more).
-_SPINE = ("Hips", "Spine", "Chest")
+_SPINE = ("Hips", "Spine", "Chest", "UpperChest")
 SPINE_SMOOTH = 20
 
 
@@ -702,6 +720,10 @@ def _brief(rep: dict[str, Any], mode: str) -> dict[str, Any]:
         "method",
         "policy",
         "technique",
+        "diffusion",
+        "rays",
+        "vertices_without_source",
+        "parts_without_bone",
         "voxel_size",
         "unreached_vertices",
         "rigid_parts",
@@ -840,34 +862,35 @@ def _rig_json(system, arm, joints, frames, det, template, twist, controls, enfor
         if end is not None:
             tip_arm = a_inv @ np.append(det.world(end), 1.0)
             rec["tail"] = np.linalg.solve(model[j["name"]], tip_arm)[:3].tolist()
+        elif "end" in j:
+            # (explicit: a bone with a twist helper or fingers among its children would
+            # otherwise end at whichever child comes first)
+            rec["tail"] = np.linalg.solve(model[j["name"]], model[j["end"]][:, 3])[:3].tolist()
         if "limits" in j:
             rec["limits"] = j["limits"]
         if j.get("deform") is False:
             rec["deform"] = False
+        if "span" in j:
+            rec["span"] = j["span"]
         out.append(rec)
-    by_name = {j["name"]: j for j in out}
-    # The forearm's bone ends at its twist helper (their bones split the forearm).
     constraints: list[dict[str, Any]] = []
     made: list[dict[str, Any]] = []
     ctrl: list[dict[str, Any]] = []
     if template in ("humanoid", "stylized"):
         for side in ("L", "R"):
             if twist:
-                tw = model[f"ForeArmTwist.{side}"][:3, 3]
-                fa = model[f"ForeArm.{side}"]
-                by_name[f"ForeArm.{side}"]["tail"] = np.linalg.solve(fa, np.append(tw, 1.0))[
-                    :3
-                ].tolist()
-                constraints.append(
-                    {
-                        "name": f"forearm_twist.{side}",
-                        "type": "twist",
-                        "joint": f"ForeArmTwist.{side}",
-                        "target": {"joint": f"Hand.{side}"},
-                        "axis": "+y",
-                        "factor": 0.5,
-                    }
-                )
+                # The split limbs' helpers: the forearm's wrist half takes part of the
+                # hand's twist; the upper arm's and thigh's torso halves turn back part of
+                # their own limb's twist.
+                for name, helper, source, factor in (
+                    ("forearm_twist", "ForeArmTwist", "Hand", FOREARM_TWIST),
+                    ("upper_arm_twist", "UpperArmTwist", "UpperArm", -(1.0 - UPPER_TWIST)),
+                    ("thigh_twist", "ThighTwist", "Thigh", -(1.0 - UPPER_TWIST)),
+                ):
+                    constraints.append({"name": f"{name}.{side}", "type": "twist",
+                                        "joint": f"{helper}.{side}",
+                                        "target": {"joint": f"{source}.{side}"},
+                                        "axis": "+y", "factor": factor})  # fmt: skip
         if controls:
             ctrl, made, cons = _humanoid_controls(system, arm, model, det)
             constraints += cons
@@ -919,6 +942,19 @@ def _humanoid_controls(system, arm, model, det) -> tuple[list, list, list]:
         },
         {"name": "pelvis", "kind": "fk", "joint": "Hips", "group": "spine", "shape": "cube"},
         {"name": "chest", "kind": "fk", "joint": "Chest", "group": "spine", "shape": "circle"},
+        *(
+            [
+                {
+                    "name": "upper_chest",
+                    "kind": "fk",
+                    "joint": "UpperChest",
+                    "group": "spine",
+                    "shape": "circle",
+                }
+            ]
+            if "UpperChest" in model
+            else []
+        ),  # fmt: skip
         {"name": "head", "kind": "fk", "joint": "Head", "group": "head", "shape": "circle"},
     ]
     made = []

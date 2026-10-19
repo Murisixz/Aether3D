@@ -1063,6 +1063,8 @@ class AnimationSystem:
         influences: int = 4,
         method: str = "linear",
         dq: Any = None,
+        normals: str = "joints",
+        smooth: Any = None,
     ) -> dict[str, Any]:
         """Bind a mesh object to a rig smoothly, in the current (rest) pose. ``weights``:
         ``{"indices": (n, k), "weights": (n, k), "joints": [names], "inverse_bind": (m, 4,
@@ -1072,7 +1074,10 @@ class AnimationSystem:
         ``"envelope"`` (inverse-distance weights over the ``influences`` nearest bones: an
         automatic starting point, not production weight painting). ``method``:
         ``"linear"``, ``"dual_quaternion"`` or ``"blended"`` (per vertex: ``dq``, the DQS
-        share 0..1 -- one number or one per vertex). Returns a report."""
+        share 0..1 -- one number or one per vertex). ``normals``: ``"joints"`` (rest
+        normals carried by the joint matrices, glTF's rule) or ``"surface"`` (turned as the
+        deformed surface turns). ``smooth``: corrective smoothing (delta mush:
+        ``{iterations, strength, region}``, :func:`.rig.check_smooth`). Returns a report."""
         from .rig import MAX_INFLUENCES, make_skin
 
         obj = self._object(mesh_object, "mesh_object")
@@ -1141,8 +1146,9 @@ class AnimationSystem:
         if method == "blended" and dq is not None and np.ndim(dq) == 0:
             dq = np.full(mesh.vertex_count, float(dq))
         skin = make_skin(
-            obj._id, "", [rig.joints[k].id for k in idx], bind_inv, vi, vw, method, "skin", dq=dq
-        )
+            obj._id, "", [rig.joints[k].id for k in idx], bind_inv, vi, vw, method, "skin", dq=dq,
+            normals=normals, smooth=smooth,
+        )  # fmt: skip
         if skin.vertex_count != mesh.vertex_count:
             raise _err(
                 "INVALID_SKIN",
@@ -1165,6 +1171,8 @@ class AnimationSystem:
             "joints_used": int(used.size),
             "weights": how,
             "method": method,
+            "normals": skin.normals,
+            **({} if skin.smooth == "null" else {"smooth": json.loads(skin.smooth)}),
         }
 
     def detect_landmarks(self, meshes: Any, **options: Any) -> dict[str, Any]:
@@ -2326,16 +2334,10 @@ def _automatic_weights(
     """Weights from distances to bone segments (mesh space): each vertex takes its ``k``
     nearest bones with weights proportional to ``1 / (d + 1e-6 L)^4`` (``L`` the median
     bone length), normalized."""
-    model = rig.rest_model()
-    tails = rig.tails()
-    heads = []
-    ends = []
-    for j in joints:
-        m = mesh_from_armature @ model[j]
-        heads.append(m[:3, 3])
-        ends.append((m @ np.append(tails[j], 1.0))[:3])
-    a = np.array(heads)
-    b = np.array(ends)
+    starts, stops = rig.deform_segments()  # (each joint's span of its bone)
+    lin, off = mesh_from_armature[:3, :3], mesh_from_armature[:3, 3]
+    a = np.asarray(starts[joints]) @ lin.T + off
+    b = np.asarray(stops[joints]) @ lin.T + off
     p = positions.astype(np.float64)
     seg = b - a
     length2 = np.maximum(np.sum(seg * seg, axis=1), 1e-30)
@@ -2639,11 +2641,13 @@ def definition_from_json(
             "method",
             "dq",
             "locks",
+            "normals",
+            "smooth",
         }:
             raise _err(
                 "INVALID_DOCUMENT",
                 "a skin is {object, rig, joints, inverse_bind, indices, weights, method, dq, "
-                "locks}",
+                "locks, normals, smooth}",
                 location,
             )
         try:
@@ -2658,6 +2662,8 @@ def definition_from_json(
                 location,
                 dq=data.get("dq"),
                 locks=data.get("locks"),
+                normals=data.get("normals", "joints"),
+                smooth=data.get("smooth"),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise _err(

@@ -72,6 +72,10 @@ class Joint:
     limits: str = "null"  # canonical JSON (see :mod:`.limits`)
     role: str | None = None  # semantic role: "hips", "upper_arm.L", ... (unique per rig)
     deform: bool = True  # False: a helper joint (controls, IK, twist sources): no weights
+    # The part of the bone (fractions from head to tail) its skin weights cover: a bone
+    # split for twist (the upper arm's shoulder half on its counter-twisting helper) keeps
+    # its whole length for animation and weighs only on its own part.
+    span: tuple[float, float] = (0.0, 1.0)
 
     def to_json(self, joints: tuple[Joint, ...]) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -91,6 +95,8 @@ class Joint:
             out["role"] = self.role
         if not self.deform:
             out["deform"] = False
+        if self.span != (0.0, 1.0):
+            out["span"] = list(self.span)
         return out
 
 
@@ -315,6 +321,21 @@ class Rig:
             found = self._cache["tails"] = out
         return found
 
+    def deform_segments(self) -> tuple[np.ndarray, np.ndarray]:
+        """Each joint's weighting segment at rest in armature space ``(starts, ends)``:
+        the part of its bone (head to tail) its ``span`` covers."""
+        found = self._cache.get("deform_segments")
+        if found is None:
+            model = self.rest_model()
+            tails = self.tails()
+            span = np.array([j.span for j in self.joints], np.float64).reshape(-1, 2)
+            a = np.einsum("nij,nj->ni", model[:, :3, :3], span[:, :1] * tails) + model[:, :3, 3]
+            b = np.einsum("nij,nj->ni", model[:, :3, :3], span[:, 1:] * tails) + model[:, :3, 3]
+            for arr in (a, b):
+                arr.flags.writeable = False
+            found = self._cache["deform_segments"] = (a, b)
+        return found
+
     def descendants(self, k: int) -> list[int]:
         out = []
         parents = self.parents
@@ -432,7 +453,7 @@ def parse_rig(raw: Any, location: str) -> Rig:
             raise _err(
                 "INVALID_RIG",
                 "a joint is {id, name, parent, position, rotation, scale, tail, limits, role, "
-                "deform}",
+                "deform, span}",
                 loc,
             )
         name = P.check_name(j.get("name"), "a joint name", f"{loc}.name")
@@ -482,7 +503,18 @@ def parse_rig(raw: Any, location: str) -> Rig:
         deform = j.get("deform", True)
         if not isinstance(deform, bool):
             raise _err("INVALID_RIG", "deform is true or false", f"{loc}.deform")
-        rows.append((jid, name, parent, pos, rot, scl, tail, limits_json, role, deform))
+        span = (0.0, 1.0)
+        if j.get("span") is not None:
+            sa, sb = _vec(j["span"], 2, f"{loc}.span", "span")
+            if not (0.0 <= sa < sb <= 1.0 and sb - sa >= 0.05):
+                raise _err(
+                    "INVALID_RIG",
+                    "span is [start, end]: fractions of the bone, 0 <= start < end <= 1, "
+                    "at least 0.05 apart",
+                    f"{loc}.span",
+                )
+            span = (sa, sb)
+        rows.append((jid, name, parent, pos, rot, scl, tail, limits_json, role, deform, span))
     # Order parents first (stable), refusing unknown parents and cycles.
     for _, name, parent, *_ in rows:
         if parent is not None and parent not in names:
@@ -520,6 +552,7 @@ def parse_rig(raw: Any, location: str) -> Rig:
             rows[i][7],
             rows[i][8],
             rows[i][9],
+            rows[i][10],
         )
         for i in order
     )
@@ -636,6 +669,7 @@ JOINT_KEYS = (
     "limits",
     "role",
     "deform",
+    "span",
 )
 CONTROL_KEYS = (
     "name",
@@ -934,6 +968,11 @@ class Skin:
     dq: np.ndarray | None = None  # (n,) float64 0..1: the DQS share per vertex ("blended")
     locked_joints: tuple[str, ...] = ()  # joint ids whose weights edits keep
     locked_vertices: np.ndarray | None = None  # (l,) int32 sorted: vertices edits keep
+    # "joints": rest normals carried by the blended joint matrices (Stage 17, glTF's
+    # rule); "surface": rest normals turned as the deformed surface turns around each
+    # vertex (creases and twists shade as they are shaped).
+    normals: str = "joints"
+    smooth: str = "null"  # canonical JSON of the corrective smoothing (``SMOOTH_KEYS``)
 
     @property
     def vertex_count(self) -> int:
@@ -963,6 +1002,8 @@ class Skin:
             "weights": self.weights.tolist(),
             "method": self.method,
             **({} if self.dq is None else {"dq": self.dq.tolist()}),
+            **({} if self.normals == "joints" else {"normals": self.normals}),
+            **({} if self.smooth == "null" else {"smooth": json.loads(self.smooth)}),
             **(
                 {}
                 if not self.locked_joints and self.locked_vertices is None
@@ -992,6 +1033,8 @@ class Skin:
             and arrays(self.dq, other.dq)
             and self.locked_joints == other.locked_joints
             and arrays(self.locked_vertices, other.locked_vertices)
+            and self.normals == other.normals
+            and self.smooth == other.smooth
         )
 
     def replace(self, **changes: Any) -> Skin:
@@ -1012,11 +1055,14 @@ def make_skin(
     *,
     dq: Any = None,
     locks: Any = None,
+    normals: str = "joints",
+    smooth: Any = None,
 ) -> Skin:
     """A checked skin: weights non-negative, normalized per vertex (rows summing to 0 are
     refused), at most :data:`MAX_INFLUENCES` per vertex, indices within the palette;
     ``dq`` (``blended``: each vertex's DQS share, 0..1), ``locks`` (``{"joints": [ids],
-    "vertices": [indices]}``: what weight edits keep)."""
+    "vertices": [indices]}``: what weight edits keep), ``normals`` (``joints`` or
+    ``surface``), ``smooth`` (corrective smoothing: :func:`check_smooth`)."""
     m = len(joints)
     if not 1 <= m <= MAX_JOINTS or len(set(joints)) != m:
         raise _err(
@@ -1093,11 +1139,51 @@ def make_skin(
             raise _err("INVALID_SKIN", f"locked vertices are 0..{n - 1}", f"{location}.locks")
         if arr.size:
             locked_vertices = np.unique(arr).astype(np.int32)
+    if normals not in NORMALS:
+        raise _err("INVALID_SKIN", f"normals is one of {', '.join(NORMALS)}", f"{location}.normals")
+    smooth_json = check_smooth(smooth, f"{location}.smooth")
     for a in (ib, idx, w, dq_arr, locked_vertices):
         if a is not None:
             a.flags.writeable = False
     return Skin(
-        obj, rig_id, tuple(joints), ib, idx, w, method, dq_arr, locked_joints, locked_vertices
+        obj, rig_id, tuple(joints), ib, idx, w, method, dq_arr, locked_joints, locked_vertices,
+        normals, smooth_json,
+    )  # fmt: skip
+
+
+NORMALS = ("joints", "surface")
+SMOOTH_KEYS = ("iterations", "strength", "region")
+SMOOTH_REGIONS = ("blend", "all")
+
+
+def check_smooth(raw: Any, location: str = "smooth") -> str:
+    """Corrective smoothing of a skin as canonical JSON (``"null"``: none):
+    ``{"iterations": 1..100 (default 10), "strength": 0..1 (default 0.5), "region":
+    "blend" (where weights blend, fading out where one joint holds a vertex: the
+    default) or "all"}`` -- see :func:`delta_mush`."""
+    if raw is None:
+        return "null"
+    if raw is True:
+        raw = {}
+    if not isinstance(raw, dict) or set(raw) - set(SMOOTH_KEYS):
+        raise _err("INVALID_SKIN", f"smooth is {{{', '.join(SMOOTH_KEYS)}}} or null", location)
+    it = raw.get("iterations", 10)
+    if isinstance(it, bool) or not isinstance(it, int) or not 1 <= it <= 100:
+        raise _err("INVALID_SKIN", "smooth.iterations is 1..100", f"{location}.iterations")
+    st = raw.get("strength", 0.5)
+    if isinstance(st, bool) or not isinstance(st, (int, float)) or not 0.0 < float(st) <= 1.0:
+        raise _err("INVALID_SKIN", "smooth.strength is in (0, 1]", f"{location}.strength")
+    region = raw.get("region", "blend")
+    if region not in SMOOTH_REGIONS:
+        raise _err(
+            "INVALID_SKIN",
+            f"smooth.region is one of {', '.join(SMOOTH_REGIONS)}",
+            f"{location}.region",
+        )
+    return json.dumps(
+        {"iterations": it, "strength": float(st), "region": region},
+        sort_keys=True,
+        separators=(",", ":"),
     )
 
 
@@ -1366,6 +1452,207 @@ def _rotate(ux, uy, uz, w, vx, vy, vz):
         (vy + w * ty) + (uz * tx - ux * tz),
         (vz + w * tz) + (ux * ty - uy * tx),
     )
+
+
+def face_normal_sums(p: np.ndarray, t: np.ndarray) -> np.ndarray:
+    """Per vertex, the sum of its triangles' cross products ``(b - a) x (c - a)`` (an
+    area-weighted normal), accumulated corner by corner in triangle order."""
+    p = np.asarray(p, np.float64)
+    a, b, c = p[t[:, 0]], p[t[:, 1]], p[t[:, 2]]
+    u, v = b - a, c - a
+    fx = u[:, 1] * v[:, 2] - u[:, 2] * v[:, 1]
+    fy = u[:, 2] * v[:, 0] - u[:, 0] * v[:, 2]
+    fz = u[:, 0] * v[:, 1] - u[:, 1] * v[:, 0]
+    n = len(p)
+    out = np.zeros((n, 3))
+    for k, f in enumerate((fx, fy, fz)):
+        out[:, k] = (np.bincount(t[:, 0], f, n) + np.bincount(t[:, 1], f, n)) + np.bincount(
+            t[:, 2], f, n
+        )
+    return out
+
+
+def surface_normals(
+    rest_frame: np.ndarray, posed: np.ndarray, triangles: np.ndarray, normals: np.ndarray
+) -> np.ndarray:
+    """Normals that turn as the deformed surface turns: each rest normal rotated by the
+    smallest rotation taking the vertex's rest area-weighted normal ``rest_frame`` (unit)
+    to its posed one. Identity at rest (the authored normals stay), and a crease or a
+    twist shades as the facets around it are shaped; a vertex whose surface turned over
+    (an antiparallel normal) takes the posed area-weighted normal itself."""
+    b = face_normal_sums(posed, triangles)
+    length = np.sqrt(np.sum(b * b, axis=1))
+    b = np.where(length[:, None] > 0, b / np.where(length > 0, length, 1.0)[:, None], rest_frame)
+    a = rest_frame
+    x = np.asarray(normals, np.float64)
+    c = np.sum(a * b, axis=1)
+    v = np.cross(a, b)
+    # R x = c x + v x x + v (v . x) / (1 + c)   (the rotation about a x b taking a to b)
+    turned = (
+        c[:, None] * x
+        + np.cross(v, x)
+        + v * (np.sum(v * x, axis=1) / np.maximum(1.0 + c, 1e-12))[:, None]
+    )
+    out = np.where((c > -0.95)[:, None], turned, b)
+    norm = np.sqrt(np.sum(out * out, axis=1))
+    return (out / np.where(norm > 0, norm, 1.0)[:, None]).astype(np.float32)
+
+
+# --------------------------------------------------------------------------------------- #
+# Corrective smoothing (delta mush)
+# --------------------------------------------------------------------------------------- #
+
+MUSH_BLEND = 0.15  # 1 - the largest weight at which a vertex is fully smoothed
+
+
+def mush_edges(n: int, triangles: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The smoothing graph: directed edges ``(dst, src)`` (both ways of every mesh edge,
+    sorted by ``dst`` then ``src``), each vertex's degree, and each vertex's first
+    neighbour (the lowest-numbered, ``-1`` for none: the tangent's reference)."""
+    t = np.asarray(triangles, np.int64).reshape(-1, 3)
+    a = np.concatenate([t[:, 0], t[:, 1], t[:, 2]])
+    b = np.concatenate([t[:, 1], t[:, 2], t[:, 0]])
+    lo, hi = np.minimum(a, b), np.maximum(a, b)
+    keep = lo != hi
+    pairs = np.unique(np.stack([lo[keep], hi[keep]], axis=1), axis=0)
+    dst = np.concatenate([pairs[:, 0], pairs[:, 1]])
+    src = np.concatenate([pairs[:, 1], pairs[:, 0]])
+    order = np.lexsort((src, dst))
+    dst, src = dst[order], src[order]
+    deg = np.bincount(dst, minlength=n)
+    first = np.full(n, -1, np.int64)
+    starts = np.flatnonzero(np.r_[True, dst[1:] != dst[:-1]]) if dst.size else np.zeros(0, int)
+    first[dst[starts]] = src[starts]
+    return np.stack([dst, src]), deg, first
+
+
+def _mush_smooth(x: np.ndarray, graph: np.ndarray, deg: np.ndarray, it: int, lam: float):
+    """``it`` rounds of ``x += lam (mean of neighbours - x)``; each sum in edge order (a
+    bincount: what the native kernel's scatter repeats)."""
+    dst, src = graph
+    n = len(x)
+    has = deg > 0
+    inv = np.where(has, 1.0 / np.where(has, deg, 1), 0.0)
+    out = np.array(x, np.float64)
+    for _ in range(it):
+        nxt = out.copy()
+        for k in range(3):
+            mean = np.bincount(dst, out[src, k], n) * inv
+            nxt[:, k] = np.where(has, out[:, k] + lam * (mean - out[:, k]), out[:, k])
+        out = nxt
+    return out
+
+
+def _cross(ax, ay, az, bx, by, bz):
+    return ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx
+
+
+def _unit3(x, y, z):
+    length = np.sqrt((x * x + y * y) + z * z)
+    ok = length > 0.0
+    inv = np.where(ok, 1.0 / np.where(ok, length, 1.0), 0.0)
+    return x * inv, y * inv, z * inv, length
+
+
+def _mush_frames(sm: np.ndarray, triangles: np.ndarray, first: np.ndarray):
+    """Per vertex an orthonormal frame -- tangent, bitangent, normal, nine arrays -- of
+    the smoothed surface: its area-weighted normal and the direction to the first
+    neighbour (any perpendicular when that lies along the normal)."""
+    f = face_normal_sums(sm, triangles)
+    nx, ny, nz, length = _unit3(f[:, 0], f[:, 1], f[:, 2])
+    flat = length <= 0.0
+    nz = np.where(flat, 1.0, nz)
+    j = np.maximum(first, 0)
+    has = first >= 0
+    rx = np.where(has, sm[j, 0] - sm[:, 0], 1.0)
+    ry = np.where(has, sm[j, 1] - sm[:, 1], 0.0)
+    rz = np.where(has, sm[j, 2] - sm[:, 2], 0.0)
+    d = (rx * nx + ry * ny) + rz * nz
+    tx, ty, tz = rx - d * nx, ry - d * ny, rz - d * nz
+    tx, ty, tz, tl = _unit3(tx, ty, tz)
+    ax, ay, az = _cross(nx, ny, nz, 1.0, 0.0, 0.0)
+    _, _, _, al = _unit3(ax, ay, az)
+    bx, by, bz = _cross(nx, ny, nz, 0.0, 1.0, 0.0)
+    use_a = al > 1e-6
+    ax, ay, az = np.where(use_a, ax, bx), np.where(use_a, ay, by), np.where(use_a, az, bz)
+    ax, ay, az, _ = _unit3(ax, ay, az)
+    good = tl > 1e-12
+    tx, ty, tz = np.where(good, tx, ax), np.where(good, ty, ay), np.where(good, tz, az)
+    bx, by, bz = _cross(nx, ny, nz, tx, ty, tz)
+    return (tx, ty, tz, bx, by, bz, nx, ny, nz)
+
+
+def mush_rest(
+    positions: np.ndarray, triangles: np.ndarray, weights: np.ndarray, spec: dict[str, Any]
+) -> dict[str, Any]:
+    """What delta mush keeps of the rest pose: the smoothing graph, each vertex's detail
+    (its offset from the smoothed rest surface in that surface's local frame) and the
+    smoothing mask (``region`` ``blend``: full where the vertex's largest weight is at
+    most ``1 - MUSH_BLEND``, none where one joint holds it, smooth in between and
+    spread over the surface; ``all``: everywhere)."""
+    p0 = np.asarray(positions, np.float64)
+    t = np.asarray(triangles, np.int64)
+    n = len(p0)
+    graph, deg, first = mush_edges(n, t)
+    it, lam = int(spec["iterations"]), float(spec["strength"])
+    sm = _mush_smooth(p0, graph, deg, it, lam)
+    tx, ty, tz, bx, by, bz, nx, ny, nz = _mush_frames(sm, t, first)
+    dx, dy, dz = p0[:, 0] - sm[:, 0], p0[:, 1] - sm[:, 1], p0[:, 2] - sm[:, 2]
+    delta = np.stack(
+        [
+            (tx * dx + ty * dy) + tz * dz,
+            (bx * dx + by * dy) + bz * dz,
+            (nx * dx + ny * dy) + nz * dz,
+        ],
+        axis=1,
+    )
+    if spec.get("region", "blend") == "all":
+        mask = np.ones(n)
+    else:
+        top = np.asarray(weights, np.float64).max(axis=1)
+        u = np.clip((1.0 - top) / MUSH_BLEND, 0.0, 1.0)
+        mask = u * u * (3.0 - 2.0 * u)
+        spread = _mush_smooth(np.stack([mask, mask, mask], axis=1), graph, deg, it, 0.5)
+        mask = np.maximum(mask, np.clip(spread[:, 0] * 1.5, 0.0, 1.0))
+    return {"graph": np.ascontiguousarray(graph), "deg": deg, "first": first, "triangles": t,
+            "delta": delta, "mask": mask, "iterations": it, "strength": lam}  # fmt: skip
+
+
+def delta_mush(positions: np.ndarray, rest: dict[str, Any]) -> np.ndarray:
+    """Delta mush of skinned positions (Mancewicz et al. 2014; the principle of Blender's
+    Corrective Smooth): the posed surface smoothed as the rest one was, each vertex's
+    rest detail added back in the smoothed posed surface's frame, blended by the mask --
+    LBS pinching, folds and crumples relax while the modeled detail stays. Exactly the
+    input at rest. The NumPy reference of the native kernel (the same operations in the
+    same order: bitwise the same result)."""
+    from .. import _native
+
+    p = np.ascontiguousarray(positions, np.float64)
+    native = _native.module()
+    if native is not None and hasattr(native, "delta_mush"):
+        out = np.empty((len(p), 3), np.float32)
+        native.delta_mush(
+            p, rest["graph"][0], rest["graph"][1], np.ascontiguousarray(rest["deg"], np.int64),
+            np.ascontiguousarray(rest["first"], np.int64),
+            np.ascontiguousarray(rest["triangles"], np.int64),
+            np.ascontiguousarray(rest["delta"], np.float64),
+            np.ascontiguousarray(rest["mask"], np.float64),
+            int(rest["iterations"]), float(rest["strength"]), out, _native.threads(),
+        )  # fmt: skip
+        return out
+    sm = _mush_smooth(p, rest["graph"], rest["deg"], rest["iterations"], rest["strength"])
+    tx, ty, tz, bx, by, bz, nx, ny, nz = _mush_frames(sm, rest["triangles"], rest["first"])
+    d = rest["delta"]
+    d0, d1, d2 = d[:, 0], d[:, 1], d[:, 2]
+    ox = sm[:, 0] + ((tx * d0 + bx * d1) + nx * d2)
+    oy = sm[:, 1] + ((ty * d0 + by * d1) + ny * d2)
+    oz = sm[:, 2] + ((tz * d0 + bz * d1) + nz * d2)
+    m = rest["mask"]
+    out = np.stack(
+        [p[:, 0] + m * (ox - p[:, 0]), p[:, 1] + m * (oy - p[:, 1]), p[:, 2] + m * (oz - p[:, 2])],
+        axis=1,
+    )
+    return out.astype(np.float32)
 
 
 def joint_limits(rig: Rig, k: int) -> dict[str, Any] | None:

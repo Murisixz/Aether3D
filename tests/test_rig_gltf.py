@@ -49,7 +49,8 @@ def character(meshes):
     s.add_object("Jacket", mesh=jacket_mesh)
     s.add_object("Helmet", mesh=helmet_mesh)
     a = s.animation
-    rep = a.autorig([body, "Jacket", "Helmet"], name="Rig",
+    # (linear blend skinning without corrective smoothing: what glTF carries exactly)
+    rep = a.autorig([body, "Jacket", "Helmet"], name="Rig", weights={"corrective": None},
                     parts={"Jacket": "transfer", "Helmet": "attach"})  # fmt: skip
     assert rep["weights"]["Jacket"]["mode"] == "transfer"
     a.generate("Rig", "walk", forward="-y")

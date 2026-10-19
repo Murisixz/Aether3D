@@ -137,6 +137,23 @@ def rig_diagnostics(scene: Scene, rigging: Rigging, diagnostics: list[Diagnostic
                 "less volume at twisting and bending joints",
                 f"/skins/{skin_name(scene, oid)}", lossy=True,
             ))  # fmt: skip
+        if skin.smooth != "null":
+            name = scene._objects[oid].name
+            diagnostics.append(_diag(
+                "SKIN_SMOOTHING_LOSSY", WARNING,
+                f"{name!r} relaxes its skinning with corrective smoothing (delta mush); glTF "
+                "skins have none: exported with the same weights, its folds and pinches come "
+                "back",
+                f"/skins/{skin_name(scene, oid)}", lossy=True,
+            ))  # fmt: skip
+        if skin.normals == "surface":
+            name = scene._objects[oid].name
+            diagnostics.append(_diag(
+                "SKIN_NORMALS_DIFFER", INFO,
+                f"{name!r} shades with normals that follow its deformed surface; glTF viewers "
+                "carry the rest normals with the joints (the geometry is the same)",
+                f"/skins/{skin_name(scene, oid)}",
+            ))  # fmt: skip
     kept, dropped = set(), set()
     for rig in rigging.rigs.values():
         if any(j.role for j in rig.joints):
@@ -207,6 +224,8 @@ def add_skeletons(
                 stored["role"] = joint.role
             if not joint.deform:
                 stored["deform"] = False
+            if joint.span != (0.0, 1.0):
+                stored["span"] = [float(v) for v in joint.span]
             if joint.limits != "null":
                 stored["limits"] = json.loads(joint.limits)
             node["extras"] = {extras_key: stored}

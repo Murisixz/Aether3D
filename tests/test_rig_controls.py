@@ -145,7 +145,7 @@ def test_pose_commands(body_mesh):
     assert j["Hips"][2, 3] == pytest.approx(hips0 - 0.25, abs=1e-9)
     assert rep["residuals"]["leg_ik.L"] < 1e-6 and rep["residuals"]["leg_ik.R"] < 1e-6
     chest = j["Chest"][:3, 3] - j["Spine"][:3, 3]
-    assert chest[1] < -0.02  # leaning forward (-y)
+    assert np.degrees(np.arctan2(-chest[1], chest[2])) > 5.0  # leaning forward (-y)
     with pytest.raises(AnimationError):
         a.pose_character(arm, [{"do": "fly"}], time=1.0)
     with pytest.raises(AnimationError):

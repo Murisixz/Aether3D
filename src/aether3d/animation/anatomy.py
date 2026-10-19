@@ -175,3 +175,152 @@ def smooth1d(v: np.ndarray, k: int = 2) -> np.ndarray:
         lo, hi = max(0, i - k), min(v.size, i + k + 1)
         out[i] = (c[hi] - c[lo]) / (hi - lo)
     return out
+
+
+# --------------------------------------------------------------------------------------- #
+# Fingers: measured on the mesh surface (thinner than the voxels)
+# --------------------------------------------------------------------------------------- #
+
+# Phalanges as fractions of a finger's length from its knuckle (proximal, middle, distal:
+# 0.48, 0.29, 0.23 in Buryanov and Kotiuk 2010), and the thumb's from its base
+# (metacarpal, proximal, distal).
+PHALANGES = (0.49, 0.28, 0.23)
+THUMB = (0.42, 0.32, 0.26)
+KNUCKLE_IN = 0.12  # of a finger's free length: from where it parts to its knuckle
+
+
+def hand_fingers(
+    positions: np.ndarray,
+    triangles: np.ndarray,
+    wrist: np.ndarray,
+    tip: np.ndarray,
+    H: float,
+) -> dict[str, Any]:
+    """The fingers of one hand, from its mesh: ``{"count", "tips", "fingers": {name:
+    [knuckle, middle joint, end joint, tip]}, "thumb": [base, middle, end, tip] | None,
+    "mitten": bool}`` (fingers named by their distance from the thumb: index nearest,
+    whatever way the hand faces). The hand's surface beyond the wrist is searched for
+    fingertips (local maxima of the distance along the surface from the wrist); each
+    finger's centreline is the centroids of rings of equal surface distance from its tip,
+    up to where the ring widens into the palm; its knuckle lies on that axis
+    :data:`KNUCKLE_IN` of the finger's free length further in."""
+    from .weights import mesh_edges, surface_distances
+
+    p = np.asarray(positions, np.float64)
+    t = np.asarray(triangles, np.int64)
+    axis = tip - wrist
+    length = float(np.linalg.norm(axis))
+    if length < 1e-6:
+        return {"count": 0, "tips": [], "fingers": {}, "thumb": None, "mitten": False}
+    axis = axis / length
+    rel = p - wrist
+    along = rel @ axis
+    near = (along > -0.01 * H) & (np.linalg.norm(rel, axis=1) < 1.35 * length)
+    idx = np.flatnonzero(near)
+    if idx.size < 50:
+        return {"count": 0, "tips": [], "fingers": {}, "thumb": None, "mitten": False}
+    local = np.full(len(p), -1, np.int64)
+    local[idx] = np.arange(idx.size)
+    keep_t = np.all(local[t] >= 0, axis=1)
+    lt = local[t[keep_t]]
+    q = p[idx]
+    ea, eb = mesh_edges(lt)
+    # Connected to the tip (not the thigh the hand hangs by).
+    seed_tip = int(np.argmin(np.linalg.norm(q - tip, axis=1)))
+    reach_tip = surface_distances(q, ea, eb, np.array([seed_tip]), 3.0 * length)
+    part = np.isfinite(reach_tip)
+    wrist_ring = np.flatnonzero(part & (np.abs((q - wrist) @ axis) < 0.01 * H))
+    if wrist_ring.size == 0:
+        wrist_ring = np.array([int(np.argmin(np.where(part, (q - wrist) @ axis, np.inf)))])
+    g = surface_distances(q, ea, eb, wrist_ring, 3.0 * length)
+    g = np.where(part, g, -np.inf)
+    # Fingertips: the farthest points from the wrist, each suppressing its neighbourhood.
+    order = np.argsort(-g)
+    gmax = float(g[order[0]])
+    tips: list[int] = []
+    for v in order.tolist():
+        if g[v] < 0.45 * gmax or len(tips) >= 6:
+            break
+        if all(np.linalg.norm(q[v] - q[u]) > 0.013 * H for u in tips):
+            # a local maximum: nothing within a finger's width along the surface (not
+            # across the gap to the next finger) is farther from the wrist
+            ball = surface_distances(q, ea, eb, np.array([v]), 0.012 * H) < 0.012 * H
+            if g[ball].max() <= g[v] + 1e-12:
+                tips.append(v)
+    out: dict[str, Any] = {"count": len(tips), "tips": [q[v].copy() for v in tips]}
+    if len(tips) < 4:
+        out.update(fingers={}, thumb=None, mitten=True)
+        return out
+    chains = []
+    edge_len = float(np.median(np.linalg.norm(q[ea] - q[eb], axis=1))) if ea.size else 0.0
+    step = max(0.004 * H, 0.75 * edge_len)
+    for v in tips:
+        d = surface_distances(q, ea, eb, np.array([v]), 0.13 * H)
+        cents, spreads = [], []
+        k = 1
+        while k * step < 0.12 * H:
+            ring = _contour(q, ea, eb, d, k * step)
+            if len(ring) < 4:
+                break
+            c = ring.mean(axis=0)
+            spread = float(np.mean(np.linalg.norm(ring - c, axis=1)))
+            if spreads and spread > 1.9 * float(np.median(spreads[: max(2, len(spreads) // 2)])):
+                break
+            cents.append(c)
+            spreads.append(spread)
+            k += 1
+        chains.append((v, np.array(cents) if cents else q[[v]], spreads))
+    # The thumb: its finger's base lies nearest the wrist.
+    bases = [ch[1][-1] for ch in chains]
+    thumb_i = int(np.argmin([float((b - wrist) @ axis) for b in bases]))
+    fingers = {}
+    others = [i for i in range(len(chains)) if i != thumb_i]
+    others.sort(key=lambda i: float(np.linalg.norm(bases[i] - bases[thumb_i])))
+    names = ("index", "middle", "ring", "pinky")
+    for name, i in zip(names, others[:4], strict=False):
+        v, cents, _ = chains[i]
+        tip_p = q[v]
+        free = float(np.linalg.norm(cents[-1] - tip_p)) if len(cents) else 0.0
+        dirn = tip_p - cents[-1] if len(cents) else axis
+        dirn = dirn / max(float(np.linalg.norm(dirn)), 1e-12)
+        # (fingers modeled from their knuckles part there; a webbed hand parts a third of
+        # the proximal phalanx further out: the knuckle lies between the two)
+        knuckle = cents[-1] - dirn * (KNUCKLE_IN * free)
+        total = free * (1.0 + KNUCKLE_IN)
+        poly = np.vstack([knuckle[None], cents[::-1], tip_p[None]])
+        sp = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(poly, axis=0), axis=1))])
+        sp = sp * (total / max(float(sp[-1]), 1e-12))
+        joints = [knuckle]
+        acc = 0.0
+        for f in PHALANGES[:2]:
+            acc += f * total
+            joints.append(np.stack([np.interp(acc, sp, poly[:, j]) for j in range(3)]))
+        joints.append(tip_p.copy())
+        fingers[name] = joints
+    v, cents, _ = chains[thumb_i]
+    tip_p = q[v]
+    base = cents[-1] if len(cents) else tip_p
+    # The thumb's base joint lies in the heel of the hand, beside the wrist.
+    cmc = wrist + 0.35 * (base - wrist)
+    poly = np.vstack([cmc[None], cents[::-1], tip_p[None]])
+    sp = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(poly, axis=0), axis=1))])
+    joints = [cmc]
+    acc = 0.0
+    for f in THUMB[:2]:
+        acc += f * float(sp[-1])
+        joints.append(np.stack([np.interp(acc, sp, poly[:, j]) for j in range(3)]))
+    joints.append(tip_p.copy())
+    out.update(fingers=fingers, thumb=joints, mitten=False)
+    return out
+
+
+def _contour(q: np.ndarray, ea: np.ndarray, eb: np.ndarray, d: np.ndarray, level: float):
+    """The points where the surface distance ``d`` crosses ``level`` along the edges (a
+    ring around a finger, however coarse its triangles)."""
+    da, db = d[ea], d[eb]
+    ok = np.isfinite(da) & np.isfinite(db)
+    lo, hi = np.minimum(da, db), np.maximum(da, db)
+    cross = ok & (lo < level) & (hi >= level) & (hi > lo)
+    a, b = ea[cross], eb[cross]
+    t = (level - d[a]) / (d[b] - d[a])
+    return q[a] + t[:, None] * (q[b] - q[a])

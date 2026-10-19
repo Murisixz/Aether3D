@@ -867,9 +867,41 @@ def _run_skin(
             )
         )
         return
+    if skin.smooth != "null" or skin.normals == "surface":
+        pos, nrm = _post_skin(system, oid, skin, mesh, pos, nrm)
     result.meshes[oid] = Mesh._from_arrays(
         pos, mesh.triangles, nrm, mesh.uvs, mesh.groups, mesh.colors
     )
+
+
+def _post_skin(system, oid: str, skin: Any, mesh: Any, pos: np.ndarray, nrm: Any):
+    """Corrective smoothing (delta mush) and surface-following normals of a skinned mesh
+    (``skin.smooth``, ``skin.normals``), from rest data cached per scene revision."""
+    from .rig import delta_mush, surface_normals
+
+    rest = _cached(system.scene, f"skin_rest:{oid}", lambda _s: _skin_rest(mesh, skin))
+    tris = rest["triangles"]
+    if skin.smooth != "null":
+        pos = delta_mush(pos, rest["mush"])
+    if skin.normals == "surface" and mesh.normals is not None:
+        nrm = surface_normals(rest["frame"], pos, tris, mesh.normals)
+    return pos, nrm
+
+
+def _skin_rest(mesh: Any, skin: Any) -> dict[str, Any]:
+    import json
+
+    from .rig import face_normal_sums, mush_rest
+
+    tris = np.asarray(mesh.triangles, np.int64)
+    p0 = mesh.positions.astype(np.float64)
+    f = face_normal_sums(p0, tris)
+    length = np.sqrt(np.sum(f * f, axis=1))
+    frame = np.where(length[:, None] > 0, f / np.where(length > 0, length, 1.0)[:, None], 0.0)
+    out: dict[str, Any] = {"triangles": tris, "frame": frame}
+    if skin.smooth != "null":
+        out["mush"] = mush_rest(p0, tris, skin.weights, json.loads(skin.smooth))
+    return out
 
 
 def _morphed(

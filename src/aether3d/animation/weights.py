@@ -39,6 +39,7 @@ from their bone), cross-side influences, unused and helper joints with weights.
 from __future__ import annotations
 
 import heapq
+import json
 import math
 import time
 from typing import TYPE_CHECKING, Any
@@ -51,13 +52,14 @@ from . import voxels as V
 if TYPE_CHECKING:
     from .system import AnimationSystem
 
-METHODS = ("geodesic", "envelope", "nearest")
+METHODS = ("heat", "geodesic", "envelope", "nearest")
 POLICIES = {
-    # (p 3: a knee bent 140 degrees keeps 0.76 of its size, 0.69 at p 2 -- measured; p 4
-    # keeps more but creases hips and twists harder)
-    "organic": {"power": 3.0, "ratio": 3.0, "smooth": 6, "influences": 4},
-    "stylized": {"power": 4.0, "ratio": 2.0, "smooth": 3, "influences": 4},
-    "rigid": {"power": 0.0, "ratio": 1.0, "smooth": 0, "influences": 1},
+    # heat: ``diffusion`` scales the Laplacian (1: Blender's balance; the stylized policy
+    # blends tighter). geodesic (p 3: a knee bent 140 degrees keeps 0.76 of its size, 0.69
+    # at p 2 -- measured; p 4 keeps more but creases hips and twists harder).
+    "organic": {"power": 3.0, "ratio": 3.0, "smooth": 6, "influences": 4, "diffusion": 1.0},
+    "stylized": {"power": 4.0, "ratio": 2.0, "smooth": 3, "influences": 4, "diffusion": 0.6},
+    "rigid": {"power": 0.0, "ratio": 1.0, "smooth": 0, "influences": 1, "diffusion": 1.0},
 }
 RIGID_PARTS = ("auto", "all", "none")
 EDIT_OPS = (
@@ -318,15 +320,11 @@ class _Context:
                     raise _err("INVALID_SKIN", f"no joint {n!r}", f"joints[{i}]")
                 idx.append(k)
         self.joints = idx
-        model = rig.rest_model()
-        tails = rig.tails()
-        heads, ends = [], []
-        for k in idx:
-            m = self.a_world @ model[k]
-            heads.append(m[:3, 3])
-            ends.append((m @ np.append(tails[k], 1.0))[:3])
-        self.heads = np.array(heads)
-        self.ends = np.array(ends)
+        # Each joint's weighting segment (its span of the bone), in world space at rest.
+        starts, ends = rig.deform_segments()
+        a = self.a_world
+        self.heads = np.asarray(starts[idx]) @ a[:3, :3].T + a[:3, 3]
+        self.ends = np.asarray(ends[idx]) @ a[:3, :3].T + a[:3, 3]
 
     def euclidean(self, points: np.ndarray | None = None) -> np.ndarray:
         """Distances from points (default: the vertices) to every bone segment."""
@@ -353,7 +351,7 @@ def generate_weights(
     mesh_object: Any,
     armature: Any,
     *,
-    method: str = "geodesic",
+    method: str = "heat",
     policy: str = "organic",
     influences: int | None = None,
     joints: list[str] | None = None,
@@ -369,11 +367,19 @@ def generate_weights(
     bind: bool = True,
     context: list[Any] | None = None,
     allowed: np.ndarray | None = None,
+    diffusion: float | None = None,
+    visibility: bool = True,
+    normals: str | None = None,
+    corrective: Any = "keep",
 ) -> dict[str, Any]:
     """Compute skin weights for ``mesh_object`` from ``armature``'s rig and (``bind``)
-    bind it -- one undo step. ``context``: more mesh objects voxelized with it (a body
-    under clothing: distances run through the whole character). See the module
-    docstring; returns a report."""
+    bind it -- one undo step. ``method``: ``heat`` (bone heat, :mod:`.heat`; the default),
+    ``geodesic``, ``envelope`` or ``nearest``. ``context``: more mesh objects voxelized
+    with it for ``geodesic`` (a body under clothing: distances run through the whole
+    character). ``diffusion`` and ``visibility`` tune ``heat``. ``normals`` and
+    ``corrective`` (the skin's corrective smoothing, :func:`.rig.check_smooth`) default
+    to an existing skin's, else surface-following normals and no smoothing. See the
+    module docstring; returns a report."""
     if method not in METHODS:
         raise _err("INVALID_ARGUMENT", f"method is one of {', '.join(METHODS)}", "method")
     if policy not in POLICIES:
@@ -415,7 +421,31 @@ def generate_weights(
         others = [c for c in context if system._object(c, "context")._id != ctx.obj._id]
         if others:
             extra = [gather(system, others)[:2]]
-    if method == "geodesic":
+    if not isinstance(visibility, bool):
+        raise _err("INVALID_ARGUMENT", "visibility is true or false", "visibility")
+    diff = pol["diffusion"] if diffusion is None else _number(diffusion, "diffusion", 1e-3, 1e3)
+    heat = method == "heat" and policy != "rigid"
+    if heat:
+        from .heat import heat_weights
+
+        side_ok = _sides(ctx) if sides == "auto" else None
+        t_h = time.perf_counter()
+        hw, info = heat_weights(
+            ctx.world,
+            np.asarray(ctx.mesh.triangles, np.int64),
+            ctx.heads,
+            ctx.ends,
+            allowed=side_ok,
+            visibility=visibility,
+            diffusion=diff,
+            deadline=deadline,
+        )
+        timings["heat_s"] = round(time.perf_counter() - t_h, 4)
+        timings.update(info.pop("timings"))
+        report.update(info)
+        dist = ctx.euclidean()
+        unreached = np.zeros(n, bool)
+    elif method == "geodesic":
         dist, info = _geodesic_distances(ctx, resolution, voxel_size, deadline, timings, extra)
         report.update(info)
         unreached = ~np.isfinite(dist).any(axis=1)
@@ -429,7 +459,17 @@ def generate_weights(
     if unreached.any():
         eu = ctx.euclidean(ctx.world[unreached])
     dense = np.zeros((n, m))
-    if method == "nearest" or policy == "rigid":
+    if heat:
+        dense = hw
+        if sides == "auto":
+            dense, crossed = _side_fade(ctx, dense)
+            if crossed:
+                report["sides"] = (
+                    "left and right joints fade out across the mirror plane (over "
+                    f"{SIDE_MARGIN:.0%} of the mesh's size): heat diffuses across the "
+                    "groin and the sternum"
+                )
+    elif method == "nearest" or policy == "rigid":
         nearest = np.argmin(np.where(np.isfinite(dist), dist, np.inf), axis=1)
         dense[np.arange(n), nearest] = 1.0
     else:
@@ -494,10 +534,10 @@ def generate_weights(
     allowed = region
     lasting = None if region is None else region.copy()  # (kept after smoothing too)
     near = None
-    if hops and policy != "rigid":
+    if hops and policy != "rigid" and not heat:
         near = _neighbourhood(ctx, _nearest_allowed(dense, dist, region), hops)
         allowed = near if allowed is None else allowed & near
-    if sides == "auto" and policy != "rigid":
+    if sides == "auto" and policy != "rigid" and not heat:
         side_ok = _sides(ctx)
         if side_ok is not None:
             allowed = side_ok if allowed is None else allowed & side_ok
@@ -508,7 +548,10 @@ def generate_weights(
         lost = keep.sum(axis=1) <= 0  # (a vertex only the other side reached keeps all)
         dense = _normalize_rows(np.where(lost[:, None], dense, keep))
         allowed[lost] = True
-    # Smooth along the mesh (rigid parts pinned), then keep the strongest influences.
+    # Smooth along the mesh (rigid parts pinned), then keep the strongest influences
+    # (heat weights are a diffusion already: smooth by construction).
+    if heat:
+        iterations = 0
     if iterations and policy != "rigid":
         dense = _cap(dense, k + 2)
         dense = smooth_rows(dense, a_edges, b_edges, iterations, 0.5, rigid_rows)
@@ -531,6 +574,8 @@ def generate_weights(
     timings["weights_s"] = round(time.perf_counter() - t1, 4)
     report["influences"] = k
     report["smoothing_iterations"] = iterations if policy != "rigid" else 0
+    if heat:
+        report["diffusion"] = diff
     report["joints_used"] = int((dense > 0).any(axis=0).sum())
     report["timings"] = {**timings, "total_s": round(time.perf_counter() - t0, 4)}
     report["assumptions"] = [
@@ -548,6 +593,15 @@ def generate_weights(
         )
         if method_skin == "blended" and dq is None and old is not None:
             dq = old._definition.dq
+        alive = old is not None and old._alive
+        # (a new skin follows its surface's turning; a rebinding keeps its settings)
+        nrm = normals or (old._definition.normals if alive else "surface")
+        if corrective == "keep":
+            corrective = (
+                json.loads(old._definition.smooth)
+                if alive and old._definition.smooth != "null"
+                else None
+            )
         report["skin"] = system.skin(
             ctx.obj,
             ctx.arm,
@@ -555,6 +609,8 @@ def generate_weights(
             influences=k,
             method=method_skin,
             dq=dq,
+            normals=nrm,
+            smooth=corrective,
         )
     else:
         report["dense"] = dense
@@ -654,6 +710,39 @@ def _sides(ctx: _Context) -> np.ndarray | None:
         elif s_ == "R":
             out[:, i] = x <= margin
     return out
+
+
+def _side_fade(ctx: _Context, dense: np.ndarray) -> tuple[np.ndarray, bool]:
+    """Sided joints' weights faded smoothly to zero over the band of :data:`SIDE_MARGIN`
+    beyond the armature's mirror plane, rows renormalized (``(weights, changed)``);
+    unchanged when no side rule applies (an asymmetric rest pose)."""
+    rig = ctx.rig
+    inv = np.linalg.inv(ctx.a_world)
+    heads = (ctx.heads @ inv[:3, :3].T + inv[:3, 3])[:, 0]
+    sides = [_side_of(rig, k) for k in ctx.joints]
+    if not any(sides):
+        return dense, False
+    for s_, hx in zip(sides, heads, strict=True):
+        if (s_ == "L" and hx < 0) or (s_ == "R" and hx > 0):
+            return dense, False
+    x = (ctx.world @ inv[:3, :3].T + inv[:3, 3])[:, 0]
+    size = float(np.max(ctx.world.max(axis=0) - ctx.world.min(axis=0)))
+    margin = SIDE_MARGIN * size
+    out = dense.copy()
+    changed = False
+    for i, s_ in enumerate(sides):
+        if s_ is None:
+            continue
+        u = np.clip(((x if s_ == "L" else -x) + margin) / margin, 0.0, 1.0)
+        f = u * u * (3.0 - 2.0 * u)
+        if np.any((f < 1.0) & (out[:, i] > 0)):
+            changed = True
+            out[:, i] *= f
+    if not changed:
+        return dense, False
+    lost = out.sum(axis=1) <= 0
+    out[lost] = dense[lost]
+    return _normalize_rows(out), True
 
 
 OTHER_SIDE_MARGIN = 0.005  # of the mesh's size: the mirror plane's band both sides share
@@ -1294,6 +1383,8 @@ class _Edit:
             "skin",
             dq=old.dq,
             locks=locks,
+            normals=old.normals,
+            smooth=None if old.smooth == "null" else json.loads(old.smooth),
         )
         exact = new.weights.copy()
         exact[keep] = ww[keep]  # (make_skin renormalizes every row; untouched rows were)
@@ -1510,6 +1601,8 @@ def transfer_weights(
         weights={"indices": idx, "weights": w, "joints": src.names},
         influences=k,
         method=method if method != "blended" else "linear",
+        normals=src.skin.normals,
+        smooth=None if src.skin.smooth == "null" else json.loads(src.skin.smooth),
     )
     q = np.quantile(best_d, [0.5, 0.95, 1.0]) if best_d.size else np.zeros(3)
     return {
