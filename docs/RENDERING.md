@@ -32,6 +32,19 @@ See [RENDER_QUALITY.md](RENDER_QUALITY.md). The rasterizers described here are
 unchanged; the new scene data the path tracer reads (light `radius`/`angle`,
 `scene.world.environment`) does not affect them.
 
+Since 0.20.0 (Stage 19), lights and images go further on **every backend**: spot and area
+lights (squares, rectangles, disks and ellipses, with Blender's `spread`), Blender's
+power units, colour temperature, light linking and shadowless lights
+([Lights](#light-fields-units-and-linking-0200)), studio light rigs solved for a subject
+([Studio light rigs](#studio-light-rigs-0200)), image environments -- HDR files and four
+built-ins -- that light the rasterizers too
+([Image environments](#image-environments-0200)), a camera lens with real depth of
+field, the `film` view transform, 16-bit and OpenEXR masters, and motion vectors. The
+path tracers add glass, importance-sampled environments, Owen-scrambled Sobol' samples,
+pixel filters, adaptive sampling and a denoiser ([RENDER_QUALITY.md](RENDER_QUALITY.md)).
+The lights were measured against Blender 5.2's Cycles (experiment E3); defaults keep every
+earlier scene rendering exactly as before.
+
 ![The procedural Minecraft-inspired castle, rendered by Aether3D](../examples/output/minecraft_castle_render.png)
 
 *The Stage 4 procedural castle with its Stage 7 materials (image and procedural
@@ -190,6 +203,19 @@ cam.camera.configure(near=500, far=5000)  # several values at once, all or nothi
 | `ortho_scale` | Orthographic view size in world units along `fov_axis` | > 0 (10) |
 | `near`, `far` | Clipping distances along the view direction | perspective: 0 < near < far, far/near ≤ 10⁹; orthographic: 0 ≤ near < far (0.1, 1000) |
 | `aspect_ratio` | The frame shape (width / height) the camera is meant for, or `None` | 10⁻³–10³ (None) |
+| `sensor` (0.20.0) | Sensor size in mm along `fov_axis`; with `fov` it gives `focal_length = sensor / (2 tan(fov/2))` (`configure(focal_length=50)` sets `fov`; 0.1–100,000 mm) | 1–1000 (36) |
+| `shift_x`, `shift_y` (0.20.0) | Lens shift in units of the image's larger side (as Blender's): the view moves right/up without turning, so verticals stay vertical | −10–10 (0) |
+| `fstop` (0.20.0) | f-number of the aperture (diameter `focal_length / fstop`); 0 is a pinhole | 0 or 0.1–10⁴ (0) |
+| `focus_distance`, `focus_object` (0.20.0) | Metres along the view axis to the plane in focus, or an object whose origin sets it every frame | > 0 (10), an id (None) |
+| `aperture_blades`, `aperture_rotation`, `aperture_ratio` (0.20.0) | 0: a round aperture, 3–16: a polygon (a corner up), its rotation in degrees, an anamorphic ratio (the width divided by it) | (0, 0, 1) |
+
+**Depth of field** (0.20.0) follows Blender's model, measured (experiment E5): a thin lens
+at the eye, the field of view unchanged, so a point at distance `d` blurs into a disk of
+`(focal_length / fstop) |1/d − 1/focus|` in units of the image plane at distance 1. The
+path tracers sample the aperture per path; the rasterizers average `dof_samples` (default
+16, `render(dof_samples=N)`) pinhole views from points spread over it (`DEPTH_OF_FIELD`,
+info; depth and object index are the pinhole view's). Shot presets, rack focus and focus
+measurement are in [ANIMATION.md](ANIMATION.md#cameras-and-cinematics).
 
 **Aspect ratio.**
 - Pixels are always square, so the projection uses the image's aspect
@@ -300,6 +326,8 @@ radiance = base ⊙ ambient
 | --- | --- | --- |
 | `directional` | Travels along the light object's front (local −Y); its position does not matter | 1 |
 | `point` | At the object's world position | `1/d²` (`falloff="inverse_square"`, default) or 1 (`falloff="none"`), with d clamped to ≥ 10⁻⁴; with a `range`, also multiplied by `clamp(1 − (d/range)⁴, 0, 1)²` (the smooth window recommended by glTF's KHR_lights_punctual) |
+| `spot` (0.20.0) | At the object's position, aimed along its front (local −Y) | as `point`, times the cone mask: 1 inside `spot_size` (the full angle), `smoothstep((cos t − cos h) / ((1 − cos h) · spot_blend))` at its edge (`h` the half angle, `t` the angle from the axis), 0 outside -- Blender's, measured |
+| `area` (0.20.0) | A one-sided Lambertian emitter facing the front: `square`, `rectangle`, `disk` or `ellipse`, `size` along local X and `size_y` along local Z | its radiance is `π I / A` (`A` its area): the **exact irradiance of its polygon** (Lambert's formula, clipped at the surface's horizon; disks and ellipses as 16-gons enlarged to the same area), so far away it lights as a point light of the same intensity; highlights toward its representative point with the lobe widened by its apparent size (Karis 2013, an approximation the path tracers do not need) |
 | ambient | `scene.world`: uniform, no direction | — |
 
 What the numbers mean:
@@ -307,16 +335,40 @@ What the numbers mean:
   makes it appear exactly its base color, before exposure.
 - A point light of intensity *I* does the same at distance √*I*.
 - Lights add up linearly.
-- **There are no shadows**: lights are not occluded. There are no
-  reflections and no indirect light. (The path tracer computes all three; it
-  reads these intensities as physical units that reproduce this direct
-  lighting exactly, see
+- **There are no shadows** on the CPU rasterizer: lights are not occluded. The GPU
+  rasterizer renders shadow maps for directional lights ([GPU.md](GPU.md#shadows)); point,
+  spot and area lights cast none there (`POINT_LIGHT_SHADOWS_UNSUPPORTED`, info). There
+  are no reflections and no indirect light. (The path tracer computes all three; it reads
+  these intensities as physical units that reproduce this direct lighting exactly, see
   [RENDER_QUALITY.md](RENDER_QUALITY.md#lights-emission-and-the-environment).)
 - Hidden light objects (`visible = False`) do not shine.
 - If a scene has no light objects and `default_lights` is on (the default), a
   built-in white key light of intensity 1 shines from the camera's upper left
   and behind it (`DEFAULT_LIGHTING`, info). Turn it off to render with
   ambient light only (`NO_LIGHTS`, warning).
+
+### Light fields, units and linking (0.20.0)
+
+| Field | Meaning | Default |
+| --- | --- | --- |
+| `spot_size`, `spot_blend` | A spot's full cone angle (degrees, 0.1–180) and soft edge (0–1) | 45, 0.15 |
+| `shape`, `size`, `size_y` | An area light's shape, its size along local X (a disk's diameter) and along local Z (rectangles and ellipses) | `square`, 1, 1 |
+| `spread` | Degrees (1–180): an area light's emission narrowed as by a honeycomb grid in front of it: toward angle `a` from its normal the radiance is `L max(1 − tan a / tan h, 0) / (1 − h / tan h)` (`h = spread / 2`), which keeps its power -- what Blender's `spread` measures as | 180 (Lambertian) |
+| `units` | `aether` (the intensities above) or `watts`: Blender's light units -- a sun's irradiance in W/m² (intensity `S / π`), the power of point and spot lights in W (`P / (4π²)`: radiant intensity `P / (4π)`), of area lights (`P / π²`: radiance `P / (π A)`) | `aether` |
+| `temperature`, `use_temperature` | Kelvins (100–100,000; the black body is computed at 800–12,000, as Blender clamps): the colour times the black body's (luminance 1: only the hue changes) | 6500, off |
+| `exposure` | Stops: the intensity times `2^exposure` | 0 |
+| `shadow` | Whether the light is occluded (`False`: it shines through geometry, an artistic light; shadow maps skip it) | true |
+| `include`, `exclude` | **Light linking**: object ids (scripts and plans take names); with `include` not empty the light lights only those objects and their descendants; `exclude` lists objects (with their descendants) it does not light. Every backend honours it -- the GPU for its first 64 lights (`LIGHT_LINK_LIMIT`, warning, names the others); an id that is not in the scene is `LIGHT_LINK_MISSING` (warning) | empty |
+
+Measured against Blender 5.2's Cycles on an albedo-1 plane (`tests/test_lights.py`,
+fixture `tests/data/blender_lights`): area lights on the rasterizers within 2·10⁻⁴ of
+Blender per pixel (CPU = GPU), spot and point lights within 10⁻⁴; spread on the
+rasterizers (a 12 × 12 midpoint rule over the part of the light that reaches each point):
+median 0.13–0.44 %, at most 4.9 % at the rim; the path tracers integrate spread exactly
+(sums within 0.4 % at 2,048 samples). A sized point light keeps the irradiance of a
+sphere where Blender's soft falloff gives `d² / (d² + r²)` of it (a documented
+difference); the black body agrees with Blender's within 1.1 % from 2,700 K, 2.6 % at
+1,850 K and 6.2 % at 1,000–1,500 K.
 
 **Appearance.** Every mesh object has `obj.appearance`:
 
@@ -353,6 +405,65 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
 - `cull="back"` or `"front"` removes back-facing or front-facing triangles
   instead.
 
+## Studio light rigs (0.20.0)
+
+`scene.light_rig(subject, preset="three_point", *, camera=None, time=None, distance=None,
+level=1.0, ratio=None, rim=1.0, temperature=None, prefix="")` creates (or updates) ordinary
+area lights around a subject -- the object and its descendants, measured posed at `time`
+-- from where the camera sees it. Each light stands at an azimuth (degrees from the
+camera's side, positive to the camera's left) and an elevation, `distance` from the
+subject's centre (default 1.25 times its size), aimed at it:
+
+| Preset | Lights (azimuth, elevation) | Lighting ratio (key + fill) : fill |
+| --- | --- | --- |
+| `three_point` | key (45, 35), fill (−50, 15), rim (160, 40) | 4:1 (two stops) |
+| `loop` | key (35, 30), fill (−40, 10), rim (150, 35) | 3:1 |
+| `rembrandt` | key (50, 45), fill (−45, 10) | 8:1 |
+| `butterfly` | key (0, 45), fill (0, −15), rim (180, 45) | 3:1 (fill from below) |
+| `split` | key (90, 10) | no fill |
+| `high_key` | key (30, 30), fill (−30, 10), rim (180, 45) | 2:1 |
+| `low_key` | key (60, 30), fill (−60, 5), rim (150, 30) | 16:1 |
+| `silhouette` | rim (150, 25), rim (−150, 25) | rims only |
+
+Keys and fills are square soft boxes (0.5 and 0.75 of the distance wide), rims strips
+(0.15 × 0.6). Intensities are **solved, not guessed**: each light's irradiance at the
+subject's centre (on a surface facing it, unoccluded, with the rasterizers' exact polygon
+formula) is computed and the intensities scaled so that the key and the fill together give
+`level` (1: a white surface facing them appears white at exposure 0) in the preset's ratio
+(or `ratio`); rims give `rim` times the key. The report gives what was solved. The lights
+are tagged `light_rig`; calling it again updates them and removes the rig's lights (tagged,
+same `prefix`) that the new preset does not use (`removed`), all in one undo step. CLI:
+`aether3d light rig PROJECT --subject S --preset P`; scene scripts: `{"op": "light_rig",
+...}`. The feedback check `lighting` measures what a rig did and corrects it
+([FEEDBACK.md](FEEDBACK.md#lighting)).
+
+## Image environments (0.20.0)
+
+`scene.world.environment.configure(type="image", image=..., intensity=1.0, rotation=0.0,
+visible=True)` lights the scene with an equirectangular HDR image: a Radiance `.hdr`/`.pic`
+or `.pfm` file inside the project's directory (checked textually and after resolving
+links: `ENVIRONMENT_OUTSIDE`), or a built-in drawn by Aether3D -- `builtin:studio`,
+`builtin:overcast`, `builtin:sunset`, `builtin:night`. Files are untrusted: sizes are
+checked before allocating (`ENVIRONMENT_TOO_LARGE`, `ENVIRONMENT_INVALID`,
+`ENVIRONMENT_UNSUPPORTED`; images above 2048 × 1024 are box-filtered down); a missing file
+falls back to the ambient light with `ENVIRONMENT_MISSING`. The mapping is Blender's,
+measured (experiment E6): a direction `d` turned by `rotation` degrees about +Z is read at
+`u = 0.5 − atan2(y, x) / 2π`, `v = 0.5 + asin(z) / π` (+X the middle of the image, +Z its
+top row), bilinearly. With `visible=False` the image lights the scene and the background
+stays `world.background`.
+
+The **rasterizers** light with an approximation of it: a compact bright source (a sun)
+becomes a directional light along its energy-weighted direction with its irradiance, and
+the rest is projected on nine spherical harmonics convolved with the clamped cosine
+(Ramamoorthi and Hanrahan 2001): the ambient a white surface of each normal reflects, on
+the CPU and the GPU alike (within 3.4·10⁻⁴). Measured against the exact integral: an
+overcast sky within 0.5 %, a sunset within 2.0 % with its sun extracted. The background is
+the image itself, composited exactly behind the geometry. The **path tracers** integrate
+the image, importance-sampled ([RENDER_QUALITY.md](RENDER_QUALITY.md)): they converge to
+the exact integrals (an upward plane at 512 samples: overcast −0.26 %, studio −0.26 %, sunset −0.02 %, night −0.41 % of the luminance).
+CLI: `aether3d scene set PROJECT --environment image --environment-image builtin:studio
+--environment-rotation 30 --environment-visible false`.
+
 ## Color
 
 - **Inputs are display colors.** Object, light, background and ambient colors
@@ -366,13 +477,20 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
   2. They are clamped to [0, 1] (`tonemap="none"`, the default). Since 0.8,
      `tonemap="neutral"` (Khronos PBR Neutral, any backend) instead lowers
      colors by up to 0.04 and compresses values above about 0.76 smoothly
-     toward 1; see
+     toward 1; since 0.20.0 `tonemap="film"` is a film view transform -- a
+     log-encoded tone curve with a path to white for bright saturated colours,
+     fitted to Blender's AgX (RMS 0.008 of the display range over its test
+     colours, at most 0.038); see
      [RENDER_QUALITY.md](RENDER_QUALITY.md#color-management-and-output).
   3. They are encoded with the sRGB transfer function.
   4. They are quantized to 8 bits, rounding to nearest with ties to even.
 
   The PNG declares sRGB with an `sRGB` chunk. `result.linear` keeps the
-  linear values after exposure (above 1 where they will clip). A background
+  linear values after exposure (above 1 where they will clip). Masters (0.20.0):
+  `result.save("x.png", bits=16)` writes a 16-bit PNG of the same view transform
+  (`aether3d.rendering.tonemap.display(linear, tonemap, bits=16)`), `.exr` writes
+  scene-linear OpenEXR (half floats) with the path tracers' passes, and `.hdr`/`.pfm`
+  hold the linear image as before. A background
   color comes out exactly as given (for example `#336699` → `(51, 102, 153)`).
 - Half of a pixel covered by white and half by black averages to 0.5 in
   linear light. That displays as sRGB 188, not 128: antialiasing is
@@ -447,7 +565,10 @@ one, setting its color raises `OBJECT_HAS_MATERIAL`. See
 `scene.world.atmosphere` adds what large outdoor views need: a sky with a sun glow and a
 horizon glow, exponential **height fog** with sunlight scattered toward the camera, and
 **hemisphere ambient** light. It is off by default (scenes render exactly as before) and
-saved with the project.
+saved with the project. Its numeric fields -- like the world's background and ambient
+light and the environment's intensity, rotation and sky colours -- can be keyed since
+0.20.0, so a day-night cycle is the sun light's keys plus the world's
+([ANIMATION.md](ANIMATION.md#animatable-properties)).
 
 ```python
 sun = scene.add_directional_light("Sun", direction=(0.5, 0.6, -0.35), intensity=1.8)
@@ -492,11 +613,12 @@ participating medium: it does not scatter light between surfaces or cast light s
 | Call | Description |
 | --- | --- |
 | `scene.add_camera(name=None, *, projection, fov, fov_axis, ortho_scale, near, far, aspect_ratio, parent, position, rotation, look_at, up, active)` | Add a camera object |
-| `scene.add_light(type="directional", name=None, *, color, intensity, range, falloff, radius, angle, parent, position, rotation, direction, look_at, up)` | Add a light object; also `add_directional_light(name, direction=...)` and `add_point_light(name, position=...)`. `radius` (point) and `angle` (directional, degrees) size the light for the path tracer's soft shadows |
+| `scene.add_light(type="directional", name=None, *, color, intensity, range, falloff, radius, angle, parent, position, rotation, direction, look_at, up, **fields)` | Add a light object; also `add_directional_light(name, direction=...)`, `add_point_light(name, position=...)`, and since 0.20.0 `add_spot_light(name, position=..., look_at=... \| direction=..., spot_size=, spot_blend=)` and `add_area_light(name, position=..., look_at=..., shape=, size=, size_y=, spread=)`; `fields` are the [light fields](#light-fields-units-and-linking-0200). `radius` (point, spot) and `angle` (directional, degrees) size the light for the path tracer's soft shadows |
+| `scene.light_rig(subject, preset, *, camera, time, distance, level, ratio, rim, temperature, prefix)` | A studio light rig (0.20.0; [above](#studio-light-rigs-0200)) |
 | `scene.cameras`, `scene.lights`, `scene.active_camera` | Lookup and active camera (settable) |
-| `scene.world` | `World`: `background`, `ambient_color`, `ambient_intensity`, and `environment` (the path tracer's `Environment`: `"ambient"`, `"uniform"` or `"sky"`) |
+| `scene.world` | `World`: `background`, `ambient_color`, `ambient_intensity`, and `environment` (`"ambient"`, `"uniform"`, `"sky"` or, since 0.20.0, `"image"` with `image`, `rotation`, `visible`) |
 | `scene.render_settings` | `RenderSettings`: `width`, `height`, `samples`, `exposure`, `cull`, `default_lights`; saved with the project |
-| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows, path, ao, tonemap, progress, outputs)` | Render; arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md); `backend="path"`, `"gpu_path"`, `path`, `ao` and `progress` in [RENDER_QUALITY.md](RENDER_QUALITY.md). `tonemap` applies to every backend. `outputs` (since 0.11.1) chooses the per-pixel outputs to return (default: all; the image always comes): the GPU backend reads back only those, which makes small renders and previews faster ([GPU.md](GPU.md)); the others are `None`, and the CPU renderer and path tracers return every output anyway. Returns a `RenderResult`. |
+| `scene.render(*, camera, width, height, samples, exposure, cull, default_lights, frame, margin, limits, backend, adapter, msaa, supersample, shadows, path, ao, tonemap, progress, outputs, denoise, motion, dof_samples, time)` | Render (0.20.0: `denoise` for the path tracers, `motion=dt` adds `passes["motion"]` on any backend, `dof_samples` for the rasterizers' depth of field); arguments override the saved settings for this render. Giving only `width` or `height` keeps the camera's `aspect_ratio` (or the saved shape). `backend="gpu"`/`"auto"` and the GPU options are described in [GPU.md](GPU.md); `backend="path"`, `"gpu_path"`, `path`, `ao` and `progress` in [RENDER_QUALITY.md](RENDER_QUALITY.md). `tonemap` applies to every backend. `outputs` (since 0.11.1) chooses the per-pixel outputs to return (default: all; the image always comes): the GPU backend reads back only those, which makes small renders and previews faster ([GPU.md](GPU.md)); the others are `None`, and the CPU renderer and path tracers return every output anyway. Returns a `RenderResult`. |
 | `obj.camera`, `obj.light`, `obj.kind` | Components (`Camera`/`Light` or `None`); `"mesh"`, `"procedural"`, `"camera"`, `"light"` or `"empty"`. An object holds at most one of mesh, camera and light. |
 | `obj.appearance`, `obj.color`, `obj.visible` | Appearance and render visibility |
 | `obj.material`, `obj.group_materials`, `scene.create_material(...)`, `scene.assign_material(...)`, `scene.materials` | Materials and textures ([MATERIALS.md](MATERIALS.md)) |
@@ -523,8 +645,8 @@ participating medium: it does not scatter light between surfaces or cast light s
 | `output` | Set by `save()` |
 | `backend` | Which backend rendered it, and how |
 | `color` | The output transform: working space, exposure, tone mapper, encoding |
-| `passes` | Path tracer only: `beauty`, `direct`, `indirect`, `albedo`, `normal`, `depth`, `ao`, `sample_count`, `variance` (empty for the rasterizers) |
-| `save(path)` | Atomic write: `.png`, or `.hdr`/`.pfm` (linear, unclipped) |
+| `passes` | Path tracer: `beauty`, `direct`, `indirect`, `albedo`, `normal`, `depth`, `ao`, `sample_count`, `variance`; any backend with `motion=dt`: `motion` (`(h, w, 4)`: pixels to where each pixel's surface was `dt` before, then will be `dt` after) |
+| `save(path, *, bits=8)` | Atomic write: `.png` (`bits=16`: a 16-bit master), `.hdr`/`.pfm` (linear, unclipped), `.exr` (scene-linear OpenEXR with the passes) |
 | `png_bytes(compression=6)`, `pixel(x, y)`, `to_dict()` | Encoded PNG (zlib level 0-9: 1 encodes several times faster, a few percent larger), one pixel, JSON-compatible report |
 
 `stats` holds:
@@ -562,12 +684,13 @@ $ aether3d camera list castle.aether ; aether3d light list castle.aether
 
 | Command | Purpose |
 | --- | --- |
-| `render PATH [-o OUT.png\|.hdr\|.pfm] [--width W] [--height H] [--camera REF] [--samples N] [--exposure EV] [--tonemap none\|neutral] [--cull MODE] [--background C] [--no-default-lights] [--frame] [--margin M] [--force]` | Render a `.aether` project, or a `.glb`/`.gltf` file with `--frame`. The output defaults to `PATH.png`. Existing files need `--force`. The project is never modified. `--backend gpu` and its options: [GPU.md](GPU.md); `--backend path` (CPU) or `gpu_path` (GPU) and their options (`--spp`, `--bounces`, `--seed`, `--ao`, `--passes DIR`, ...): [RENDER_QUALITY.md](RENDER_QUALITY.md#python-and-cli-reference). |
+| `render PATH [-o OUT.png\|.hdr\|.pfm\|.exr] [--bits 8\|16] [--width W] [--height H] [--camera REF] [--samples N] [--exposure EV] [--tonemap none\|neutral\|film] [--cull MODE] [--background C] [--no-default-lights] [--frame] [--margin M] [--force]` | Render a `.aether` project, or a `.glb`/`.gltf` file with `--frame`. The output defaults to `PATH.png`. Existing files need `--force`. The project is never modified. `--backend gpu` and its options: [GPU.md](GPU.md); `--backend path` (CPU) or `gpu_path` (GPU) and their options (`--spp`, `--bounces`, `--seed`, `--ao`, `--passes DIR`, ...): [RENDER_QUALITY.md](RENDER_QUALITY.md#python-and-cli-reference). |
 | `camera add PATH [--name] [--projection] [--fov] [--fov-axis] [--ortho-scale] [--near] [--far] [--aspect-ratio] [--parent] [--position X Y Z] [--rotation-euler X Y Z] [--look-at X Y Z \| --look-at-object REF] [--up X Y Z] [--active \| --inactive] [--frame] [--frame-direction X Y Z] [--margin]` | Add a camera |
 | `camera set PATH CAMERA [...] [--activate]`, `camera frame PATH [CAMERA] [--object REF]... [--direction X Y Z] [--margin] [--no-fit-clipping]`, `camera activate PATH CAMERA\|none`, `camera list PATH` | Change, frame, activate, list cameras |
-| `light add PATH [--type directional\|point] [--name] [--color] [--intensity] [--range R\|none] [--falloff] [--radius R] [--angle DEG] [--direction X Y Z] [--position X Y Z] [--look-at ...] [--parent]`, `light set PATH LIGHT [...]`, `light list PATH` | Lights (list also shows ambient light and the environment) |
+| `light add PATH [--type directional\|point\|spot\|area] [--name] [--color] [--intensity] [--range R\|none] [--falloff] [--radius R] [--angle DEG] [--spot-size DEG] [--spot-blend B] [--shape S] [--size M] [--size-y M] [--spread DEG] [--units aether\|watts] [--temperature K] [--use-temperature B] [--light-exposure EV] [--shadow B] [--direction X Y Z] [--position X Y Z] [--look-at ...] [--parent]`, `light set PATH LIGHT [...]`, `light list PATH` | Lights (list also shows ambient light and the environment) |
+| `light rig PATH --subject S [--preset P] [--camera] [--distance] [--level] [--ratio] [--rim] [--temperature] [--prefix]` | A studio light rig (0.20.0) |
 | `object set PATH OBJECT [--position] [--rotation-euler] [--scale] [--look-at ...] [--color] [--specular] [--shininess] [--visible true\|false]`, `object remove PATH OBJECT` | Any object |
-| `scene set PATH [--background] [--ambient-color] [--ambient-intensity] [--environment ambient\|uniform\|sky] [--environment-color] [--environment-intensity] [--sky-zenith] [--sky-horizon] [--sky-ground] [--width] [--height] [--samples] [--exposure] [--cull] [--default-lights true\|false] [--active-camera REF\|none]` | World and saved render settings |
+| `scene set PATH [--background] [--ambient-color] [--ambient-intensity] [--environment ambient\|uniform\|sky\|image] [--environment-image FILE\|builtin:NAME] [--environment-rotation DEG] [--environment-visible B] [--environment-color] [--environment-intensity] [--sky-zenith] [--sky-horizon] [--sky-ground] [--width] [--height] [--samples] [--exposure] [--cull] [--default-lights true\|false] [--active-camera REF\|none]` | World and saved render settings |
 | `scene run PATH SCRIPT.json\|-` | Apply a declarative scene script |
 
 How the commands behave:
@@ -603,7 +726,8 @@ built on them:
 | Operation | Keys |
 | --- | --- |
 | `add_camera` | Camera parameters, `name`, `parent`, `position`, `rotation_euler`, `look_at` (point or object), `up`, `active`, and `frame` with `frame_targets`, `frame_direction`, `frame_margin` |
-| `add_light` | `type`, light parameters (including `radius` and `angle`), `name`, `parent`, `position`, `rotation_euler`, `direction`, `look_at`, `up` |
+| `add_light` | `type`, light parameters (including `radius`, `angle` and the 0.20.0 fields; `include`/`exclude` take object names or ids), `name`, `parent`, `position`, `rotation_euler`, `direction`, `look_at`, `up` |
+| `light_rig` | `subject`, `preset` and the rig's options (0.20.0) |
 | `set_camera`, `set_light` | `camera`/`light` plus parameters |
 | `set_object` | `object`, `position`, `rotation_euler`, `scale`, `look_at` or `look_along`, `up`, `color`, `specular`, `shininess`, `visible`, `tags` (replaces them), `add_tags`, `remove_tags`, `metadata` (entries to set; `null` removes one) |
 | `frame_camera` | `camera` (default: active), `targets`, `direction`, `up`, `margin`, `fit_clipping` |
@@ -628,7 +752,9 @@ the planned MCP server (Stage 11).
 
 Projects are saved as `.aether` **format version 5** (version 3 added
 rendering, version 4 materials, version 5 the path tracer's environment and
-light sizes); see [FILE_FORMAT.md](FILE_FORMAT.md).
+light sizes); see [FILE_FORMAT.md](FILE_FORMAT.md). Version 13 (0.20.0) adds the
+lights' 0.20.0 fields, the environment's image fields and the cameras' lens; older
+projects load with the defaults, which render exactly as before.
 
 - `scene.active_camera`, `scene.world` and `scene.render` (the render
   settings) are saved.
@@ -782,15 +908,24 @@ Diagnostics (in `result.diagnostics`):
 | `RENDER_STOPPED` | info | Path tracer: the `progress` callback stopped the render; the image averages the samples done |
 | `PASS_THROUGH_LIMIT` | warning | Path tracer: rays crossed more than 256 cut-out or single-sided surfaces and were treated as leaving the scene |
 | `CULL_CAMERA_RAYS` | info | Path tracer: `cull` hid faces from camera rays only |
+| `LIGHT_LINK_MISSING` | warning | A light's `include`/`exclude` names an object that is not in the scene (0.20.0) |
+| `LIGHT_LINK_LIMIT` | warning | GPU: lights after the first 64 with links light every object there (0.20.0) |
+| `LIGHT_SIZE_UNDEFINED` | warning | An area light of zero size (zero scale) is ignored (0.20.0) |
+| `ENVIRONMENT_MISSING` | warning | The environment image cannot be read: the ambient light is used (0.20.0) |
+| `FOCUS_OBJECT_UNUSABLE` | info | The camera's `focus_object` is missing or behind it: `focus_distance` is used (0.20.0) |
+| `DEPTH_OF_FIELD` | info | Rasterizers: the aperture views averaged (0.20.0) |
+| `DENOISED` | info | Path tracers: the image was denoised (biased; `passes["beauty"]` is the raw image) (0.20.0) |
 
 ## Limitations
 
 - **Lighting:** the CPU renderer draws no shadows (the GPU backend renders
   directional-light shadow maps, with cascades for wide outdoor views, see
-  [GPU.md](GPU.md#shadows)). There are no
-  reflections, environment maps or indirect light. Emissive surfaces do not
-  light other objects. The path tracer (`backend="path"`,
-  [RENDER_QUALITY.md](RENDER_QUALITY.md)) computes all of these, more slowly.
+  [GPU.md](GPU.md#shadows); spot, area and point lights cast none). There are no
+  reflections or indirect light, and image environments light through nine spherical
+  harmonics and one extracted sun. Emissive surfaces do not light other objects, and
+  glass is not refracted (its diffuse part is dropped). The path tracers
+  (`backend="path"`, `"gpu_path"`, [RENDER_QUALITY.md](RENDER_QUALITY.md)) compute all of
+  these, more slowly.
 - **Transparency:** alpha masks only (cutouts); no blended transparency.
   Material limitations are listed in
   [MATERIALS.md](MATERIALS.md#limitations).
@@ -800,8 +935,8 @@ Diagnostics (in `result.diagnostics`):
   not real time. The GPU backend ([GPU.md](GPU.md)) renders the same scenes in
   milliseconds on graphics hardware.
 - **Limits:** perspective cameras need `far / near ≤ 10⁹`, which keeps the
-  packed depth precise. The only tone mapper is the optional Khronos PBR
-  Neutral curve.
+  packed depth precise. Tone mapping: `none`, Khronos PBR Neutral, or the `film`
+  transform (fitted to AgX, not Blender's OpenColorIO configuration).
 - **glTF export:** cameras and lights are written as plain nodes (their
   transforms are kept, and the files pass the Khronos validator). glTF
   cameras and `KHR_lights_punctual` are not written yet, and imported glTF

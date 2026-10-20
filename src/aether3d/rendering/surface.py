@@ -475,7 +475,8 @@ def evaluate_material(
 
 
 def _light_vectors(light, px, py, pz):
-    """Unit direction to the light and attenuation (None: 1) at points."""
+    """Unit direction to the light and attenuation (None: 1) at points (point and spot
+    lights; a spot's cone masks the attenuation)."""
     if light.type == "directional":
         lx, ly, lz = (-light.direction).tolist()
         return lx, ly, lz, None
@@ -487,17 +488,192 @@ def _light_vectors(light, px, py, pz):
     if light.range is not None:
         ratio = dist / light.range
         atten = atten * np.clip(1.0 - ratio * ratio * ratio * ratio, 0.0, 1.0) ** 2
+    if light.type == "spot":
+        dx, dy, dz = light.direction.tolist()
+        atten = atten * light.spot_mask(-(lx * dx + ly * dy + lz * dz))
     return lx, ly, lz, atten
 
 
-def _hemisphere(rs: RenderScene, nz: np.ndarray) -> np.ndarray | None:
-    """Per-sample hemisphere ambient light, or ``None`` (uniform ambient)."""
+AREA_POLYGON = 16
+"""Corners of the polygon a disk or ellipse light is integrated as on the rasterizers."""
+AREA_SCALE = math.sqrt(math.pi / (0.5 * AREA_POLYGON * math.sin(2.0 * math.pi / AREA_POLYGON)))
+"""The polygon's corners at this many radii: its area is then the ellipse's."""
+
+
+def area_corners(light) -> np.ndarray:
+    """``(k, 3)`` world corners of an area light's polygon, in order (4 for squares and
+    rectangles, :data:`AREA_POLYGON` on disks and ellipses)."""
+    c, ax, ay = light.position, light.axis_x, light.axis_y
+    if light.shape in ("disk", "ellipse"):
+        t = np.arange(AREA_POLYGON) * (2.0 * math.pi / AREA_POLYGON)
+        # Enlarged to the ellipse's own area (pi ab): the polygon carries all of its light.
+        k = AREA_SCALE
+        return c + (k * np.cos(t))[:, None] * ax + (k * np.sin(t))[:, None] * ay
+    return np.array([c - ax - ay, c + ax - ay, c + ax + ay, c - ax + ay])
+
+
+SPREAD_QUADRATURE = 12
+"""Points per side of the midpoint rule spread area lights are integrated with (rasterizers)."""
+
+
+def spread_irradiance(light, px, py, pz, nx, ny, nz) -> np.ndarray:
+    """``G`` of a spread area light (its radiance factor included): the midpoint rule on a
+    :data:`SPREAD_QUADRATURE`-square grid over the part of the light that reaches each
+    point (``RenderLight.spread_window``), each grid point weighted by the spread factor
+    toward the point. An
+    approximation of the integral (the path tracers sample it without one); cells across
+    the edge of a disk or ellipse count the share of them inside it."""
+    p = np.stack([px, py, pz], axis=1)
+    u0, u1, w0, w1, area, ok = light.spread_window(p)
+    k = SPREAD_QUADRATURE
+    du, dw = (u1 - u0) / k, (w1 - w0) / k
+    c, ax, ay, nl = light.position, light.axis_x, light.axis_y, light.direction
+    round_ = light.shape in ("disk", "ellipse")
+    total = np.zeros(px.shape[0])
+    for i in range(k):
+        u = u0 + (i + 0.5) * du
+        for j in range(k):
+            w = w0 + (j + 0.5) * dw
+            vx = c[0] + u * ax[0] + w * ay[0] - px
+            vy = c[1] + u * ax[1] + w * ay[1] - py
+            vz = c[2] + u * ax[2] + w * ay[2] - pz
+            d2 = np.maximum(vx * vx + vy * vy + vz * vz, MIN_LIGHT_DISTANCE * MIN_LIGHT_DISTANCE)
+            d = np.sqrt(d2)
+            cos_p = np.maximum((vx * nx + vy * ny + vz * nz) / d, 0.0)
+            cos_l = -(vx * nl[0] + vy * nl[1] + vz * nl[2]) / d
+            term = light.spread_factor(cos_l) * np.maximum(cos_l, 0.0) * cos_p / d2
+            if round_:
+                # The share of the cell inside the ellipse (the unit circle here), from the
+                # signed distance of its centre to the edge over its width across the edge.
+                r = np.sqrt(u * u + w * w)
+                rs = np.maximum(r, 1e-300)
+                across = np.abs(u / rs) * du + np.abs(w / rs) * dw
+                term = term * np.clip(0.5 - (r - 1.0) / np.maximum(across, 1e-300), 0.0, 1.0)
+            total += term
+    return np.where(ok, total * (area / (k * k)), 0.0)
+
+
+def area_irradiance(light, px, py, pz, nx, ny, nz) -> np.ndarray:
+    """``G``: the irradiance an area light of unit radiance gives the points (normals
+    ``n``), unshadowed -- Lambert's polygon formula ``1/2 sum theta_i (n . gamma_i)`` over
+    the polygon clipped by the points' tangent planes (exact for squares and rectangles;
+    disks and ellipses as :data:`AREA_POLYGON`-gons). Zero behind the one-sided light.
+    Spread lights: :func:`spread_irradiance`."""
+    if light.spread_tan > 0.0:
+        return spread_irradiance(light, px, py, pz, nx, ny, nz)
+    corners = area_corners(light)
+    k = corners.shape[0]
+    count = px.shape[0]
+    rel = [
+        (corners[i, 0] - px, corners[i, 1] - py, corners[i, 2] - pz) for i in range(k)
+    ]  # vectors from the points to the corners
+    dist = [vx * nx + vy * ny + vz * nz for vx, vy, vz in rel]  # heights above the planes
+    total = np.zeros(count)
+    exit_x = [np.zeros(count) for _ in range(3)]
+    entry_x = [np.zeros(count) for _ in range(3)]
+    clipped = np.zeros(count, bool)
+
+    def edge(a, b, live):
+        # theta (n . gamma) of the edge a -> b, where live; stable for small angles
+        ax_, ay_, az_ = a
+        bx_, by_, bz_ = b
+        cx = ay_ * bz_ - az_ * by_
+        cy = az_ * bx_ - ax_ * bz_
+        cz = ax_ * by_ - ay_ * bx_
+        cross = np.sqrt(cx * cx + cy * cy + cz * cz)
+        dot = ax_ * bx_ + ay_ * by_ + az_ * bz_
+        theta = np.arctan2(cross, dot)
+        ngam = (cx * nx + cy * ny + cz * nz) / np.maximum(cross, 1e-300)
+        return np.where(live & (cross > 0.0), theta * ngam, 0.0)
+
+    for i in range(k):
+        j = (i + 1) % k
+        a, b = rel[i], rel[j]
+        da, db = dist[i], dist[j]
+        above_a, above_b = da > 0.0, db > 0.0
+        with np.errstate(divide="ignore", invalid="ignore"):
+            f = np.where(above_a != above_b, da / np.where(da != db, da - db, 1.0), 0.0)
+        x = tuple(a[c] + f * (b[c] - a[c]) for c in range(3))
+        # the part of the edge above the plane
+        start = tuple(np.where(above_a, a[c], x[c]) for c in range(3))
+        end = tuple(np.where(above_b, b[c], x[c]) for c in range(3))
+        total += edge(start, end, above_a | above_b)
+        leaving = above_a & ~above_b
+        entering = ~above_a & above_b
+        for c in range(3):
+            exit_x[c] = np.where(leaving, x[c], exit_x[c])
+            entry_x[c] = np.where(entering, x[c], entry_x[c])
+        clipped |= leaving
+    total += edge(tuple(exit_x), tuple(entry_x), clipped)  # along the horizon
+    # One-sided: only points in front of the light (the side its normal faces).
+    cx_, cy_, cz_ = light.position
+    nl = light.direction
+    front = (px - cx_) * nl[0] + (py - cy_) * nl[1] + (pz - cz_) * nl[2] > 0.0
+    return np.where(front, 0.5 * np.abs(total), 0.0)
+
+
+def area_highlight(light, px, py, pz, nx, ny, nz, vx, vy, vz):
+    """The representative point of an area light for glossy highlights (Karis 2013):
+    where the mirror direction meets the light's plane, clamped into its shape. Returns
+    the unit direction to it, ``cos`` at the light (one-sided) over the squared distance,
+    and the distance (for widening the lobe). Spread lights: clamped into the part of the
+    light that reaches the point, and weighted by the spread factor there."""
+    ndv = nx * vx + ny * vy + nz * vz
+    rx, ry, rz = 2.0 * ndv * nx - vx, 2.0 * ndv * ny - vy, 2.0 * ndv * nz - vz
+    c = light.position
+    nl = light.direction
+    ox, oy, oz = c[0] - px, c[1] - py, c[2] - pz  # point -> centre
+    denom = rx * nl[0] + ry * nl[1] + rz * nl[2]
+    t = (ox * nl[0] + oy * nl[1] + oz * nl[2]) / np.where(np.abs(denom) > 1e-12, denom, 1e-12)
+    t = np.where((denom < -1e-12) & (t > 0.0), t, 0.0)  # toward the front of the light
+    qx, qy, qz = rx * t - ox, ry * t - oy, rz * t - oz  # hit point relative to the centre
+    ax, ay = light.axis_x, light.axis_y
+    la, lb = float(ax @ ax), float(ay @ ay)
+    u = (qx * ax[0] + qy * ax[1] + qz * ax[2]) / la
+    w = (qx * ay[0] + qy * ay[1] + qz * ay[2]) / lb
+    if light.spread_tan > 0.0:
+        u0, u1, w0, w1, _area, ok = light.spread_window(np.stack([px, py, pz], axis=1))
+        u, w = np.clip(u, u0, u1), np.clip(w, w0, w1)
+    if light.shape in ("disk", "ellipse"):
+        r = np.sqrt(u * u + w * w)
+        scale = np.where(r > 1.0, 1.0 / np.maximum(r, 1e-300), 1.0)
+        u, w = u * scale, w * scale
+    else:
+        u, w = np.clip(u, -1.0, 1.0), np.clip(w, -1.0, 1.0)
+    lx = ox + u * ax[0] + w * ay[0]
+    ly = oy + u * ax[1] + w * ay[1]
+    lz = oz + u * ax[2] + w * ay[2]
+    d2 = np.maximum(lx * lx + ly * ly + lz * lz, MIN_LIGHT_DISTANCE * MIN_LIGHT_DISTANCE)
+    d = np.sqrt(d2)
+    lx, ly, lz = lx / d, ly / d, lz / d
+    cos_l = np.maximum(-(lx * nl[0] + ly * nl[1] + lz * nl[2]), 0.0)
+    if light.spread_tan > 0.0:
+        return lx, ly, lz, np.where(ok, light.spread_factor(cos_l) * cos_l / d2, 0.0), d
+    return lx, ly, lz, cos_l / d2, d
+
+
+def _hemisphere(rs: RenderScene, nz: np.ndarray, n=None) -> np.ndarray | None:
+    """Per-sample ambient light: an image environment's (its spherical harmonics at the
+    normals ``n``), the hemisphere ambient's, or ``None`` (uniform ambient)."""
+    sh = getattr(rs, "ambient_sh", None)
+    if sh is not None:
+        from .envimage import sh_ambient
+
+        return sh_ambient(sh, np.stack(n, axis=1))
     atm = getattr(rs, "atmosphere", None)
     if atm is None or not atm["settings"].enabled or atm["settings"].ambient != "hemisphere":
         return None
     from .atmosphere import ambient_at, resolve
 
     return ambient_at(resolve(rs), rs.ambient, nz)
+
+
+def linked(light, inst: np.ndarray | None) -> np.ndarray | None:
+    """Light linking: whether ``light`` lights each sample (of instances ``inst``), or
+    ``None`` when it lights them all."""
+    if light.receivers is None or inst is None:
+        return None
+    return light.receivers[inst]
 
 
 def shade_simple(
@@ -509,13 +685,15 @@ def shade_simple(
     n: tuple[np.ndarray, np.ndarray, np.ndarray],
     p: tuple[np.ndarray, np.ndarray, np.ndarray],
     v: tuple | None,
+    inst: np.ndarray | None = None,
 ) -> list[np.ndarray]:
-    """Stage 5 shading, with the same arithmetic in the same order (bitwise stable)."""
+    """Stage 5 shading, with the same arithmetic in the same order (bitwise stable).
+    ``inst``: the samples' instances, for light linking."""
     nx, ny, nz = n
     px, py, pz = p
     count = nx.shape[0]
     any_spec = bool(np.any(spec > 0.0))
-    hemi = _hemisphere(rs, nz)
+    hemi = _hemisphere(rs, nz, (nx, ny, nz))
     if hemi is not None:  # (scene.world.atmosphere ambient="hemisphere")
         diffuse = [hemi[:, c] if occlusion is None else hemi[:, c] * occlusion for c in range(3)]
     elif occlusion is None:
@@ -526,9 +704,34 @@ def shade_simple(
     if any_spec:
         vx, vy, vz = v
     for light in rs.lights:
+        mask = linked(light, inst)
+        if mask is not None and not mask.any():
+            continue
+        if light.type == "area":
+            # Diffuse: the polygon's irradiance (G / A per unit intensity, radiance pi I / A);
+            # highlight: toward the representative point, as a point light there.
+            g = area_irradiance(light, px, py, pz, nx, ny, nz) / light.area
+            if mask is not None:
+                g = np.where(mask, g, 0.0)
+            for c in range(3):
+                diffuse[c] += light.radiance[c] * g
+            if any_spec:
+                lx, ly, lz, atten, _d = area_highlight(light, px, py, pz, nx, ny, nz, vx, vy, vz)
+                ndl = np.maximum(nx * lx + ny * ly + nz * lz, 0.0)
+                hx_, hy_, hz_ = lx + vx, ly + vy, lz + vz
+                h_len = np.maximum(np.sqrt(hx_ * hx_ + hy_ * hy_ + hz_ * hz_), 1e-300)
+                ndh = np.maximum((nx * hx_ + ny * hy_ + nz * hz_) / h_len, 0.0)
+                term = spec * np.where(ndl > 0.0, np.power(ndh, shin), 0.0) * atten
+                if mask is not None:
+                    term = np.where(mask, term, 0.0)
+                for c in range(3):
+                    highlight[c] += light.radiance[c] * term
+            continue
         lx, ly, lz, atten = _light_vectors(light, px, py, pz)
         ndl = np.maximum(nx * lx + ny * ly + nz * lz, 0.0)
         weight = ndl if atten is None else ndl * atten
+        if mask is not None:
+            weight = np.where(mask, weight, 0.0)
         for c in range(3):
             diffuse[c] += light.radiance[c] * weight
         if any_spec:
@@ -538,6 +741,8 @@ def shade_simple(
             term = spec * np.where(ndl > 0.0, np.power(ndh, shin), 0.0)
             if atten is not None:
                 term = term * atten
+            if mask is not None:
+                term = np.where(mask, term, 0.0)
             for c in range(3):
                 highlight[c] += light.radiance[c] * term
     radiance = [base[:, c] * diffuse[c] for c in range(3)]
@@ -566,22 +771,35 @@ def shade_standard(
     n: np.ndarray,
     p: np.ndarray,
     v: np.ndarray,
+    inst: np.ndarray | None = None,
+    transmission: float = 0.0,
 ) -> np.ndarray:
-    """``(n, 3)`` radiance of the metallic-roughness model (see the module docstring)."""
+    """``(n, 3)`` radiance of the metallic-roughness model (see the module docstring);
+    ``inst``: the samples' instances, for light linking; ``transmission``: the share of
+    the diffuse base that is transmitted (the rasterizers do not refract: it is dropped)."""
     metallic = np.clip(sv.metallic, 0.0, 1.0)[:, None]
     rough = np.clip(sv.roughness, MIN_ROUGHNESS, 1.0)
     alpha = rough * rough
     a2 = (alpha * alpha)[:, None]
     base = sv.base
     c_diff = base * (1.0 - metallic)
+    if transmission > 0.0:
+        c_diff = c_diff * (1.0 - transmission)
     f0 = (0.08 * np.asarray(specular, dtype=np.float64)) * (1.0 - metallic) + base * metallic
     ndv = np.maximum((n * v).sum(axis=1), 1e-4)[:, None]
     scale, bias = env_brdf(rough, ndv[:, 0])
-    hemi = _hemisphere(rs, n[:, 2])
+    hemi = _hemisphere(rs, n[:, 2], (n[:, 0], n[:, 1], n[:, 2]))
     amb = rs.ambient if hemi is None else hemi
     out = amb * sv.occlusion[:, None] * (c_diff + f0 * scale[:, None] + bias[:, None])
     px, py, pz = p[:, 0], p[:, 1], p[:, 2]
     for light in rs.lights:
+        mask = linked(light, inst)
+        if mask is not None and not mask.any():
+            continue
+        if light.type == "area":
+            part = _area_standard(light, n, p, v, c_diff, f0, alpha, a2, ndv)
+            out += part if mask is None else np.where(mask[:, None], part, 0.0)
+            continue
         lx, ly, lz, atten = _light_vectors(light, px, py, pz)
         if atten is None:  # directional: one direction for every sample
             l_vec = np.broadcast_to(np.array([lx, ly, lz], dtype=np.float64), n.shape)
@@ -589,6 +807,8 @@ def shade_standard(
             l_vec = np.stack([lx, ly, lz], axis=1)
         ndl = (n * l_vec).sum(axis=1)[:, None]
         lit = ndl[:, 0] > 0.0
+        if mask is not None:
+            lit &= mask
         if not lit.any():
             continue
         h = l_vec + v
@@ -607,6 +827,41 @@ def shade_standard(
         weight = ndl if atten is None else ndl * np.asarray(atten)[:, None]
         out += np.where(lit[:, None], light.radiance * weight * brdf, 0.0)
     return out
+
+
+def _area_standard(light, n, p, v, c_diff, f0, alpha, a2, ndv) -> np.ndarray:
+    """An area light on the metallic-roughness model: the exact unshadowed diffuse
+    irradiance of its polygon, and a GGX highlight toward its representative point with
+    the lobe widened by the light's apparent size (Karis 2013, an approximation; the
+    path tracer integrates it exactly)."""
+    nx, ny, nz = n[:, 0], n[:, 1], n[:, 2]
+    px, py, pz = p[:, 0], p[:, 1], p[:, 2]
+    vx, vy, vz = v[:, 0], v[:, 1], v[:, 2]
+    g = area_irradiance(light, px, py, pz, nx, ny, nz) / light.area
+    lx, ly, lz, atten, d = area_highlight(light, px, py, pz, nx, ny, nz, vx, vy, vz)
+    l_vec = np.stack([lx, ly, lz], axis=1)
+    h = l_vec + v
+    h = h / np.maximum(np.linalg.norm(h, axis=1, keepdims=True), 1e-300)
+    ndl = np.maximum((n * l_vec).sum(axis=1), 0.0)[:, None]
+    ndh = np.maximum((n * h).sum(axis=1), 0.0)[:, None]
+    vdh = np.maximum((v * h).sum(axis=1), 0.0)[:, None]
+    fresnel = f0 + (1.0 - f0) * (1.0 - vdh) ** 5
+    # A source of radius sqrt(A / pi) at distance d widens the lobe: alpha' (energy kept
+    # by (alpha / alpha')^2).
+    a = alpha[:, None]
+    wide = np.clip(a + math.sqrt(light.area / math.pi) / (2.0 * d)[:, None], 0.0, 1.0)
+    a2w = wide * wide
+    dd = ndh * ndh * (a2w - 1.0) + 1.0
+    dist = a2w / (math.pi * dd * dd) * (a * a) / np.maximum(a2w, 1e-300)
+    vis = 0.5 / np.maximum(
+        ndl * np.sqrt(ndv * ndv * (1.0 - a2) + a2) + ndv * np.sqrt(ndl * ndl * (1.0 - a2) + a2),
+        1e-300,
+    )
+    fresnel_v = f0 + (1.0 - f0) * (1.0 - ndv) ** 5  # diffuse: the view's Fresnel
+    diffuse = (1.0 - fresnel_v) * c_diff * g[:, None]
+    spec = math.pi * fresnel * dist * vis * ndl * atten[:, None]
+    lit = ndl[:, 0] > 0.0
+    return light.radiance * diffuse + np.where(lit[:, None], light.radiance * spec, 0.0)
 
 
 def view_vectors(

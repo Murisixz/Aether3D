@@ -8,8 +8,8 @@ is available through a small, predictable Python API and a JSON-speaking CLI,
 so it can be driven reliably by people and AI coding agents alike, with no
 graphical interface required.
 
-> **Status: v0.19.1 (advanced character rigging, revised against Blender).** Aether3D
-> provides:
+> **Status: v0.20.0 (animation, cameras, lighting, path tracing and film output).**
+> Aether3D provides:
 >
 > - a scene graph with transforms and hierarchy;
 > - the native `.aether` project format;
@@ -35,9 +35,12 @@ graphical interface required.
 >   subdivision, bevel, solid booleans), typed parameters with safe
 >   expressions and rules, dependency tracking, caching, and undo;
 > - **cameras, lights and Aether3D's own CPU renderer**: perspective and
->   orthographic cameras, directional, point and ambient light, solid colors,
->   clipping, depth testing, antialiasing, and PNG output, all without
->   Blender, a GPU or a GUI;
+>   orthographic cameras with lenses (focal length, sensor, shift, f-stop, focus, aperture
+>   blades), directional, point, spot and area lights (squares, rectangles, disks,
+>   ellipses, spread) in Aether3D's units or Blender's watts, colour temperatures, light
+>   linking, image environments (HDR files and built-ins), studio light rigs solved on a
+>   subject, solid colors, clipping, depth testing, antialiasing, depth of field, and
+>   PNG output, all without Blender, a GPU or a GUI;
 > - a **GPU rendering backend** (optional): real, headless GPU rasterization
 >   through wgpu on Vulkan, Metal or Direct3D 12, with MSAA, directional
 >   shadow maps, adapter discovery and selection, and automatic CPU fallback;
@@ -48,10 +51,18 @@ graphical interface required.
 >   presets, several materials per mesh (face groups), and glTF material
 >   import and export;
 > - a **path tracer** (`backend="path"` on the CPU, `backend="gpu_path"` on
->   the GPU): global illumination, ray-traced shadows and reflections,
->   emissive area lights, sky environments, ambient occlusion, render passes
->   and linear HDR output, on a BVH ray tracing core, with reproducible
->   seeds;
+>   the GPU, which traces the same paths): global illumination, ray-traced shadows and
+>   reflections, glass (rough dielectrics, total internal reflection), emissive surfaces
+>   that light the scene, spot and area lights with MIS, importance-sampled HDR
+>   environments, Owen-scrambled Sobol' samples, pixel filters, adaptive sampling, an
+>   opt-in denoiser that says it is biased, ambient occlusion, render passes and motion
+>   vectors, on a BVH ray tracing core (software traversal; hardware ray tracing is not
+>   used or claimed), with reproducible seeds;
+> - **film output**: a filmic view transform with a path to white (fitted to
+>   measurements of Blender's AgX), 16-bit PNG and OpenEXR masters with passes,
+>   resumable 60 fps frame sequences with real motion blur and depth of field, and video
+>   assembled by FFmpeg from Aether3D's frames (H.264, preset slow, CRF 10; lossless
+>   FFV1 masters);
 > - an **operations history**: every change -- from Python, scripts or the
 >   command line -- can be undone and redone exactly, with transactions,
 >   checkpoints, memory limits, and histories saved with projects;
@@ -70,7 +81,10 @@ graphical interface required.
 >   depth, measured facts per object), check them against stated expectations and an
 >   agent's own visual evaluations, and correct what is wrong with verified, undoable
 >   steps -- by hand, in a budgeted loop, from Python, the CLI or MCP. Every finding says
->   whether it was measured or judged; the engine never claims to have seen anything;
+>   whether it was measured or judged; the engine never claims to have seen anything.
+>   Lighting is measured on the subject from the scene's lights (lighting ratio,
+>   separation from the background, lights without effect) and corrected with verified
+>   fill, key and rim changes;
 > - **precision modeling and CAD**: units and tolerances, parametric sketches solved
 >   under constraints and dimensions (exact DOF, redundancy and conflict analysis), solid
 >   parts built from features (extrudes, revolves, sweeps, lofts, holes, fillets,
@@ -85,11 +99,16 @@ graphical interface required.
 > - **animation, rigging and cinematics**: keyframes on exact F-curves (every
 >   interpolation and Penner easing, five handle types with weighted tangents, exact
 >   derivatives to jerk, cycle-aware loops, modifiers, continuity and overshoot reports,
->   keyframe reduction, baking, SVG/PNG graphs), quaternion tracks, clips with layers and
->   strips, skeletons with FK, IK (two-bone with poles, FABRIK, CCD) and constraints,
+>   keyframe reduction, baking, SVG/PNG graphs with labelled keys, handles, extrema and
+>   discontinuities; Blender-compatible automatic handles measured against Blender,
+>   generator, function and cycles modifiers, timing operations -- ease, hold,
+>   anticipation, overshoot, retime, offset cycles), world-space motion diagnostics
+>   (jumps, acceleration steps, jitter, snaps, pole flips, loop seams, framing, focus),
+>   quaternion tracks, clips with layers, masks, smooth transitions and strips, skeletons with FK, IK (two-bone with poles, FABRIK, CCD) and constraints,
 >   rigid attachments, linear and dual-quaternion skinning, morph targets, editable motion
 >   generators (idle, walk, run, jump, superhero landing, wave, head turns), foot
->   contacts and planting, mirroring, root motion, retargeting, camera moves and shot
+>   contacts and planting, mirroring, root motion, retargeting, camera moves (dolly,
+>   truck, crane, orbit, follow, zoom, focus pulls), shot framing by shot size and shot
 >   sequences, frame rendering with real motion blur, and glTF animation, skin and morph
 >   import/export -- all headless, from Python, JSON scripts, the CLI and MCP;
 > - **character rigging**: unrigged meshes rigged automatically (landmarks measured on
@@ -122,8 +141,8 @@ graphical interface required.
 > All of it is scriptable from Python and from declarative JSON on the CLI.
 > Physics is not part of this release. Procedural worlds (Stage 16) were built after
 > Stage 17 and ship as 0.18.0; there is no 0.16.0. Character rigging (Stage 18) ships as
-> 0.19.0 and its revision, measured against Blender, as 0.19.1. See the
-> [changelog](CHANGELOG.md).
+> 0.19.0 and its revision, measured against Blender, as 0.19.1; animation, lighting and
+> film output (Stage 19) as 0.20.0. See the [changelog](CHANGELOG.md).
 
 ## Quick start
 
@@ -986,6 +1005,64 @@ print(result.backend["device"], result.stats["noise"], sorted(result.passes))
   0.03 s on the GPU rasterizer. At 1920x1080 with 64 samples it takes 18 s
   on the GPU path tracer and 15.6 minutes on the CPU (see
   [docs/RENDER_QUALITY.md](docs/RENDER_QUALITY.md#performance)).
+
+### Film: lenses, lights, glass and deliveries (0.20.0)
+
+![A studio product shot, path traced on the GPU](examples/output/film/e_studio/hero_preview.png)
+
+*Glass, chrome, gold, wood and frosted glass under a solved three-point rig, a 70 mm f/4
+lens with depth of field: 1920x1080, 512 samples per pixel with adaptive sampling, Sobol'
+samples, a Blackman-Harris filter, the denoiser and the film view transform; 473 s on an
+RTX 4060 Laptop GPU ([`examples/film_e_studio.py`](examples/film_e_studio.py)).*
+
+```python
+scene.light_rig("Products", "three_point", rim=1.4, temperature=5600)  # solved on the subject
+cam.camera.configure(focal_length=70, fstop=4.0, focus_object=vase.id)
+scene.world.environment.configure(type="image", image="builtin:studio", visible=False)
+result = scene.render(
+    backend="gpu_path",
+    width=1920,
+    height=1080,
+    tonemap="film",
+    path={
+        "samples": 512,
+        "sampler": "sobol",
+        "filter": "blackman_harris",
+        "adaptive_threshold": 0.015,
+    },
+    denoise=True,
+)
+result.save("shot.exr")  # scene-linear OpenEXR with the passes
+result.save("shot.png", bits=16)  # a 16-bit master of the view transform
+```
+
+- **Lights as Blender measures them**: spot and area lights (squares, rectangles, disks,
+  ellipses, spread), watts, colour temperature, exposure, per-light shadows and light
+  linking on every backend -- the rasterizers integrate area lights exactly (within
+  2e-4 of Cycles), the path tracers converge to Cycles' images. Studio rigs (three-point,
+  loop, Rembrandt, butterfly, split, high and low key, silhouette) are solved on the
+  subject.
+- **Image environments** (HDR files or built-ins) importance-sampled by the path tracers
+  and approximated on the rasterizers by harmonics and an extracted sun; **glass** with
+  refraction and total internal reflection; **emission that lights the scene**
+  ([night street](examples/output/film/f_night/hero_preview.png): its windows and lamp
+  glass alone light the cobbles, [proof](examples/output/film/f_night/emissive_proof.png)).
+- **An animatable world**: keys on the sky, ambient light, environment and fog with the
+  sun's give an authored day-night cycle ([timelapse](examples/output/film/d_world/daynight_sheet.png)).
+- **Sampling and film output**: Owen-scrambled Sobol', pixel filters, adaptive sampling
+  and an opt-in denoiser that says it is biased; a film view transform fitted to
+  measurements of Blender's AgX; 16-bit PNG and OpenEXR masters; motion vectors; 60 fps
+  sequences that resume, and H.264/FFV1 deliveries FFmpeg assembles from Aether3D's frames.
+- **Measured motion and lighting**: `motion_report` finds jumps, jitter, snaps, pole flips
+  and framing drift in world space; the feedback `lighting` check measures a subject's
+  lighting ratio and separation from the scene's lights and corrects them with verified
+  changes. Curves can use Blender's automatic handles, measured against Blender.
+- Film showcases ([docs/ANIMATION.md](docs/ANIMATION.md#film-showcases-0200)), five
+  rendered for this release: a rigid character, graphs against Blender, a flight and a
+  day-night cycle over a generated valley, the studio and the night street. Four more
+  scripts (a skinned character, the path tracer of v0.19.1 against 0.20.0, a 1080p60
+  trailer and an agent working over MCP) were not rendered here; the tests run them at a
+  small size.
 
 ## Command-line interface
 

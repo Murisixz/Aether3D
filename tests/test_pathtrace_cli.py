@@ -123,7 +123,7 @@ def test_passes_ao_preview_and_hdr_output(project, tmp_path, capsys):
         (["--ao", "--bounces", "2"], "apply to the path tracer"),
         (["--backend", "path", "--samples", "2"], "samples per pixel with --spp"),
         (["--backend", "path", "--spp", "0"], "samples"),
-        (["--backend", "path", "-o", "x.exr"], ".hdr or .pfm"),
+        (["--backend", "path", "-o", "x.tif"], ".hdr, .pfm or .exr"),
     ],
 )
 def test_render_rejects_misplaced_path_options(project, tmp_path, capsys, flags, message):

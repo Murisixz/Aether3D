@@ -802,8 +802,14 @@ class RenderWorld:
             row = self.rows.get(id(camera))
             if row is None:
                 raise _Fallback
+
+            def world_of(oid: str) -> np.ndarray | None:
+                obj = scene._objects.get(oid)
+                r = None if obj is None else self.rows.get(id(obj))
+                return None if r is None else self.world[r]
+
             render_camera, camera_diags = _render_camera(
-                camera, self.world[row].copy(), aspect, overlay
+                camera, self.world[row].copy(), aspect, overlay, world_of
             )
             diagnostics += camera_diags
         kind = self.kind
@@ -887,6 +893,7 @@ class RenderWorld:
             texture_time=texture_time,
             start=start,
             cache=shared,
+            overlay=overlay,
         )
 
     def _order(self, valid_rows: np.ndarray) -> _Tables:

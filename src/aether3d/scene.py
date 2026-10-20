@@ -1614,16 +1614,22 @@ class Scene:
         look_at: ObjectRef | Iterable[float] | None = None,
         up: Iterable[float] = (0.0, 0.0, 1.0),
         active: bool | None = None,
+        **lens: Any,
     ) -> SceneObject:
         """Add a camera object (see :class:`~aether3d.rendering.Camera`).
 
         A camera looks along its local -Y axis with +Z up; ``look_at`` aims it
         at a point or object after placing it. The new camera becomes the
         scene's active camera if ``active`` is true, or if it is ``None`` and
-        there is no active camera yet. Everything is validated before the
-        scene changes.
+        there is no active camera yet. ``lens`` takes the lens parameters
+        (``focal_length``, ``sensor``, ``shift_x``, ``shift_y``, ``fstop``,
+        ``focus_distance``, ``focus_object`` -- an object, id or name --, the
+        aperture's ``blades``, ``rotation`` and ``ratio``). Everything is
+        validated before the scene changes.
         """
-        camera = Camera(projection, fov, fov_axis, ortho_scale, near, far, aspect_ratio)
+        if lens.get("focus_object") is not None:
+            lens["focus_object"] = self._resolve(lens["focus_object"]).id
+        camera = Camera(projection, fov, fov_axis, ortho_scale, near, far, aspect_ratio, **lens)
         if active is not None and not isinstance(active, bool):
             raise ValidationError(f"active must be True, False or None, got {active!r}")
         label = "Add camera" if name is None else f"Add camera {name!r}"
@@ -1652,16 +1658,20 @@ class Scene:
         direction: Iterable[float] | None = None,
         look_at: ObjectRef | Iterable[float] | None = None,
         up: Iterable[float] = (0.0, 0.0, 1.0),
+        **options: Any,
     ) -> SceneObject:
         """Add a light object (see :class:`~aether3d.rendering.Light`).
 
-        Directional lights shine along their front (local -Y): give a world
-        ``direction`` (the way the light travels) or a ``look_at`` target.
-        Point lights shine from their ``position``. ``radius`` (point) and
-        ``angle`` (directional, degrees) give lights a size for the path
-        tracer's soft shadows.
+        Directional, spot and area lights shine along their front (local -Y):
+        give a world ``direction`` (the way the light travels) or a ``look_at``
+        target. Point, spot and area lights shine from their ``position``.
+        ``radius`` (point, spot) and ``angle`` (directional, degrees) give
+        lights a size for the path tracer's soft shadows. ``options``: the light's
+        other parameters (``spot_size``, ``spot_blend``, ``shape``, ``size``,
+        ``size_y``, ``units``, ``temperature``, ``use_temperature``, ``exposure``,
+        ``shadow``).
         """
-        light = Light(type, color, intensity, range, falloff, radius, angle)
+        light = Light(type, color, intensity, range, falloff, radius, angle, **options)
         if direction is not None and look_at is not None:
             raise ValidationError("give either direction= or look_at=, not both")
         if direction is not None:
@@ -1693,6 +1703,45 @@ class Scene:
     ) -> SceneObject:
         """Add a point light at ``position``."""
         return self.add_light("point", name, position=position, **options)
+
+    def add_spot_light(
+        self,
+        name: str | None = None,
+        *,
+        position: Iterable[float] = (0.0, 0.0, 5.0),
+        **options: Any,
+    ) -> SceneObject:
+        """Add a spot light at ``position`` (aim it with ``look_at`` or ``direction``;
+        ``spot_size`` its cone in degrees, ``spot_blend`` its soft edge)."""
+        if "look_at" not in options and "direction" not in options:
+            options["direction"] = (0.0, 0.0, -1.0)
+        return self.add_light("spot", name, position=position, **options)
+
+    def add_area_light(
+        self,
+        name: str | None = None,
+        *,
+        position: Iterable[float] = (0.0, 0.0, 5.0),
+        **options: Any,
+    ) -> SceneObject:
+        """Add an area light (a one-sided panel facing ``look_at`` or ``direction``;
+        ``shape``, ``size``, ``size_y``) at ``position``."""
+        if "look_at" not in options and "direction" not in options:
+            options["direction"] = (0.0, 0.0, -1.0)
+        return self.add_light("area", name, position=position, **options)
+
+    def light_rig(
+        self, subject: ObjectRef, preset: str = "three_point", **options: Any
+    ) -> dict[str, Any]:
+        """Light ``subject`` with a classical studio setup -- ``three_point``, ``loop``,
+        ``rembrandt``, ``butterfly``, ``split``, ``high_key``, ``low_key``,
+        ``silhouette`` -- from where ``camera`` (default: the active camera) sees it,
+        with solved intensities (``distance``, ``level``, ``ratio``, ``rim``,
+        ``temperature``, ``time``, ``prefix``); one undo step (see
+        :func:`aether3d.rendering.studio.light_rig`)."""
+        from .rendering.studio import light_rig
+
+        return light_rig(self, subject, preset, **options)
 
     def _create_with(
         self,

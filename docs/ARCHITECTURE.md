@@ -124,7 +124,14 @@ Aether3D/
 │   ├── rendering/         Cameras, lights, the rasterizers and the path tracer
 │   │                      (docs/RENDERING.md, GPU.md, RENDER_QUALITY.md)
 │   │   ├── camera.py      Camera parameters, projection matrices, camera frames
-│   │   ├── light.py       Light parameters
+│   │   ├── light.py       Light parameters (spot and area lights, units, linking: 0.20.0)
+│   │   ├── blackbody.py   Colour temperatures (Planck against the CIE functions; 0.20.0)
+│   │   ├── studio.py      Studio light rigs placed and solved on a subject (0.20.0)
+│   │   ├── envimage.py    Image environments: decoding, mapping, importance sampling,
+│   │   │                  the rasterizers' harmonics and sun (0.20.0)
+│   │   ├── denoise.py     The opt-in, biased à-trous denoiser (0.20.0)
+│   │   ├── motion.py      Motion vectors (0.20.0)
+│   │   ├── exr.py         OpenEXR writer and reader (0.20.0)
 │   │   ├── settings.py    Appearance, World/Environment, RenderSettings, ShadowSettings,
 │   │   │                  PathSettings, AOSettings, RenderLimits
 │   │   ├── backends.py    Backend names (cpu/gpu/auto/path/gpu_path), option checks, antialiasing plan
@@ -137,7 +144,8 @@ Aether3D/
 │   │   ├── raster.py      Clipping, fixed-point rasterization, visibility buffer
 │   │   ├── cpu.py         CPU backend: geometry, raster, deferred shading, resolve
 │   │   ├── renderer.py    render() and RenderResult
-│   │   ├── tonemap.py     Output transform: exposure, the optional tone mapper, sRGB encoding
+│   │   ├── tonemap.py     Output transform: exposure, the neutral and film view transforms,
+│   │   │                  8- and 16-bit sRGB encoding
 │   │   ├── hdr.py         Radiance .hdr and .pfm writers (linear high dynamic range)
 │   │   ├── framing.py     Exact camera framing
 │   │   ├── png.py         PNG encoder (zlib from the standard library)
@@ -191,6 +199,8 @@ Aether3D/
 │   │   ├── expectations.py  The aether3d.expectations format and its checker
 │   │   ├── geometry.py    Support (gaps, penetrations), contact and separation measurements
 │   │   ├── checks.py      Diagnosis: checks, default checks, findings and their basis
+│   │   ├── lighting.py    The lighting check's measurements: per-light irradiance on the
+│   │   │                  subject, ratio, separation, lights without effect (0.20.0)
 │   │   ├── vision.py      Vision evaluations: checking, grounding, provenance; critics
 │   │   ├── corrections.py The action allowlist, binding, compilation to plans and scripts,
 │   │   │                  policy, proposals
@@ -217,6 +227,7 @@ Aether3D/
 │   ├── animation/         Animation, rigging and cinematics (see docs/ANIMATION.md)
 │   │   ├── time.py, easing.py              Exact frame rates and timecode; Penner easings
 │   │   ├── curves.py, modifiers.py         F-curves (keys, handles, exact derivatives), modifiers
+│   │   ├── smoothing.py                    Blender-compatible automatic handles (0.20.0)
 │   │   ├── rotation.py, tracks.py          Quaternion arrays; rotation tracks
 │   │   ├── batch.py                        Batched evaluation of many curves and tracks
 │   │   ├── paths.py                        The typed registry of animatable properties
@@ -225,6 +236,7 @@ Aether3D/
 │   │   ├── evaluate.py, rigging.py         The compiled program and a frame; the rigging pass
 │   │   ├── system.py                       scene.animation: items, history, the API
 │   │   ├── report.py, fitting.py, graph.py Measuring; reduction, resampling, baking; graphs
+│   │   ├── quality.py                      World-space motion quality (0.20.0)
 │   │   ├── generators.py, motion.py        Motion generators; mirroring, root motion,
 │   │   │                                   contacts and planting, retargeting
 │   │   ├── limits.py                       Swing-twist and hinge joint limits (0.19.0)
@@ -236,7 +248,9 @@ Aether3D/
 │   │   ├── rig_edit.py, controls.py        Structural rig edits; controls, IK/FK, poses
 │   │   ├── rig_report.py, rig_preview.py   Rig summaries, diagnostics, verified fixes; pictures
 │   │   ├── rigid.py                        Rigid-part characters without bones; conversions
-│   │   ├── cinematics.py, frames.py        Paths, shots, camera moves; frame rendering
+│   │   ├── cinematics.py, frames.py        Paths, shots, camera moves; frame rendering,
+│   │   │                                   masters, resumable sequences, video assembly
+│   │   ├── shots.py                        Framing by shot sizes (0.20.0)
 │   │   └── script.py, schema.py, guide.md  Animation scripts, their schema, the agent guide
 │   ├── worlds/            Procedural worlds (see docs/WORLDS.md)
 │   │   ├── definition.py                   Validated definitions, defaults, presets, biomes
@@ -1176,3 +1190,43 @@ Stage 16 was built after Stage 17 and ships as 0.18.0. Key decisions:
 - **Same contract for agents.** World scripts are data, atomic, limited and
   schema-described; the CLI, the MCP tools (`run_script`, `inspect_world`) and the
   scene-plan operation `world` reuse them.
+
+## Animation, lighting, path tracing and film (v0.20.0)
+
+Stage 19 deepens animation, cameras, lighting and the path tracers; see
+[ANIMATION.md](ANIMATION.md), [RENDERING.md](RENDERING.md),
+[RENDER_QUALITY.md](RENDER_QUALITY.md), [FEEDBACK.md](FEEDBACK.md) and the design record
+[research/2026-10-stage19/DESIGN.md](../research/2026-10-stage19/DESIGN.md). Key decisions:
+
+- **Blender is measured, never used.** Headless `bpy` experiments (curves, NLA blending,
+  lights and units, cameras, environments, AgX) produced numbers that became test fixtures
+  (`tests/data/blender_*`); the implementations follow those numbers and published
+  papers. No Blender or Cycles code was read for, copied into or translated into
+  Aether3D, and Blender is never run by the package.
+- **Defaults keep old results.** Project format 13 adds lens, light, environment and
+  material fields whose defaults render as before (the CPU path tracer gives v0.19.1's
+  bits; the render goldens did not change), saved curves keep Aether3D's local automatic
+  handles (new ones default to Blender's continuous acceleration), and the one semantic
+  change to stored keys -- Blender's definition of back easing's in-out overshoot -- is
+  migrated so stored curves keep their shapes.
+- **One lighting model in every backend.** Spot, area (exact polygon irradiance, spread),
+  linking, shadows, temperature and units are written once per language: `surface.py`
+  (CPU raster), `scene.wgsl` (GPU raster), and the path tracers' light sampling (CPU and
+  its WGSL port, which traces the same paths with the same random numbers). The raster
+  forms are checked against the path tracers and against Blender's Cycles.
+- **Approximations say so.** The rasterizers light image environments with nine
+  harmonics and one extracted sun and draw glass's reflection only; the path tracers
+  integrate the image and refract. The denoiser is opt-in, biased and reported
+  (`DENOISED`); adaptive sampling and Sobol' stay unbiased.
+- **Measured motion and lighting.** `motion_report` samples world-space motion (labelled
+  sampled), and the feedback `lighting` check measures irradiance from the scene's lights
+  on the subject's visible surface; corrections predict from those measurements and are
+  kept only when a new render confirms them.
+- **Film output is Aether3D's.** The film view transform is our own curve fitted to
+  measurements of Blender's AgX; masters (16-bit PNG, OpenEXR) are written by our own
+  encoders; FFmpeg only encodes finished frames (libx264, preset slow, CRF 10, BT.709).
+- **Languages.** NumPy for curves, quality, lights, environments, sampling tables, the
+  denoiser and film output; WGSL for the GPU rasterizer and path tracer; no new native
+  kernels (the measurements behind that choice are in the design record); hardware ray
+  tracing re-examined and deferred (wgpu-native 29.0.1.1 has no acceleration structure
+  API), and never claimed.

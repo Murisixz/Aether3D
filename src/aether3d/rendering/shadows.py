@@ -122,8 +122,10 @@ def select_shadow_lights(
 ) -> tuple[list[int], list[Diagnostic]]:
     """Indices (into ``rs.lights``) of the lights that cast shadows, and diagnostics."""
     diagnostics: list[Diagnostic] = []
-    directional = [i for i, light in enumerate(rs.lights) if light.type == "directional"]
-    points = [light.name for light in rs.lights if light.type == "point"]
+    directional = [
+        i for i, light in enumerate(rs.lights) if light.type == "directional" and light.shadow
+    ]
+    points = [light.name for light in rs.lights if light.type != "directional" and light.shadow]
     limit = MAX_SHADOW_MAPS // settings.cascades
     if settings.lights is None:
         chosen = sorted(directional, key=lambda i: (-_luminance(rs.lights[i].radiance), i))
@@ -146,7 +148,8 @@ def select_shadow_lights(
                 Diagnostic(
                     "POINT_LIGHT_SHADOWS_UNSUPPORTED",
                     INFO,
-                    "point lights do not cast shadows yet: " + ", ".join(points),
+                    "point, spot and area lights do not cast shadow maps yet (the path "
+                    "tracers shadow them): " + ", ".join(points),
                     "shadows",
                     count=len(points),
                 )
@@ -168,9 +171,16 @@ def select_shadow_lights(
         if rs.lights[index].type != "directional":
             raise RenderError(
                 "INVALID_SHADOWS",
-                f"light {rs.lights[index].name!r} is a point light; only directional lights "
-                "cast shadows in this version",
+                f"light {rs.lights[index].name!r} is a {rs.lights[index].type} light; only "
+                "directional lights cast shadow maps in this version",
                 loc,
+            )
+        if not rs.lights[index].shadow:
+            raise RenderError(
+                "INVALID_SHADOWS",
+                f"light {rs.lights[index].name!r} casts no shadows (its shadow is off)",
+                loc,
+                hint="set the light's shadow on, or leave it out of shadows.lights",
             )
         if index not in chosen:
             chosen.append(index)
@@ -225,17 +235,7 @@ def instance_corners(rs: RenderScene, bounds: np.ndarray | None = None) -> np.nd
 
 def _frustum_corners(rs: RenderScene, aspect: float, far: float) -> np.ndarray:
     """Camera-relative corners of the view frustum between the near plane and ``far``."""
-    cam = rs.camera
-    hx, hy = cam.camera.half_extents(aspect)
-    f, r, u = cam.frame.forward, cam.frame.right, cam.frame.up
-    near = cam.camera.near
-    points = []
-    for depth in (near, far):
-        sx, sy = (hx * depth, hy * depth) if cam.camera.is_perspective else (hx, hy)
-        for a in (-1.0, 1.0):
-            for b in (-1.0, 1.0):
-                points.append(depth * f + a * sx * r + b * sy * u)
-    return np.array(points)
+    return _frustum_slice(rs, aspect, rs.camera.camera.near, far)
 
 
 def cascade_splits(near: float, far: float, count: int, blend: float) -> list[float]:
@@ -300,13 +300,14 @@ def _frustum_slice(rs: RenderScene, aspect: float, near: float, far: float) -> n
     """Camera-relative corners of the view frustum between view depths ``near`` and ``far``."""
     cam = rs.camera
     hx, hy = cam.camera.half_extents(aspect)
+    ox, oy = cam.camera.ndc_offset(aspect)  # a shifted lens: an off-centre frustum
     f, r, u = cam.frame.forward, cam.frame.right, cam.frame.up
     points = []
     for depth in (near, far):
         sx, sy = (hx * depth, hy * depth) if cam.camera.is_perspective else (hx, hy)
         for a in (-1.0, 1.0):
             for b in (-1.0, 1.0):
-                points.append(depth * f + a * sx * r + b * sy * u)
+                points.append(depth * f + (a + ox) * sx * r + (b + oy) * sy * u)
     return np.array(points)
 
 

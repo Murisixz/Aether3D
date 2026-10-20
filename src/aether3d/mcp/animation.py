@@ -8,9 +8,11 @@ step, all or nothing; schema ``aether3d://schema/animation-script``, guide
 * ``inspect_animation`` -- ``summary`` (timeline, clips, bindings, rigs, skins), ``curve``
   (one channel's exact report: continuity at every key, extrema, overshoot, velocity,
   acceleration and jerk peaks), ``diagnose`` (findings over the whole animation),
-  ``trajectory`` (an object's or a joint's world motion), ``contacts`` (feet: planted
-  intervals, sliding, penetration) and ``graph`` (value, velocity and acceleration of
-  channels as a PNG -- an image for agents that can see; the numbers are in ``curve``).
+  ``trajectory`` (an object's or a joint's world motion), ``motion`` (world-space quality of
+  objects, joints and cameras: jumps, acceleration steps, jitter, snaps, pauses, pole flips,
+  loop seams, ground penetration, framing; 0.20.0), ``contacts`` (feet: planted intervals,
+  sliding, penetration) and ``graph`` (value, velocity and acceleration of channels as a
+  PNG -- an image for agents that can see; the numbers are in ``curve``).
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from typing import Any
 
 from .session import Session, ToolError
 
-WHAT = ("summary", "curve", "diagnose", "trajectory", "contacts", "graph")
+WHAT = ("summary", "curve", "diagnose", "trajectory", "motion", "contacts", "graph")
 
 
 def inspect_animation(session: Session, args: dict, ctx: Any):
@@ -42,6 +44,16 @@ def inspect_animation(session: Session, args: dict, ctx: Any):
         elif what == "trajectory":
             data = system.trajectory(_need(args, "target"), start=args.get("start"),
                                      end=args.get("end"), joint=args.get("joint"))  # fmt: skip
+        elif what == "motion":
+            data = system.motion_report(
+                args.get("targets"),
+                start=args.get("start"),
+                end=args.get("end"),
+                subject=args.get("subject"),
+                loop=args.get("loop", False),
+                thresholds=args.get("thresholds"),
+                max_findings=args.get("max_findings", 100),
+            )
         elif what == "contacts":
             data = system.foot_contacts(_need(args, "target"), _need(args, "feet"),
                                         start=args.get("start"), end=args.get("end"))  # fmt: skip
@@ -89,8 +101,10 @@ def specs() -> tuple[Any, ...]:
             "inspect_animation",
             "Inspect the animation",
             "Measure the animation (read-only): summary; curve (exact: continuity, extrema, "
-            "overshoot, velocity, jerk); diagnose; trajectory; contacts (foot sliding); graph "
-            "(PNG). Author with run_script.",
+            "overshoot, velocity, jerk); diagnose; trajectory; motion (world-space quality: "
+            "jumps, acceleration steps, jitter, snaps, pole flips, pauses, loop seams, ground, "
+            "camera framing; targets, subject, loop, thresholds); contacts (foot sliding); "
+            "graph (PNG). Author with run_script.",
             _schema(
                 {
                     "what": {"enum": list(WHAT)},
@@ -99,6 +113,11 @@ def specs() -> tuple[Any, ...]:
                     "clip": text,
                     "joint": text,
                     "feet": {"type": "array", "items": text},
+                    "targets": {"type": "array", "maxItems": 512},
+                    "subject": {},
+                    "loop": {"type": "boolean"},
+                    "thresholds": {"type": "object"},
+                    "max_findings": {"type": "integer", "minimum": 1, "maximum": 10000},
                     "start": {"type": "number"},
                     "end": {"type": "number"},
                 }

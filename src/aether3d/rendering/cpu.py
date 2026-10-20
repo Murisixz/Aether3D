@@ -310,6 +310,7 @@ def render_scene(
         perspective,
     )
     hx, hy = camera.camera.half_extents(aspect)
+    ox, oy = camera.camera.ndc_offset(aspect)
     rep = samples // 2  # representative sample of each pixel (its center for odd s)
     n_covered = 0
     # Pass 2 (chunked): shade every covered sample once.
@@ -331,6 +332,8 @@ def render_scene(
                 camera.frame,
                 hx,
                 hy,
+                ox,
+                oy,
                 perspective,
                 ctx,
             )
@@ -345,7 +348,7 @@ def render_scene(
     del keys
     uncovered = samples * samples - covered_per_pixel
     inv = 1.0 / float(samples * samples)
-    background = _background(rs, width, height, hx, hy, perspective)
+    background = _background(rs, width, height, hx, hy, perspective, ox, oy)
     for c in range(3):  # in place: no full-image temporaries
         accum[c] += (rs.background[c] if background is None else background[:, c]) * uncovered
         accum[c] *= inv
@@ -370,7 +373,14 @@ def render_scene(
 
 
 def _background(
-    rs: RenderScene, width: int, height: int, hx: float, hy: float, perspective: bool
+    rs: RenderScene,
+    width: int,
+    height: int,
+    hx: float,
+    hy: float,
+    perspective: bool,
+    ox: float = 0.0,
+    oy: float = 0.0,
 ) -> np.ndarray | None:
     """Per-pixel background radiance ``(pixels, 3)`` with the atmosphere (its sky at the
     pixel centre's view direction, through the fog), or ``None`` (the flat background)."""
@@ -379,8 +389,8 @@ def _background(
         return None
     frame = rs.camera.frame
     row, col = np.divmod(np.arange(width * height), width)
-    xn = (col + 0.5) * (2.0 / width) - 1.0
-    yn = 1.0 - (row + 0.5) * (2.0 / height)
+    xn = (col + 0.5) * (2.0 / width) - 1.0 + ox
+    yn = 1.0 - (row + 0.5) * (2.0 / height) + oy
     if perspective:
         d = (
             frame.forward[None, :]
@@ -395,6 +405,46 @@ def _background(
     else:
         color = np.broadcast_to(rs.background, d.shape).copy()
     return atmo.fog(model, color, d, np.full(d.shape[0], np.inf))
+
+
+def environment_background(
+    rs: RenderScene, width: int, height: int, aspect: float
+) -> np.ndarray | None:
+    """``(height, width, 3)``: what an image environment shows behind the geometry minus
+    what the rasterizers drew there (``world.background``, or the atmosphere's sky), so
+    ``linear + (1 - coverage) x it`` composites the image exactly; ``None`` without a
+    visible image environment."""
+    img = getattr(rs, "environment_image", None)
+    env = rs.environment
+    if img is None or env is None or env.type != "image" or not env.visible:
+        return None
+    cam = rs.camera.camera
+    hx, hy = cam.half_extents(aspect)
+    ox, oy = cam.ndc_offset(aspect)
+    perspective = cam.is_perspective
+    frame = rs.camera.frame
+    row, col = np.divmod(np.arange(width * height), width)
+    xn = (col + 0.5) * (2.0 / width) - 1.0 + ox
+    yn = 1.0 - (row + 0.5) * (2.0 / height) + oy
+    if perspective:
+        d = (
+            frame.forward[None, :]
+            + (xn * hx)[:, None] * frame.right[None, :]
+            + (yn * hy)[:, None] * frame.up[None, :]
+        )
+        d = d / np.linalg.norm(d, axis=1, keepdims=True)
+    else:
+        d = np.broadcast_to(frame.forward, (width * height, 3)).copy()
+    drawn = _background(rs, width, height, hx, hy, perspective, ox, oy)
+    if drawn is None:
+        drawn = np.broadcast_to(rs.background, d.shape)
+    color = img.radiance(d)
+    model = _atmosphere(rs)
+    if model is not None:
+        color = color + atmo.glow(model, d)
+        if model.fog:
+            color = atmo.fog(model, color, d, np.full(d.shape[0], np.inf))
+    return (color - drawn).reshape(height, width, 3)
 
 
 def _front_facing(
@@ -500,6 +550,8 @@ def _shade(
     frame,
     hx: float,
     hy: float,
+    ox: float,
+    oy: float,
     perspective: bool,
     ctx: surface.ShadeContext,
 ) -> tuple[list[np.ndarray], np.ndarray, np.ndarray]:
@@ -521,7 +573,7 @@ def _shade(
     rx, ry, rz = frame.right
     if perspective:
         w = table.det[ct] / safe  # view depth along the camera's forward axis
-        sx, sy = xn * hx, yn * hy
+        sx, sy = (xn + ox) * hx, (yn + oy) * hy
         px = ex + w * (fx + sx * rx + sy * ux)
         py = ey + w * (fy + sx * ry + sy * uy)
         pz = ez + w * (fz + sx * rz + sy * uz)
@@ -529,7 +581,7 @@ def _shade(
     else:
         d = table.vdepth[ct]
         view_depth = b0 * d[:, 0] + b1 * d[:, 1] + b2 * d[:, 2]
-        sx, sy = xn * hx, yn * hy
+        sx, sy = (xn + ox) * hx, (yn + oy) * hy
         px = ex + view_depth * fx + sx * rx + sy * ux
         py = ey + view_depth * fy + sx * ry + sy * uy
         pz = ez + view_depth * fz + sx * rz + sy * uz
@@ -575,6 +627,7 @@ def _shade(
             (pick(nx), pick(ny), pick(nz)),
             (pick(px), pick(py), pick(pz)),
             view,
+            pick(inst),
         )
         for c in range(3):
             if rows is None:
@@ -726,10 +779,13 @@ def _shade_materials(
                 (n[:, 0], n[:, 1], n[:, 2]),
                 (p[:, 0], p[:, 1], p[:, 2]),
                 (view[:, 0], view[:, 1], view[:, 2]),
+                s.inst,
             )
             out = np.stack(part, axis=1)
         else:
-            out = surface.shade_standard(rs, sv, material.specular, n, p, view)
+            out = surface.shade_standard(
+                rs, sv, material.specular, n, p, view, s.inst, material.transmission
+            )
         out = out + sv.emissive
         target = index[sel]
         for c in range(3):

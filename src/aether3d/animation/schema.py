@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .curves import EXTRAPOLATIONS, HANDLE_TYPES, INTERPOLATIONS
+from .clip import KEY_OPERATIONS
+from .curves import EXTRAPOLATIONS, HANDLE_TYPES, INTERPOLATIONS, SMOOTHING
 from .easing import MODES
 from .generators import KINDS
 from .script import FORMAT_ID, LIMIT_KEYS, MAX_OPERATIONS, OPERATIONS, VERSION
@@ -18,7 +19,8 @@ from .script import FORMAT_ID, LIMIT_KEYS, MAX_OPERATIONS, OPERATIONS, VERSION
 _NUMBER = {"type": "number"}
 _TIME = {"type": "number", "description": "seconds"}
 _REF = {
-    "description": "an object by name, or {object: name or id} / {material: name or id}",
+    "description": "an object by name, or {object: name or id} / {material: name or id} / "
+    "{world: true} (the background, ambient light, environment and atmosphere)",
     "oneOf": [
         {"type": "string", "minLength": 1},
         {
@@ -28,6 +30,7 @@ _REF = {
             "properties": {
                 "object": {"type": "string"},
                 "material": {"type": "string"},
+                "world": {"const": True},
                 "id": {"type": "string"},
                 "name": {"type": "string"},
             },
@@ -40,6 +43,7 @@ _PATH = {
     "description": "an animatable path: transform.position(.x), transform.rotation, "
     'transform.rotation_euler.z, joints["NAME"].rotation, morph["NAME"], camera.fov, '
     "light.intensity, appearance.color, material.roughness, visible, "
+    "the world's ambient_intensity, environment.rotation, atmosphere.fog_density, "
     'constraints["NAME"].influence, ...',
 }
 _KEYS = {
@@ -189,22 +193,79 @@ _ARGUMENTS: dict[str, Any] = {
     },
     "kind": {"enum": ["ik", "pole", "gaze", "fk", "root"]},
     "skins": {"enum": ["rebind", "keep_bind"]},
-    "edit": {
+    "edit": {"enum": list(KEY_OPERATIONS)},
+    "smoothing": {
+        "enum": list(SMOOTHING),
+        "description": "automatic handles: continuous (Blender's Continuous Acceleration, "
+        "the default for new curves: acceleration continuous at automatic keys), blender "
+        "(Blender's handles without smoothing), local (Aether3D's own rule before 0.20.0)",
+    },
+    "keep_shape": {"type": "boolean", "description": "insert: a key that keeps the curve"},
+    "blend_curve": {
+        "enum": ["linear", "smooth", "smoother"],
+        "description": "strip: the shape of its blend ramps (smooth: C1, smoother: C2 "
+        "crossfades; linear: velocity jumps where a ramp starts and ends)",
+    },
+    "ease_in": {"type": "number", "minimum": 0, "maximum": 1},
+    "ease_out": {"type": "number", "minimum": 0, "maximum": 1},
+    "amount": {"type": "number", "minimum": 0, "maximum": 10},
+    "at": {"type": "number", "minimum": 0, "maximum": 0.9},
+    "settle": {"type": "number", "exclusiveMinimum": 0},
+    "oscillations": {"type": "integer", "minimum": 1, "maximum": 16},
+    "decay": {"type": "number", "minimum": 0, "maximum": 1},
+    "duration": {"type": "number", "exclusiveMinimum": 0},
+    "drift": {"type": "number", "minimum": 0, "maximum": 1},
+    "shift": {"type": "boolean"},
+    "sigma": {"type": "number", "exclusiveMinimum": 0},
+    "keep_ends": {"type": "boolean"},
+    "preset": {
         "enum": [
-            "set",
-            "delete",
-            "handle",
-            "handle_type",
-            "interpolation",
-            "move",
-            "scale_time",
-            "scale_values",
-            "reverse",
-            "quantize",
-            "distribute",
-            "retime",
+            "extreme_wide",
+            "wide",
+            "full",
+            "medium",
+            "medium_close",
+            "close_up",
+            "extreme_close_up",
+            "low_angle",
+            "high_angle",
         ],
+        "description": "frame_shot: the shot size (default medium)",
     },  # fmt: skip
+    "azimuth": {
+        "type": "number",
+        "minimum": -360,
+        "maximum": 360,
+        "description": "frame_shot: degrees about the up axis from the subject's front",
+    },
+    "elevation": {"type": "number", "minimum": -89, "maximum": 89},
+    "screen": {
+        "type": "array",
+        "items": {"type": "number", "minimum": -1, "maximum": 1},
+        "minItems": 2,
+        "maxItems": 2,
+        "description": "frame_shot: where the subject sits in the frame (NDC)",
+    },
+    "fill": {"type": "number", "minimum": 0.01, "maximum": 4},
+    "focal_length": {"type": "number", "minimum": 1, "maximum": 2000},
+    "fstop": {"type": "number", "minimum": 0.1},
+    "measure": {
+        "type": "array",
+        "maxItems": 512,
+        "description": "motion: objects (names, ids) or {object, joint | joints: [...] | "
+        '"all"} or {camera: "shots"}; default: every animated object, rig and the shots',
+        "items": {"oneOf": [{"type": "string"}, {"type": "object"}]},
+    },
+    "subject": {
+        "description": "motion: what a camera should frame: an object or a point [x, y, z]",
+    },
+    "loop": {"type": "boolean", "description": "motion: compare the range's end with its start"},
+    "thresholds": {
+        "type": "object",
+        "description": "motion: thresholds to override (velocity_jump, acceleration_step, "
+        "position_jump, jitter_hz, jitter_mm, jitter_deg, snap_deg, angular_jump, pause_speed, "
+        "pause_min, pause_max, window, ground, ground_tolerance, frame_margin, drift)",
+    },
 }
 
 

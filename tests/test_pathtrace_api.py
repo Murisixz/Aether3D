@@ -263,7 +263,7 @@ def test_hdr_and_pfm_files_hold_the_unclipped_linear_image(tmp_path):
     pixels = np.frombuffer(rest, dtype="<f4").reshape(18, 32, 3)[::-1]
     assert np.array_equal(pixels, r.linear)
     with pytest.raises(RenderError):
-        r.save(tmp_path / "image.exr")
+        r.save(tmp_path / "image.tif")  # (.exr is a master since 0.20.0)
     narrow = render(small_scene(), width=4, height=3)  # too narrow for run-length scanlines
     flat = read_hdr(narrow.save(tmp_path / "narrow.hdr").read_bytes())
     assert np.all(np.abs(flat - narrow.linear) <= narrow.linear.max(axis=2, keepdims=True) / 128)
@@ -290,7 +290,7 @@ def test_light_sizes_and_environments_are_validated_and_saved(tmp_path):
     path = tmp_path / "scene.aether"
     scene.save(path)
     doc = json.loads(path.read_text())
-    assert doc["format_version"] == FORMAT_VERSION == 12
+    assert doc["format_version"] == FORMAT_VERSION == 13
     assert doc["scene"]["world"]["environment"]["type"] == "sky"
     loaded = Scene.load(path)
     assert loaded.world == scene.world
@@ -300,7 +300,13 @@ def test_light_sizes_and_environments_are_validated_and_saved(tmp_path):
     b = render(loaded, path={"samples": 2, "bounces": 1})
     assert np.array_equal(a.image, b.image)
     assert a.backend["environment"]["type"] == "sky"
-    assert a.backend["lights"] == {"lights": 2, "sized_lights": 2, "emissive_triangles": 0}
+    assert a.backend["lights"] == {
+        "lights": 2,
+        "sized_lights": 2,
+        "spot_lights": 0,  # (0.20.0)
+        "area_lights": 0,
+        "emissive_triangles": 0,
+    }
 
 
 def test_version_4_projects_load_with_the_ambient_environment_and_point_sized_lights():

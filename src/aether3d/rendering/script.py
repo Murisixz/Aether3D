@@ -21,9 +21,15 @@ Operations (``object``/``camera``/``light``/``parent`` are object ids or names;
   ``near``, ``far``, ``aspect_ratio``, ``parent``, ``position``, ``rotation_euler``,
   ``look_at``, ``up``, ``active``; ``frame: true`` then frames it on ``frame_targets``
   (default: all visible geometry) along ``frame_direction`` with ``frame_margin``.
-* ``add_light`` -- ``type`` (``directional``/``point``), ``name``, ``color``, ``intensity``,
-  ``range``, ``falloff``, ``radius``, ``angle``, ``parent``, ``position``,
-  ``rotation_euler``, ``direction``, ``look_at``, ``up``.
+* ``add_light`` -- ``type`` (``directional``/``point``/``spot``/``area``), ``name``,
+  ``color``, ``intensity``, ``range``, ``falloff``, ``radius``, ``angle``, ``spot_size``,
+  ``spot_blend``, ``shape``, ``size``, ``size_y``, ``spread``, ``units``, ``temperature``,
+  ``use_temperature``, ``exposure``, ``shadow``, ``include``, ``exclude`` (object ids or
+  names), ``parent``, ``position``, ``rotation_euler``, ``direction``, ``look_at``, ``up``.
+* ``light_rig`` -- ``subject`` and a ``preset`` (``three_point``, ``loop``,
+  ``rembrandt``, ``butterfly``, ``split``, ``high_key``, ``low_key``, ``silhouette``);
+  ``camera``, ``time``, ``distance``, ``level``, ``ratio``, ``rim``, ``temperature``,
+  ``prefix`` (:func:`aether3d.rendering.studio.light_rig`).
 * ``set_camera`` / ``set_light`` -- ``camera``/``light`` plus any of their parameters.
 * ``set_object`` -- ``object`` plus ``position``, ``rotation_euler``, ``scale``,
   ``look_at`` or ``look_along`` (with ``up``), ``color``, ``specular``, ``shininess``,
@@ -91,8 +97,16 @@ FORMAT_ID = "aether3d.scene-script"
 VERSION = 1
 MAX_OPERATIONS = 10_000
 
-_CAMERA = {"projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio"}
-_LIGHT = {"color", "intensity", "range", "falloff", "radius", "angle"}
+_CAMERA = {
+    "projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio", "sensor",
+    "shift_x", "shift_y", "fstop", "focus_distance", "focus_object", "aperture_blades",
+    "aperture_rotation", "aperture_ratio", "focal_length",
+}  # fmt: skip
+_LIGHT = {
+    "color", "intensity", "range", "falloff", "radius", "angle", "spot_size", "spot_blend",
+    "shape", "size", "size_y", "spread", "units", "temperature", "use_temperature",
+    "exposure", "shadow", "include", "exclude",
+}  # fmt: skip
 _PLACE = {"parent", "position", "rotation_euler", "look_at", "up"}
 _SPECS: dict[str, tuple[set[str], set[str]]] = {
     "add_camera": (
@@ -102,6 +116,10 @@ _SPECS: dict[str, tuple[set[str], set[str]]] = {
         | _PLACE,
     ),
     "add_light": (set(), {"type", "name", "direction"} | _LIGHT | _PLACE),
+    "light_rig": (
+        {"subject"},
+        {"preset", "camera", "time", "distance", "level", "ratio", "rim", "temperature", "prefix"},
+    ),  # fmt: skip
     "set_camera": ({"camera"}, set(_CAMERA)),
     "set_light": ({"light"}, {"type"} | _LIGHT),
     "set_object": (
@@ -281,13 +299,31 @@ def _ref(obj: SceneObject) -> dict[str, str]:
     return {"id": obj.id, "name": obj.name}
 
 
+def _links(scene: Scene, params: dict[str, Any]) -> dict[str, Any]:
+    """Light linking lists of object ids or names, as ids."""
+    for key in ("include", "exclude"):
+        if key in params:
+            refs = params[key]
+            if not isinstance(refs, list):
+                raise ScriptError(f"{key} is a list of objects (ids or names)", key)
+            params[key] = [_obj(scene, r).id for r in refs]
+    return params
+
+
+def _lens(scene: Scene, params: dict[str, Any]) -> dict[str, Any]:
+    """Camera parameters with ``focus_object`` given by name or id resolved to its id."""
+    if params.get("focus_object") is not None:
+        params = {**params, "focus_object": _obj(scene, params["focus_object"]).id}
+    return params
+
+
 def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> dict[str, Any]:
     if op == "query":
         from ..spatial import run_query
 
         return run_query(scene, {k: v for k, v in s.items() if k != "op"})
     if op == "add_camera":
-        params = {k: s[k] for k in _CAMERA if k in s}
+        params = _lens(scene, {k: s[k] for k in _CAMERA if k in s})
         obj = scene.add_camera(
             s.get("name"),
             parent=_obj(scene, s["parent"]) if "parent" in s else None,
@@ -309,8 +345,14 @@ def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> di
             )
             result["framing"] = framing.to_dict()
         return result
+    if op == "light_rig":
+        options = {k: s[k] for k in ("preset", "time", "distance", "level", "ratio", "rim",
+                                     "temperature", "prefix") if k in s}  # fmt: skip
+        if "camera" in s:
+            options["camera"] = _obj(scene, s["camera"])
+        return scene.light_rig(_obj(scene, s["subject"]), **options)
     if op == "add_light":
-        params = {k: s[k] for k in _LIGHT if k in s}
+        params = _links(scene, {k: s[k] for k in _LIGHT if k in s})
         obj = scene.add_light(
             s.get("type", "directional"),
             s.get("name"),
@@ -328,13 +370,13 @@ def _dispatch(scene: Scene, op: str, s: dict[str, Any], journal: _Journal) -> di
         obj = _obj(scene, s["camera"])
         if obj.camera is None:
             raise ScriptError(f"object {obj.name!r} is not a camera", "camera", "NOT_A_CAMERA")
-        obj.camera.configure(**{k: s[k] for k in _CAMERA if k in s})
+        obj.camera.configure(**_lens(scene, {k: s[k] for k in _CAMERA if k in s}))
         return {"object": _ref(obj), "camera": obj.camera.to_dict()}
     if op == "set_light":
         obj = _obj(scene, s["light"])
         if obj.light is None:
             raise ScriptError(f"object {obj.name!r} is not a light", "light", "NOT_A_LIGHT")
-        obj.light.configure(**{k: s[k] for k in {"type"} | _LIGHT if k in s})
+        obj.light.configure(**_links(scene, {k: s[k] for k in {"type"} | _LIGHT if k in s}))
         return {"object": _ref(obj), "light": obj.light.to_dict()}
     if op == "set_object":
         obj = _obj(scene, s["object"])

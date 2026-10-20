@@ -20,6 +20,28 @@ rasterizer and 0.03 s on the GPU ([Performance](#performance)). The
 rasterizers stay the tools for previews and interactive work; the path
 tracer is for quality.
 
+**0.20.0 (Stage 19)** adds, on both path tracers -- the GPU kernel still traces the CPU's
+paths with the CPU's random numbers:
+- **glass**: transmission and index of refraction, a rough dielectric BSDF with total
+  internal reflection ([Glass](#glass-0200));
+- **spot and area lights** (squares, rectangles, disks, ellipses, with `spread`), light
+  linking and shadowless lights, sampled with MIS
+  ([Spot and area lights](#spot-and-area-lights-linking-0200));
+- **image environments** -- HDR files and built-ins -- sampled as lights
+  ([Image environments](#image-environments-sampled-as-lights-0200));
+- **Owen-scrambled Sobol' samples** (an area-lit plane at 16 samples: 6.4 % RMS error with
+  hashed numbers, 0.74 % with Sobol'), **pixel filters** (Gaussian, Blackman-Harris) and
+  **adaptive sampling** ([Sampling](#samplers-pixel-filters-and-adaptive-sampling-0200));
+- an opt-in, labelled-biased **denoiser** ([The denoiser](#the-denoiser-0200));
+- **film output**: the `film` view transform, 16-bit and OpenEXR masters with passes,
+  and motion vectors ([Color management and output](#color-management-and-output)).
+
+Every default keeps earlier renders bit for bit. The Cornell room of
+`examples/film_g_scene.py`, and a scene with a sized sun and point light, an emitter,
+metal, a dielectric and the sky, render identically with v0.19.1 and 0.20.0's CPU path
+tracer: both releases were run on one machine and compared bit for bit
+([research/2026-10-stage19/DESIGN.md](../research/2026-10-stage19/DESIGN.md#part-eleven-verification-and-compatibility)).
+
 ![Cornell box: rasterizer | path tracer, direct light | path tracer, 8 bounces](../examples/output/cornell_comparison.png)
 
 *A Cornell-box-inspired room lit only by an emissive panel
@@ -86,8 +108,9 @@ aether3d render studio.aether --backend path --width 960 --height 540 \
 
 ## What the path tracer computes
 
-Each pixel is the average of `samples` independent estimates of the radiance
-arriving through a uniformly random point of the pixel (a box filter). An
+Each pixel is the average of `samples` estimates of the radiance arriving through a
+random point of the pixel -- uniform (a box filter) by default, or drawn from a pixel
+filter's profile -- with independent hashed numbers or Owen-scrambled Sobol' points. An
 estimate follows one path:
 
 1. A camera ray (between the camera's `near` and `far` distances, like the
@@ -294,8 +317,38 @@ selects mip levels and filters procedural textures):
 Indirect light therefore samples coarse mip levels, which is faster and
 avoids noise from texture detail that bounced light cannot resolve.
 
+### Glass (0.20.0)
+
+A standard material's `transmission` (0–1) and `ior` (1–3; presets `glass`,
+`frosted_glass`, `water`) make it a dielectric. With `w_g = transmission (1 − metallic)`
+the BSDF is `(1 − w_g) f + w_g f_glass`, where `f_glass` is a rough dielectric interface of
+relative index `eta` (`ior` entering the surface's outward side, `1 / ior` leaving it):
+
+```
+reflection   F D G2 / (4 |n.l| n.v)
+refraction   base (1 - F) D G2 |l.h| |v.h| / (|n.l| n.v (l.h + v.h / eta)^2 eta^2)
+```
+
+(Walter et al. 2007, in radiance), with the **exact dielectric Fresnel** `F(v.h, eta)`
+(1 beyond the critical angle: total internal reflection), GGX `D` and Smith `G2`. The
+refracted light is tinted by the base colour at every crossing (as Blender's Principled
+BSDF); volumes do not absorb. Sampling picks the glass lobe with probability `w_g`, then
+reflection with probability `F` of a GGX visible normal; densities are the lobes'
+mixture, and a sample that lands on the wrong side of the surface is rejected (weight 0,
+not bent back: no bias). Paths keep track of the side they are on, so rays leave a
+surface on the side they continue to.
+
+Measured (`tests/test_glass.py`; the CPU path tracer, 32 samples, 32 bounces): a smooth
+glass ball in a white furnace returns 0.9988 of the light (energy is kept, within the
+noise and the bounce limit), a rough one (roughness 0.3) 0.946 -- what single-scattering
+microfacets lose; a glass slab transmits `(1 − R) / (1 + R)` with `R = 0.04` (every
+internal reflection counted) within 0.4 %; the Fresnel terms match their closed forms and
+the sampled lobes integrate to their quadratures. The rasterizers draw glass's reflection
+only (its diffuse part is dropped, nothing is refracted). glTF carries it as
+`KHR_materials_transmission` and `KHR_materials_ior` ([GLTF.md](GLTF.md)).
+
 **Not modelled** (documented, not faked):
-- transmission and refraction: every material reflects, there is no glass;
+- absorption inside volumes (Beer-Lambert), dispersion, thin-walled glass;
 - occlusion maps (`occlusion` texture slot) are ignored, because the path
   tracer computes occlusion from geometry.
 
@@ -353,6 +406,27 @@ Lights without size can only be sampled (no ray can hit a point or a
 parallel beam) and need no weights. Camera rays do not see lights, only
 their reflections do.
 
+### Spot and area lights, linking (0.20.0)
+
+**Spot lights** are point lights (sized or not) whose light is masked by their cone (the
+smoothstep of [RENDERING.md](RENDERING.md#lights-and-the-shading-model), from the
+direction leaving the light's centre). **Area lights** are one-sided Lambertian squares,
+rectangles, disks and ellipses of radiance `L = pi c I / A`: next-event estimation picks a
+uniform point `x` of the shape by area, contributing `f cos L A cos_l / d^2` (solid-angle
+density `d^2 / (A cos_l)`), and BSDF-sampled rays that enter the shape before any surface
+see `L`; the two are weighted by the power heuristic, so a mirror reflects a soft box
+cleanly and a diffuse wall is lit smoothly. With `spread` below 180 degrees, the point is
+drawn uniformly in the part of the light that can reach the shading point (a rectangle of
+its local coordinates around the point's foot) and weighted by the spread profile:
+exact, unbiased (sums within 0.4 % of the integral at 2,048 samples). Camera rays do not
+see lights (their reflections do).
+
+**Light linking** (`include`/`exclude`) is honoured at every path vertex: a linked light
+does not light, and BSDF rays do not find it from, the objects it excludes, while its light
+reflected off the objects it does light still reaches the others (what is linked is
+the receiver of direct light, not the light path). A light with `shadow` off
+sends no shadow rays and BSDF rays find it through geometry.
+
 **Emissive surfaces are area lights.** A material's `emissive x
 emissive_strength` is radiance leaving the front face (and the back face of
 double-sided materials). The camera sees it exactly as on the rasterizers;
@@ -379,11 +453,24 @@ format 5) is the radiance of rays that leave the scene:
 The default `"ambient"` environment is the physical reading of the
 rasterizers' ambient term: a white Lambertian surface open to the whole sky
 reflects exactly that ambient light. Existing scenes keep their look on the
-rasterizers and get matching sky light in the path tracer. The environment
-is reached by BSDF sampling (it is not sampled as a light), which suits these
-smooth, low-contrast environments; a sun is a directional light with an
-`angle`. High-dynamic-range environment images are not supported (see
-[Limitations](#limitations-and-future-work)).
+rasterizers and get matching sky light in the path tracer. These smooth
+environments are reached by BSDF sampling; a sun is a directional light with an
+`angle`.
+
+### Image environments, sampled as lights (0.20.0)
+
+`type: "image"` reads an equirectangular HDR image (a file in the project's folder or a
+built-in; mapping and limits in [RENDERING.md](RENDERING.md#image-environments-0200)).
+It is **sampled as a light**: a piecewise-constant distribution over its cells (the
+pixels, or 2 × 2 blocks of them beyond 1,024 columns), each weighted by the largest
+luminance of it and its neighbours (bilinear lookups never see light a zero-probability
+cell would miss) times its solid angle; marginal and conditional CDFs give directions
+with the density `pdf_uv / (2 pi^2 cos(elevation))` per steradian, and BSDF rays that
+leave the scene are weighted against it by the power heuristic. Both path tracers hold
+the same tables (float32), and converge to the exact integrals of the images (an upward
+plane at 512 samples on the CPU: overcast −0.26 %, studio −0.26 %, sunset −0.02 %, night
+−0.41 % of the luminance; `tests/test_environment_image.py` checks 1 %). With `visible=False` camera rays see
+`world.background` while the image still lights the scene.
 
 ```python
 scene.world.environment = {
@@ -482,12 +569,65 @@ transport.*
   - Fireflies from caustic-like paths (light reflected by a mirror onto a
     diffuse surface) are a property of the estimator; `clamp` trades them for
     a small bias.
-  - Nothing filters or denoises the image: what you see is the estimator.
+  - Nothing filters or denoises the image unless asked (`denoise=True`, below): by
+    default what you see is the estimator.
 - **Progress and stopping.** `progress=callable` is called after every
   completed sample pass as `progress(done, total, seconds)`. Returning
   `False` stops the render there: the image averages the passes done
   (`sample_count` tells) and a `RENDER_STOPPED` diagnostic says so. A time
   budget is a callback that checks `seconds`.
+
+## Samplers, pixel filters and adaptive sampling (0.20.0)
+
+- **Owen-scrambled Sobol'** (`path={"sampler": "sobol"}`): decisions made together -- the
+  pixel position and the lens point, a BSDF sample (its two numbers, the lobe and Russian
+  roulette), each light sample, each AO ray -- draw one point of a 4D Sobol' sequence (Joe
+  and Kuo's generator matrices), indexed by the path's sample number after a nested
+  uniform scramble and scrambled again per coordinate (Burley 2020; Laine and Karras'
+  permutation), with seeds hashed from the pixel, the vertex and the group. A pixel's
+  samples are stratified while pixels and decisions stay decorrelated, the estimator is
+  unbiased (randomized quasi-Monte Carlo), and the 24-bit values are computed with
+  integer arithmetic, so the GPU draws the same bits. On an area-lit plane at 16 samples
+  the RMS error falls from 6.4 % to 0.74 %; images still do not depend on batching or
+  workers (`tests/test_sampler.py`).
+- **Pixel filters** (`filter`: `box` (default), `gaussian` (sigma = width / 6, cut at ±
+  width / 2), `blackman_harris`; `filter_width` in pixels, default 1.5): filter
+  importance sampling (Ernst et al. 2006) -- each sample's position is drawn from the
+  filter's profile through a 256-entry inverse CDF that both path tracers interpolate the
+  same way (CPU and GPU within 3·10⁻⁷), so every sample still belongs to one pixel with
+  weight 1 and images keep not depending on batching. Edges spread as the profiles say.
+- **Adaptive sampling** (`adaptive_threshold`, e.g. 0.02; `adaptive_min_samples`, default
+  `max(4, samples / 16)`): samples are traced in rounds (the minimum, then doubling up to
+  `samples`), and after each a pixel stops when its estimate's relative luminance error --
+  and every 3 × 3 neighbour's -- is below the threshold (luminance floored at 0.05). Each
+  pixel's samples are a prefix of its full sequence (the same numbers), so a pixel that
+  never stops is the full render's bit for bit. `passes["sample_count"]` and the stats
+  (`samples_mean`, `pixels_converged_early`) say what was spent; the GPU stops 99.8 % of
+  the pixels the CPU stops (float32 sums flip a few at the threshold). Measured on the
+  test scene (two walls under a sky, 320 × 240, the CPU path tracer, against a
+  2,048-sample reference; `research/2026-10-stage19/measurements/adaptive.py`): with as
+  many samples per pixel on average, adaptive sampling had 5-45 % less error than
+  uniform sampling; but the pixels that keep sampling are the expensive ones (they bounce
+  more than the sky that stops first), so each sample cost 35-60 % more, and **at equal
+  time** it had 20 % less error in one setting (threshold 0.02, at most 64 samples) and
+  1-5 % more in three others. Whether it pays depends on the scene: it helps most where
+  large, cheap areas converge early and the noise is concentrated.
+
+## The denoiser (0.20.0)
+
+`render(..., denoise=True)` (or `denoise={"iterations": 3, "sigma_normal": 128,
+"sigma_depth": 1, "sigma_luminance": 2}`; CLI `--denoise`) filters a path-traced image
+with an edge-avoiding à-trous wavelet transform (Dammertz et al. 2010) whose luminance
+edge-stopping is scaled by each pixel's estimated variance (the spatial part of SVGF,
+Schied et al. 2017): the beauty is divided by the albedo pass (textures are not blurred),
+filtered three times with a 5 × 5 B3-spline kernel whose taps spread by `2^i`, weighted by
+normals, view depth and luminance relative to the noise, and multiplied by the albedo
+again. Measured against converged renders (two scenes, 2 to 64 samples): **20 to 35 % less
+display-space error** than the raw image -- what 1.5 to 2 times the samples would give.
+It does not replace samples: stronger settings blur more than they remove. It is
+**biased** (fine shadows, caustics and reflections of small things may blur): the raw image
+stays in `passes["beauty"]`, `backend["denoiser"]` reports `"biased": true` and a
+`DENOISED` diagnostic says so. Deterministic; about 5.6 s at 1920 × 1080 (NumPy).
 
 ## Color management and output
 
@@ -506,7 +646,16 @@ output stage, shared by all backends:
      largest channel then stays below 0.76 are otherwise kept, and brighter
      ones are compressed smoothly toward white, so lights and bright skies
      keep their shape instead of clipping;
-3. encodes with the sRGB transfer function and quantizes to 8 bits.
+   - `"film"` (0.20.0) is a filmic view transform with a path to white: the colour is
+     drawn toward grey by an inset matrix, each channel goes through a monotone cubic
+     tone curve of its log2 exposure around middle grey 0.18 (Fritsch-Carlson), and the
+     result through an outset matrix, then sRGB. Middle grey shows at 0.4613 (sRGB 118),
+     +6.5 stops reaches white, −10 stops black, and saturated highlights go to white
+     without hue skews. Its numbers were fitted to Blender 5.2's AgX measured on grey and
+     seven colour ramps from −8 to +10 stops (`research/2026-10-stage19/film_fit`: RMS
+     display error 0.008, at most 0.038) -- Aether3D's own transform, not Blender's;
+3. encodes with the sRGB transfer function and quantizes to 8 bits (16 for masters:
+   `result.save("x.png", bits=16)`, `render_frames(..., format="png16")`).
 
 When to tone map: `"neutral"` suits scenes with very bright parts in view
 (lit products, light sources, sunlit highlights next to dark surfaces). Its
@@ -516,9 +665,14 @@ the showcase images use `"none"`.
 
 `result.color` reports the working space, exposure, tone mapper and encoding.
 `result.linear` holds the image after exposure and before tone mapping, and
-`result.save("image.hdr")` (Radiance RGBE) or `"image.pfm"` (float32) writes
-it without clipping. RGBE stores each channel to within 1/128 of the pixel's
-largest channel. PFM is exact. Passes are scene-referred: before exposure.
+`result.save("image.hdr")` (Radiance RGBE), `"image.pfm"` (float32) or, since 0.20.0,
+`"image.exr"` (OpenEXR, half floats, ZIP compression, with the passes as named channels:
+`Z`, `normal.X/Y/Z`, `albedo.R/G/B`, `direct`, `indirect`, `variance`, `motion.X/Y/Z/W`)
+writes it without clipping. RGBE stores each channel to within 1/128 of the pixel's
+largest channel; PFM is exact; half floats keep 11 significant bits. Passes are
+scene-referred: before exposure. Frame sequences write the same masters
+([ANIMATION.md](ANIMATION.md#rendering-frames)); the EXR writer is Aether3D's own and FFmpeg
+reads its files back exactly (`tests/test_film_output.py`).
 
 ## Passes, statistics and diagnostics
 
@@ -534,7 +688,8 @@ as `.pfm` files):
 | `normal` | shading normal at the first surface (world space, facing the camera), averaged over samples |
 | `depth` | view depth through the pixel center (`inf`: nothing) |
 | `ao` | ambient occlusion (with `ao=`) |
-| `sample_count` | samples averaged per pixel |
+| `sample_count` | samples averaged per pixel (adaptive sampling: each pixel's) |
+| `motion` | with `render(motion=dt)` (0.20.0, any backend): pixel offsets to where each pixel's surface was `dt` before (`x, y`) and will be `dt` after (`z, w`), from a ray through its centre and the same point of the same triangle posed at those times |
 | `variance` | variance of each pixel's mean, per channel |
 
 `result.depth`, `result.object_index` come from a ray through each pixel
@@ -544,7 +699,8 @@ camera samples that hit geometry.
 `result.stats` holds the following:
 - `camera_rays`, `bounce_rays`, `shadow_rays`, `ao_rays`, `center_rays`,
   `pass_through_rays`, `rays` and `rays_per_second`;
-- `paths` and `samples_per_pixel`;
+- `paths` and `samples_per_pixel`; with adaptive sampling `samples_mean` and
+  `pixels_converged_early` (both path tracers);
 - the triangle, instance, light and emissive-triangle counts;
 - `noise`;
 - `timings`: extraction, BVH, the tracing wall time and the CPU seconds of
@@ -575,10 +731,15 @@ camera samples that hit geometry.
   | `clamp` | 0 | indirect radiance cap per sample (0 = off) |
   | `integrator` | `"path"` | `"ao"`: the AO preview |
   | `workers` | 0 | processes: 0 = one per CPU (up to 8) for big renders, 1 = this process |
+  | `sampler` | `"random"` | `"sobol"`: Owen-scrambled Sobol' (0.20.0) |
+  | `filter`, `filter_width` | `"box"`, 1.5 | `"gaussian"`, `"blackman_harris"` (0.20.0) |
+  | `adaptive_threshold`, `adaptive_min_samples` | 0 (off), 0 (`max(4, samples / 16)`) | adaptive sampling (0.20.0) |
 
 - `ao` — `True`, `AOSettings` or a dict: `samples` (4, per camera sample),
   `distance` (1), `strength` (1).
-- `tonemap` — `"none"` or `"neutral"` (any backend).
+- `tonemap` — `"none"`, `"neutral"` or `"film"` (any backend).
+- `denoise` — `True` or the denoiser's settings (0.20.0).
+- `motion` — seconds: adds the `motion` pass (0.20.0, any backend).
 - `progress` — `progress(done, total, seconds)`; return `False` to stop.
 
 `samples=` (raster antialiasing), `msaa`, `supersample`, `adapter` and
@@ -587,15 +748,18 @@ camera samples that hit geometry.
 
 CLI (`aether3d render ... --backend path`):
 - path settings: `--spp`, `--bounces`, `--seed`, `--light-samples`,
-  `--russian-roulette`, `--clamp`, `--workers`;
+  `--russian-roulette`, `--clamp`, `--workers`, and since 0.20.0 `--sampler`, `--filter`,
+  `--filter-width`, `--adaptive THRESHOLD`, `--adaptive-min-samples`, `--denoise`;
 - AO: `--ao`, `--ao-only`, `--ao-samples`, `--ao-distance`, `--ao-strength`;
-- output: `--tonemap`, `--passes DIR` and `-o image.png|.hdr|.pfm`.
+- output: `--tonemap none|neutral|film`, `--passes DIR` and `-o
+  image.png|.hdr|.pfm|.exr` (`--bits 16` for a 16-bit PNG master).
 
-Scene data: `aether3d light add|set --radius R --angle DEG`, and `aether3d
-scene set --environment ambient|uniform|sky --environment-color
---environment-intensity --sky-zenith --sky-horizon --sky-ground`. Scene
-scripts accept `radius`, `angle` and `environment` in `add_light`,
-`set_light` and `set_world`.
+Scene data: `aether3d light add|set --radius R --angle DEG` (and the 0.20.0 light
+fields: `--type spot|area`, `--spot-size`, `--shape`, `--size`, `--spread`, `--units`,
+`--temperature`, ...), and `aether3d scene set --environment ambient|uniform|sky|image
+--environment-image --environment-rotation --environment-visible --environment-color
+--environment-intensity --sky-zenith --sky-horizon --sky-ground`. Scene scripts accept
+the same in `add_light`, `set_light` and `set_world`.
 
 **Limits** (`RenderLimits`): `max_path_rays` (default 10^11) bounds an upper
 estimate of the rays a render may trace (paths x (bounces + 2) plus shadow
@@ -652,6 +816,10 @@ is the fallback you choose.
   used. (A prototype with hardware ray queries in this kernel made the
   showcase renders only 1.04–1.65 times faster: see
   [PERFORMANCE.md](PERFORMANCE.md#phase-5-hardware-ray-tracing-prototype-deferred).)
+  Stage 19 looked again: wgpu-native 29.0.1.1, under wgpu-py 0.32, lists a ray-query
+  feature but has no functions to create or build acceleration structures, so hardware
+  ray queries remain out of reach from Python; the decision stands (deferred), and no
+  report ever claims hardware ray tracing.
 
 **The same paths as the CPU.** The kernel draws exactly the CPU path
 tracer's random numbers: SplitMix64 computed in pairs of 32-bit integers,
@@ -675,6 +843,7 @@ Feature parity with `backend="path"`:
 | | GPU path tracer |
 |---|---|
 | Estimator, BSDF, lights, MIS, sized lights, emitters, environment, RR, clamp | the CPU's, step for step |
+| Glass, spot and area lights (spread), linking, shadowless lights, image environments, Sobol', filters, adaptive sampling (0.20.0) | the CPU's: the same random numbers (Sobol' bits included), the same filter table, the same environment CDFs; adaptive rounds read the sums back between rounds to decide which pixels go on |
 | Materials and textures | the same data, evaluated by the GPU rasterizer's code (float32) |
 | Passes, statistics, noise estimate, `progress` and stopping | the same |
 | AO pass and AO preview | the same |
@@ -963,6 +1132,24 @@ Under lighting both can reproduce — direct light without shadows, or a
 uniform sky over open surfaces — the images agree; tests check this for
 textures, normal maps, procedural and triplanar materials.
 
+**Stage 19 at 1080p** (RTX 4060 Laptop GPU, one run each): the studio showcase's set
+(glass, metals, area lights, an image environment, six bounces, depth of field,
+Blackman-Harris filtering, adaptive sampling, the denoiser) took 473 s for its
+512-sample hero still at 1920 × 1080 (adaptive sampling spent 496 samples per pixel on
+average) and 67.6 s for each 64-sample frame of its 151-frame orbit
+([`film_e_studio.py`](../examples/film_e_studio.py); its report records every frame).
+
+## Before and after: v0.19.1 against 0.20.0
+
+[`examples/film_g_renderer.py`](../examples/film_g_renderer.py) renders one Cornell room
+(960 × 540, eight bounces, the GPU path tracer) with the real v0.19.1 release -- run from
+a temporary git worktree of `main` -- and with 0.20.0, each in its own process and timed
+after a warm-up, and measures every image against a 4,096-sample reference made with the
+same pixel filter: equal samples, then equal time. It was not run at that size for this
+release, so none of its results are given here; the tests run it at its quick size
+(96 × 54, without the v0.19.1 run). What was measured about Sobol' and adaptive sampling
+is in [Sampling](#samplers-pixel-filters-and-adaptive-sampling-0200).
+
 ## Testing and verification
 
 The path tracer is tested against independent references, not against its
@@ -1022,6 +1209,16 @@ own output:
   - format 5 save/load and migration of an Aether3D 0.7.0 project;
   - scene scripts and the CLI;
   - parallel workers bit-identical to one process.
+- **Stage 19** (0.20.0): `tests/test_glass.py` (Fresnel closed forms, lobe quadratures,
+  the white furnace, a slab's transmission, GPU paths through glass, glTF);
+  `tests/test_lights.py` (spot, area, spread and units against Blender's Cycles, linking,
+  shadowless lights, both path tracers); `tests/test_environment_image.py` (decoders,
+  Blender's mapping, unbiased importance sampling, convergence to the integrals, the
+  rasterizers' harmonics); `tests/test_sampler.py` (Sobol' stratification and bits on
+  the GPU, filters' profiles, adaptive rounds and their independence from batching);
+  `tests/test_denoise.py` (error against converged renders, edges, determinism);
+  `tests/test_film_output.py` (the film transform, 16-bit and EXR masters read back,
+  FFmpeg's BT.709 conversion); `tests/test_motion_vectors.py` (exact pixel motion).
 
 CI runs all of these on every supported Python version and operating
 system. A small deterministic path-traced Cornell box
@@ -1060,6 +1257,21 @@ literature:
   Group, 2024; the reference implementation is Apache-2.0); the formula is
   implemented from the specification;
 - the Radiance RGBE format: G. Ward, Graphics Gems II, 1991.
+- 0.20.0: rough dielectrics: B. Walter, S. Marschner, H. Li, K. Torrance, "Microfacet
+  Models for Refraction through Rough Surfaces", EGSR 2007; Owen-scrambled Sobol': S.
+  Joe, F. Kuo, "Constructing Sobol sequences with better two-dimensional projections",
+  SIAM J. Sci. Comput. 30(5), 2008 (their direction numbers are public data); B. Burley,
+  "Practical Hash-based Owen Scrambling", JCGT 9(4), 2020; S. Laine, T. Karras,
+  "Stratified Sampling for Stochastic Transparency", EGSR 2011 (the permutation); filter
+  importance sampling: M. Ernst, M. Stamminger, G. Greiner, "Filter Importance Sampling",
+  IEEE Symposium on Interactive Ray Tracing 2006; the
+  denoiser: H. Dammertz et al., HPG 2010, C. Schied et al., HPG 2017; environment
+  lighting by spherical harmonics: R. Ramamoorthi, P. Hanrahan, SIGGRAPH 2001; area-light
+  highlights: B. Karis, "Real Shading in Unreal Engine 4", SIGGRAPH course 2013; polygon
+  irradiance: J. Lambert's formula as in J. Arvo, "Applications of Irradiance Tensors",
+  SIGGRAPH 1995; OpenEXR's file layout: its published documentation. Blender 5.2 was a
+  measured reference only (lights, units, spread, mapping, AgX): no Blender or Cycles
+  code was read for, copied into or translated into Aether3D.
 
 Blender Cycles (Apache-2.0) and pbrt (BSD) were studied as designs only. No
 GPL code was consulted for the implementation. No new runtime dependency was
@@ -1075,17 +1287,18 @@ added: the path tracer needs only NumPy.
   seconds, final images minutes. Parallel tracing needs `fork()` and runs on
   Linux only; macOS and Windows trace in one process. Compiled traversal
   kernels are future work.
-- **Materials.** There is no transmission, refraction or glass,
-  subsurface scattering, sheen, clearcoat, anisotropy or thin-film; the
-  GGX lobe has no multiple-scattering energy compensation (rough metals
-  lose a little energy, as on the rasterizers).
+- **Materials.** No subsurface scattering, sheen, clearcoat, anisotropy or
+  thin-film; glass has no absorption or dispersion; the GGX lobes have no
+  multiple-scattering energy compensation (rough metals and rough glass lose a
+  little energy: 5 % for glass of roughness 0.3).
 - **Lights.** Every analytic light is sampled at every vertex (cost grows with
   the light count; no light tree). Lights are not visible to camera rays
   (sized lights do appear in reflections); model a visible lamp as emissive
-  geometry. There are no spot lights.
-- **Environment.** No HDR environment images (they would need a linear HDR
-  loader and importance sampling); the environment is not sampled as a light.
-- **Sampling.** Independent random numbers (no low-discrepancy sequences),
-  no adaptive sampling, no denoiser, a box pixel filter.
-- **Not in scope for Stage 8:** volumes, motion blur, depth of field, light
-  linking, spectral rendering, bidirectional methods, compositing.
+  geometry. Caustics (light through glass or off a mirror onto a diffuse
+  surface) are found only by BSDF sampling: noisy, and `clamp` trades them for bias.
+- **Environment.** Images are used at up to 2048 × 1024.
+- **Sampling and denoising.** The denoiser is spatial only (one frame: no temporal
+  accumulation), modest (20-35 %), and biased. Adaptive sampling saves little where few
+  pixels reach the threshold.
+- **Not in scope:** volumes and participating media (the atmosphere's fog is an
+  aerial-perspective model), spectral rendering, bidirectional methods, compositing.

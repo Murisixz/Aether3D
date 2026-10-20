@@ -112,6 +112,13 @@ def cmd_animation_report(args: argparse.Namespace) -> CommandOutput:
             if not args.target:
                 raise CommandError("ValidationError", "trajectory needs --target")
             data = system.trajectory(args.target, start=args.start, end=args.end, joint=args.joint)
+        elif args.kind == "motion":
+            targets = None
+            if args.target:
+                targets = [{"object": args.target, "joint": args.joint} if args.joint
+                           else args.target]  # fmt: skip
+            data = system.motion_report(targets, start=args.start, end=args.end,
+                                        subject=args.subject, loop=args.loop)  # fmt: skip
         else:
             if not args.target or not args.feet:
                 raise CommandError(
@@ -137,7 +144,14 @@ def cmd_animation_graph(args: argparse.Namespace) -> CommandOutput:
     _check_destination(out, args.force)
     scene, _ = _load_scene(path)
     system = scene.animation
-    options = {"start": args.start, "end": args.end, "width": args.width, "title": args.title}
+    options = {
+        "start": args.start,
+        "end": args.end,
+        "width": args.width,
+        "title": args.title,
+        "plots": tuple(p.strip() for p in args.plots.split(",") if p.strip()),
+        "annotate": not args.no_annotate,
+    }
     try:
         if args.path_:
             if not args.target and not args.clip:
@@ -174,13 +188,31 @@ def cmd_animation_render(args: argparse.Namespace) -> CommandOutput:
             raise CommandError(
                 "ValidationError", "--motion-blur is SHUTTER:SAMPLES (0.5:8)"
             ) from None
-    options = {"width": args.width, "height": args.height, "backend": args.backend}
+    options: dict = {"width": args.width, "height": args.height, "backend": args.backend}
     if args.camera:
         options["camera"] = args.camera
+    if args.tonemap:
+        options["tonemap"] = args.tonemap
+    if args.exposure is not None:
+        options["exposure"] = args.exposure
+    if args.backend in ("path", "gpu_path"):
+        path_opts = {k: v for k, v in (("samples", args.spp), ("bounces", args.bounces),
+                                       ("sampler", args.sampler)) if v is not None}  # fmt: skip
+        if path_opts:
+            options["path"] = path_opts
+        if args.denoise:
+            options["denoise"] = True
+    elif args.spp is not None or args.bounces is not None or args.sampler or args.denoise:
+        raise CommandError(
+            "UsageError", "--spp, --bounces, --sampler and --denoise apply to --backend path "
+            "or gpu_path",
+        )  # fmt: skip
+    passes = [p for p in args.passes.split(",") if p] if args.passes else None
     try:
         report = render_frames(
             scene, out_dir, start=args.start, end=args.end, fps=args.fps, step=args.step,
-            motion_blur=blur, **options,
+            motion_blur=blur, format=args.format, passes=passes, resume=args.resume,
+            **options,
         )  # fmt: skip
         data = {"path": str(path), **report}
         if args.contact_sheet:
@@ -189,10 +221,18 @@ def cmd_animation_render(args: argparse.Namespace) -> CommandOutput:
             labels = [f"{f['time']:.2f}s" for f in frames]
             sheet = contact_sheet(images, columns=args.columns, labels=labels)
             data["contact_sheet"] = str(write_atomic(args.contact_sheet, encode_png(sheet)))
-        if args.video:
-            data["video"] = assemble_video(
-                out_dir, "frame_{frame:05d}.png", report["fps"], args.video
-            )
+        if args.video or args.lossless:
+            if args.format == "exr":
+                raise CommandError(
+                    "UsageError", "videos are made of PNG frames: render --format png or png16"
+                )
+            for target, lossless in ((args.video, False), (args.lossless, True)):
+                if target:
+                    data["video" if not lossless else "lossless"] = assemble_video(
+                        out_dir, "frame_{frame:05d}.png", report["fps"], target,
+                        crf=args.crf, preset=args.preset, lossless=lossless,
+                        deep=args.format == "png16",
+                    )  # fmt: skip
     except AetherError as exc:
         raise _engine(exc) from None
     text = f"{len(report['frames'])} frames in {out_dir} ({report['seconds']:.1f} s)"
@@ -229,12 +269,18 @@ def add_animation_parsers(sub, common, writing) -> None:
         help="measure curves and motion (read-only)",
         description="curve: one channel's exact report (continuity at every key, extrema, "
         "overshoot, velocity/acceleration/jerk); diagnose: findings over the whole animation; "
-        "trajectory: an object's (or --joint's) world motion; contacts: feet sliding.",
+        "trajectory: an object's (or --joint's) world motion; motion: world-space quality "
+        "(jumps, acceleration steps, jitter, snaps, pole flips, pauses, loop seams, framing "
+        "of a --subject); contacts: feet sliding.",
     )
     p.add_argument("path", help=".aether project or .glb/.gltf file")
     p.add_argument(
-        "--kind", choices=("curve", "diagnose", "trajectory", "contacts"), default="curve"
+        "--kind",
+        choices=("curve", "diagnose", "trajectory", "motion", "contacts"),
+        default="curve",
     )
+    p.add_argument("--subject", help="motion: the object a camera should frame")
+    p.add_argument("--loop", action="store_true", help="motion: check the loop seam")
     p.add_argument("--target", help="object (or armature) id or name")
     p.add_argument("--path", dest="path_", action="append", help="channel path")
     p.add_argument("--clip", help="a clip name (instead of the target's action)")
@@ -256,6 +302,16 @@ def add_animation_parsers(sub, common, writing) -> None:
     p.add_argument("--end", type=float)
     p.add_argument("--width", type=int, default=900)
     p.add_argument("--title")
+    p.add_argument(
+        "--plots",
+        default="value,velocity,acceleration",
+        help="plots, comma-separated: value, velocity, acceleration, jerk",
+    )
+    p.add_argument(
+        "--no-annotate",
+        action="store_true",
+        help="leave out the discontinuity and extremum marks",
+    )
     p.add_argument("--force", action="store_true", help="overwrite an existing file")
     p.set_defaults(handler=cmd_animation_graph)
     p = an.add_parser("render", parents=[common], help="render frames (PNG), a sheet, a video")
@@ -268,12 +324,26 @@ def add_animation_parsers(sub, common, writing) -> None:
     p.add_argument("--width", type=int, default=640)
     p.add_argument("--height", type=int, default=360)
     p.add_argument("--camera", help="camera id or name (default: the shots', else active)")
-    p.add_argument("--backend", choices=("auto", "gpu", "cpu"), default="auto")
+    p.add_argument("--backend", choices=("auto", "gpu", "cpu", "path", "gpu_path"),
+                   default="auto")  # fmt: skip
+    p.add_argument("--spp", type=int, help="path tracers: samples per pixel")
+    p.add_argument("--bounces", type=int, help="path tracers: indirect bounces")
+    p.add_argument("--sampler", choices=("random", "sobol"), help="path tracers' numbers")
+    p.add_argument("--denoise", action="store_true", help="path tracers: denoise each frame")
+    p.add_argument("--tonemap", choices=("none", "neutral", "film"), help="view transform")
+    p.add_argument("--exposure", type=float, help="exposure in stops")
+    p.add_argument("--format", choices=("png", "png16", "exr"), default="png",
+                   help="frames: 8-bit PNG, 16-bit PNG masters or linear OpenEXR")  # fmt: skip
+    p.add_argument("--passes", help="exr: passes to add (depth,normal,albedo,direct,...)")
+    p.add_argument("--resume", action="store_true", help="keep frames already rendered")
     p.add_argument("--motion-blur", metavar="SHUTTER:SAMPLES", help="e.g. 0.5:8")
     p.add_argument("--contact-sheet", metavar="PNG", help="also write a contact sheet")
     p.add_argument("--sheet-count", type=int, default=12, help="frames on the sheet")
     p.add_argument("--columns", type=int, default=4)
     p.add_argument("--video", metavar="MP4", help="assemble a video with FFmpeg (if installed)")
+    p.add_argument("--crf", type=int, default=10, help="video quality, lower is better (10)")
+    p.add_argument("--preset", default="slow", help="x264 preset (slow)")
+    p.add_argument("--lossless", metavar="MKV", help="also assemble a lossless FFV1 master")
     p.set_defaults(handler=cmd_animation_render)
     p = an.add_parser("schema", parents=[common], help="the JSON Schema of animation scripts")
     p.set_defaults(handler=cmd_animation_schema)

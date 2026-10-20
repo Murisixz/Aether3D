@@ -49,6 +49,8 @@ from .errors import (
     UnsupportedFeatureError,
 )
 from .gltf import export_gltf, import_gltf
+from .rendering.light import LIGHT_TYPES
+from .rendering.light import SHAPES as LIGHT_SHAPES
 from .scene import Scene, SceneObject
 from .serialization import FORMAT_VERSION, loads, save_scene, scene_from_dict
 
@@ -834,6 +836,11 @@ _PATH_FLAGS = {
     "seed": "seed",
     "light_samples": "light_samples",
     "russian_roulette": "russian_roulette",
+    "sampler": "sampler",
+    "filter": "filter",
+    "filter_width": "filter_width",
+    "adaptive": "adaptive_threshold",
+    "adaptive_min_samples": "adaptive_min_samples",
     "clamp": "clamp",
     "workers": "workers",
 }
@@ -854,7 +861,7 @@ def _path_options(args: argparse.Namespace) -> tuple[dict | None, Any]:
         given += [f"--{f.replace('_', '-')}" for f in _AO_FLAGS if getattr(args, f) is not None]
         given += [
             flag
-            for flag in ("--ao", "--ao-only", "--passes")
+            for flag in ("--ao", "--ao-only", "--passes", "--denoise")
             if getattr(args, flag[2:].replace("-", "_"))
         ]
         if given:
@@ -933,10 +940,13 @@ def cmd_render(args: argparse.Namespace) -> CommandOutput:
     path_options, ao = _path_options(args)
     path = Path(args.path)
     output = Path(args.output) if args.output else path.with_suffix(".png")
-    if output.suffix.lower() not in (".png", ".hdr", ".pfm"):
+    if output.suffix.lower() not in (".png", ".hdr", ".pfm", ".exr"):
         raise CommandError(
-            "ValidationError", f"output must be a .png, .hdr or .pfm file, got {output}"
+            "ValidationError", f"output must be a .png, .hdr, .pfm or .exr file, got {output}"
         )
+    bits = getattr(args, "bits", 8)
+    if bits == 16 and output.suffix.lower() != ".png":
+        raise CommandError("ValidationError", "--bits 16 writes a .png master")
     _check_destination(output, args.force)
     scene, info = _load_scene(path, args.allow_lossy)
     try:
@@ -961,10 +971,14 @@ def cmd_render(args: argparse.Namespace) -> CommandOutput:
             path=path_options,
             ao=ao,
             tonemap=args.tonemap,
-            # .hdr/.pfm hold linear light; a PNG needs the image (the GPU reads back no more)
-            outputs=("image",) if output.suffix.lower() == ".png" else ("image", "linear"),
+            denoise=True if getattr(args, "denoise", False) else None,
+            # .hdr/.pfm/.exr and 16-bit masters hold linear light; an 8-bit PNG needs the
+            # image only (the GPU reads back no more)
+            outputs=("image",)
+            if output.suffix.lower() == ".png" and bits == 8
+            else ("image", "linear"),
         )
-        written = result.save(output)
+        written = result.save(output, bits=bits)
     except RenderError as exc:
         raise _render_error(exc) from None
     data = {"path": str(path), **info, **result.to_dict()}
@@ -1208,12 +1222,17 @@ def cmd_camera_list(args: argparse.Namespace) -> CommandOutput:
 
 def _light_params(args: argparse.Namespace) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for key in ("color", "intensity", "falloff", "radius", "angle"):
+    for key in (
+        "color", "intensity", "falloff", "radius", "angle", "spot_size", "spot_blend", "shape",
+        "size", "size_y", "spread", "units", "temperature", "use_temperature", "shadow",
+    ):  # fmt: skip
         value = getattr(args, key, None)
         if value is not None:
             out[key] = value
     if getattr(args, "range", None) is not None:
         out["range"] = None if args.range == "none" else _float(args.range)
+    if getattr(args, "light_exposure", None) is not None:
+        out["exposure"] = args.light_exposure
     return out
 
 
@@ -1251,6 +1270,25 @@ def cmd_light_set(args: argparse.Namespace) -> CommandOutput:
         raise CommandError("UsageError", "nothing to change; give light parameters or placement")
     _, data, _ = _run_scene(args, operations, "light set")
     return data, f"Updated light {args.light!r}\n{_saved(data)}", EXIT_OK
+
+
+def cmd_light_rig(args: argparse.Namespace) -> CommandOutput:
+    op: dict[str, Any] = {"op": "light_rig", "subject": args.subject, "preset": args.preset}
+    for key in ("camera", "distance", "level", "ratio", "rim", "temperature", "prefix"):
+        if getattr(args, key) is not None:
+            op[key] = getattr(args, key)
+    _, data, _ = _run_scene(args, [op], "light rig")
+    rig = data["operations"][0]
+    lines = [f"Lit {rig['subject']!r} with {rig['preset']} lighting:"]
+    for light in rig["lights"]:
+        lines.append(
+            f"  {light['name']}: {light['role']} at {light['azimuth']:g} deg, "
+            f"{light['elevation']:g} deg up, {light['distance']:.3g} m, intensity "
+            f"{light['intensity']:.4g}"
+        )
+    if "ratio" in rig:
+        lines.append(f"  lighting ratio {rig['ratio']:g}:1")
+    return data, "\n".join(lines) + f"\n{_saved(data)}", EXIT_OK
 
 
 def cmd_light_list(args: argparse.Namespace) -> CommandOutput:
@@ -1336,6 +1374,9 @@ def cmd_scene_set(args: argparse.Namespace) -> CommandOutput:
         "sky_zenith": "zenith_color",
         "sky_horizon": "horizon_color",
         "sky_ground": "ground_color",
+        "environment_image": "image",
+        "environment_rotation": "rotation",
+        "environment_visible": "visible",
     }
     environment = {
         key: getattr(args, flag)
@@ -2144,8 +2185,15 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p_render.add_argument(
         "-o",
         "--output",
-        help="the image to write: .png, or .hdr/.pfm for linear high dynamic range "
-        "(default: PATH.png)",
+        help="the image to write: .png, .hdr/.pfm for linear high dynamic range, or .exr "
+        "(scene-linear OpenEXR with the path tracers' passes) (default: PATH.png)",
+    )
+    p_render.add_argument(
+        "--bits",
+        type=int,
+        choices=(8, 16),
+        default=8,
+        help="PNG bit depth: 16 writes a 16-bit master of the view transform",
     )
     p_render.add_argument("--width", type=int, help="image width in pixels")
     p_render.add_argument("--height", type=int, help="image height in pixels")
@@ -2175,10 +2223,10 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     )
     p_render.add_argument(
         "--tonemap",
-        choices=["none", "neutral"],
+        choices=["none", "neutral", "film"],
         default="none",
-        help="map linear light to the PNG: none (clip, default) or neutral (Khronos PBR "
-        "Neutral: compresses highlights)",
+        help="map linear light to the PNG: none (clip, default), neutral (Khronos PBR "
+        "Neutral: compresses highlights) or film (a filmic curve with a path to white)",
     )
     p_render.add_argument(
         "--adapter",
@@ -2213,6 +2261,33 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     )
     p_render.add_argument(
         "--russian-roulette", type=int, help="path: bounce from which dim paths may stop (3)"
+    )
+    p_render.add_argument(
+        "--filter",
+        choices=["box", "gaussian", "blackman_harris"],
+        help="path: pixel filter (box, default; blackman_harris is Blender's)",
+    )
+    p_render.add_argument("--filter-width", type=float, help="path: filter width in pixels (1.5)")
+    p_render.add_argument(
+        "--adaptive",
+        type=float,
+        metavar="THRESHOLD",
+        help="path: adaptive sampling, a pixel stops below this relative error (e.g. 0.02); "
+        "--spp is then the most samples a pixel gets",
+    )
+    p_render.add_argument(
+        "--adaptive-min-samples", type=int, help="path: adaptive sampling's first round"
+    )
+    p_render.add_argument(
+        "--denoise",
+        action="store_true",
+        help="path: denoise the image (edge-avoiding, variance-guided filter; biased)",
+    )
+    p_render.add_argument(
+        "--sampler",
+        choices=["random", "sobol"],
+        help="path: random (hashed numbers, default) or sobol (Owen-scrambled Sobol': less "
+        "noise for the same samples)",
     )
     p_render.add_argument(
         "--clamp", type=float, help="path: clamp indirect radiance per sample (0 = off)"
@@ -2332,21 +2407,45 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     def light_params(p) -> None:
         p.add_argument("--color", help="light color (#rrggbb)")
         p.add_argument("--intensity", type=float, help="unitless intensity (>= 0)")
-        p.add_argument("--range", help="point lights: fade-out distance, or 'none'")
-        p.add_argument("--falloff", choices=["inverse_square", "none"], help="point light falloff")
-        p.add_argument("--direction", **vec, help="directional lights: travel direction")
+        p.add_argument("--range", help="point and spot lights: fade-out distance, or 'none'")
         p.add_argument(
-            "--radius", type=float, help="point lights: sphere radius (path tracer soft shadows)"
+            "--falloff", choices=["inverse_square", "none"], help="point and spot light falloff"
+        )
+        p.add_argument("--direction", **vec, help="directional, spot, area: travel direction")
+        p.add_argument(
+            "--radius",
+            type=float,
+            help="point and spot lights: sphere radius (path tracer soft shadows)",
         )
         p.add_argument(
             "--angle",
             type=float,
             help="directional lights: angular diameter in degrees (path tracer soft shadows)",
         )
+        p.add_argument("--spot-size", type=float, help="spot lights: cone angle in degrees")
+        p.add_argument("--spot-blend", type=float, help="spot lights: soft edge, 0..1")
+        p.add_argument("--shape", choices=list(LIGHT_SHAPES), help="area lights: the shape")
+        p.add_argument("--size", type=float, help="area lights: width (or diameter), metres")
+        p.add_argument("--size-y", type=float, help="area lights: height (rectangle, ellipse)")
+        p.add_argument("--spread", type=float, help="area lights: emission spread, degrees")
+        p.add_argument(
+            "--units",
+            choices=["aether", "watts"],
+            help="intensity units: aether (0.x behaviour) or watts (Blender's power)",
+        )
+        p.add_argument("--temperature", type=float, help="black-body colour in kelvins")
+        p.add_argument("--use-temperature", type=_bool_arg, help="tint by the temperature")
+        p.add_argument(
+            "--light-exposure",
+            type=float,
+            metavar="EV",
+            help="scales the intensity by 2^EV",
+        )
+        p.add_argument("--shadow", type=_bool_arg, help="casts shadows (true or false)")
 
     p = lights.add_parser("add", parents=[common, writing], help="add a light")
     p.add_argument("path", help="the .aether project")
-    p.add_argument("--type", choices=["directional", "point"], default="directional")
+    p.add_argument("--type", choices=list(LIGHT_TYPES), default="directional")
     p.add_argument("--name", help="object name (default: Light, Light.001, ...)")
     p.add_argument("--parent", help="parent object id or name")
     light_params(p)
@@ -2356,10 +2455,29 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p = lights.add_parser("set", parents=[common, writing], help="change a light")
     p.add_argument("path", help="the .aether project")
     p.add_argument("light", help="light object id or name")
-    p.add_argument("--type", choices=["directional", "point"])
+    p.add_argument("--type", choices=list(LIGHT_TYPES))
     light_params(p)
     placement(p)
     p.set_defaults(handler=cmd_light_set)
+
+    p = lights.add_parser("rig", parents=[common, writing], help="light a subject (studio setup)")
+    p.add_argument("path", help="the .aether project")
+    p.add_argument("--subject", required=True, help="object id or name to light")
+    p.add_argument(
+        "--preset",
+        default="three_point",
+        choices=["three_point", "loop", "rembrandt", "butterfly", "split", "high_key",
+                 "low_key", "silhouette"],
+        help="the setup (default three_point)",
+    )  # fmt: skip
+    p.add_argument("--camera", help="camera the setup is seen from (default: the active one)")
+    p.add_argument("--distance", type=float, help="lights' distance from the subject")
+    p.add_argument("--level", type=float, help="key + fill on the subject (1: white is white)")
+    p.add_argument("--ratio", type=float, help="lighting ratio (key + fill) : fill")
+    p.add_argument("--rim", type=float, help="rim light relative to the key")
+    p.add_argument("--temperature", type=float, help="colour temperature (kelvins)")
+    p.add_argument("--prefix", help="prefix of the lights' names")
+    p.set_defaults(handler=cmd_light_rig)
 
     p = lights.add_parser("list", parents=[common, lossy], help="list lights and ambient light")
     p.add_argument("path", help="a .aether project")
@@ -2400,8 +2518,20 @@ def _add_render_parsers(sub, common, lossy, writing) -> None:
     p.add_argument("--ambient-intensity", type=float, help="ambient light strength (>= 0)")
     p.add_argument(
         "--environment",
-        choices=["ambient", "uniform", "sky"],
-        help="path tracer environment: ambient (the ambient light), uniform or sky",
+        choices=["ambient", "uniform", "sky", "image"],
+        help="environment: ambient (the ambient light), uniform, sky, or image (an HDR image "
+        "lighting every backend)",
+    )
+    p.add_argument(
+        "--environment-image",
+        help="image environment: an .hdr/.pfm file in the project's folder, or builtin:studio, "
+        "builtin:overcast, builtin:sunset, builtin:night",
+    )
+    p.add_argument("--environment-rotation", type=float, help="image environment: degrees about +Z")
+    p.add_argument(
+        "--environment-visible",
+        type=_bool_arg,
+        help="image environment: seen behind the geometry (true or false)",
     )
     p.add_argument("--environment-color", help="uniform environment color (#rrggbb)")
     p.add_argument(

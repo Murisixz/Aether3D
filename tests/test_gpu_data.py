@@ -92,6 +92,7 @@ def test_frame_light_shadow_and_finalize_layouts_match_the_shaders():
     assert (frame["forward"], frame["ambient"], frame["light_count"]) == (64, 80, 96)
     assert (frame["pcf_radius"], frame["shadow_texel"]) == (100, 104)
     assert (frame["eye"], frame["atmo"]) == (112, 4 * 32)  # pack_frame: atmosphere at [32:80]
+    assert (frame["env"], frame["sh"]) == (108, 4 * 80)  # (0.20.0: image environments)
     light, size = struct_layout(SCENE, "Light")
     assert size == 4 * resources.LIGHT_FLOATS
     assert [light[k] for k in ("radiance", "kind", "vector", "range", "falloff", "shadow")] == [
@@ -103,6 +104,15 @@ def test_frame_light_shadow_and_finalize_layouts_match_the_shaders():
         36,
     ]
     assert light["cascades"] == 40  # pack_lights: word 10
+    # (0.20.0: spot and area lights; the record was 48 bytes.)
+    assert [light[k] for k in ("shape", "axis", "cos_outer", "axis_x", "spot_smooth")] == [
+        44,
+        48,
+        60,
+        64,
+        76,
+    ]
+    assert (light["axis_y"], light["area"], light["spread"]) == (80, 92, 96)
     shadow, size = struct_layout(SCENE, "ShadowMap")
     assert size == 4 * resources.SHADOW_FLOATS
     assert (shadow["bias"], shadow["normal_offset"], shadow["split"]) == (64, 68, 72)
@@ -207,6 +217,42 @@ def test_shared_meshes_become_one_instanced_draw():
     keep = np.array([True, False, True])
     order, draws = resources.draw_order(rs, "none", keep)
     assert order.tolist() == [0, 2] and [c for *_, c in draws] == [1, 1]
+
+
+def test_area_light_constants_match_the_cpu():
+    from aether3d.rendering.surface import AREA_POLYGON, AREA_SCALE, SPREAD_QUADRATURE
+
+    polygon = re.search(r"const AREA_POLYGON: u32 = (\d+)u;", SCENE)
+    scale = re.search(r"const AREA_SCALE: f32 = ([0-9.]+);", SCENE)
+    grid = re.search(r"const SPREAD_QUADRATURE: u32 = (\d+)u;", SCENE)
+    assert int(polygon.group(1)) == AREA_POLYGON
+    assert np.float32(scale.group(1)) == np.float32(AREA_SCALE)
+    assert int(grid.group(1)) == SPREAD_QUADRATURE
+
+
+def test_spot_and_area_lights_pack_their_shapes():
+    scene = Scene()
+    scene.add_cube("C")
+    scene.add_camera("Cam", position=(0, -6, 2), look_at=(0, 0, 0))
+    scene.add_spot_light("Spot", position=(0, 0, 3), spot_size=60.0, spot_blend=0.2)
+    scene.add_area_light("Panel", position=(1, 0, 3), shape="ellipse", size=2.0, size_y=1.0,
+                         spread=60.0)  # fmt: skip
+    rs = extract(scene)
+    eye = rs.camera.frame.position
+    data = resources.pack_lights(rs, eye, None)
+    words = data.view(np.uint32)
+    spot, panel = (next(i for i, light in enumerate(rs.lights) if light.type == t)
+                   for t in ("spot", "area"))  # fmt: skip
+    assert words[spot, 3] == 2 and words[panel, 3] == 3 and words[panel, 11] == 1
+    assert np.allclose(data[spot, 12:15], (0, 0, -1))
+    assert data[spot, 15] == np.float32(np.cos(np.radians(30.0)))
+    assert data[spot, 19] == np.float32(rs.lights[spot].spot_smooth) > 0
+    assert np.allclose(data[panel, 4:7], rs.lights[panel].position - eye)
+    assert np.allclose(data[panel, 16:19], rs.lights[panel].axis_x)
+    assert data[panel, 23] == np.float32(np.pi * 1.0 * 0.5)
+    half = np.radians(30.0)
+    assert data[panel, 24] == np.float32(np.tan(half))
+    assert data[panel, 25] == np.float32(1.0 / (1.0 - half / np.tan(half)))
 
 
 def test_lights_and_shadow_layers():

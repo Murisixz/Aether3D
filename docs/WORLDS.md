@@ -576,7 +576,9 @@ render times include generating what each view needs; every figure is in the rep
 * **Threads**: generation is NumPy work that holds the GIL between operations, so threads
   help little (measured above); the heavy sequential sweeps are native.
 * **Not simulated**: physics and collisions, weather, seasons, day-night cycles (the sun
-  is the scene's light), wildlife, water flow over time.
+  is the scene's light; since 0.20.0 a day-night cycle is *authored* -- keys on the sun
+  light and on the world's sky, ambient light and fog, [ANIMATION.md](ANIMATION.md#animatable-properties)),
+  wildlife, water flow over time.
 
 ## Errors
 

@@ -1,4 +1,4 @@
-# Animation, rigging, motion curves and cinematics (0.17.0)
+# Animation, rigging, motion curves and cinematics (0.17.0; 0.20.0)
 
 Keyframes on exact F-curves, rotation tracks, clips, layers and strips (non-linear
 animation), skeletons with forward and inverse kinematics, constraints, rigid
@@ -6,6 +6,18 @@ attachments, linear and dual-quaternion skinning, morph targets, editable motion
 generators, foot contacts and planting, retargeting, cinematic cameras and shot
 sequences, frame rendering with real motion blur, and glTF interchange of skeletons,
 skins, morph targets and animations.
+
+0.20.0 (Stage 19) measures the curves against Blender 5.2 and adds what an animator
+reaches for in a graph editor -- Blender-compatible automatic handles (*Continuous
+Acceleration* by default for new curves), timing tools (anticipation, overshoot, eases,
+holds, shape-keeping inserts), the *Cycles*, *Generator* and *Built-In Function*
+modifiers -- plus motion measured in world space (`motion_report`) with verified
+corrections, C1/C2 crossfades, a camera lens with real depth of field, shot presets with
+composition, and film output (16-bit and OpenEXR masters with passes, motion vectors,
+resumable long renders, H.264 at CRF 10 and FFV1 masters). Lighting and the path tracer
+of that stage are in [RENDERING.md](RENDERING.md) and
+[RENDER_QUALITY.md](RENDER_QUALITY.md); its design record is
+[research/2026-10-stage19/DESIGN.md](../research/2026-10-stage19/DESIGN.md).
 
 Automatic rigging, skin-weight authoring, deformation diagnostics, IK/FK controls,
 pose commands and rigid-part characters without bones (0.19.0) are in
@@ -128,7 +140,9 @@ by name, ever (a path such as `__class__.__init__` is an unknown property, not c
 | `transform.scale.x\|y\|z` | scalar | factor | finite (0 hides) |
 | `visible` | bool | on above 0.5 | -- |
 | `camera.fov`, `camera.ortho_scale`, `camera.near`, `camera.far` | scalar | degrees, units | `0.01..179.9`, `> 0`, `near < far` |
+| `camera.focus_distance`, `camera.fstop`, `camera.shift_x\|y`, `camera.aperture_rotation` (0.20.0) | scalar | metres, f-number, frame, degrees | `> 0`, `0` or `0.1..`, `-10..10`, `-360..360` |
 | `light.intensity`, `light.color.r\|g\|b`, `light.range`, `light.radius`, `light.angle` | scalar | light units, sRGB, units, degrees | `>= 0`, `0..1` |
+| `light.spot_size`, `light.spot_blend`, `light.size`, `light.size_y`, `light.spread`, `light.temperature`, `light.exposure` (0.20.0) | scalar | degrees, 0..1, metres, degrees, kelvins, stops | `0.1..180`, `0..1`, `> 0`, `1..180`, `100..100000`, `-40..40` |
 | `appearance.color.r\|g\|b`, `appearance.specular`, `appearance.shininess` | scalar | sRGB, 0..1, exponent | `0..1`, `1..10000` |
 | `joints["NAME"].position.x\|y\|z`, `.rotation`, `.rotation_euler.x\|y\|z`, `.scale.x\|y\|z` | joint channels | armature space | as above |
 | `morph["NAME"]` | scalar | weight | finite |
@@ -136,11 +150,49 @@ by name, ever (a path such as `__class__.__init__` is an unknown property, not c
 
 Material clips (bound to `{"material": NAME}`) animate `base_color.r|g|b`, `opacity`,
 `metallic`, `roughness`, `specular`, `shininess`, `emissive.r|g|b`,
-`emissive_strength`, `normal_strength`, `occlusion_strength`. Grouped paths
-(`transform.position`, `transform.rotation_euler`, `transform.scale`, `light.color`,
-`appearance.color`, `base_color`, `emissive` and their joint forms) name all their
-components at once in authoring calls. An evaluated value outside its property's range
-is clamped and reported (`VALUE_CLAMPED`), never written into the scene.
+`emissive_strength`, `normal_strength`, `occlusion_strength`.
+
+**The world** (0.20.0; the target `{"world": true}`, or `scene.world` in Python) animates
+`background.r|g|b`, `ambient_color.r|g|b`, `ambient_intensity`, `environment.intensity`,
+`environment.rotation` (degrees about +Z: turns an image environment), the sky's
+`environment.color`, `environment.zenith_color`, `environment.horizon_color` and
+`environment.ground_color`, and the atmosphere's `atmosphere.sun_glow`,
+`atmosphere.sun_glow_color`, `atmosphere.sun_glow_size`, `atmosphere.horizon_glow`,
+`atmosphere.fog_density`, `atmosphere.fog_height`, `atmosphere.fog_falloff`,
+`atmosphere.fog_color`, `atmosphere.fog_sun`, `atmosphere.fog_sun_power` and
+`atmosphere.ground_ambient`, within the world's own ranges. Switches and references (the
+environment's `type` and `image`, the atmosphere's `enabled`, `sky`, `sun`, `ambient`) are
+authored, not animated. With the sun light's rotation, intensity and temperature, these
+keys author a **day-night cycle** -- nothing simulates the sky: every value shown is a key
+or its interpolation, on every backend:
+
+```python
+anim = scene.animation
+sun = scene.get_by_name("Sun")  # the atmosphere's sun: {"sun": "Sun"}
+sun.light.use_temperature = True
+NOON, DUSK = 0.0, 8.0  # seconds
+for path, a, b in (
+    ("transform.rotation_euler.x", 10.0, 85.0),  # high in the sky ... to the horizon
+    ("light.temperature", 5600.0, 2200.0),
+    ("light.intensity", 3.0, 0.4),
+):
+    anim.keyframe(sun, path, NOON, a)
+    anim.keyframe(sun, path, DUSK, b)
+for path, a, b in (
+    ("ambient_intensity", 0.3, 0.03),
+    ("environment.zenith_color", (0.2, 0.45, 0.9), (0.05, 0.05, 0.16)),
+    ("atmosphere.fog_color", (0.78, 0.84, 0.92), (0.85, 0.5, 0.35)),
+):
+    anim.keyframe(scene.world, path, NOON, a)
+    anim.keyframe(scene.world, path, DUSK, b)
+```
+
+Grouped paths (`transform.position`, `transform.rotation_euler`, `transform.scale`,
+`light.color`, `appearance.color`, `base_color`, `emissive`, the world's colours and their
+joint forms) name all their components at once in authoring calls. An evaluated value
+outside its property's range is clamped and reported (`VALUE_CLAMPED`), never written into
+the scene; values that are valid alone but not together are dropped for that evaluation
+and reported (`ANIMATED_VALUE_INVALID`).
 
 ## F-curves: the graph editor as mathematics
 
@@ -164,7 +216,10 @@ Segment `k` uses key `k`'s interpolation:
   (`amplitude >= 1`, `period` in segment units) and `bounce`, each `in`, `out` or `in_out`
   (`E(u) = f(u)`, `1 - f(1 - u)`, or the two halves). `expo` is normalized
   (`(2^(10u) - 1) / 1023`) and `elastic` corrected at `u = 0`, so every eased segment
-  passes through both keys exactly.
+  passes through both keys exactly. Measured against Blender 5.2 (experiment E1), every
+  easing gives Blender's values within float32 rounding except `elastic`: Blender's is not
+  Penner's (up to 3.7 apart on a change of 10 with its default parameters) and takes its
+  amplitude and period in value units and frames; Aether3D keeps Penner's.
 
 ### Handles
 
@@ -178,6 +233,31 @@ move with it. Types per side:
 * `auto_clamped` (the default) -- `auto`, flat at local extrema and the ends, and limited
   by the Fritsch-Carlson condition (SIAM J. Numer. Anal. 17(2), 1980), which guarantees
   each segment stays between its two keys' values: **no overshoot**.
+
+**Smoothing** (0.20.0, per curve: `smoothing`) decides how `auto` and `auto_clamped`
+handles are computed (`aether3d.animation.smoothing`):
+
+* `"continuous"` -- the default for new curves, as in Blender 5.2 (*Auto Handle
+  Smoothing: Continuous Acceleration*): every run of automatic keys gets third-of-interval
+  extents and the slopes that make the **acceleration continuous** at each key (one
+  tridiagonal system per run: a C2 cubic spline). Free and aligned neighbours enter with
+  their exact Bezier geometry, a vector neighbour ends a run naturally, `constant` ends are
+  flat and `linear` ends natural, cyclic curves are solved as one periodic system, and
+  clamped keys become bounds on their slopes (clamped, locked and solved again until every
+  bound holds). Clamping flattens extrema, so a clamped curve keeps acceleration steps
+  where it is flat.
+* `"blender"` -- Blender's automatic handles without smoothing (*None*): the mean of the
+  two secants, extents of the neighbour interval / 2.5614 (each interval limited to five
+  times the other), Blender's clamping box.
+* `"local"` -- Aether3D's 0.17.0 rule above (C1). Curves saved before 0.20.0 have no
+  `smoothing` in their JSON and load as `"local"`: they evaluate exactly as before.
+
+Both Blender modes were written from headless `bpy` measurements of 49 curve cases --
+uneven keys, extrema, plateaus, cycles, vector and free neighbours, mixed interpolations
+-- and the mathematics of cubic splines, not from Blender's code; every handle and value
+agrees with Blender's within float32 rounding (largest difference 9.3e-7 of the case's
+scale; `tests/test_curve_smoothing.py`, fixture `tests/data/blender_curves`, chart
+[`cases.png`](../examples/output/film/c_graphs/cases.png)).
 
 A key is **unweighted** by default: its handles' time extents are a third of the adjacent
 intervals, which makes the segment a cubic Hermite curve in time (no inversion). A
@@ -214,9 +294,15 @@ with an `influence` (0..1), an optional `range` with `blend_in`/`blend_out` ramp
 derivatives 0 where clamped), `noise` (C2 gradient noise: `strength`, `scale`, `offset`,
 `octaves`, `roughness`, `seed`), `wave` (`amplitude`, `period`, `phase`, `decay`, `start`),
 `envelope` (`reference`, `[time, gain, offset]` points), `smooth` (Gaussian, `sigma`: 15
-fixed nodes within 3 sigma, seekable). Time modifiers: `stepped` (`step`, `offset`:
-on-twos, sample and hold), `time_offset`, `time_scale`. A time modifier applies to
-everything before it in the chain. Derivatives stay exact for each definition.
+fixed nodes within 3 sigma, seekable), and since 0.20.0 `generator` (a polynomial of
+degree up to 10, added or replacing) and `function` (Blender's *Built-In Function*:
+`sin`, `cos`, `sinc`, `sqrt`, `ln` with amplitude and phase). Time modifiers: `stepped`
+(`step`, `offset`: on-twos, sample and hold), `time_offset`, `time_scale`, and `cycles`
+(0.20.0; Blender's *Cycles*: `before`/`after` `repeat`, `repeat_offset`, `mirror` or
+`none`, `count_before`/`count_after` whole cycles, 0 without end; a `cycles` modifier first
+in the chain repeating without end makes the automatic handles cycle-aware). A time
+modifier applies to everything before it in the chain. Derivatives stay exact for each
+definition; the modifiers Blender has agree with its evaluation (17 measured cases).
 
 ### Key operations
 
@@ -227,7 +313,29 @@ weighted), `handle` (one side: type, `dt`/`dv` or `slope`; an aligned pair turns
 together), `handle_type`, `move` (`dt`, `dv`), `scale_time` / `scale_values` (`factor`,
 `pivot`), `reverse` (handles swap sides, `in`/`out` easings swap), `quantize` (snap to a
 frame rate), `distribute`, `retime`, `interpolation` / `easing`, `extrapolation`,
-`modifiers`. `set_modifiers` replaces a curve's modifier chain in one undo step.
+`modifiers`, `smoothing`. `set_modifiers` replaces a curve's modifier chain in one undo
+step.
+
+**Timing** (0.20.0), the graph editor's expressive edits as operations:
+
+* `insert` with `keep_shape: true` -- a key that does not change the curve (de Casteljau
+  subdivision of its segment; refused with `CANNOT_KEEP_SHAPE` where a segment's shape
+  cannot be kept, e.g. an easing);
+* `ease` (`ease_in`, `ease_out`: flat handles over that fraction of the interval, `slope`
+  for a key still moving) -- a slow in and a slow out;
+* `anticipate` (`amount` of the move, at fraction `at` of it) -- a counter-move before a
+  move starts;
+* `overshoot` (`amount` beyond the end, settling over `settle` seconds in `oscillations`
+  swings shrinking by `decay`) -- follow-through, only when asked for (automatic handles
+  never overshoot when clamped);
+* `hold` (a moving hold of `duration` with `drift` toward the next key; time is inserted
+  unless `shift: false`);
+* `smooth` (key values averaged by a Gaussian of `sigma` seconds, the ends kept).
+
+A grouped path (`transform.position`) applies the same operation to every keyed
+component, one undo step. Rotation tracks time their segments instead (an easing such as
+`back` -- which anticipates and overshoots along the arc -- or a timing Bezier: see
+[Rotations](#rotations)).
 
 ### Measuring motion
 
@@ -246,6 +354,19 @@ frame rate), `distribute`, `retime`, `interpolation` / `easing`, `extrapolation`
   velocity and acceleration discontinuities, overshoot, corrected handles, IK targets out
   of reach, clamped values. A finding is a measurement; whether a snap is intended is the
   animator's (or the agent's) decision.
+* `motion_report(targets, start=, end=, rate=, subject=, loop=, thresholds=)` (0.20.0) --
+  **world-space** quality of what the evaluated scene does (layers, strips, rigs,
+  constraints, IK, paths, shots), sampled at `rate` per second for objects, rig joints
+  (`{"object": id, "joints": [...] | "all"}`) and cameras: `POSITION_JUMP`,
+  `VELOCITY_JUMP`, `ACCELERATION_STEP`, `ROTATION_SNAP`, `ANGULAR_VELOCITY_JUMP` (from the
+  difference of one-sided least-squares fits, so smooth variation cancels), `JITTER` /
+  `CAMERA_JITTER` (RMS millimetres and degrees above `jitter_hz`), `PAUSE` (info),
+  `POLE_FLIP`, `LOOP_SEAM` (with `loop`), `GROUND_PENETRATION` (with `ground`), and for a
+  camera with a `subject`: `FRAMING_DRIFT`, `SUBJECT_OUT_OF_FRAME`, `SUBJECT_OBSTRUCTED`
+  (line of sight) and `FOCUS_ERROR` (the subject's blur circle on a camera with depth of
+  field). A group subject is its parts' posed bounds, and its own parts never hide it.
+  Every threshold used is in the report (`aether3d.animation.quality.DEFAULTS`); nothing
+  changes. The feedback check `motion_quality` and its corrections build on it (below).
 
 ### Fitting, simplification, resampling, baking
 
@@ -267,10 +388,16 @@ Reported errors are measured on the curve that was built (`basis: "sampled"`).
 ### Graph images
 
 `graph([(target, path), ...], format="svg"|"png")` or `graph(clip=...)` draws value
-(keys as squares, effective Bezier handles as lines with circles), velocity and
-acceleration -- the exact derivatives, sampled densely, vertical tangents clipped and
-marked -- on a shared time axis. SVG is exact vectors; PNG is rasterized by Aether3D's own
-anti-aliased stroke rasterizer and stroke font. CLI: `aether3d animation graph`.
+(keys as numbered squares, effective Bezier handles as lines with circles), velocity,
+acceleration and, with `plots` (0.20.0), jerk -- the exact derivatives, sampled densely,
+vertical tangents clipped and marked -- on a shared time axis. With `annotate` (default),
+the exact analysis is drawn on: a discontinuity of order k is a dashed line labelled
+`C0`/`C1`/`C2` on the plot of that order (grey when intended), extrema are triangles
+labelled `max`/`min`. `aether3d.animation.graph.graph_png(curves, references={name: (times,
+values)})` adds sampled reference points -- another program's evaluation of the same keys,
+captured motion -- as crosses on the value plot. SVG is exact vectors; PNG is rasterized
+by Aether3D's own anti-aliased stroke rasterizer and stroke font. CLI: `aether3d animation
+graph ... --plots value,velocity,acceleration,jerk [--no-annotate]`.
 
 ## Rotations
 
@@ -310,6 +437,15 @@ target with an **action** (a clip in scene time: what keyframing writes into) an
   covers the joint's subtree in its rig (an upper-body layer: `[{"joint": "Chest",
   "descendants": true}]`);
 * a layer's weight may be an F-curve.
+
+A strip's ramps (0.20.0: `blend_curve`) are `linear` (Blender's: the crossfade's velocity
+steps where a ramp starts and ends), `smooth` (`3r^2 - 2r^3`: C1) or `smoother`
+(`6r^5 - 15r^4 + 10r^3`: C2, no acceleration step either). Rotations blend by slerp:
+measured against Blender 5.2's NLA (experiment E2), a 170-degree turn crossfaded in over
+20 frames reaches 42.5, 85 and 127.5 degrees at a quarter, a half and three quarters --
+Blender's COMBINE exactly -- where Blender's REPLACE, which adds quaternion components
+(unnormalized midway, |q| = 0.737), reaches 35.8, 85 and 134.2
+([chart](../examples/output/film/c_graphs/quaternions.png)).
 
 A **strip** places a clip: `start`, `clip_start`/`clip_end`, `speed`, `repeat`, `reverse`,
 `blend_in`/`blend_out` (overlapping strips crossfade), `before`/`after` (`nothing` or
@@ -471,24 +607,60 @@ while another is on cuts to it, or blends with `{"type": "blend", "duration": d}
 (position linearly, orientation by slerp, field of view linearly) through a virtual
 camera. Renders that name no camera use the sequence's camera at their time.
 
-**Depth of field is not simulated.** No renderer in Aether3D models focus or aperture;
-lenses animate their field of view only, and nothing claims a depth-of-field effect.
+**A lens** (0.20.0; `camera.configure(...)`, defaults a pinhole: every render as before):
+`sensor` (millimetres along `fov_axis`) with `fov` gives the focal length
+(`configure(focal_length=50)` sets `fov` from it; zoom by animating `camera.fov`),
+`shift_x`/`shift_y` (lens shift in units of the image's larger side, as Blender's),
+`fstop` (0: a pinhole), `focus_distance` or `focus_object`, `aperture_blades` (0 round,
+3..16 a polygon), `aperture_rotation`, `aperture_ratio` (anamorphic). **Depth of field is
+real**: the path tracers sample a thin lens at the eye (the field of view unchanged:
+Blender's model, measured in experiment E5 -- a point at distance `d` blurs into a disk of
+`(focal_length / fstop) |1/d - 1/focus|`), and the rasterizers average `dof_samples`
+(default 16) pinhole views spread over the aperture. `camera.fstop`, `focus_distance`,
+`shift_x`/`shift_y` and `aperture_rotation` are animatable (a rack focus is keys on
+`camera.focus_distance`).
+
+**Shots by name** (0.20.0): `frame_shot(camera, subject, preset, azimuth=, elevation=,
+screen=, fill=, focal_length=, fstop=, time=)` places a camera for `extreme_wide`, `wide`,
+`full`, `medium`, `medium_close`, `close_up`, `extreme_close_up`, `low_angle` or
+`high_angle`, measured on the subject posed at `time` (skins deformed, attachments
+carried), with the framed part filling `fill` of the frame and aimed by a `look_at`
+constraint whose `screen` composes it (`[-1/3, 0]`: the left third); `fstop` focuses on the
+subject. Everything written is ordinary keys and constraints.
+
 **Motion blur is real temporal sampling**: `render_frames(..., motion_blur={"shutter": s,
 "samples": n})` averages `n` renders spread over the fraction `s` of the frame interval,
-centred on the frame time, in linear light, before the renderer's display encoding -- at
-the cost of one render per sample. The shutter stays inside the rendered range.
+centred on the frame time, in linear light, before the renderer's display encoding. The
+frame's sample budget is shared across the shutter (0.20.0): the path tracers split their
+samples over the time samples, the rasterizers' depth of field its aperture views. The
+shutter stays inside the rendered range. **Motion vectors** (`render(..., motion=dt)`,
+any backend) give compositors each pixel's offset to where its surface was `dt` before and
+will be `dt` after.
 
 ## Rendering frames
 
 `render_frames(scene, directory, start=, end=, fps=, step=, frames=, camera=, backend=,
-motion_blur=, progress=, should_stop=, ...)` renders the times of a range of frames (the
-timeline's rate by default) with Aether3D's own renderers, one frame at a time (memory
-bounded), and writes each PNG atomically (`frame_{frame:05d}.png`); `should_stop`
-cancels between frames (the frames written so far are listed), `progress` is called after
-each. `contact_sheet(images, columns=, labels=)` lays frames out with labels in
-Aether3D's stroke font; `video_command`/`assemble_video` turn a numbered PNG sequence into
-an H.264 MP4 with FFmpeg when it is installed -- an external encoder, never a renderer,
-and never run from the MCP server. No other engine renders anything here.
+motion_blur=, format=, passes=, resume=, progress=, should_stop=, ...)` renders the times
+of a range of frames (the timeline's rate by default) with Aether3D's own renderers, one
+frame at a time (memory bounded), and writes each frame atomically
+(`frame_{frame:05d}.png`); `should_stop` cancels between frames (the frames written so far
+are listed), `progress` is called after each. Film output (0.20.0): `format` `"png"`
+(8-bit display frames), `"png16"` (16-bit display masters) or `"exr"` (scene-linear
+OpenEXR masters: half RGB plus the path tracers' `passes` -- `depth` as `Z`, `normal`,
+`albedo`, `direct`, `indirect`, `variance` -- and `motion` from any backend);
+`resume=True` keeps the frames already written and renders the rest, and a manifest
+(`frames.json`, rewritten atomically after every frame) records the settings, each
+frame's seconds, camera, codes, samples and noise.
+
+`contact_sheet(images, columns=, labels=)` lays frames out with labels in Aether3D's
+stroke font. `video_command`/`assemble_video` turn a numbered PNG sequence into video
+with FFmpeg when it is installed -- an encoder of frames Aether3D rendered, never a
+renderer, and never run from the MCP server: H.264 at preset `slow` and CRF 10 by default,
+converted with the BT.709 matrix to limited-range yuv420p and tagged BT.709 (FFmpeg's own
+conversion of RGB frames would be BT.601), even dimensions, `faststart`; or `lossless`, an
+FFV1 RGB master in Matroska (16-bit from `png16` frames). The showcases check every encode
+by PSNR and SSIM against its frames (a lossless master compares as infinite). No other
+engine renders anything here.
 
 ## Evaluation pipeline and performance
 
@@ -542,9 +714,13 @@ and the PNG); without shadows the same frames take 87-127 ms on the GPU and
 
 Every authoring call is one undo step; scripts and plans are one transaction (all or
 nothing: a failing operation leaves the scene exactly as it was, including the playhead).
-Evaluation never records anything. Projects use file format **9** (`scene.animation`
-with the timeline settings and the items); files of format 8 and older are upgraded on
-load, and scenes without animation load and render unchanged.
+Evaluation never records anything. `scene.animation` was added in file format **9** (the
+timeline settings and the items); 0.20.0 writes format **13**: curves carry their
+`smoothing` (absent: `"local"`, as before), strips their `blend_curve`, cameras their
+lens, and the `back` easing parameter of `in_out` keys is stored as Blender's (format 12's
+values are divided by 1.525 on load, so they evaluate as before). Older files are
+upgraded on load, and scenes without animation load and render unchanged
+([FILE_FORMAT.md](FILE_FORMAT.md)).
 
 ## glTF interchange
 
@@ -565,7 +741,9 @@ imported glTF cubics. Everything else (easings, weighted handles, Euler rotation
 timing curves, modifiers) is **fitted** within the tolerances, with the largest error
 reported per animation; an instantaneous jump becomes a 1e-4 s transition; values are
 float32. Visibility, camera, light, material and constraint channels have no glTF
-equivalent (no `KHR_animation_pointer`): lossy diagnostics.
+equivalent (no `KHR_animation_pointer`), nor does the world: lossy diagnostics
+(`ANIMATED_PROPERTY_NOT_EXPORTED`; since 0.20.0 also when material or world clips are
+left out in `"clips"` and `"actions"` modes).
 
 **Import**: skin joints (and the nodes between them) become a rig on their common parent
 node or a new `Armature`; nodes below joints become attached parts; skins bind with the
@@ -595,14 +773,17 @@ touched.
 
 Operations: `timeline`, `set_time`, `markers`, `add_marker`, `sections`, `add_clip`,
 `remove_clip`, `rename_clip`, `clip_range`, `clip_events`, `keyframe`, `set_channel`,
-`edit_keys`, `set_action`, `set_binding`, `add_layer`, `update_layer`, `remove_layer`,
-`add_strip`, `update_strip`, `remove_strip`, `add_rig`, `set_rig`, `attach`, `detach`,
-`skin`, `unbind`, `add_constraint`, `set_constraints`, `remove_constraint`,
-`morph_targets`, `add_path`, `remove_path`, `follow_path`, `shots`, `add_shot`,
-`camera_move`, `camera_orbit`, `follow_camera`, `generate`, `set_modifiers`, `simplify`,
-`resample`, `bake`, `mirror_clip`, `extract_root_motion`, `plant_feet`, `retarget`,
-`apply_pose`; read-only: `report`, `trajectory`, `diagnose`, `contacts`, `sample`.
-Objects are named or `{"object": ID}`, materials `{"material": NAME}`. A script runs as
+`edit_keys` (the timing operations too), `set_action`, `set_binding`, `add_layer`,
+`update_layer`, `remove_layer`, `add_strip`, `update_strip`, `remove_strip`, `add_rig`,
+`set_rig`, `attach`, `detach`, `skin`, `unbind`, `add_constraint`, `set_constraints`,
+`remove_constraint`, `morph_targets`, `add_path`, `remove_path`, `follow_path`, `shots`,
+`add_shot`, `camera_move`, `frame_shot` (0.20.0), `camera_orbit`, `follow_camera`,
+`generate`, `set_modifiers`, `simplify`, `resample`, `bake`, `mirror_clip`,
+`extract_root_motion`, `plant_feet`, `retarget`, `apply_pose`, and the character-rigging
+operations of [CHARACTER_RIGGING.md](CHARACTER_RIGGING.md); read-only: `report`,
+`trajectory`, `diagnose`, `motion` (0.20.0: `motion_report`), `contacts`, `sample`.
+Objects are named or `{"object": ID}`, materials `{"material": NAME}`, the world
+`{"world": true}`. A script runs as
 one transaction within `limits` (defaults: 300 s, 5,000,000 keys; cooperative
 cancellation); a failure names the argument that failed (`operations[1].keyframe.value`)
 and changes nothing. Schema: `aether3d animation schema` (or the MCP resource
@@ -613,10 +794,16 @@ and changes nothing. Schema: `aether3d animation schema` (or the MCP resource
 ```text
 aether3d animation run PROJECT script.json [--dry-run] [--output OUT] [--history] [--json]
 aether3d animation info PROJECT|GLB [--json]
-aether3d animation report PROJECT --kind curve|diagnose|trajectory|contacts ...
+aether3d animation report PROJECT --kind curve|diagnose|trajectory|motion|contacts
+    [--subject OBJECT] [--loop] ...
 aether3d animation graph PROJECT out.svg|out.png --target T --path P [--clip C]
+    [--plots value,velocity,acceleration,jerk] [--no-annotate]
 aether3d animation render PROJECT FRAMES_DIR [--start --end --fps --step --width --height
-    --camera --backend --motion-blur SHUTTER:SAMPLES --contact-sheet PNG --video MP4]
+    --camera --backend auto|gpu|cpu|path|gpu_path --spp --bounces --sampler random|sobol
+    --denoise --tonemap none|neutral|film --exposure EV --format png|png16|exr
+    --passes depth,normal,albedo,direct,indirect,variance,motion --resume
+    --motion-blur SHUTTER:SAMPLES --contact-sheet PNG --video MP4 --crf 10 --preset slow
+    --lossless MKV]
 aether3d animation schema
 aether3d export PROJECT out.glb [--animation auto|clips|actions|bake|none] [--fps]
     [--position-tolerance] [--rotation-tolerance]
@@ -625,9 +812,9 @@ aether3d export PROJECT out.glb [--animation auto|clips|actions|bake|none] [--fp
 ## For agents (MCP) and the feedback loop
 
 Over MCP, author with `run_script` (an animation script), measure with
-`inspect_animation` (`what`: `summary`, `curve`, `diagnose`, `trajectory`, `contacts`,
-`graph`), render with `render_preview`/`render_image` at a `time`, export with
-`export_scene` (`animation` mode). The scripted MCP client of the showcases reads
+`inspect_animation` (`what`: `summary`, `curve`, `diagnose`, `trajectory`, `motion`
+(0.20.0), `contacts`, `graph`), render with `render_preview`/`render_image` at a `time`,
+export with `export_scene` (`animation` mode). The scripted MCP client of the showcases reads
 structured results only; it never claims to have looked at an image. An agent that can
 see images may look at previews and graphs; one that cannot must not claim it did.
 
@@ -635,8 +822,13 @@ The feedback loop has animation checks -- `foot_contacts` (`feet`, `max_sliding`
 `max_penetration` 0.002 m, `height`, `speed`) and `animation_continuity` -- with findings
 `FOOT_SLIDING`, `FOOT_PENETRATION` and `MOTION_DISCONTINUITY`, and the corrections
 `plant_feet` (safety class `verify`: kept only if the finding improves and no passing
-check regresses, else undone) and `smooth_keys` (`approval`). Animation corrections are
-opt-in: the policy switch `allow_animation` (default `false`).
+check regresses, else undone) and `smooth_keys` (`approval`). 0.20.0 adds the check
+`motion_quality` (the world-space `motion_report` of the selected objects, joints and
+cameras, at or above a `level`, with `ignore` and `thresholds`) and its corrections
+`curve_smoothing` (the channel's automatic handles made continuous in acceleration;
+`verify`), `make_cyclic` (a loop's ends matched; `verify`) and `smooth_motion` (a Gaussian
+over the key values of a jittery channel; `approval`: it changes the keys). Animation
+corrections are opt-in: the policy switch `allow_animation` (default `false`).
 
 ## Security and limits
 
@@ -733,10 +925,79 @@ regenerated by the scripts, not committed).
    change. The client reads structured results only; the previews it receives are saved,
    never analysed. [Transcript](../examples/output/animation/mcp_agent/transcript.md).
 
+### Film showcases (0.20.0)
+
+Nine scripts, `examples/film_*.py` (shared code in `film_common.py`), made entirely by
+Aether3D -- modeling, animation, lighting and every frame; FFmpeg only encodes the
+finished frames (H.264 preset slow, CRF 10, BT.709 tags; lossless FFV1 masters, each
+verified by PSNR/SSIM against its frames). Five were rendered for 0.20.0 (below): their
+reports, previews, sheets and preview videos are in `examples/output/film/`; frame
+sequences, full-size stills, the 1080p encodes and the masters are regenerated by the
+scripts (RTX 4060 Laptop GPU). The other four were not rendered for this release, and no
+result of theirs is claimed here: B, a skinned character's greeting
+(`film_b_character.py`); G, the path tracer of v0.19.1 against 0.20.0
+(`film_g_renderer.py`); H, a trailer cut from the showcases' frames
+(`film_h_trailer.py`); I, an agent lighting, correcting and rendering over MCP
+(`film_i_mcp_agent.py`). The tests run all nine at their quick sizes
+(`tests/test_examples.py`).
+
+- **A, a rigid-part character** ([`film_a_rigid.py`](../examples/film_a_rigid.py)):
+  Kit, with no bones, idles, waves, turns its head and jumps (a 338-key jump with its
+  take-off and landing) on crossfaded strips, and Blip, a slime cube, bounces with
+  anticipation squashes and overshoot wobbles (0.71 to 1.18 of its height). Measured in
+  world space at 240 samples a second: hard cuts between the gestures give 16 findings
+  (11 velocity jumps, 3 jitter, 2 rotation snaps), crossfades 1 (jitter) and no jumps.
+  301 frames at 1920x1080, 60 fps, GPU rasterizer with sun shadows: 0.72 s a frame.
+  [Sheet](../examples/output/film/a_rigid/sheet.png),
+  [Blip's graph](../examples/output/film/a_rigid/blip_graph.png),
+  [preview](../examples/output/film/a_rigid/performance_preview.mp4),
+  [report](../examples/output/film/a_rigid/report.json).
+- **C, graphs against Blender** ([`film_c_graphs.py`](../examples/film_c_graphs.py)):
+  the 49 measured curve cases drawn with Blender's samples over Aether3D's (largest
+  difference 9.3e-7 of a case's scale for handles, 4.0e-7 for values), the three
+  smoothing modes on one curve (acceleration steps: local 5, blender 5, continuous 0), and
+  quaternion blending (Aether3D's slerp reaches 42.5, 85 and 127.5 degrees as Blender's
+  COMBINE; REPLACE 35.8, 85, 134.2). [Cases](../examples/output/film/c_graphs/cases.png),
+  [smoothing](../examples/output/film/c_graphs/smoothing.png),
+  [quaternions](../examples/output/film/c_graphs/quaternions.png).
+- **D, a camera through a world** ([`film_d_world.py`](../examples/film_d_world.py)):
+  a crane-and-push over the Stage 16 alpine valley on a spline raised to keep at least
+  12 m of clearance (34 m measured, everywhere), zooming 28 to 40 mm; its only motion
+  finding is the acceleration step a C1 spline has at its control points. Then an
+  8-second **day-night timelapse** over the lake, authored with the animatable world:
+  every value shown is a key or its interpolation. Hero 199 s (GPU path tracer, 256
+  samples); flight 1.8 s and timelapse 1.43 s a frame on the GPU rasterizer.
+  [Hero](../examples/output/film/d_world/hero_preview.png),
+  [flight](../examples/output/film/d_world/flight_preview.mp4),
+  [day-night sheet](../examples/output/film/d_world/daynight_sheet.png),
+  [timelapse](../examples/output/film/d_world/daynight_preview.mp4).
+- **E, a studio product shot** ([`film_e_studio.py`](../examples/film_e_studio.py)):
+  a glass vase, chrome, gold, wood and frosted glass on a cyclorama, lit by a solved
+  three-point rig, an elliptical area light washing the backdrop and the built-in studio
+  environment (lighting only, not seen), with a
+  70 mm f/4 lens; six rig presets compared; an orbit whose focus pulls from the vase to
+  the cube (focus measured on the subjects at the holds: no finding). Hero 473 s (512
+  samples, 496 spent on average); orbit 67.6 s a frame (64 samples, depth of field,
+  Blackman-Harris, adaptive, denoised). [Hero](../examples/output/film/e_studio/hero_preview.png),
+  [presets](../examples/output/film/e_studio/presets_sheet.png),
+  [orbit](../examples/output/film/e_studio/orbit_preview.mp4).
+- **F, a night street** ([`film_f_night.py`](../examples/film_f_night.py)): lamps
+  (emissive glass and spot lights at 2,400 K), lit windows, a wet patch, a moon; one
+  lamp flickers through a noise modifier on its intensity. The proof that emission
+  lights the scene: with every light and the sky off, the cobbles are lit by the windows
+  and lamp glass alone (mean luminance 0.0014; exactly 0 with the emission off). Hero 139
+  s; truck shot 25.5 s a frame. [Hero](../examples/output/film/f_night/hero_preview.png),
+  [proof](../examples/output/film/f_night/emissive_proof.png),
+  [truck](../examples/output/film/f_night/truck_preview.mp4).
+
 ## What is not supported
 
 * No graph editor window (by design); graph images are pictures of the curves.
-* No depth of field; motion blur averages renders (no velocity-buffer blur).
+* Motion blur averages renders (no velocity-buffer blur); motion vectors are given for
+  compositors.
+* Generated motions' fitted keys are C1 Hermite curves: `motion_report` measures
+  acceleration steps of a few m/s^2 at a waving hand's keys; Catmull-Rom camera paths are
+  C1 at their points as well.
 * No GPU skinning (skinning runs on the CPU: linear, dual quaternion and blended skinning
   have native kernels since 0.19.0); FABRIK and CCD are Python loops.
 * Squad is C1 at keys only for uniformly spaced keys.

@@ -29,7 +29,7 @@
 // once: D3D12's FXC inlines every call. Each path is therefore a small state machine whose
 // loop evaluates materials at exactly one place (see run_state below).
 
-const LIGHT_WORDS: u32 = 24u;
+const LIGHT_WORDS: u32 = 44u;
 const EMITTER_WORDS: u32 = 12u;
 
 // The CPU path tracer's constants (pathtrace/*.py).
@@ -55,6 +55,7 @@ const SLOT_PIXEL: u32 = 0u;
 const SLOT_LOBE: u32 = 2u;
 const SLOT_BSDF: u32 = 3u;
 const SLOT_RR: u32 = 5u;
+const SLOT_LENS: u32 = 6u;
 const SLOT_AO: u32 = 16u;
 const SLOT_LIGHTS: u32 = 4096u;
 
@@ -63,6 +64,24 @@ const FLAG_PERSPECTIVE: u32 = 1u;
 const FLAG_PASS_THROUGH: u32 = 2u;
 const FLAG_AO: u32 = 4u;
 const FLAG_SIZED_LIGHTS: u32 = 8u;
+const FLAG_SOBOL: u32 = 16u;  // PathSettings.sampler == "sobol"
+const FLAG_FILTER: u32 = 32u;  // a pixel filter other than the box (filter importance sampling)
+const FLAG_ADAPTIVE: u32 = 64u;  // adaptive sampling: skip pixels whose ACC_ACTIVE is 0
+const FILTER_TABLE: u32 = 256u;
+
+// The pixel position of uniform u (sampling.filter_offset): the pixel's centre plus the
+// filter's inverse CDF.
+fn pixel_position(u: f32) -> f32 {
+  if ((params.flags & FLAG_FILTER) == 0u) {
+    return u;
+  }
+  let pos = u * f32(FILTER_TABLE - 1u);
+  let i = min(u32(floor(pos)), FILTER_TABLE - 2u);
+  let f = pos - f32(i);
+  let a = ptf(pt[H_FILTER] + i);
+  let b = ptf(pt[H_FILTER] + i + 1u);
+  return 0.5 + a + f * (b - a);
+}
 const MODE_PATHS: u32 = 0u;
 const MODE_CENTER: u32 = 1u;
 const MODE_RNG: u32 = 2u;
@@ -71,6 +90,9 @@ const CULL_BACK: u32 = 1u;
 const CULL_FRONT: u32 = 2u;
 const ENV_AMBIENT: u32 = 0u;
 const ENV_SKY: u32 = 2u;
+const ENV_IMAGE: u32 = 3u;
+const ENV_VISIBLE: u32 = 1u;  // bits of bitcast<u32>(params.env_image.w)
+const ENV_SAMPLED: u32 = 2u;
 
 // Accumulator planes (n_pix floats each).
 const ACC_DIRECT: u32 = 0u;
@@ -83,6 +105,7 @@ const ACC_MEAN: u32 = 14u;
 const ACC_M2: u32 = 17u;
 const ACC_DEPTH: u32 = 20u;
 const ACC_INSTANCE: u32 = 21u;
+const ACC_ACTIVE: u32 = 22u;  // adaptive sampling: 1 while the pixel takes samples
 
 // Counters.
 const C_CAMERA: u32 = 0u;
@@ -137,6 +160,9 @@ struct Params {
   root_lo: vec3<f32>, _pad1: f32,
   root_hi: vec3<f32>, _pad2: f32,
   atmo: Atmo,  // scene.world.atmosphere (atmosphere.wgsl): sky glows, fog on camera paths
+  lens: vec4<f32>,      // lens shift (NDC offsets x, y), aperture radius (m; 0: pinhole), focus
+  aperture: vec4<f32>,  // blades (0: round), cos and sin of the rotation, 1 / ratio
+  env_image: vec4<f32>, // image environment: cos, sin of its rotation, intensity, flag bits
 };
 
 @group(0) @binding(8) var<storage, read> pt: array<u32>;
@@ -196,15 +222,85 @@ fn mix64(x_in: vec2<u32>) -> vec2<u32> {
   return x ^ shr64(x, 31u);
 }
 
-fn path_key(pixel: u32, sample: u32) -> vec2<u32> {
+fn hash_key(pixel: u32, sample: u32) -> vec2<u32> {
   var key = mix64(vec2<u32>(params.seed_lo, params.seed_hi));
   key = mix64(key ^ mul64(vec2<u32>(pixel, 0u), PIXEL_MUL));
   return mix64(key ^ mul64(vec2<u32>(sample, 0u), SAMPLE_MUL));
 }
 
+fn path_key(pixel: u32, sample: u32) -> vec4<u32> {
+  return vec4<u32>(hash_key(pixel, sample), hash_key(pixel, 0u).y, sample);
+}
+
+// -- Owen-scrambled Sobol' (sampling.py: SobolKeys) ---------------------------------------
+
+fn hash32(x_in: u32) -> u32 {
+  var x = x_in;
+  x = x ^ (x >> 16u);
+  x = x * 0x7feb352du;
+  x = x ^ (x >> 15u);
+  x = x * 0x846ca68bu;
+  return x ^ (x >> 16u);
+}
+
+fn owen_scramble(x: u32, seed: u32) -> u32 {
+  var v = reverseBits(x) + seed;
+  v = v ^ (v * 0x6c50b47cu);
+  v = v ^ (v * 0xb82f1e52u);
+  v = v ^ (v * 0xc7afe638u);
+  v = v ^ (v * 0x8d22f6e6u);
+  return reverseBits(v);
+}
+
+fn sobol(index: u32, lane: u32) -> u32 {
+  let base = pt[H_SOBOL] + 32u * lane;
+  var x = 0u;
+  var i = index;
+  var j = 0u;
+  loop {
+    if (i == 0u) {
+      break;
+    }
+    if ((i & 1u) != 0u) {
+      x = x ^ pt[base + j];
+    }
+    i = i >> 1u;
+    j += 1u;
+  }
+  return x;
+}
+
+// (group, lane) of a decision slot; group PT_NONE: hashed (sampling.sobol_group).
+fn sobol_group(slot: u32) -> vec2<u32> {
+  if (slot == SLOT_PIXEL) { return vec2<u32>(0u, 0u); }
+  if (slot == SLOT_PIXEL + 1u) { return vec2<u32>(0u, 1u); }
+  if (slot == SLOT_LENS) { return vec2<u32>(0u, 2u); }
+  if (slot == SLOT_LENS + 1u) { return vec2<u32>(0u, 3u); }
+  if (slot == SLOT_BSDF) { return vec2<u32>(1u, 0u); }
+  if (slot == SLOT_BSDF + 1u) { return vec2<u32>(1u, 1u); }
+  if (slot == SLOT_LOBE) { return vec2<u32>(1u, 2u); }
+  if (slot == SLOT_RR) { return vec2<u32>(1u, 3u); }
+  if (slot >= SLOT_AO && slot < SLOT_AO + 2048u) {
+    return vec2<u32>(2u + (slot - SLOT_AO) / 2u, (slot - SLOT_AO) % 2u);
+  }
+  if (slot >= SLOT_LIGHTS) {
+    return vec2<u32>(4096u + (slot - SLOT_LIGHTS) / 3u, (slot - SLOT_LIGHTS) % 3u);
+  }
+  return vec2<u32>(PT_NONE, 0u);
+}
+
 // The uniform number in [0, 1) of decision `slot` at path vertex `vertex`.
-fn rnd(key: vec2<u32>, vertex: u32, slot: u32) -> f32 {
-  let x = mix64(key ^ add64(mul64(vec2<u32>(slot, vertex), DIM_MUL), GOLDEN));
+fn rnd(key: vec4<u32>, vertex: u32, slot: u32) -> f32 {
+  if ((params.flags & FLAG_SOBOL) != 0u) {
+    let gl = sobol_group(slot);
+    if (gl.x != PT_NONE) {
+      let seed = hash32(key.z ^ hash32(vertex * 0x9e3779b9u + gl.x * 0x85ebca6bu));
+      let index = owen_scramble(key.w, seed);
+      let x = owen_scramble(sobol(index, gl.y), hash32(seed + gl.y + 1u));
+      return f32(x >> 8u) * (1.0 / 16777216.0);
+    }
+  }
+  let x = mix64(key.xy ^ add64(mul64(vec2<u32>(slot, vertex), DIM_MUL), GOLDEN));
   return f32(x.y >> 8u) * (1.0 / 16777216.0);
 }
 
@@ -475,9 +571,12 @@ struct Bsdf {
   alpha: f32,
   specular: bool,
   p_spec: f32,
+  glass: f32,          // the glass lobe's weight (transmission x (1 - metallic); bsdf.py)
+  eta: f32,            // relative index for the side of wo
+  tint: vec3<f32>,     // transmission tint (the base colour)
 };
 
-fn bsdf_build(n: vec3<f32>, wo_world: vec3<f32>, base: vec3<f32>, metallic_in: f32, roughness: f32, specular: f32, has_specular: bool) -> Bsdf {
+fn bsdf_build(n: vec3<f32>, wo_world: vec3<f32>, base: vec3<f32>, metallic_in: f32, roughness: f32, specular: f32, has_specular: bool, transmission: f32, ior: f32, entering: bool) -> Bsdf {
   let metallic = clamp(metallic_in, 0.0, 1.0);
   let rough = clamp(roughness, MIN_ROUGHNESS, 1.0);
   let c_diff = base * (1.0 - metallic);
@@ -498,7 +597,95 @@ fn bsdf_build(n: vec3<f32>, wo_world: vec3<f32>, base: vec3<f32>, metallic_in: f
   } else {
     p = select(0.0, 1.0, has_specular);
   }
-  return Bsdf(f, n, wo, c_diff, f0, rough * rough, has_specular, p);
+  let glass = clamp(transmission, 0.0, 1.0) * (1.0 - metallic);
+  let eta = select(1.0 / ior, ior, entering);
+  return Bsdf(f, n, wo, c_diff, f0, rough * rough, has_specular, p, glass, eta, base);
+}
+
+// -- the glass lobe (bsdf.py: fresnel_dielectric, glass_eval, glass_sample) --------------
+
+fn fresnel_dielectric(cos_i: f32, eta: f32) -> f32 {
+  let c = clamp(cos_i, 0.0, 1.0);
+  let sin2_t = (1.0 - c * c) / (eta * eta);
+  if (sin2_t >= 1.0) {
+    return 1.0;
+  }
+  let cos_t = sqrt(max(1.0 - sin2_t, 0.0));
+  let r_par = (eta * c - cos_t) / max(eta * c + cos_t, 1e-30);
+  let r_perp = (c - eta * cos_t) / max(c + eta * cos_t, 1e-30);
+  return 0.5 * (r_par * r_par + r_perp * r_perp);
+}
+
+fn smith_lambda(w: vec3<f32>, a2: f32) -> f32 {
+  let c2 = max(w.z * w.z, 1e-30);
+  let tan2 = max(1.0 - c2, 0.0) / c2;
+  return 0.5 * (sqrt(1.0 + a2 * tan2) - 1.0);
+}
+
+fn glass_eval(s: Bsdf, wi: vec3<f32>) -> BsdfValue {
+  let wo = s.wo;
+  let a2 = s.alpha * s.alpha;
+  let cos_o = wo.z;
+  let cos_i = wi.z;
+  let reflect = cos_i > 0.0;
+  let etap = select(s.eta, 1.0, reflect);
+  var wm = wi * etap + wo;
+  let len2 = dot(wm, wm);
+  if (!(abs(cos_i) > MIN_COS) || !(len2 > 1e-30)) {
+    return BsdfValue(vec3<f32>(0.0), 0.0);
+  }
+  wm = wm / sqrt(len2);
+  if (wm.z < 0.0) {
+    wm = -wm;
+  }
+  let dot_i = dot(wm, wi);
+  let dot_o = dot(wm, wo);
+  if (!(dot_i * cos_i > 0.0) || !(dot_o * cos_o > 0.0)) {
+    return BsdfValue(vec3<f32>(0.0), 0.0);
+  }
+  let fr = fresnel_dielectric(dot_o, s.eta);
+  let d = wm.z * wm.z * (a2 - 1.0) + 1.0;
+  let dist = a2 / (PI * d * d);
+  let g2 = 1.0 / (1.0 + smith_lambda(wo, a2) + smith_lambda(wi, a2));
+  let g1 = 1.0 / (1.0 + smith_lambda(wo, a2));
+  let visible = g1 * max(dot_o, 0.0) * dist / max(cos_o, 1e-30);
+  let abs_i = max(abs(cos_i), 1e-30);
+  if (reflect) {
+    let f = dist * g2 * fr / (4.0 * abs_i * cos_o);
+    return BsdfValue(vec3<f32>(f), visible / (4.0 * max(abs(dot_o), 1e-30)) * fr);
+  }
+  let denom = max((dot_i + dot_o / etap) * (dot_i + dot_o / etap), 1e-30);
+  let ft = dist * (1.0 - fr) * g2 * abs(dot_i * dot_o) / (abs_i * cos_o * denom) / (etap * etap);
+  return BsdfValue(ft * s.tint, visible * abs(dot_i) / denom * (1.0 - fr));
+}
+
+struct GlassSample {
+  wi: vec3<f32>,
+  valid: bool,
+};
+
+fn glass_sample(s: Bsdf, u_choice: f32, u1: f32, u2: f32) -> GlassSample {
+  let wm = ggx_visible_normal(s.wo, s.alpha, u1, u2);
+  let cos_m = dot(s.wo, wm);
+  let fr = fresnel_dielectric(cos_m, s.eta);
+  let sin2_t = (1.0 - cos_m * cos_m) / (s.eta * s.eta);
+  if (u_choice < fr) {
+    let wi = 2.0 * cos_m * wm - s.wo;
+    return GlassSample(wi, wi.z > MIN_COS);
+  }
+  let cos_t = sqrt(max(1.0 - sin2_t, 0.0));
+  let wi = -s.wo / s.eta + (cos_m / s.eta - cos_t) * wm;
+  return GlassSample(wi, wi.z < -MIN_COS && sin2_t < 1.0);
+}
+
+// The full BSDF at local wi: the opaque lobes, mixed with the glass lobe where it exists.
+fn bsdf_eval_mixed(s: Bsdf, wi: vec3<f32>) -> BsdfValue {
+  var v = bsdf_eval_local(s, wi);
+  if (s.glass > 0.0) {
+    let g = glass_eval(s, wi);
+    v = BsdfValue((1.0 - s.glass) * v.f + s.glass * g.f, (1.0 - s.glass) * v.pdf + s.glass * g.pdf);
+  }
+  return v;
 }
 
 struct BsdfValue {
@@ -539,8 +726,8 @@ struct BsdfEval {
 
 fn bsdf_eval(s: Bsdf, wi_world: vec3<f32>) -> BsdfEval {
   let wi = to_local(wi_world, s.f, s.n);
-  let v = bsdf_eval_local(s, wi);
-  return BsdfEval(v.f, v.pdf, max(wi.z, 0.0));
+  let v = bsdf_eval_mixed(s, wi);
+  return BsdfEval(v.f, v.pdf, select(max(wi.z, 0.0), abs(wi.z), s.glass > 0.0));
 }
 
 struct BsdfSample {
@@ -552,24 +739,38 @@ struct BsdfSample {
 };
 
 fn bsdf_sample(s: Bsdf, u_lobe: f32, u1: f32, u2: f32) -> BsdfSample {
-  let spec = u_lobe < s.p_spec;
+  // The glass lobe with probability w_g (the rest of u_lobe then picks reflection or
+  // refraction), else the opaque lobes with u_lobe rescaled (bsdf._sample_with_glass).
+  let glass = u_lobe < s.glass;
+  var rest = u_lobe;
+  if (s.glass > 0.0) {
+    rest = select((u_lobe - s.glass) / select(1.0, 1.0 - s.glass, s.glass < 1.0), 0.0, glass);
+  }
+  let spec = rest < s.p_spec && !glass;
   var wi = cosine_hemisphere(u1, u2);
   if (spec) {
     let h = ggx_visible_normal(s.wo, s.alpha, u1, u2);
     wi = 2.0 * dot(s.wo, h) * h - s.wo;
   }
-  let v = bsdf_eval_local(s, wi);
-  let valid = wi.z > MIN_COS && v.pdf > 0.0;
+  var good = true;
+  if (glass) {
+    let g = glass_sample(s, u_lobe / max(s.glass, 1e-30), u1, u2);
+    wi = g.wi;
+    good = g.valid;
+  }
+  let v = bsdf_eval_mixed(s, wi);
+  let cos = select(wi.z, abs(wi.z), s.glass > 0.0);
+  let valid = good && cos > MIN_COS && v.pdf > 0.0;
   var weight = vec3<f32>(0.0);
   if (valid) {
-    weight = v.f * (wi.z / v.pdf);
+    weight = v.f * (cos / v.pdf);
   }
-  return BsdfSample(to_world(wi, s.f, s.n), weight, v.pdf, valid, spec);
+  return BsdfSample(to_world(wi, s.f, s.n), weight, v.pdf, valid, spec || glass);
 }
 
 fn bsdf_albedo(s: Bsdf) -> vec3<f32> {
   let f_view = s.f0 + (1.0 - s.f0) * pow(max(1.0 - s.wo.z, 0.0), 5.0);
-  return s.c_diff * (1.0 - f_view) + f_view;
+  return (1.0 - s.glass) * (s.c_diff * (1.0 - f_view) + f_view) + s.glass * s.tint;
 }
 
 // -- the environment (pathtrace/environment.py) -----------------------------------------------
@@ -579,6 +780,9 @@ fn env_radiance(d: vec3<f32>) -> vec3<f32> {
 }
 
 fn env_base(d: vec3<f32>) -> vec3<f32> {
+  if (params.env_kind == ENV_IMAGE) {
+    return env_image_radiance(d);
+  }
   if (params.env_kind != ENV_SKY) {
     return params.env_uniform;
   }
@@ -589,17 +793,145 @@ fn env_base(d: vec3<f32>) -> vec3<f32> {
   return params.horizon + (params.ground - params.horizon) * min(1.0, 4.0 * max(-z, 0.0));
 }
 
+fn env_flags() -> u32 {
+  return bitcast<u32>(params.env_image.w);
+}
+
+fn env_sampled() -> bool {
+  return params.env_kind == ENV_IMAGE && (env_flags() & ENV_SAMPLED) != 0u;
+}
+
+fn env_dims() -> vec4<u32> {  // width, height, cells across (nu), cells down (nv)
+  let b = pt[H_ENV];
+  return vec4<u32>(pt[b], pt[b + 1u], pt[b + 2u], pt[b + 3u]);
+}
+
+fn env_pixel(x: u32, y: u32, w: u32) -> vec3<f32> {
+  return ptv3(pt[H_ENV] + 4u + 3u * (y * w + x));
+}
+
+// Image environments (envimage.py): R_z(rotation) d, Blender's equirectangular mapping,
+// bilinear, wrapping across u.
+fn env_uv(d: vec3<f32>) -> vec2<f32> {
+  let c = params.env_image.x;
+  let s = params.env_image.y;
+  let e = vec3<f32>(c * d.x - s * d.y, s * d.x + c * d.y, d.z);
+  var u = 0.5 - atan2(e.y, e.x) / (2.0 * PI);
+  u = u - floor(u);
+  let v = 0.5 + asin(clamp(e.z, -1.0, 1.0)) / PI;
+  return vec2<f32>(u, v);
+}
+
+fn env_image_radiance(d: vec3<f32>) -> vec3<f32> {
+  let dims = env_dims();
+  let w = i32(dims.x);
+  let h = i32(dims.y);
+  let uv = env_uv(d);
+  let x = uv.x * f32(w) - 0.5;
+  let y = (1.0 - uv.y) * f32(h) - 0.5;
+  let x0f = floor(x);
+  let y0f = floor(y);
+  let fx = x - x0f;
+  let fy = y - y0f;
+  let x0 = u32(((i32(x0f) % w) + w) % w);
+  let x1 = (x0 + 1u) % u32(w);
+  let y0 = u32(clamp(i32(y0f), 0, h - 1));
+  let y1 = u32(clamp(i32(y0f) + 1, 0, h - 1));
+  let top = env_pixel(x0, y0, u32(w)) * (1.0 - fx) + env_pixel(x1, y0, u32(w)) * fx;
+  let bottom = env_pixel(x0, y1, u32(w)) * (1.0 - fx) + env_pixel(x1, y1, u32(w)) * fx;
+  return (top * (1.0 - fy) + bottom * fy) * params.env_image.z;
+}
+
+struct EnvSample {
+  d: vec3<f32>,
+  pdf: f32,
+};
+
+// A direction drawn by the image's luminance (EnvironmentImage.sample): u0 picks the row,
+// u1 the column, their remainders the point in the cell.
+fn env_sample(u0: f32, u1: f32) -> EnvSample {
+  let dims = env_dims();
+  let nu = dims.z;
+  let nv = dims.w;
+  let mb = pt[H_ENV] + 4u + 3u * dims.x * dims.y;  // marginal CDF (nv + 1)
+  let cb = mb + nv + 1u;                            // conditional CDFs (nv x (nu + 1))
+  var lo = 0u;
+  var hi = nv - 1u;
+  while (lo < hi) {  // the last row whose CDF starts at or below u0
+    let mid = (lo + hi + 1u) / 2u;
+    if (ptf(mb + mid) <= u0) {
+      lo = mid;
+    } else {
+      hi = mid - 1u;
+    }
+  }
+  let r = lo;
+  let pr = ptf(mb + r + 1u) - ptf(mb + r);
+  let fr = clamp((u0 - ptf(mb + r)) / select(1.0, pr, pr > 0.0), 0.0, 1.0);
+  let rb = cb + r * (nu + 1u);
+  lo = 0u;
+  hi = nu - 1u;
+  while (lo < hi) {
+    let mid = (lo + hi + 1u) / 2u;
+    if (ptf(rb + mid) <= u1) {
+      lo = mid;
+    } else {
+      hi = mid - 1u;
+    }
+  }
+  let c = lo;
+  let pc = ptf(rb + c + 1u) - ptf(rb + c);
+  let fc = clamp((u1 - ptf(rb + c)) / select(1.0, pc, pc > 0.0), 0.0, 1.0);
+  let u = (f32(c) + fc) / f32(nu);
+  let v = 1.0 - (f32(r) + fr) / f32(nv);
+  let el = (v - 0.5) * PI;
+  let az = (0.5 - u) * 2.0 * PI;
+  let ce = cos(el);
+  let e = vec3<f32>(ce * cos(az), ce * sin(az), sin(el));
+  let cr = params.env_image.x;
+  let sr = params.env_image.y;
+  let d = vec3<f32>(cr * e.x + sr * e.y, -sr * e.x + cr * e.y, e.z);
+  var pdf = 0.0;
+  if (ce > 1e-9) {
+    pdf = pr * pc * f32(nu) * f32(nv) / (2.0 * PI * PI * ce);
+  }
+  return EnvSample(d, pdf);
+}
+
+// The density env_sample draws direction d with (EnvironmentImage.pdf).
+fn env_pdf(d: vec3<f32>) -> f32 {
+  let dims = env_dims();
+  let nu = dims.z;
+  let nv = dims.w;
+  let mb = pt[H_ENV] + 4u + 3u * dims.x * dims.y;
+  let cb = mb + nv + 1u;
+  let uv = env_uv(d);
+  let r = u32(clamp(i32((1.0 - uv.y) * f32(nv)), 0, i32(nv) - 1));
+  let c = u32(clamp(i32(uv.x * f32(nu)), 0, i32(nu) - 1));
+  let rb = cb + r * (nu + 1u);
+  let p = (ptf(mb + r + 1u) - ptf(mb + r)) * (ptf(rb + c + 1u) - ptf(rb + c)) * f32(nu) * f32(nv);
+  let ce = cos((uv.y - 0.5) * PI);
+  if (ce <= 1e-9) {
+    return 0.0;
+  }
+  return p / (2.0 * PI * PI * ce);
+}
+
 fn env_camera(d: vec3<f32>) -> vec3<f32> {
-  if (params.env_kind == ENV_AMBIENT) {
+  if (params.env_kind == ENV_AMBIENT || (params.env_kind == ENV_IMAGE && (env_flags() & ENV_VISIBLE) == 0u)) {
     return params.background + atmo_glow(params.atmo, d);
   }
   return env_radiance(d);
 }
 
 // -- lights (pathtrace/lights.py) ------------------------------------------------------------------
-// Light record: 0 kind (0 directional, 1 point), 1 sized, 2 inverse square, 3 has range,
-// 4-6 radiance (c I), 7 range, 8-10 position (camera-relative), 11 radius, 12-14 toward
-// the light, 15 cos(half angle), 16 1 - cos, 17 cone pdf, 18-20 disk radiance, 21 disk scale.
+// Light record: 0 kind (0 directional, 1 point, 2 spot, 3 area), 1 sized, 2 inverse square,
+// 3 has range, 4-6 radiance (c I), 7 range, 8-10 position (camera-relative), 11 radius,
+// 12-14 toward the light, 15 cos(half angle), 16 1 - cos, 17 cone pdf, 18-20 disk radiance,
+// 21 disk scale, 22 casts no shadow, 24-26 spot axis / area normal (the way they shine),
+// 27 spot cos_outer, 28 spot smoothstep width, 29 area shape (1: disk or ellipse), 30 area,
+// 31-33 area half extent x, 34-36 half extent y, 37-39 area radiance (pi c I / A),
+// 40 tan(spread / 2) (0: 180 degrees), 41 the spread's normalization.
 
 fn light_base(l: u32) -> u32 {
   return pt[H_LIGHTS] + l * LIGHT_WORDS;
@@ -619,6 +951,70 @@ fn point_scale(lb: u32, dist: f32) -> vec3<f32> {
   return PI * ptv3(lb + 4u) * atten;
 }
 
+// Light linking: whether light l leaves instance inst unlit (instance words 21, 22).
+fn unlinked(inst: u32, l: u32) -> bool {
+  if (l >= 64u) {
+    return false;
+  }
+  let word = pt[inst_base(inst) + 21u + l / 32u];
+  return ((word >> (l % 32u)) & 1u) != 0u;
+}
+
+// A spot's cone mask at the cosine between its axis and the direction from it.
+fn spot_mask(lb: u32, cos_t: f32) -> f32 {
+  let cos_outer = ptf(lb + 27u);
+  if (cos_t <= cos_outer) {
+    return 0.0;
+  }
+  let smooth_w = ptf(lb + 28u);
+  if (smooth_w > 0.0) {
+    let x = clamp((cos_t - cos_outer) / smooth_w, 0.0, 1.0);
+    return x * x * (3.0 - 2.0 * x);
+  }
+  return 1.0;
+}
+
+// A spread area light's radiance factor toward cos_a from its normal (scene_data.py).
+fn spread_factor(lb: u32, cos_a: f32) -> f32 {
+  if (!(cos_a > 0.0)) {
+    return 0.0;
+  }
+  let tan_h = ptf(lb + 40u);
+  if (tan_h <= 0.0) {
+    return 1.0;
+  }
+  let tan_a = sqrt(max(1.0 - cos_a * cos_a, 0.0)) / max(cos_a, 1e-30);
+  return max(1.0 - tan_a / tan_h, 0.0) * ptf(lb + 41u);
+}
+
+// The part of spread light lb that reaches p (RenderLight.spread_window): (u0, w0, u1, w1)
+// in half extents, and its area (0: none).
+struct Window {
+  lohi: vec4<f32>,
+  area: f32,
+};
+
+fn spread_window(lb: u32, p: vec3<f32>) -> Window {
+  let rel = p - ptv3(lb + 8u);
+  let t = dot(rel, ptv3(lb + 24u));
+  let ax = ptv3(lb + 31u);
+  let ay = ptv3(lb + 34u);
+  let lx = length(ax);
+  let ly = length(ay);
+  let qu = dot(rel, ax) / (lx * lx);
+  let qw = dot(rel, ay) / (ly * ly);
+  let reach = max(t, 0.0) * ptf(lb + 40u);
+  let lohi = vec4<f32>(
+    max(qu - reach / lx, -1.0), max(qw - reach / ly, -1.0),
+    min(qu + reach / lx, 1.0), min(qw + reach / ly, 1.0)
+  );
+  var area = 0.0;
+  if (t > 0.0 && lohi.z > lohi.x && lohi.w > lohi.y) {
+    area = (lohi.z - lohi.x) * lx * (lohi.w - lohi.y) * ly;
+  }
+  return Window(lohi, area);
+}
+
 struct LightSample {
   wi: vec3<f32>,
   goal: vec3<f32>,
@@ -628,10 +1024,58 @@ struct LightSample {
   delta: bool,       // no size: light sampling is the only strategy
 };
 
-fn sample_analytic(l: u32, p: vec3<f32>, key: vec2<u32>, vertex: u32, index: u32) -> LightSample {
+fn sample_analytic(l: u32, p: vec3<f32>, key: vec4<u32>, vertex: u32, index: u32) -> LightSample {
   let lb = light_base(l);
   let slot = SLOT_LIGHTS + 3u * index;
   var out: LightSample;
+  if (pt[lb] == 3u && ptf(lb + 40u) > 0.0) {  // a spread light: the part reaching p
+    let u1 = rnd(key, vertex, slot);
+    let u2 = rnd(key, vertex, slot + 1u);
+    let win = spread_window(lb, p);
+    let a = win.lohi.x + (win.lohi.z - win.lohi.x) * u1;
+    let b = win.lohi.y + (win.lohi.w - win.lohi.y) * u2;
+    var reach = win.area > 0.0;
+    if (pt[lb + 29u] != 0u) {
+      reach = reach && a * a + b * b <= 1.0;
+    }
+    let x = ptv3(lb + 8u) + a * ptv3(lb + 31u) + b * ptv3(lb + 34u);
+    let v = x - p;
+    let d2 = dot(v, v);
+    let dist = sqrt(d2);
+    let wi = v / max(dist, 1e-30);
+    let cos_l = -dot(wi, ptv3(lb + 24u));
+    let g = spread_factor(lb, cos_l);
+    let ok = reach && cos_l > 1e-12 && dist > 0.0 && g > 0.0;
+    out.wi = wi;
+    out.goal = x;
+    out.has_target = true;
+    out.delta = !ok;
+    out.pdf = select(0.0, d2 / (win.area * cos_l), ok);
+    out.scale = select(vec3<f32>(0.0), ptv3(lb + 37u) * (g * win.area * cos_l / d2), ok);
+    return out;
+  }
+  if (pt[lb] == 3u) {  // an area light: a uniform point of its shape
+    let u1 = rnd(key, vertex, slot);
+    let u2 = rnd(key, vertex, slot + 1u);
+    var ab = vec2<f32>(2.0 * u1 - 1.0, 2.0 * u2 - 1.0);
+    if (pt[lb + 29u] != 0u) {
+      ab = concentric_disk(u1, u2);
+    }
+    let x = ptv3(lb + 8u) + ab.x * ptv3(lb + 31u) + ab.y * ptv3(lb + 34u);
+    let v = x - p;
+    let d2 = dot(v, v);
+    let dist = sqrt(d2);
+    let wi = v / max(dist, 1e-30);
+    let cos_l = -dot(wi, ptv3(lb + 24u));
+    let ok = cos_l > 1e-12 && dist > 0.0;
+    out.wi = wi;
+    out.goal = x;
+    out.has_target = true;
+    out.delta = !ok;  // (not sampleable from here: weight 1, contributes 0)
+    out.pdf = select(0.0, d2 / (ptf(lb + 30u) * cos_l), ok);
+    out.scale = select(vec3<f32>(0.0), PI * ptv3(lb + 4u) * (cos_l / d2), ok);
+    return out;
+  }
   if (pt[lb] == 0u) {
     let axis = ptv3(lb + 12u);
     out.has_target = false;
@@ -676,17 +1120,71 @@ fn sample_analytic(l: u32, p: vec3<f32>, key: vec2<u32>, vertex: u32, index: u32
     out.delta = false;
   }
   out.scale = point_scale(lb, dist) * sphere;
+  if (pt[lb] == 2u) {
+    out.scale = out.scale * spot_mask(lb, -dot(axis, ptv3(lb + 24u)));
+  }
   return out;
+}
+
+// Where a ray (o, unit d) enters area light lb's front face inside its shape (and, for
+// spread lights, inside the part of it that reaches o) before t_limit: the light's
+// solid-angle density there and its radiance factor, or 0s.
+fn area_hit(lb: u32, o: vec3<f32>, d: vec3<f32>, t_limit: f32) -> vec2<f32> {
+  let n = ptv3(lb + 24u);
+  let denom = dot(d, n);
+  if (!(denom < 0.0)) {
+    return vec2<f32>(0.0);
+  }
+  let c = ptv3(lb + 8u);
+  let t = dot(c - o, n) / denom;
+  if (!(t > 0.0 && t < t_limit)) {
+    return vec2<f32>(0.0);
+  }
+  let q = o + d * t - c;
+  let ax = ptv3(lb + 31u);
+  let ay = ptv3(lb + 34u);
+  let u = dot(q, ax) / dot(ax, ax);
+  let w = dot(q, ay) / dot(ay, ay);
+  var inside = abs(u) <= 1.0 && abs(w) <= 1.0;
+  if (pt[lb + 29u] != 0u) {
+    inside = u * u + w * w <= 1.0;
+  }
+  if (!inside) {
+    return vec2<f32>(0.0);
+  }
+  let cos_l = max(-denom, 1e-30);
+  if (ptf(lb + 40u) > 0.0) {
+    let win = spread_window(lb, o);
+    let in_win = win.area > 0.0 && u >= win.lohi.x && u <= win.lohi.z && w >= win.lohi.y && w <= win.lohi.w;
+    let g = spread_factor(lb, cos_l);
+    if (!in_win || !(g > 0.0)) {
+      return vec2<f32>(0.0);
+    }
+    return vec2<f32>(t * t / (win.area * cos_l), g);
+  }
+  return vec2<f32>(t * t / (ptf(lb + 30u) * cos_l), 1.0);
 }
 
 // Radiance of sized lights a BSDF ray (origin o, unit d) reaches before geometry at
 // t_geometry (PT_INF: none), weighted against light sampling.
-fn hit_sized(o: vec3<f32>, d: vec3<f32>, t_geometry: f32, pdf_bsdf: f32) -> vec3<f32> {
+fn hit_sized(o: vec3<f32>, d: vec3<f32>, t_geometry: f32, pdf_bsdf: f32, from_inst: u32) -> vec3<f32> {
   var out = vec3<f32>(0.0);
-  let escaped = t_geometry >= PT_INF;
   for (var l = 0u; l < params.light_count; l++) {
     let lb = light_base(l);
-    if (pt[lb + 1u] == 0u) {
+    if (pt[lb + 1u] == 0u || unlinked(from_inst, l)) {
+      continue;
+    }
+    // Lights without shadows are reached through surfaces (lights.py).
+    var limit = t_geometry;
+    if (pt[lb + 22u] != 0u) {
+      limit = PT_INF;
+    }
+    let escaped = limit >= PT_INF;
+    if (pt[lb] == 3u) {
+      let hit = area_hit(lb, o, d, limit);
+      if (hit.x > 0.0) {
+        out += ptv3(lb + 37u) * (power_heuristic(pdf_bsdf, hit.x) * hit.y);
+      }
       continue;
     }
     if (pt[lb] == 0u) {
@@ -707,11 +1205,15 @@ fn hit_sized(o: vec3<f32>, d: vec3<f32>, t_geometry: f32, pdf_bsdf: f32) -> vec3
       continue;
     }
     let t_sphere = proj - sqrt(max(disc, 0.0));
-    if (t_sphere > 0.0 && t_sphere < t_geometry) {
+    if (t_sphere > 0.0 && t_sphere < limit) {
       let sin2 = r * r / dist2;
       let cmax = sqrt(max(0.0, 1.0 - sin2));
       let pdf = 1.0 / (2.0 * PI * max(sin2 / (1.0 + cmax), 1e-30));
-      let radiance = point_scale(lb, sqrt(dist2)) / (PI * sin2);
+      let dist = sqrt(dist2);
+      var radiance = point_scale(lb, dist) / (PI * sin2);
+      if (pt[lb] == 2u) {
+        radiance = radiance * spot_mask(lb, dot(-v / dist, ptv3(lb + 24u)));
+      }
       out += radiance * power_heuristic(pdf_bsdf, pdf);
     }
   }
@@ -775,7 +1277,7 @@ const RAY_AO: u32 = 3u;
 const RAY_CENTER: u32 = 4u;
 
 struct State {
-  key: vec2<u32>,
+  key: vec4<u32>,     // hash key (lo, hi), pixel hash, sample number (sampling.py)
   phase: u32,
   // The ray in flight: its current segment, and where it started (pass-through layers).
   kind: u32,
@@ -814,6 +1316,7 @@ struct State {
   it: Inter,          // the vertex being shaded
   bsdf: Bsdf,
   ng_side: vec3<f32>,
+  inside: vec3<f32>,   // the offset origin on the other side (glass)
   leave: vec3<f32>,   // ray origin off the vertex
   // Next-event estimation at the vertex.
   nee_light: u32,
@@ -875,11 +1378,50 @@ fn start_ray(st: ptr<function, State>, kind: u32, o: vec3<f32>, d: vec3<f32>, tm
   (*st).phase = PH_TRACE;
 }
 
-fn camera_ray(st: ptr<function, State>, kind: u32, x: u32, y: u32, u: f32, v: f32, with_diff: bool) {
+// A point of the unit aperture (camera.py's aperture_points, in float32): round (Shirley and
+// Chiu's concentric mapping) or a polygon of `blades` corners inscribed in it, a corner up,
+// turned and narrowed by the camera's rotation and ratio.
+// Shirley and Chiu's concentric map of the unit square onto the unit disk.
+fn concentric_disk(u1: f32, u2: f32) -> vec2<f32> {
+  let sx = 2.0 * u1 - 1.0;
+  let sy = 2.0 * u2 - 1.0;
+  if (sx == 0.0 && sy == 0.0) {
+    return vec2<f32>(0.0);
+  }
+  if (abs(sx) > abs(sy)) {
+    let phi = (PI / 4.0) * (sy / sx);
+    return vec2<f32>(sx * cos(phi), sx * sin(phi));
+  }
+  let phi = PI / 2.0 - (PI / 4.0) * (sx / sy);
+  return vec2<f32>(sy * cos(phi), sy * sin(phi));
+}
+
+fn aperture_point(u1: f32, u2: f32) -> vec2<f32> {
+  var p: vec2<f32>;
+  let blades = params.aperture.x;
+  if (blades >= 3.0) {
+    let k = min(floor(u1 * blades), blades - 1.0);
+    let a = u1 * blades - k;
+    let step = 2.0 * PI / blades;
+    let a0 = PI * 0.5 + k * step;
+    let r = sqrt(a);
+    let b1 = u2 * r;
+    let b0 = r - b1;
+    p = vec2<f32>(b0 * cos(a0) + b1 * cos(a0 + step), b0 * sin(a0) + b1 * sin(a0 + step));
+  } else {
+    p = concentric_disk(u1, u2);
+  }
+  let c = params.aperture.y;
+  let s = params.aperture.z;
+  p = vec2<f32>(c * p.x - s * p.y, s * p.x + c * p.y);
+  return vec2<f32>(p.x * params.aperture.w, p.y);
+}
+
+fn camera_ray(st: ptr<function, State>, kind: u32, x: u32, y: u32, u: f32, v: f32, with_diff: bool, lu: f32, lv: f32) {
   let w = f32(params.width);
   let h = f32(params.height);
-  let xn = (f32(x) + u) * (2.0 / w) - 1.0;
-  let yn = 1.0 - (f32(y) + v) * (2.0 / h);
+  let xn = (f32(x) + u) * (2.0 / w) - 1.0 + params.lens.x;
+  let yn = 1.0 - (f32(y) + v) * (2.0 / h) + params.lens.y;
   let sx = xn * params.hx;
   let sy = yn * params.hy;
   let step_x = (2.0 / w) * params.hx * params.diff_scale;
@@ -888,7 +1430,18 @@ fn camera_ray(st: ptr<function, State>, kind: u32, x: u32, y: u32, u: f32, v: f3
     let raw = params.forward + sx * params.right + sy * params.up;
     let len = length(raw);
     let unit = raw / len;
-    start_ray(st, kind, vec3<f32>(0.0), unit, params.near * len, params.far * len, PT_NONE, PT_NONE);
+    if (params.lens.z > 0.0 && kind == RAY_CAMERA) {
+      // A thin lens: from a point of the aperture toward where the pinhole ray meets the
+      // plane in focus (raw has a unit forward component); differentials stay the pinhole's.
+      let a = aperture_point(lu, lv) * params.lens.z;
+      let offset = a.x * params.right + a.y * params.up;
+      let lens_d = raw * params.lens.w - offset;
+      let lens_unit = lens_d / length(lens_d);
+      let along = dot(lens_unit, params.forward);
+      start_ray(st, kind, offset, lens_unit, params.near / along, params.far / along, PT_NONE, PT_NONE);
+    } else {
+      start_ray(st, kind, vec3<f32>(0.0), unit, params.near * len, params.far * len, PT_NONE, PT_NONE);
+    }
     let vx = params.right * step_x;
     let vy = params.up * step_y;
     (*st).do_dx = vec3<f32>(0.0);
@@ -918,9 +1471,13 @@ fn on_miss(st: ptr<function, State>) {
     }
     case 1u: {  // RAY_BOUNCE: the environment, and suns the ray found
       let direct = (*st).vertex == 1u;
-      add_target(st, (*st).throughput * env_radiance((*st).rd), direct);
+      var le = env_radiance((*st).rd);
+      if (env_sampled()) {  // also sampled as a light: weight both strategies
+        le = le * power_heuristic((*st).prev_pdf, env_pdf((*st).rd));
+      }
+      add_target(st, (*st).throughput * le, direct);
       if ((params.flags & FLAG_SIZED_LIGHTS) != 0u) {
-        add_target(st, (*st).throughput * hit_sized((*st).origin, (*st).rd, PT_INF, (*st).prev_pdf), direct);
+        add_target(st, (*st).throughput * hit_sized((*st).origin, (*st).rd, PT_INF, (*st).prev_pdf, (*st).it.inst), direct);
       }
       (*st).phase = PH_DONE;
     }
@@ -978,7 +1535,7 @@ fn on_accept(st: ptr<function, State>) {
       if ((params.flags & FLAG_SIZED_LIGHTS) != 0u) {
         add_target(
           st,
-          (*st).throughput * hit_sized((*st).origin, (*st).rd, (*st).cand.t, (*st).prev_pdf),
+          (*st).throughput * hit_sized((*st).origin, (*st).rd, (*st).cand.t, (*st).prev_pdf, (*st).it.inst),
           (*st).vertex == 1u
         );
       }
@@ -1064,11 +1621,15 @@ fn on_shade(st: ptr<function, State>) {
   var roughness = 1.0;
   var specular = 0.0;
   var has_specular = false;
+  var transmission = 0.0;
+  var ior = 1.5;
   if ((material_flags(it.material) & MATERIAL_STANDARD) != 0u) {
     metallic = sv.metallic;
     roughness = sv.roughness;
     specular = specular_factor;
     has_specular = true;
+    transmission = wordf(mb + 15u);
+    ior = wordf(mb + 23u);
   } else if (specular_factor > 0.0) {
     has_specular = true;
     specular = specular_factor;
@@ -1095,12 +1656,13 @@ fn on_shade(st: ptr<function, State>) {
   if (dot(n_shade, wo) < MIN_COS) {
     n_shade = ng_side;
   }
-  (*st).bsdf = bsdf_build(n_shade, wo, sv.base, metallic, roughness, specular, has_specular);
+  (*st).bsdf = bsdf_build(n_shade, wo, sv.base, metallic, roughness, specular, has_specular, transmission, ior, it.toward > 0.0);
   if ((*st).vertex == 0u) {
     (*st).albedo = bsdf_albedo((*st).bsdf);
   }
   (*st).ng_side = ng_side;
   (*st).leave = offset_origin(it.p, ng_side);
+  (*st).inside = offset_origin(it.p, -ng_side);  // (glass: rays through the surface)
   (*st).nee_light = 0u;
   (*st).nee_k = 0u;
   (*st).nee_index = 0u;
@@ -1114,6 +1676,21 @@ fn shadow_ray(st: ptr<function, State>, contrib: vec3<f32>, d: vec3<f32>, tmax: 
   (*st).tally.shadow += 1u;
 }
 
+// A shadow ray from the side of the surface its direction leaves by (glass transmits).
+fn side_origin(st: ptr<function, State>, d: vec3<f32>) -> vec3<f32> {
+  return select((*st).inside, (*st).leave, dot(d, (*st).ng_side) > 0.0);
+}
+
+fn shadow_ray_from(st: ptr<function, State>, origin: vec3<f32>, contrib: vec3<f32>, d: vec3<f32>, tmax: f32) {
+  (*st).pending = contrib;
+  start_ray(st, RAY_SHADOW, origin, d, 0.0, tmax, (*st).it.inst, (*st).it.prim);
+  (*st).tally.shadow += 1u;
+}
+
+fn sides_ok(st: ptr<function, State>, d: vec3<f32>) -> bool {
+  return dot(d, (*st).ng_side) > 0.0 || (*st).bsdf.glass > 0.0;
+}
+
 // The light sample of an emitter, once its emitted radiance `le` is known.
 fn finish_emitter_sample(st: ptr<function, State>, le: vec3<f32>) -> bool {
   var le_over_pdf = vec3<f32>(0.0);
@@ -1122,11 +1699,12 @@ fn finish_emitter_sample(st: ptr<function, State>, le: vec3<f32>) -> bool {
   }
   let wi = (*st).em_wi;
   let ev = bsdf_eval((*st).bsdf, wi);
-  let ok = ev.cos > 0.0 && (*st).em_pdf > 0.0 && dot(wi, (*st).ng_side) > 0.0;
+  let ok = ev.cos > 0.0 && (*st).em_pdf > 0.0 && sides_ok(st, wi);
   let w = power_heuristic((*st).em_pdf, ev.pdf);
   let contrib = ev.f * le_over_pdf * (ev.cos * w / f32(params.light_samples));
   if (ok && any(contrib > vec3<f32>(0.0))) {
-    shadow_ray(st, contrib, (*st).em_x - (*st).leave, SHADOW_END);
+    let o = side_origin(st, wi);
+    shadow_ray_from(st, o, contrib, (*st).em_x - o, SHADOW_END);
     return true;
   }
   return false;
@@ -1135,8 +1713,9 @@ fn finish_emitter_sample(st: ptr<function, State>, le: vec3<f32>) -> bool {
 fn on_nee(st: ptr<function, State>) {
   let ns = params.light_samples;
   let it = (*st).it;
+  let lights = params.light_count + select(0u, 1u, env_sampled());  // the image after them
   loop {
-    if ((*st).nee_light < params.light_count) {
+    if ((*st).nee_light < lights) {
       if ((*st).nee_k >= ns) {
         (*st).nee_light += 1u;
         (*st).nee_k = 0u;
@@ -1145,19 +1724,39 @@ fn on_nee(st: ptr<function, State>) {
       let index = (*st).nee_index;
       (*st).nee_index += 1u;
       (*st).nee_k += 1u;
+      if ((*st).nee_light == params.light_count) {  // the image environment
+        let slot = SLOT_LIGHTS + 3u * index;
+        let es = env_sample(rnd((*st).key, (*st).vertex, slot), rnd((*st).key, (*st).vertex, slot + 1u));
+        let ev = bsdf_eval((*st).bsdf, es.d);
+        let ok = ev.cos > 0.0 && es.pdf > 0.0 && sides_ok(st, es.d);
+        if (ok) {
+          let w = power_heuristic(es.pdf, ev.pdf);
+          let contrib = ev.f * env_radiance(es.d) * (ev.cos * w / (es.pdf * f32(ns)));
+          if (any(contrib > vec3<f32>(0.0))) {
+            shadow_ray_from(st, side_origin(st, es.d), contrib, es.d, PT_INF);
+            return;
+          }
+        }
+        continue;
+      }
       let ls = sample_analytic((*st).nee_light, it.p, (*st).key, (*st).vertex, index);
       let ev = bsdf_eval((*st).bsdf, ls.wi);
-      let ok = ev.cos > 0.0 && dot(ls.wi, (*st).ng_side) > 0.0;
+      let ok = ev.cos > 0.0 && sides_ok(st, ls.wi) && !unlinked(it.inst, (*st).nee_light);
       var w = 1.0;
       if (!ls.delta) {
         w = power_heuristic(ls.pdf, ev.pdf);
       }
       let contrib = ev.f * ls.scale * (ev.cos * w / f32(ns));
       if (ok && any(contrib > vec3<f32>(0.0))) {
+        if (pt[light_base((*st).nee_light) + 22u] != 0u) {
+          (*st).nee_sum += contrib;  // casts no shadow: never occluded
+          continue;
+        }
+        let o = side_origin(st, ls.wi);
         if (ls.has_target) {
-          shadow_ray(st, contrib, ls.goal - (*st).leave, SHADOW_END);
+          shadow_ray_from(st, o, contrib, ls.goal - o, SHADOW_END);
         } else {
-          shadow_ray(st, contrib, ls.wi, PT_INF);
+          shadow_ray_from(st, o, contrib, ls.wi, PT_INF);
         }
         return;
       }
@@ -1239,7 +1838,9 @@ fn on_bounce(st: ptr<function, State>) {
     rnd(key, vertex, SLOT_BSDF),
     rnd(key, vertex, SLOT_BSDF + 1u)
   );
-  var valid = s.valid && dot(s.wi, (*st).ng_side) > 0.0;
+  // Reflections leave on the geometric surface's side, refractions through it.
+  let through = dot(s.wi, (*st).bsdf.n) < 0.0;
+  var valid = s.valid && ((dot(s.wi, (*st).ng_side) > 0.0) != through);
   (*st).throughput = (*st).throughput * s.weight;
   if (vertex >= params.rr_vertex) {
     let q = clamp(max3((*st).throughput), RR_MIN, 1.0);
@@ -1252,7 +1853,7 @@ fn on_bounce(st: ptr<function, State>) {
   }
   (*st).prev_pdf = s.pdf;
   (*st).spread += select(DIFFUSE_SPREAD, 2.0 * (*st).bsdf.alpha, s.specular);
-  start_ray(st, RAY_BOUNCE, (*st).leave, s.wi, 0.0, PT_INF, (*st).it.inst, (*st).it.prim);
+  start_ray(st, RAY_BOUNCE, select((*st).leave, (*st).inside, through), s.wi, 0.0, PT_INF, (*st).it.inst, (*st).it.prim);
   (*st).cone_w = (*st).it.width;
   (*st).cone_spread = (*st).spread;
   (*st).tally.bounce += 1u;
@@ -1321,7 +1922,7 @@ fn run_state(st: ptr<function, State>) {
   }
 }
 
-fn new_state(key: vec2<u32>) -> State {
+fn new_state(key: vec4<u32>) -> State {
   var st: State;
   st.key = key;
   st.phase = PH_DONE;
@@ -1372,18 +1973,24 @@ fn path_main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invoc
       accum[plane(2u, pixel)] = rnd(key, 3u, SLOT_LIGHTS + 5u);
       accum[plane(3u, pixel)] = rnd(key, 2u, SLOT_RR);
     } else if (params.mode == MODE_CENTER) {
-      var st = new_state(vec2<u32>(0u));
-      camera_ray(&st, RAY_CENTER, x, y, 0.5, 0.5, false);
+      var st = new_state(vec4<u32>(0u));
+      camera_ray(&st, RAY_CENTER, x, y, 0.5, 0.5, false, 0.5, 0.5);
       st.tally.center += 1u;
       run_state(&st);
       accum[plane(ACC_DEPTH, pixel)] = st.depth;
       accum[plane(ACC_INSTANCE, pixel)] = bitcast<f32>(st.center_inst);
       tally = st.tally;
-    } else {
+    } else if ((params.flags & FLAG_ADAPTIVE) == 0u || accum[plane(ACC_ACTIVE, pixel)] != 0.0) {
       for (var s = params.sample_first; s < params.sample_first + params.sample_count; s++) {
         let key = path_key(pixel, s);
         var st = new_state(key);
-        camera_ray(&st, RAY_CAMERA, x, y, rnd(key, 0u, SLOT_PIXEL), rnd(key, 0u, SLOT_PIXEL + 1u), true);
+        var lu = 0.5;
+        var lv = 0.5;
+        if (params.lens.z > 0.0) {
+          lu = rnd(key, 0u, SLOT_LENS);
+          lv = rnd(key, 0u, SLOT_LENS + 1u);
+        }
+        camera_ray(&st, RAY_CAMERA, x, y, pixel_position(rnd(key, 0u, SLOT_PIXEL)), pixel_position(rnd(key, 0u, SLOT_PIXEL + 1u)), true, lu, lv);
         st.cam_d = st.rd;
         st.tally.camera += 1u;
         run_state(&st);

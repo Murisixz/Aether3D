@@ -22,10 +22,12 @@ from .framing import AUTO_VIEW_DIRECTION, compute_framing, orientation_frame, ta
 from .overlay import animation_overlay
 from .png import encode_png
 from .scene_data import (
+    MAX_LINKED_LIGHTS,
     RenderCamera,
     RenderScene,
     _with_fields,
     extract_render_scene,
+    raster_environment,
     resolve_camera,
     world_matrices,
 )
@@ -137,27 +139,32 @@ class RenderResult:
             )
         return encode_png(self.image, text=text, compression=compression)
 
-    def save(self, path: str | os.PathLike[str]) -> Path:
+    def save(self, path: str | os.PathLike[str], *, bits: int = 8) -> Path:
         """Write the image to a file, atomically; returns the resolved path.
 
-        ``.png`` writes the 8-bit display image; ``.hdr`` (Radiance RGBE) and
-        ``.pfm`` (float32) write :attr:`linear` -- high dynamic range, after
-        exposure and before tone mapping. The file is written to a temporary
-        sibling and renamed into place, so a failure never leaves a partial
-        or corrupted image.
+        ``.png`` writes the display image -- 8-bit, or with ``bits=16`` (0.20.0) a 16-bit
+        master of the same view transform from :attr:`linear`; ``.hdr`` (Radiance RGBE)
+        and ``.pfm`` (float32) write :attr:`linear` -- high dynamic range, after exposure
+        and before tone mapping; ``.exr`` (0.20.0) writes it as scene-linear OpenEXR (half
+        ``R``, ``G``, ``B``) with the path tracers' passes (``Z`` depth, ``normal.X/Y/Z``,
+        ``albedo``, ``direct``, ``indirect``, ``variance`` as ``.R/G/B``, before exposure;
+        ``motion.X/Y/Z/W``). The file is written to a temporary sibling and renamed into
+        place, so a failure never leaves a partial or corrupted image.
         """
         from .._fileio import write_atomic
         from .hdr import encode_hdr, encode_pfm
 
         target = Path(path)
         suffix = target.suffix.lower()
-        if suffix not in (".png", ".hdr", ".pfm"):
+        if suffix not in (".png", ".hdr", ".pfm", ".exr"):
             raise RenderError(
                 "INVALID_OUTPUT",
-                f"output must be a .png, .hdr or .pfm file, got {str(target)!r}",
+                f"output must be a .png, .hdr, .pfm or .exr file, got {str(target)!r}",
                 "output",
             )
-        if suffix != ".png" and self.linear is None:
+        if bits not in (8, 16) or (bits == 16 and suffix != ".png"):
+            raise RenderError("INVALID_OUTPUT", "bits is 8 or 16 (16: a .png master)", "bits")
+        if (suffix != ".png" or bits == 16) and self.linear is None:
             raise RenderError(
                 "OUTPUT_NOT_RENDERED",
                 f"{suffix} files hold linear light, and this render did not return it",
@@ -165,7 +172,15 @@ class RenderResult:
                 hint="render with outputs=None (all) or outputs including 'linear'",
             )
         t0 = time.perf_counter()
-        if suffix == ".png":
+        if suffix == ".exr":
+            return self._save_exr(target, t0)
+        if suffix == ".png" and bits == 16:
+            from .png import encode_png
+            from .tonemap import display
+
+            image = display(self.linear, self.color.get("tonemap", "none"), bits=16)
+            data = encode_png(image, text={"Software": f"Aether3D {__version__}"})
+        elif suffix == ".png":
             data = self.png_bytes()
         elif suffix == ".hdr":
             data = encode_hdr(self.linear)
@@ -184,6 +199,35 @@ class RenderResult:
         self.stats["timings"]["encode"] = t1 - t0
         self.stats["timings"]["write"] = time.perf_counter() - t1
         self.stats["png_bytes" if suffix == ".png" else "file_bytes"] = len(data)
+        self.output = written
+        return written
+
+    def _save_exr(self, target: Path, t0: float) -> Path:
+        from ..animation.frames import PASS_CHANNELS
+        from .exr import write_exr
+
+        lin = self.linear
+        channels = {"R": lin[..., 0], "G": lin[..., 1], "B": lin[..., 2]}
+        for name, plane in (self.passes or {}).items():
+            names = PASS_CHANNELS.get(name)
+            if names is None:
+                continue
+            if len(names) == 1:
+                channels[names[0]] = plane
+            else:
+                for k, c in enumerate(names):
+                    channels[c] = plane[..., k]
+        try:
+            written = write_exr(target, channels)
+        except OSError as exc:
+            raise RenderError(
+                "OUTPUT_ERROR",
+                f"cannot write {target}: {exc.strerror or exc}",
+                "output",
+                hint="check that the directory exists and is writable",
+            ) from None
+        self.stats["timings"]["encode"] = time.perf_counter() - t0
+        self.stats["file_bytes"] = written.stat().st_size
         self.output = written
         return written
 
@@ -300,8 +344,27 @@ def render(
     progress: Any = None,
     outputs: Any = None,
     time: float | None = None,
+    dof_samples: int | None = None,
+    denoise: bool | dict[str, Any] | None = None,
+    motion: float | None = None,
 ) -> RenderResult:
     """Render ``scene`` and return a :class:`RenderResult`.
+
+    * ``motion`` -- seconds (a frame's interval): adds ``passes["motion"]``, the pixel
+      motion to ``time - motion`` and ``time + motion`` of what each pixel shows
+      (:mod:`~aether3d.rendering.motion`; any backend, a scene camera).
+
+    * ``denoise`` -- path tracers only: ``True`` (or settings, see
+      :class:`~aether3d.rendering.denoise.DenoiseSettings`) filters the image with the
+      edge-avoiding, variance-guided denoiser (:mod:`~aether3d.rendering.denoise`; biased).
+      ``linear`` and ``image`` are then denoised, ``passes["beauty"]`` stays the raw
+      estimate and ``backend["denoiser"]`` describes the filter.
+
+    * ``dof_samples`` -- rasterizers only: how many views from points of the camera's
+      aperture are averaged when it has depth of field (``fstop > 0``; default 16, ``1``:
+      a pinhole view). Each view is a real render from a lens point, its frustum sheared
+      so the plane in focus stays fixed (an accumulation buffer, Haeberli and Akeley
+      1990); the path tracers sample the lens with every path instead.
 
     * ``time`` -- for an animated scene, the time in seconds to render (default: the
       animation's current time, ``scene.animation.time``); the animation's evaluation
@@ -376,6 +439,16 @@ def render(
     wanted = check_outputs(outputs)
     if tonemap != "none":
         wanted = wanted | {"linear"}  # the display image is tone mapped from linear light
+    from .denoise import DenoiseSettings
+
+    denoiser = DenoiseSettings.coerce(denoise)
+    if denoiser is not None and backend not in PATH_BACKENDS:
+        raise RenderError(
+            "INVALID_DENOISE",
+            "denoise filters the path tracers' images (their variance and feature passes)",
+            "denoise",
+            hint="use backend='path' or 'gpu_path', or render without denoise",
+        )
     shadow_settings = ShadowSettings.coerce(shadows)
     if requested not in PATH_BACKENDS:
         for name, value in (("path", path), ("ao", ao), ("progress", progress)):
@@ -388,6 +461,24 @@ def render(
                     hint="use backend='path' or 'gpu_path', or remove the option",
                 )
     path_settings = ao_settings = None
+    if dof_samples is not None and (
+        isinstance(dof_samples, bool)
+        or not isinstance(dof_samples, int)
+        or not 1 <= dof_samples <= MAX_DOF_SAMPLES
+    ):
+        raise RenderError(
+            "INVALID_SETTINGS",
+            f"dof_samples is an integer 1..{MAX_DOF_SAMPLES}, got {dof_samples!r}",
+            "dof_samples",
+        )
+    if requested in PATH_BACKENDS and dof_samples is not None:
+        raise RenderError(
+            "INVALID_SETTINGS",
+            "dof_samples applies to the rasterizers; the path tracer samples the lens with "
+            "every path (its samples)",
+            "dof_samples",
+            hint="remove dof_samples, or raise path={'samples': N}",
+        )
     if requested in PATH_BACKENDS:
         ignored = [("msaa", msaa), ("supersample", supersample), ("samples", samples)]
         if requested == "path":
@@ -538,10 +629,34 @@ def render(
 
         rs = contribute(scene, rs, settings.height, aspect)  # procedural worlds for this camera
     diagnostics += list(rs.diagnostics)
+    if requested not in PATH_BACKENDS:  # an image environment's sun and ambient harmonics
+        rs = raster_environment(rs)
     plan = None if shadow_settings is None else plan_shadows(rs, shadow_settings, aspect)
+    if requested in ("gpu", "gpu_path", "auto") and any(
+        light.receivers is not None for light in rs.lights[MAX_LINKED_LIGHTS:]
+    ):
+        late = [
+            light.name for light in rs.lights[MAX_LINKED_LIGHTS:] if light.receivers is not None
+        ]
+        diagnostics.append(
+            Diagnostic(
+                "LIGHT_LINK_LIMIT",
+                WARNING,
+                f"the GPU links only the first {MAX_LINKED_LIGHTS} lights (put linked lights "
+                f"first, or render on the CPU); these light every object there: "
+                f"{', '.join(late[:5])}" + (" ..." if len(late) > 5 else ""),
+                "lights",
+                count=len(late),
+            )
+        )
 
+    if motion is not None and (
+        isinstance(motion, bool) or not isinstance(motion, (int, float)) or not 0 < motion <= 3600
+    ):
+        raise RenderError("INVALID_SETTINGS", "motion is a time interval in seconds (> 0)",
+                          "motion")  # fmt: skip
     if requested in PATH_BACKENDS:
-        return _finish_path(
+        result = _finish_path(
             rs,
             settings,
             path_settings,
@@ -555,7 +670,110 @@ def render(
             progress,
             requested,
             adapter,
+            denoiser,
         )
+    else:
+        lens_views = 1
+        if rs.camera.camera.has_depth_of_field:
+            lens_views = DOF_SAMPLES if dof_samples is None else dof_samples
+        if lens_views > 1:
+            result = _lens_views(
+                rs, lens_views, aspect, settings, tonemap, wanted, diagnostics,
+                lambda rs_k, wanted_k, diags: _finish_raster(
+                    rs_k, settings, antialiasing, plan, adapter, limits, requested, diags,
+                    frame, aspect, t_start, tonemap, wanted_k, msaa, supersample,
+                ),
+            )  # fmt: skip
+        else:
+            result = _finish_raster(
+                rs, settings, antialiasing, plan, adapter, limits, requested, diagnostics, frame,
+                aspect, t_start, tonemap, wanted, msaa, supersample,
+            )  # fmt: skip
+    if motion is not None:
+        from .motion import motion_vectors
+
+        now = scene.animation.time if time is None else float(time)
+        result.passes["motion"] = motion_vectors(
+            scene, rs, settings.width, settings.height, now, float(motion),
+            None if frame else camera, settings.default_lights,
+        )  # fmt: skip
+    return result
+
+
+DOF_SAMPLES = 16
+"""Aperture views a rasterized render with depth of field averages by default."""
+MAX_DOF_SAMPLES = 1024
+
+
+def _lens_points(n: int) -> np.ndarray:
+    """``n`` well-spread uniform points of the unit square (Hammersley: (k + 1/2) / n and
+    the base-2 radical inverse of k), the same for every render."""
+    k = np.arange(n)
+    inv = np.zeros(n)
+    bit = 0.5
+    rest = k.copy()
+    while np.any(rest):
+        inv += bit * (rest & 1)
+        rest >>= 1
+        bit *= 0.5
+    return np.stack([(k + 0.5) / n, inv], 1)
+
+
+def _lens_views(rs, n, aspect, settings, tonemap, wanted, diagnostics, finish) -> RenderResult:
+    """A rasterized render with depth of field: the pinhole view (depth, objects and the
+    statistics) and ``n`` views from points of the aperture, averaged in linear light."""
+    from dataclasses import replace
+
+    from .camera import aperture_points
+    from .tonemap import display
+
+    base = finish(rs, wanted, list(diagnostics))
+    cam = rs.camera.camera
+    frame = rs.camera.frame
+    radius = cam.aperture_radius()
+    focus = rs.camera.focus_distance
+    hx, hy = cam.half_extents(aspect)
+    pts = _lens_points(n)
+    ax, ay = aperture_points(pts[:, 0], pts[:, 1], cam.aperture_blades,
+                             cam.aperture_rotation, cam.aperture_ratio)  # fmt: skip
+    total = None
+    for lx, ly in zip((ax * radius).tolist(), (ay * radius).tolist(), strict=True):
+        moved = CameraFrame(
+            frame.position + lx * frame.right + ly * frame.up, frame.forward, frame.up, frame.right
+        )
+        # The plane in focus stays put: shear the frustum by the lens offset over the focus.
+        sheared = cam.copy()
+        sheared._owner = None
+        sheared.configure(
+            shift_x=cam.shift_x - lx / (focus * hx) / (2.0 * max(1.0, 1.0 / aspect)),
+            shift_y=cam.shift_y - ly / (focus * hy) / (2.0 * max(1.0, aspect)),
+        )
+        view = replace(rs, camera=replace(rs.camera, camera=sheared, frame=moved))
+        out = finish(view, frozenset({"image", "linear"}), [])
+        lin = out.linear.astype(np.float64)
+        total = lin if total is None else total + lin
+    linear = (total / n).astype(np.float32)
+    base.linear = linear if base.linear is not None or "linear" in wanted else None
+    base.image = display(linear, tonemap)
+    base.stats = {**base.stats, "dof_samples": n}
+    base.diagnostics = [
+        *base.diagnostics,
+        Diagnostic(
+            "DEPTH_OF_FIELD",
+            INFO,
+            f"{n} views from points of the aperture (radius {radius * 1000:.3g} mm, focus "
+            f"{focus:.4g} m) were averaged; depth and objects are the pinhole view's",
+            "dof_samples",
+        ),
+    ]
+    return base
+
+
+def _finish_raster(
+    rs, settings, antialiasing, plan, adapter, limits, requested, diagnostics, frame,
+    aspect, t_start, tonemap, wanted, msaa, supersample,
+) -> RenderResult:  # fmt: skip
+    """The rasterizers' finish: the GPU (``gpu``, ``auto``) or the CPU renderer."""
     if requested in ("gpu", "auto"):
         try:
             return _finish_gpu(
@@ -650,6 +868,9 @@ def _finish_cpu(
 
     t0 = time.perf_counter()
     linear = frame_data.linear
+    behind = cpu.environment_background(rs, settings.width, settings.height, aspect)
+    if behind is not None:  # an image environment behind the geometry
+        linear += ((1.0 - frame_data.coverage)[..., None] * behind).astype(linear.dtype)
     if settings.exposure != 0.0:
         linear *= 2.0**settings.exposure
     image = display(linear, tonemap)  # in row blocks: bounded temporaries
@@ -790,7 +1011,17 @@ def _finish_gpu(
         "device_init_seconds": context.init_seconds if fresh else 0.0,
         "resources": gpu_frame.resources,
     }
-    image = gpu_frame.image if tonemap == "none" else display(gpu_frame.linear, tonemap)
+    behind = cpu.environment_background(rs, settings.width, settings.height, aspect)
+    if behind is not None:  # an image environment behind the geometry (exposure applied)
+        gain = 2.0**settings.exposure
+        gpu_frame.linear += ((1.0 - gpu_frame.coverage)[..., None] * behind * gain).astype(
+            gpu_frame.linear.dtype
+        )
+    image = (
+        gpu_frame.image
+        if tonemap == "none" and behind is None
+        else display(gpu_frame.linear, tonemap)
+    )
     return RenderResult(
         image=image,
         linear=gpu_frame.linear,
@@ -821,6 +1052,7 @@ def _finish_path(
     progress: Any,
     backend: str = "path",
     adapter: Any = None,
+    denoiser: Any = None,
 ) -> RenderResult:
     gpu_info: dict[str, Any] = {}
     if backend == "gpu_path":
@@ -891,6 +1123,22 @@ def _finish_path(
     diagnostics += data.diagnostics
     t0 = time.perf_counter()
     linear = data.linear
+    t_denoise = 0.0
+    if denoiser is not None and path.integrator == "path":
+        from .denoise import denoise as run_denoiser
+
+        t1 = time.perf_counter()
+        linear = run_denoiser(data.passes, denoiser)
+        t_denoise = time.perf_counter() - t1
+        diagnostics.append(
+            Diagnostic(
+                "DENOISED",
+                INFO,
+                "the image was denoised (an edge-avoiding filter: less noise, some bias -- fine "
+                "shadows, caustics and reflections may blur); passes['beauty'] is the raw image",
+                "denoise",
+            )
+        )
     if settings.exposure != 0.0:
         linear = linear * 2.0**settings.exposure
     if not math.isfinite(float(np.max(linear, initial=0.0))):
@@ -904,6 +1152,8 @@ def _finish_path(
         **data.timings,
         "output": t_output,
     }
+    if denoiser is not None:
+        timings["denoise"] = t_denoise
     timings["total"] = time.perf_counter() - t_start
     counts = data.counts
     rays = sum(counts.get(k, 0) for k in ("camera_rays", "bounce_rays", "shadow_rays", "ao_rays"))
@@ -949,6 +1199,7 @@ def _finish_path(
             "lights": data.info["lights"],
             "bvh": data.info["bvh"],
             "work_estimate": data.info["work_estimate"],
+            "denoiser": None if denoiser is None else denoiser.to_dict(),
         }
     )
     if settings.cull != "none":

@@ -31,8 +31,24 @@ def test_defaults_and_round_trip():
         "near": 0.1,
         "far": 1000.0,
         "aspect_ratio": None,
+        # the lens (0.20.0): a pinhole by default
+        "sensor": 36.0,
+        "shift_x": 0.0,
+        "shift_y": 0.0,
+        "fstop": 0.0,
+        "focus_distance": 10.0,
+        "focus_object": None,
+        "aperture_blades": 0,
+        "aperture_rotation": 0.0,
+        "aperture_ratio": 1.0,
     }
     assert Camera.from_dict(cam.to_dict()) == cam and cam.copy() == cam
+    old = {
+        k: v
+        for k, v in cam.to_dict().items()
+        if k in ("projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio")
+    }
+    assert Camera.from_dict(old) == cam  # a document from before the lens fields
 
 
 @pytest.mark.parametrize(
@@ -52,6 +68,16 @@ def test_defaults_and_round_trip():
         ({"near": 1e-6, "far": 1e4}, "far"),  # far / near beyond 1e9
         ({"aspect_ratio": 0}, "aspect_ratio"),
         ({"aspect_ratio": float("inf")}, "aspect_ratio"),
+        ({"sensor": 0}, "sensor"),
+        ({"shift_x": 11}, "shift_x"),
+        ({"fstop": 0.05}, "fstop"),
+        ({"fstop": -1}, "fstop"),
+        ({"focus_distance": 0}, "focus_distance"),
+        ({"aperture_blades": 2}, "aperture_blades"),
+        ({"aperture_blades": 1.5}, "aperture_blades"),
+        ({"aperture_ratio": 0}, "aperture_ratio"),
+        ({"focus_object": 3}, "focus_object"),
+        ({"focal_length": 0}, "focal_length"),
     ],
 )
 def test_invalid_parameters_are_rejected_atomically(changes, field):
@@ -74,7 +100,7 @@ def test_orthographic_allows_zero_near_and_configure_is_atomic():
     perspective.configure(near=500, far=5000)  # both at once is fine
     assert (perspective.near, perspective.far) == (500.0, 5000.0)
     with pytest.raises(RenderError) as info:
-        perspective.configure(focal_length=50)
+        perspective.configure(zoom=50)
     assert "unknown" in info.value.message
 
 
@@ -342,3 +368,58 @@ def test_framing_errors_change_nothing():
     with pytest.raises(RenderError) as info:
         scene.get_by_name("Cube").frame()
     assert info.value.code == "NOT_A_CAMERA"
+
+
+# --------------------------------------------------------------------------- #
+# The lens (0.20.0)
+# --------------------------------------------------------------------------- #
+
+
+def test_focal_length_sensor_and_aperture():
+    cam = Camera(focal_length=50.0, fov_axis="horizontal")
+    assert cam.fov == pytest.approx(2 * math.degrees(math.atan(18.0 / 50.0)))  # 39.6
+    assert cam.focal_length == pytest.approx(50.0)
+    cam.configure(sensor=24.0)  # a smaller sensor at the same field of view: a shorter lens
+    assert cam.focal_length == pytest.approx(50.0 * 24.0 / 36.0)
+    cam.configure(focal_length=85.0, sensor=36.0)
+    assert cam.focal_length == pytest.approx(85.0)
+    assert cam.aperture_radius() == 0.0 and not cam.has_depth_of_field
+    cam.configure(fstop=2.0)
+    assert cam.aperture_radius() == pytest.approx(0.085 / 4.0)  # f / (2 N), metres
+    ortho = Camera(projection="orthographic", fstop=2.0)
+    assert ortho.focal_length is None and ortho.aperture_radius() == 0.0
+
+
+def test_lens_shift_is_an_off_centre_frustum_in_units_of_the_larger_dimension():
+    # Measured in Blender: shift 0.1 moves the image by a tenth of its larger dimension.
+    for aspect in (16 / 9, 9 / 16):
+        plain = Camera(focal_length=50.0, fov_axis="auto")
+        shifted = Camera(focal_length=50.0, fov_axis="auto", shift_x=0.1, shift_y=-0.05)
+        p = (0.3, 0.2, -4.0)
+        a, b = project(plain, aspect, p), project(shifted, aspect, p)
+        larger_x = 2.0 * max(1.0, 1.0 / aspect)  # NDC width of the larger dimension
+        larger_y = 2.0 * max(1.0, aspect)
+        assert b[0] - a[0] == pytest.approx(-0.1 * larger_x)
+        assert b[1] - a[1] == pytest.approx(0.05 * larger_y)
+        assert b[2] == pytest.approx(a[2])  # depth unchanged
+        assert shifted.ndc_offset(aspect) == pytest.approx((0.1 * larger_x, -0.05 * larger_y))
+    ortho = Camera(projection="orthographic", shift_x=0.25)
+    assert project(ortho, 1.0, (0, 0, -3))[0] == pytest.approx(-0.5)
+
+
+def test_aperture_points_are_uniform_round_or_polygonal():
+    from aether3d.rendering.camera import aperture_points
+
+    rng = np.random.default_rng(3)
+    u1, u2 = rng.random(200_000), rng.random(200_000)
+    x, y = aperture_points(u1, u2, 0, 0.0, 1.0)
+    r2 = x * x + y * y
+    assert r2.max() <= 1.0 + 1e-12
+    assert np.mean(r2 < 0.25) == pytest.approx(0.25, abs=0.005)  # uniform by area
+    x, y = aperture_points(u1, u2, 6, 0.0, 1.0)
+    assert y.max() == pytest.approx(1.0, abs=0.01)  # a corner up (corners are thin)
+    assert x.max() == pytest.approx(math.cos(math.radians(30)), abs=2e-3)  # a flat side
+    x, y = aperture_points(u1, u2, 0, 0.0, 2.0)
+    assert x.max() == pytest.approx(0.5, abs=2e-3) and y.max() == pytest.approx(1.0, abs=2e-3)
+    x, y = aperture_points(u1, u2, 5, 36.0, 1.0)  # turned by 36 degrees: a corner down
+    assert y.min() == pytest.approx(-1.0, abs=0.01)

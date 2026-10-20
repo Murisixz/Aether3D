@@ -446,6 +446,24 @@ def _shade(color: Any, factor: float) -> str:
     return color_to_hex(tuple(float(c) for c in linear_to_srgb(rgb)))
 
 
+def _glass(o: dict[str, Any]) -> dict[str, Any]:
+    params = {"transmission": 1.0, "ior": 1.5, "roughness": 0.0, "metallic": 0.0,
+              "base_color": o.get("color", "#ffffff")}  # fmt: skip
+    return {"params": params, "textures": {}}
+
+
+def _frosted_glass(o: dict[str, Any]) -> dict[str, Any]:
+    params = {"transmission": 1.0, "ior": 1.5, "roughness": 0.35, "metallic": 0.0,
+              "base_color": o.get("color", "#f4f8fa")}  # fmt: skip
+    return {"params": params, "textures": {}}
+
+
+def _water(o: dict[str, Any]) -> dict[str, Any]:
+    params = {"transmission": 1.0, "ior": 1.33, "roughness": 0.02, "metallic": 0.0,
+              "base_color": o.get("color", "#e8f4f6")}  # fmt: skip
+    return {"params": params, "textures": {}}
+
+
 PRESETS: dict[str, tuple[Callable[[dict[str, Any]], dict[str, Any]], str, tuple[str, ...]]] = {
     "stone": (
         _stone,
@@ -469,6 +487,9 @@ PRESETS: dict[str, tuple[Callable[[dict[str, Any]], dict[str, Any]], str, tuple[
     ),
     "grass": (_grass, "grass: patchy greens and blade clumps", ("color2",)),
     "fabric": (_fabric, "woven fabric: warp and weft threads", ()),
+    "glass": (_glass, "clear glass (transmission 1, ior 1.5; path tracers refract it)", ()),
+    "frosted_glass": (_frosted_glass, "frosted glass (rough transmission)", ()),
+    "water": (_water, "water (transmission 1, ior 1.33)", ()),
 }
 
 

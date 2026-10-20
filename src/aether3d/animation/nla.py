@@ -78,6 +78,19 @@ def _num(
     return v
 
 
+BLENDS = ("linear", "smooth", "smoother")
+"""Shapes of a strip's blend ramps: linear (the velocity of a crossfade jumps where a ramp
+starts and ends), smooth (3 r^2 - 2 r^3: C1), smoother (6 r^5 - 15 r^4 + 10 r^3: C2)."""
+
+
+def _shape(r: np.ndarray, shape: Any) -> np.ndarray:
+    """A ramp ``r`` in [0, 1] through its blend shape (per element when ``shape`` is an
+    array): the same operations whatever the batch, so tables equal single strips."""
+    smooth = r * r * (3.0 - 2.0 * r)
+    smoother = r * r * r * (r * (r * 6.0 - 15.0) + 10.0)
+    return np.where(shape == 2, smoother, np.where(shape == 1, smooth, r))
+
+
 @dataclass(frozen=True)
 class Strip:
     clip: str  # clip item id
@@ -97,6 +110,7 @@ class Strip:
     time_curve: FCurve | None = None
     accumulate: bool = False
     mute: bool = False
+    blend_curve: str = "linear"
 
     def to_json(self) -> dict[str, Any]:
         out: dict[str, Any] = {"clip": self.clip, "name": self.name, "start": self.start}
@@ -115,6 +129,7 @@ class Strip:
             "weight",
             "accumulate",
             "mute",
+            "blend_curve",
         ):
             if getattr(self, k) != getattr(defaults, k):
                 out[k] = getattr(self, k)
@@ -137,7 +152,7 @@ def parse_strip(raw: Any, location: str, clip_ids: Any = None) -> Strip:
     allowed = {
         "clip", "name", "start", "clip_start", "clip_end", "speed", "repeat", "reverse", "blend_in",
         "blend_out", "before", "after", "weight", "weight_curve", "time_curve", "accumulate",
-        "mute",
+        "mute", "blend_curve",
     }  # fmt: skip
     unknown = set(raw) - allowed
     if unknown:
@@ -160,6 +175,13 @@ def parse_strip(raw: Any, location: str, clip_ids: Any = None) -> Strip:
     blend_in = _num(raw.get("blend_in", 0.0), f"{location}.blend_in", "blend_in", lo=0.0)
     blend_out = _num(raw.get("blend_out", 0.0), f"{location}.blend_out", "blend_out", lo=0.0)
     weight = _num(raw.get("weight", 1.0), f"{location}.weight", "weight", lo=0.0, hi=1.0)
+    blend = raw.get("blend_curve", "linear")
+    if blend not in BLENDS:
+        raise _err(
+            "INVALID_STRIP",
+            f"blend_curve is one of {', '.join(BLENDS)}",
+            f"{location}.blend_curve",
+        )
     out: dict[str, Any] = {}
     for key in ("reverse", "accumulate", "mute"):
         v = raw.get(key, False)
@@ -187,7 +209,7 @@ def parse_strip(raw: Any, location: str, clip_ids: Any = None) -> Strip:
     return Strip(
         clip, name, start, cs, ce, speed, repeat, out["reverse"], blend_in, blend_out,
         out["before"], out["after"], weight, curves["weight_curve"], curves["time_curve"],
-        out["accumulate"], out["mute"],
+        out["accumulate"], out["mute"], blend,
     )  # fmt: skip
 
 
@@ -296,7 +318,8 @@ def parse_layer(raw: Any, location: str, clip_ids: Any = None) -> Layer:
 
 @dataclass(frozen=True)
 class Binding:
-    """What animates one target: ``target`` is ``("object" | "material", id)``."""
+    """What animates one target: ``target`` is ``("object" | "material", id)``, or
+    ``("world", "world")`` for the scene's world (0.20.0)."""
 
     target: tuple[str, str]
     action: str | None = None  # clip item id
@@ -325,14 +348,19 @@ def parse_binding(raw: Any, location: str, clip_ids: Any = None) -> Binding:
         return raw
     if not isinstance(raw, dict):
         raise _err("INVALID_BINDING", "a binding is an object", location)
-    unknown = set(raw) - {"object", "material", "action", "layers", "mute"}
+    unknown = set(raw) - {"object", "material", "world", "action", "layers", "mute"}
     if unknown:
         raise _err("INVALID_BINDING", f"unknown binding fields {sorted(unknown)}", location)
-    if ("object" in raw) == ("material" in raw):
-        raise _err("INVALID_BINDING", "a binding has an object or a material", location)
-    kind = "object" if "object" in raw else "material"
+    kinds = [k for k in ("object", "material", "world") if k in raw]
+    if len(kinds) != 1:
+        raise _err("INVALID_BINDING", "a binding has an object, a material or the world", location)
+    kind = kinds[0]
     tid = raw[kind]
-    if not isinstance(tid, str) or not tid:
+    if kind == "world":
+        if tid != "world":
+            raise _err("INVALID_BINDING", 'the world\'s binding is {"world": "world"}',
+                       f"{location}.world")  # fmt: skip
+    elif not isinstance(tid, str) or not tid:
         raise _err("INVALID_BINDING", f"{kind} is an id", f"{location}.{kind}")
     action = raw.get("action")
     if action is not None:
@@ -424,13 +452,16 @@ def strip_times(
     if strip.after == "hold":
         w = np.where(after, 1.0, w)
     dc = np.where(inside, dc, 0.0)
-    # Ramps (inside the strip's time).
+    # Ramps (inside the strip's time), shaped by the strip's blend.
+    shape = BLENDS.index(strip.blend_curve)
     if strip.blend_in > 0:
         ramp = (t - strip.start) / strip.blend_in
-        w = np.where(inside & (ramp < 1.0), np.clip(ramp, 0.0, 1.0), w)
+        w = np.where(inside & (ramp < 1.0), _shape(np.clip(ramp, 0.0, 1.0), shape), w)
     if strip.blend_out > 0:
         ramp = (strip.start + length - t) / strip.blend_out
-        w = np.where(inside & (ramp < 1.0), np.minimum(w, np.clip(ramp, 0.0, 1.0)), w)
+        w = np.where(
+            inside & (ramp < 1.0), np.minimum(w, _shape(np.clip(ramp, 0.0, 1.0), shape)), w
+        )
     w = w * strip.weight
     if strip.weight_curve is not None:
         w = w * np.clip(strip.weight_curve.evaluate(t - strip.start), 0.0, 1.0)
@@ -447,6 +478,7 @@ class StripTable:
         f = {k: np.zeros(n) for k in ("start", "speed", "cs", "ce", "span", "length", "total",
                                       "last", "blend_in", "blend_out", "weight")}  # fmt: skip
         b = {k: np.zeros(n, bool) for k in ("reverse", "hold_before", "hold_after", "mute")}
+        shapes = np.zeros(n, np.int64)
         for i, (strip, clip_range) in enumerate(strips):
             assert strip.time_curve is None and strip.weight_curve is None
             cs, ce = _trim(strip, clip_range)
@@ -463,6 +495,8 @@ class StripTable:
             b["reverse"][i], b["mute"][i] = strip.reverse, strip.mute
             b["hold_before"][i] = strip.before == "hold"
             b["hold_after"][i] = strip.after == "hold"
+            shapes[i] = BLENDS.index(strip.blend_curve)
+        self.shape = shapes
         self.__dict__.update(f)
         self.__dict__.update(b)
         self.cycling = self.span > 0
@@ -490,10 +524,14 @@ class StripTable:
         w = np.where(self.hold_before & (t < start), 1.0, w)
         w = np.where(self.hold_after & (t > self.end), 1.0, w)
         ramp = (t - start) / self.safe_in
-        w = np.where(self.ramp_in & inside & (ramp < 1.0), np.clip(ramp, 0.0, 1.0), w)
+        w = np.where(
+            self.ramp_in & inside & (ramp < 1.0), _shape(np.clip(ramp, 0.0, 1.0), self.shape), w
+        )
         ramp = (self.end - t) / self.safe_out
         w = np.where(
-            self.ramp_out & inside & (ramp < 1.0), np.minimum(w, np.clip(ramp, 0.0, 1.0)), w
+            self.ramp_out & inside & (ramp < 1.0),
+            np.minimum(w, _shape(np.clip(ramp, 0.0, 1.0), self.shape)),
+            w,
         )
         w = w * self.weight
         mute = self.mute

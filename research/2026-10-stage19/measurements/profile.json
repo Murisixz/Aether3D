@@ -1,0 +1,73 @@
+{
+ "aether3d": "0.20.0",
+ "curves": {
+  "local_100_keys": {
+   "build_s": 0.00019923399668186903,
+   "evaluate_100k_order2_s": 0.009136250999290496
+  },
+  "blender_100_keys": {
+   "build_s": 0.000261327950283885,
+   "evaluate_100k_order2_s": 0.01881063199834898
+  },
+  "continuous_100_keys": {
+   "build_s": 0.0008917739614844322,
+   "evaluate_100k_order2_s": 0.00875124498270452
+  },
+  "local_10000_keys": {
+   "build_s": 0.0006080119637772441,
+   "evaluate_100k_order2_s": 0.009205469978041947
+  },
+  "blender_10000_keys": {
+   "build_s": 0.0012903980095870793,
+   "evaluate_100k_order2_s": 0.020186896028462797
+  },
+  "continuous_10000_keys": {
+   "build_s": 0.00783284701174125,
+   "evaluate_100k_order2_s": 0.009594612987712026
+  }
+ },
+ "motion_report": {
+  "objects": 100,
+  "duration_s": 10.0,
+  "rate": 240,
+  "motion_report_s": 2.417470494983718
+ },
+ "lighting": {
+  "size": [
+   640,
+   360
+  ],
+  "measure_s": 0.049080869008321315,
+  "diagnose_s": 0.6759065560181625,
+  "cpu_render_s": 0.6078543899930082
+ },
+ "frame_outputs": {
+  "size": [
+   1920,
+   1080
+  ],
+  "denoise_s": 4.890549880976323,
+  "display_film_8bit_s": 0.5840909760445356,
+  "display_film_16bit_s": 0.5794291679630987,
+  "exr_write_7_channels_s": 0.34713234001537785,
+  "exr_bytes": 10599744
+ },
+ "environment": {
+  "size": [
+   2048,
+   1024
+  ],
+  "draw_builtin_s": 0.10861427994677797,
+  "sampling_tables_s": 0.028771663026418537,
+  "raster_lighting_s": 0.2145981130306609
+ },
+ "motion_vectors": {
+  "size": [
+   1920,
+   1080
+  ],
+  "cpu_render_s": 1.230959767010063,
+  "with_motion_s": 4.816197746957187,
+  "motion_pass_s": 3.5852379799471237
+ }
+}

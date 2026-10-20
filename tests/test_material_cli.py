@@ -312,6 +312,9 @@ def test_convert_colors_preview_presets_and_schema(project, capsys):
         "metal",
         "grass",
         "fabric",
+        "glass",  # (0.20.0)
+        "frosted_glass",
+        "water",
     ]
     code, data = run_json(capsys, "material", "schema")
     assert data["material"]["models"] == ["standard", "simple"] and len(data["node_types"]) == 16

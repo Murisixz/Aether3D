@@ -52,7 +52,7 @@ VASE = {"check": "rests_on", "objects": "Vase", "support": "Table"}
         {"action": "rotate", "object": "Vase"},
         {"action": "rotate", "object": "Vase", "rotation": [0, 0, 0, 2]},
         {"action": "set_camera", "camera": "Cam"},
-        {"action": "add_light", "type": "spot", "direction": [0, 0, -1]},
+        {"action": "add_light", "type": "laser", "direction": [0, 0, -1]},
         {"action": "add_light", "type": "point"},
         {"action": "set_exposure", "exposure": 99},
         {"action": "frame_camera", "targets": "@vase"},

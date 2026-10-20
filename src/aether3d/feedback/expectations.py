@@ -121,6 +121,16 @@ CHECKS: dict[str, dict[str, Any]] = {
         "whole image with over: image) within a range, clipped and black fractions at most "
         "the given ones, geometry covering at least min_coverage of the image",
     },
+    "lighting": {
+        "fields": ("objects", "view", "ratio", "min_separation", "max_merged_fraction", "lights"),
+        "required": ("objects",),
+        "summary": "how the view's subject (the objects as one) is lit, from the scene's "
+        "lights at its visible surface (direct light, shadows by rays, the ambient term): the "
+        "lighting ratio (median irradiance of the key's lit side over its shadow side) within "
+        "ratio; at most max_merged_fraction (default 0.25) of its outline within "
+        "min_separation (default 10) of the background's lightness (CIE L* of the displayed "
+        "image); each of lights (a selector) reaching it",
+    },
     "camera_clipping": {
         "fields": ("objects", "view"),
         "required": (),
@@ -173,6 +183,17 @@ CHECKS: dict[str, dict[str, Any]] = {
         "max_penetration (default 0.002 m) over the timeline, sampled at 120 per second "
         "(planted: within height, default 0.03 m, of the ground and within speed, default "
         "0.3 m/s, of the stance's steady velocity: a skating stance is measured)",
+    },
+    "motion_quality": {
+        "fields": ("objects", "joints", "subject", "loop", "level", "ignore", "thresholds"),
+        "required": ("objects",),
+        "summary": 'the selected objects (and their rigs\' joints: joints, a list or "all"; '
+        "cameras framing a subject: an object or a point) move without world-space motion "
+        "defects at or above level (default warning) over the timeline, measured on the "
+        "evaluated scene at 120 samples per second (anim.motion_report): position jumps, "
+        "velocity jumps, jitter, rotation snaps, IK pole flips, loop seams (loop), the subject "
+        "leaving the frame or hidden; ignore lists codes not to report, thresholds overrides "
+        "the report's",
     },
     "rig": {
         "fields": ("objects", "poses", "timeline", "ignore"),
@@ -442,7 +463,10 @@ def _parse_check(
         value = _parse_field(doc, kind, key, obj[key], join(ptr, key), views)
         if value is not BAD:
             params[key] = value
-    if kind in ("visible", "framing", "exposure", "camera_clipping") and "view" not in params:
+    if (
+        kind in ("visible", "framing", "exposure", "camera_clipping", "lighting")
+        and "view" not in params
+    ):
         if default_view is None and views:
             doc.issues.add(
                 "MISSING_KEY",
@@ -464,8 +488,15 @@ def _parse_check(
 
 
 def _parse_field(doc: Doc, kind: str, key: str, value: Any, ptr: str, views: dict[str, Any]) -> Any:
-    if key in ("objects", "against", "support"):
+    if key in ("objects", "against", "support", "lights"):
         return doc.selector(value, ptr)
+    if key == "ratio":
+        r = doc.range(value, ptr, lo=1.0)
+        return BAD if r is BAD else {"min": r[0], "max": r[1]}
+    if key == "min_separation":
+        return doc.number(value, ptr, lo=0.0, hi=100.0)
+    if key == "max_merged_fraction":
+        return doc.number(value, ptr, lo=0.0, hi=1.0)
     if key in ("a", "b"):
         return doc.string(value, ptr)
     if key == "view":
@@ -569,8 +600,40 @@ def _parse_field(doc: Doc, kind: str, key: str, value: Any, ptr: str, views: dic
             return BAD
         names = [doc.string(v, join(ptr, k), max_length=128) for k, v in enumerate(value)]
         return BAD if any(n is BAD for n in names) else names
-    if key == "timeline":
+    if key in ("timeline", "loop"):
         return doc.boolean(value, ptr)
+    if key == "joints":
+        if value == "all":
+            return value
+        if not isinstance(value, list) or not 1 <= len(value) <= 512:
+            doc.issues.add("INVALID_VALUE", 'joints is "all" or a list of 1 to 512 names', ptr)
+            return BAD
+        names = [doc.string(v, join(ptr, k), max_length=128) for k, v in enumerate(value)]
+        return BAD if any(n is BAD for n in names) else names
+    if key == "subject":
+        if isinstance(value, str):
+            return doc.string(value, ptr)
+        v = doc.vector(value, ptr)
+        return BAD if v is BAD else list(v)
+    if key == "level":
+        return doc.enum(value, ptr, ("info", "warning", "error"))
+    if key == "thresholds":
+        from ..animation.quality import DEFAULTS
+
+        obj = doc.object(value, ptr, "thresholds {name: number}")
+        if obj is None:
+            return BAD
+        out = {}
+        for k, v in obj.items():
+            if k not in DEFAULTS:
+                doc.issues.add("UNKNOWN_KEY", f"unknown threshold {k!r}", join(ptr, k),
+                               hint=f"thresholds: {', '.join(DEFAULTS)}")  # fmt: skip
+                return BAD
+            n = doc.number(v, join(ptr, k))
+            if n is BAD:
+                return BAD
+            out[k] = n
+        return out
     if key == "ignore":
         if not isinstance(value, list) or not 1 <= len(value) <= 64:
             doc.issues.add("INVALID_VALUE", "ignore is a list of 1 to 64 finding codes", ptr)

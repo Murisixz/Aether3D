@@ -281,6 +281,11 @@ numbers in [0, 1].
 | `ortho_scale` | number > 0 | Orthographic view size in world units, along `fov_axis`. |
 | `near`, `far` | numbers | Perspective: 0 < near < far and far/near ≤ 10⁹. Orthographic: 0 ≤ near < far. |
 | `aspect_ratio` | number in [10⁻³, 10³] or `null` | Preferred frame width / height. |
+| `sensor` | number in [1, 1000] | Sensor size in mm along `fov_axis` (the focal length is `sensor / (2 tan(fov/2))`). Since version 13. |
+| `shift_x`, `shift_y` | numbers in [−10, 10] | Lens shift in units of the image's larger side. Since version 13. |
+| `fstop` | 0, or a number in [0.1, 10⁴] | The aperture's f-number; 0 is a pinhole. Since version 13. |
+| `focus_distance`, `focus_object` | number in [10⁻⁶, 10¹²], an object id or `null` | The plane in focus. Since version 13. |
+| `aperture_blades`, `aperture_rotation`, `aperture_ratio` | 0 or 3–16, [−360, 360] degrees, [0.01, 100] | The aperture's shape. Since version 13. |
 
 Cameras look along their object's local −Y axis with local +Z up.
 
@@ -288,13 +293,24 @@ Cameras look along their object's local −Y axis with local +Z up.
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `type` | `"directional"` or `"point"` | Directional lights shine along the object's local −Y axis; point lights shine from its position. |
+| `type` | `"directional"`, `"point"`, `"spot"` or `"area"` (the last two since version 13) | Directional, spot and area lights shine along the object's local −Y axis; point and spot lights from its position; area lights from a shape centred there. |
 | `color` | color | Light color. |
 | `intensity` | number in [0, 10⁹] | Unitless multiplier (see [RENDERING.md](RENDERING.md)). |
 | `range` | number > 0 or `null` | Point lights: smooth fade-out distance. |
 | `falloff` | `"inverse_square"` or `"none"` | Point lights: distance attenuation. |
 | `radius` | number in [0, 10⁹] | Point lights: radius of the emitting sphere (path tracer soft shadows; 0: a point). Since version 5. |
 | `angle` | number in [0, 180] | Directional lights: angular diameter in degrees (path tracer soft shadows; 0: parallel rays). Since version 5. |
+| `spot_size`, `spot_blend` | 0.1–180, 0–1 | Spot lights' cone (full angle, degrees) and soft edge. Since version 13. |
+| `shape`, `size`, `size_y`, `spread` | `"square"`, `"rectangle"`, `"disk"` or `"ellipse"`; numbers in [10⁻⁶, 10⁶]; 1–180 | Area lights' shape, sizes (local X, Z) and emission spread in degrees. Since version 13. |
+| `units` | `"aether"` or `"watts"` | How `intensity` is read. Since version 13. |
+| `temperature`, `use_temperature` | 100–100000, boolean | Colour temperature (kelvins; the colour is computed at 800–12000), and whether it tints the colour. Since version 13. |
+| `exposure` | number in [−40, 40] | Stops scaling the intensity. Since version 13. |
+| `shadow` | boolean | Whether the light is occluded. Since version 13. |
+| `include`, `exclude` | arrays of object ids | Light linking. Since version 13. |
+
+Since version 13 every light key is written; a version 12 light gets the defaults (a
+spot of 45 degrees, a 1 m square, spread 180, `aether` units, 6500 K unused, exposure 0,
+shadows, no links), which light exactly as before.
 
 **`appearance`:** `color` (color), `specular` (0–1) and `shininess` (1–10000).
 
@@ -303,12 +319,16 @@ Cameras look along their object's local −Y axis with local +Z up.
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `type` | `"ambient"`, `"uniform"` or `"sky"` | What the path tracer sees where rays leave the scene: the ambient light as a uniform environment (camera rays show `background`), a uniform `color`, or a procedural sky. See [RENDER_QUALITY.md](RENDER_QUALITY.md). |
+| `type` | `"ambient"`, `"uniform"`, `"sky"` or `"image"` (since version 13) | What the path tracer sees where rays leave the scene: the ambient light as a uniform environment (camera rays show `background`), a uniform `color`, a procedural sky, or an HDR image (which lights the rasterizers too). See [RENDER_QUALITY.md](RENDER_QUALITY.md). |
 | `color` | color | Uniform environment color. |
 | `intensity` | number in [0, 10⁶] | Radiance multiplier of `"uniform"` and `"sky"`. |
 | `zenith_color`, `horizon_color`, `ground_color` | colors | The sky gradient: straight up (+Z), at the horizon, below it. |
+| `image` | string or `null` | `"image"`: a relative POSIX path of an `.hdr`/`.pic`/`.pfm` file inside the project's directory, or `"builtin:studio"`, `"builtin:overcast"`, `"builtin:sunset"`, `"builtin:night"`. Since version 13. |
+| `rotation` | number in [−10⁶, 10⁶] | Degrees about +Z. Since version 13. |
+| `visible` | boolean | Whether camera rays see the image (else `background`). Since version 13. |
 
-All six keys are always written. The rasterizers ignore `environment`.
+All keys are always written. The rasterizers ignore `environment` except an image's
+lighting (version 13).
 
 Since version 10, `world.atmosphere` (all keys always written; off by default, so scenes
 render as before; see [RENDERING.md](RENDERING.md)):
@@ -342,7 +362,7 @@ The meaning of every value is in [MATERIALS.md](MATERIALS.md).
 | --- | --- | --- |
 | `id`, `name` | strings | Required. |
 | `model` | `"standard"` or `"simple"` | Required. |
-| parameters | | The model's parameters: `base_color`, `opacity`, `alpha_mode`, `alpha_cutoff`, `specular`, `emissive`, `emissive_strength`, `normal_strength`, `occlusion_strength`, `double_sided`, plus `metallic` and `roughness` (standard) or `shininess` (simple). Colors are display (sRGB) values. Missing parameters take their defaults; parameters of the other model are errors. |
+| parameters | | The model's parameters: `base_color`, `opacity`, `alpha_mode`, `alpha_cutoff`, `specular`, `emissive`, `emissive_strength`, `normal_strength`, `occlusion_strength`, `double_sided`, plus `metallic`, `roughness`, `transmission` and `ior` (standard; the last two since version 13) or `shininess` (simple). Colors are display (sRGB) values. Missing parameters take their defaults; parameters of the other model are errors. |
 | `textures` | object | `{slot: binding}` for the slots `base_color`, `opacity`, `metallic`, `roughness` (standard only), `normal`, `emissive` and `occlusion`. |
 
 **Texture binding:** `texture` (a texture id, required) and the options
@@ -488,7 +508,7 @@ settings and the items, each with an immutable JSON definition.
 | Key | Description |
 | --- | --- |
 | `settings` | The timeline: `fps` (an integer or an exact rational `"num/den"`), `start` and `end` (seconds), `markers` (`{time, name, data?}`), `sections`, `enabled`. |
-| `items` | Every item: `id`, `kind` (`clip`, `binding`, `rig`, `skin`, `constraints`, `morph`, `path`, `sequence`), `name`, `definition` (plain JSON: clips hold channels by property path as structure-of-arrays keys, rotation tracks, modifiers and events; bindings reference an object or material and clips by id; rigs, skins, morph targets and constraints reference scene objects by id). |
+| `items` | Every item: `id`, `kind` (`clip`, `binding`, `rig`, `skin`, `constraints`, `morph`, `path`, `sequence`), `name`, `definition` (plain JSON: clips hold channels by property path as structure-of-arrays keys, rotation tracks, modifiers and events; bindings reference an object or material (or, since version 13, the world: `{"world": "world"}`) and clips by id; rigs, skins, morph targets and constraints reference scene objects by id). |
 
 Since version 11 (0.19.0) rig and skin definitions may carry the character-rigging data
 ([CHARACTER_RIGGING.md](CHARACTER_RIGGING.md)), all optional: joints `role` and
@@ -501,6 +521,14 @@ the part of the bone, head to tail, whose segment heat weights use; default `[0,
 skins `normals` (`"joints"`, the default when absent, or `"surface"`) and `smooth`
 (corrective smoothing: `{"iterations": 1..100, "strength": (0, 1], "region": "blend" |
 "all", "weights": "cotangent" | "uniform"}`, absent for none).
+
+Since version 13 (0.20.0), also optional: a curve's `smoothing` (`"local"` when absent,
+`"blender"` or `"continuous"`: how its automatic handles are computed), the modifiers
+`generator`, `function` and `cycles`, and a strip's `blend_curve` (`"linear"` when absent,
+`"smooth"`, `"smoother"`). The `back` parameter of `back` easing with `in_out` is
+Blender's (Penner's scale of 1.525 is applied when the curve is evaluated): the migration
+from 12 divides the stored values of such keys (and of rotation timings `{"easing":
+"back", "ease": "in_out"}`) by 1.525, so they evaluate as before.
 
 Only authored data is stored: evaluated poses, deformed meshes and the current time are
 not. Definitions are checked by their item kinds on load as on any change (finite
@@ -595,6 +623,7 @@ copy comes back to the same document.
 | 10 | 0.18.0 | Procedural worlds and outdoor rendering: `scene.worlds`, `scene.world.atmosphere` and optional mesh `colors`. The migration from 9 adds no worlds and the default atmosphere (off), so every project loads and renders unchanged. |
 | 11 | 0.19.0 | Character rigging: optional joint `role` and `deform`, swing-twist and hinge limits, rig `controls`, `correctives`, `landmarks`, `template`, `info`, `enforce_limits`, `twist` constraints and IK `bend_axis`, blended skins (`method: "blended"`, `dq`) and weight locks. The migration from 10 changes nothing: a version 10 document has none of them. |
 | 12 | 0.19.1 | The rigging revision: optional joint `span`, skin `normals` and `smooth`. The migration from 11 changes nothing: a version 11 document has none of them (its skins keep joint normals and no smoothing). |
+| 13 | 0.20.0 | Animation, lighting and film: camera lens keys; spot and area lights, light `units`, `temperature`, `exposure`, `shadow`, `include`/`exclude`; image environments; material `transmission` and `ior`; curve `smoothing`, new modifiers, strip `blend_curve`, world bindings. The migration from 12 writes the lens and light defaults (every camera a pinhole, every light as before), the environment's image keys, and divides the `back` of `in_out` back-eased keys by 1.525 (their curves keep their shapes); curves without `smoothing` keep the local automatic handles. Every project loads and renders unchanged. |
 
 Aether3D 0.2.0 and 0.3.0 read and write version 1 unchanged, and Aether3D
 0.6.0 reads and writes version 3 unchanged (GPU rendering added render

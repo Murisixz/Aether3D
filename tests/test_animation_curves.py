@@ -140,7 +140,7 @@ def hermite(t0, t1, v0, v1, m0, m1, t):
 def test_auto_handles_are_the_parabola_slopes_and_give_a_c1_hermite_spline():
     t = np.array([0.0, 1.0, 3.0, 4.0, 7.0])
     v = np.array([0.0, 2.0, 1.0, 5.0, 0.0])
-    c = FCurve.from_arrays(t, v, handles="auto")
+    c = FCurve.from_arrays(t, v, handles="auto", smoothing="local")
     sec = np.diff(v) / np.diff(t)
     slopes = np.empty(5)
     slopes[0], slopes[-1] = sec[0], sec[-1]

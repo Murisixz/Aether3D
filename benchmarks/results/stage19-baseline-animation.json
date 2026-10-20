@@ -1,0 +1,198 @@
+{
+  "label": "v0.19.1",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.19.1",
+    "switches": {
+      "AETHER3D_EDITING_BULK": true,
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true,
+      "AETHER3D_RIG_LAZY_FK": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.19.1",
+      "reason": "loaded"
+    },
+    "git": "7752729",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "curves:100": {
+      "keys": 100,
+      "times": 100000,
+      "evaluate_ms": 5.044,
+      "evaluate_order3_ms": 8.265,
+      "weighted_evaluate_ms": 9.013,
+      "batch_1000_ms": 0.14,
+      "peak_rss_mib": 75.8
+    },
+    "curves:10000": {
+      "keys": 10000,
+      "times": 100000,
+      "evaluate_ms": 5.859,
+      "evaluate_order3_ms": 8.802,
+      "weighted_evaluate_ms": 9.688,
+      "batch_1000_ms": 0.141,
+      "peak_rss_mib": 79.7
+    },
+    "objects:100": {
+      "objects": 100,
+      "build_s": 0.085,
+      "evaluate_ms": 0.425,
+      "overlay_ms": 0.505,
+      "posed_worlds_ms": 0.605,
+      "peak_rss_mib": 65.4
+    },
+    "objects:1000": {
+      "objects": 1000,
+      "build_s": 0.566,
+      "evaluate_ms": 1.228,
+      "overlay_ms": 1.734,
+      "posed_worlds_ms": 2.483,
+      "peak_rss_mib": 88.4
+    },
+    "objects:10000": {
+      "objects": 10000,
+      "build_s": 5.632,
+      "evaluate_ms": 9.577,
+      "overlay_ms": 13.853,
+      "posed_worlds_ms": 23.867,
+      "peak_rss_mib": 375.9
+    },
+    "instances:1000": {
+      "objects": 1000,
+      "strips": 1000,
+      "build_s": 0.051,
+      "evaluate_ms": 0.44,
+      "overlay_ms": 0.915,
+      "posed_worlds_ms": 1.659,
+      "peak_rss_mib": 65.6
+    },
+    "instances:10000": {
+      "objects": 10000,
+      "strips": 10000,
+      "build_s": 0.423,
+      "evaluate_ms": 2.706,
+      "overlay_ms": 7.098,
+      "posed_worlds_ms": 14.709,
+      "peak_rss_mib": 175.3
+    },
+    "rig:50": {
+      "joints": 50,
+      "evaluate_ms": 0.24,
+      "rigging_ms": 0.329,
+      "pose_joints_ms": 0.353,
+      "peak_rss_mib": 56.9
+    },
+    "rig:200": {
+      "joints": 200,
+      "evaluate_ms": 0.401,
+      "rigging_ms": 0.53,
+      "pose_joints_ms": 0.6,
+      "peak_rss_mib": 59.4
+    },
+    "skin:10000": {
+      "vertices": 10000,
+      "influences": 4,
+      "joints": 64,
+      "native_available": true,
+      "numpy_ms": 2.043,
+      "native_1_thread_ms": 0.201,
+      "native_threads": 20,
+      "native_all_threads_ms": 0.201,
+      "bitwise_equal": true,
+      "dual_quaternion_ms": 0.773,
+      "peak_rss_mib": 57.9
+    },
+    "skin:100000": {
+      "vertices": 100000,
+      "influences": 4,
+      "joints": 64,
+      "native_available": true,
+      "numpy_ms": 22.357,
+      "native_1_thread_ms": 2.001,
+      "native_threads": 20,
+      "native_all_threads_ms": 0.808,
+      "bitwise_equal": true,
+      "dual_quaternion_ms": 6.142,
+      "peak_rss_mib": 85.3
+    },
+    "skin:1000000": {
+      "vertices": 1000000,
+      "influences": 4,
+      "joints": 64,
+      "native_available": true,
+      "numpy_ms": 175.939,
+      "native_1_thread_ms": 20.45,
+      "native_threads": 20,
+      "native_all_threads_ms": 6.374,
+      "bitwise_equal": true,
+      "dual_quaternion_ms": 59.279,
+      "peak_rss_mib": 225.7
+    },
+    "crowd": {
+      "objects": 10337,
+      "rigs": 48,
+      "crowd_build_s": 0.364,
+      "evaluate_ms": 3.653,
+      "overlay_ms": 30.608,
+      "posed_worlds_ms": 38.779,
+      "peak_rss_mib": 217.5
+    },
+    "ik": {
+      "two_bone_us": 12.363,
+      "fabrik_12_us": 922.5,
+      "rigging_with_ik_ms": 0.487,
+      "peak_rss_mib": 66.0
+    },
+    "nla": {
+      "layers": 4,
+      "strips": 16,
+      "evaluate_ms": 0.771,
+      "peak_rss_mib": 55.7
+    },
+    "generate": {
+      "walk_ms": 222.824,
+      "walk_keys": 644,
+      "land_ms": 721.0,
+      "land_keys": 616,
+      "blocky_walk_ms": 100.266,
+      "peak_rss_mib": 65.4
+    },
+    "frames": {
+      "frames": 48,
+      "size": "320x180",
+      "cpu_frames": 49,
+      "cpu_seconds": 2.062,
+      "cpu_ms_per_frame": 42.082,
+      "gpu_frames": 49,
+      "gpu_seconds": 0.181,
+      "gpu_ms_per_frame": 3.691,
+      "cpu_motion_blur_4_ms": 129.504,
+      "peak_rss_mib": 383.7
+    },
+    "gltf": {
+      "export_clips_ms": 40.586,
+      "export_bake_ms": 52.0,
+      "clips_bytes": 67148,
+      "baked_bytes": 50472,
+      "import_ms": 10.433,
+      "peak_rss_mib": 75.6
+    },
+    "fit": {
+      "simplify_10000_ms": 75.268,
+      "simplify_keys_after": 347,
+      "fit_20000_ms": 16.093,
+      "fit_keys": 579,
+      "peak_rss_mib": 87.4
+    }
+  }
+}

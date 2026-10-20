@@ -36,8 +36,9 @@ import numpy as np
 
 from ...diagnostics import INFO, WARNING, Diagnostic
 from ...errors import RenderError
-from ..pathtrace.integrator import PathFrame, estimate_work
+from ..pathtrace.integrator import PathFrame, adaptive_rounds, converged, estimate_work
 from ..pathtrace.lights import LightSet
+from ..pathtrace.sampling import SOBOL_DIRECTIONS, filter_table
 from ..pathtrace.scene import MAX_LAYERS, PathScene
 from ..raytrace.accel import KIND_INNER, _round_out
 from ..scene_data import RenderScene
@@ -46,26 +47,29 @@ from ..surface import LUMINANCE
 from ..tangents import corner_tangents, meshes_needing_tangents
 from .device import GPUContext, translate_errors
 from .materials import HEADER_IMAGES, IMAGE_WORDS, image_key, pack_material_data
-from .resources import pack_instances
+from .resources import link_masks, pack_instances
 
 WORKGROUP = 8
 STACK_SIZE = 64
 """Traversal stack entries per ray in the kernel (``PT_STACK``)."""
-ACC_PLANES = 22
+ACC_PLANES = 23  # (plane 22: adaptive sampling's active pixels)
+ACC_ACTIVE = 22
 """Per-pixel float32 sums (see the kernel's ``ACC_*``)."""
 COUNTER_SLOTS = 8
 HEADER_WORDS = 16
 INST_WORDS = 24
-LIGHT_WORDS = 24
+LIGHT_WORDS = 44
 EMITTER_WORDS = 12
-PARAMS_WORDS = 116  # 68 + struct Atmo (48)
+PARAMS_WORDS = 128  # 68 + struct Atmo (48) + lens, aperture, film (4 each)
 TILE = 512
 """Largest tile side of one dispatch (bounds the work and the 32-bit counters per dispatch)."""
 MAX_PIXEL_SAMPLES_PER_DISPATCH = 1 << 20
 """Pixel samples one dispatch may trace when no progress callback asks for every pass."""
 MODE_PATHS, MODE_CENTER, MODE_RNG = 0, 1, 2
-FLAG_PERSPECTIVE, FLAG_PASS_THROUGH, FLAG_AO, FLAG_SIZED_LIGHTS = 1, 2, 4, 8
-ENV_KINDS = {"ambient": 0, "uniform": 1, "sky": 2}
+FLAG_PERSPECTIVE, FLAG_PASS_THROUGH, FLAG_AO, FLAG_SIZED_LIGHTS, FLAG_SOBOL = 1, 2, 4, 8, 16
+FLAG_FILTER = 32
+FLAG_ADAPTIVE = 64
+ENV_KINDS = {"ambient": 0, "uniform": 1, "sky": 2, "image": 3}
 CULLS = {"none": 0, "back": 1, "front": 2}
 RAY_COUNTERS = (
     "camera_rays",
@@ -181,19 +185,40 @@ def _light_records(rs: RenderScene, lights: LightSet, eye: np.ndarray) -> np.nda
                 f[k, 17] = 1.0 / (2.0 * math.pi * omc)
                 f[k, 18:21] = lights.radiance[k] / math.sin(half) ** 2
             f[k, 21] = 2.0 / (1.0 + lights.cos_max[k])
+        elif lights.kind[k] == 3:
+            data[k, 0] = 3
+            data[k, 1] = 1  # BSDF rays find it
+            f[k, 8:11] = light.position - eye
+            f[k, 24:27] = light.direction
+            data[k, 29] = int(light.shape in ("disk", "ellipse"))
+            f[k, 30] = light.area
+            f[k, 31:34] = light.axis_x
+            f[k, 34:37] = light.axis_y
+            f[k, 37:40] = light.area_radiance
+            f[k, 40] = light.spread_tan
+            f[k, 41] = light.spread_norm
         else:
-            data[k, 0] = 1
+            data[k, 0] = lights.kind[k]
             data[k, 1] = int(lights.radius[k] > 0.0)
             data[k, 2] = int(lights.inverse_square[k])
             data[k, 3] = int(np.isfinite(lights.range[k]))
             f[k, 7] = lights.range[k] if np.isfinite(lights.range[k]) else 0.0
             f[k, 8:11] = lights.position[k] - eye
             f[k, 11] = lights.radius[k]
+            if lights.kind[k] == 2:
+                f[k, 24:27] = light.direction
+                f[k, 27] = light.cos_outer
+                f[k, 28] = light.spot_smooth
+        data[k, 22] = 0 if lights.shadow is None or lights.shadow[k] else 1
     return data
 
 
 def pack_scene_words(
-    ps: PathScene, lights: LightSet, eye: np.ndarray, mesh_tri_base: np.ndarray
+    ps: PathScene,
+    lights: LightSet,
+    eye: np.ndarray,
+    mesh_tri_base: np.ndarray,
+    path_filter: tuple[str, float] | None = None,
 ) -> np.ndarray:
     """The kernel's ``pt`` words: header, BVH, instances, lights and emitters."""
     accel = ps.accel
@@ -226,6 +251,7 @@ def pack_scene_words(
         inst[:n_inst, 18] = accel.inst_root
         inst[:n_inst, 19] = mesh_tri_base[[i.mesh for i in rs.instances]]
         inst[:n_inst, 20] = ps.tri_offset[:n_inst]
+        inst[:n_inst, 21], inst[:n_inst, 22] = link_masks(rs, np.arange(n_inst))
     em = lights.emitters
     if em is not None:
         emitters = np.zeros((em.count, EMITTER_WORDS), dtype=np.uint32)
@@ -254,6 +280,9 @@ def pack_scene_words(
         emitters.reshape(-1),
         cdf.view(np.uint32),
         lookup,
+        _environment_words(ps.environment),
+        SOBOL_DIRECTIONS.reshape(-1).astype(np.uint32),
+        _filter_words(path_filter),
     ]
     header = np.zeros(HEADER_WORDS, dtype=np.uint32)
     offset = HEADER_WORDS
@@ -261,6 +290,37 @@ def pack_scene_words(
         header[k] = offset
         offset += region.shape[0]
     return np.concatenate([header, *regions]).astype(np.uint32)
+
+
+def _filter_words(path_filter) -> np.ndarray:
+    """The pixel filter's inverse CDF (float32 words), or a placeholder for the box."""
+    if path_filter is None or path_filter[0] == "box":
+        return np.zeros(4, dtype=np.uint32)
+    return filter_table(*path_filter).view(np.uint32)
+
+
+def _environment_words(env) -> np.ndarray:
+    """An image environment's words: width, height, cells (nu, nv), its pixels (RGB
+    float32, row 0 at the top), the marginal CDF and the conditional CDFs (float32); a
+    placeholder for the other environments."""
+    if env.kind != "image":
+        return np.zeros(4, dtype=np.uint32)
+    img = env.image
+    t = img.tables()
+    nv, nu = t["cells"]
+    head = np.array([img.width, img.height, nu, nv], dtype=np.uint32)
+    if t["black"]:
+        marg = np.zeros(nv + 1, np.float32)
+        cond = np.zeros((nv, nu + 1), np.float32)
+    else:
+        marg, cond = t["marginal"], t["conditional"]
+    parts = [
+        head,
+        np.ascontiguousarray(img.pixels, dtype=np.float32).reshape(-1).view(np.uint32),
+        np.ascontiguousarray(marg, dtype=np.float32).view(np.uint32),
+        np.ascontiguousarray(cond, dtype=np.float32).reshape(-1).view(np.uint32),
+    ]
+    return np.concatenate(parts)
 
 
 class Params:
@@ -312,12 +372,15 @@ def base_params(
     pr.vec(28, env.horizon)
     pr.u(31, len(rs.instances))
     pr.vec(32, env.ground)
-    sized = bool(np.any((lights.kind == 0) & (lights.cos_max < 1.0)) or np.any(lights.radius > 0))
+    sized = lights.sized  # suns, light spheres and area lights BSDF rays can find
     flags = (
         (FLAG_PERSPECTIVE if cam.is_perspective else 0)
         | (FLAG_PASS_THROUGH if ps.pass_through else 0)
         | (FLAG_AO if ao is not None else 0)
         | (FLAG_SIZED_LIGHTS if sized else 0)
+        | (FLAG_SOBOL if path.sampler == "sobol" else 0)
+        | (FLAG_FILTER if path.filter != "box" else 0)
+        | (FLAG_ADAPTIVE if path.adaptive_threshold > 0.0 and path.integrator == "path" else 0)
     )
     pr.u(35, flags)
     pr.u(36, path.seed & 0xFFFFFFFF)
@@ -344,6 +407,19 @@ def base_params(
     from .resources import pack_atmosphere
 
     pr.words[68:116] = pack_atmosphere(rs).view(np.uint32)
+    ox, oy = cam.ndc_offset(width / height)
+    pr.floats[116:120] = (ox, oy, cam.aperture_radius(), rs.camera.focus_distance)
+    rot = math.radians(cam.aperture_rotation)
+    pr.floats[120:124] = (
+        float(cam.aperture_blades),
+        math.cos(rot),
+        math.sin(rot),
+        1.0 / cam.aperture_ratio,
+    )
+    if env.kind == "image":
+        cos_r, sin_r = env.image.cos_sin
+        pr.floats[124:127] = (cos_r, sin_r, env.image.intensity)
+        pr.words[127] = (1 if env.visible else 0) | (2 if env.sampled else 0)
     return pr
 
 
@@ -442,7 +518,7 @@ def render_scene(
         instance_words.view(np.uint32)[: len(rs.instances), 29] & 16, 2 * total_vertices, 0
     )
     materials = pack_material_data(rs, order)
-    scene_words = pack_scene_words(ps, lights, eye, mesh_tri_base)
+    scene_words = pack_scene_words(ps, lights, eye, mesh_tri_base, (path.filter, path.filter_width))
     n_pix = width * height
     n_inst = len(rs.instances)
     byte_sizes = {
@@ -552,17 +628,42 @@ def render_scene(
             per = 1
         done = 0
         stopped = False
-        while done < path.samples:
-            count = min(per, path.samples - done)
-            for tile in tiles:
-                dispatch(MODE_PATHS, tile, done, count)
-            done += count
-            if (
-                progress is not None
-                and progress(done, path.samples, time.perf_counter() - t_start) is False
-                and done < path.samples
-            ):
-                stopped = True
+        adaptive = path.adaptive_threshold > 0.0 and path.integrator == "path"
+        counts = np.zeros(n_pix) if adaptive else None
+        if adaptive:  # every pixel active to begin with
+            context.queue.write_buffer(accum, ACC_ACTIVE * n_pix * 4, np.ones(n_pix, np.float32))
+            limits_ = adaptive_rounds(path)
+        else:
+            limits_ = [(0, path.samples)]
+        active = np.ones(n_pix, dtype=bool)
+        for s0, s1 in limits_:
+            if adaptive and s0 > 0:  # which pixels go on: read back their estimates
+                p = np.frombuffer(context.queue.read_buffer(accum), dtype=np.float32).reshape(
+                    ACC_PLANES, n_pix
+                )
+                n_now = np.maximum(counts, 2.0)[:, None]
+                mean_now = p[14:17].T.astype(np.float64)
+                var_now = np.maximum(p[17:20].T.astype(np.float64), 0.0) / (n_now * (n_now - 1))
+                active &= ~converged(mean_now, var_now, width, height, path.adaptive_threshold)
+                if not active.any():
+                    break
+                context.queue.write_buffer(accum, ACC_ACTIVE * n_pix * 4, active.astype(np.float32))
+            done = s0
+            while done < s1:
+                count = min(per, s1 - done)
+                for tile in tiles:
+                    dispatch(MODE_PATHS, tile, done, count)
+                done += count
+                if (
+                    progress is not None
+                    and progress(done, path.samples, time.perf_counter() - t_start) is False
+                    and done < path.samples
+                ):
+                    stopped = True
+                    break
+            if adaptive:
+                counts[active] += done - s0
+            if stopped:
                 break
         t_trace = time.perf_counter() - t_trace
 
@@ -580,7 +681,9 @@ def render_scene(
             created.destroy()
         compile_seconds = context.shaders.compile_seconds - compile_before
 
-    frame = _frame(planes, done, width, height, path, ao, ray_counts, visible, ps, lights, stopped)
+    frame = _frame(
+        planes, done, width, height, path, ao, ray_counts, visible, ps, lights, stopped, counts
+    )
     frame.timings = {
         "setup": t_setup,
         "bvh": ps.timings["bvh"],
@@ -640,29 +743,40 @@ def _frame(
     ps: PathScene,
     lights: LightSet,
     stopped: bool,
+    counts: np.ndarray | None = None,
 ) -> PathFrame:
-    """The CPU path tracer's outputs (passes, coverage, noise, counts) from the GPU's sums."""
+    """The CPU path tracer's outputs (passes, coverage, noise, counts) from the GPU's sums
+    (``counts``: each pixel's samples, adaptive sampling)."""
     n_pix = width * height
     shape = (height, width)
-    inv = 1.0 / spp
+    inv = 1.0 / spp if counts is None else 1.0 / np.maximum(counts, 1.0)
     p = planes.astype(np.float64)
 
     def rgb(k: int) -> np.ndarray:
         return p[k : k + 3].T
 
     mean = rgb(14)
-    if spp > 1:
+    if counts is not None:
+        n = np.maximum(counts, 1.0)[:, None]
+        variance = np.maximum(rgb(17), 0.0) / (n * np.maximum(n - 1.0, 1.0))
+        variance[counts < 2] = np.inf
+    elif spp > 1:
         variance = np.maximum(rgb(17), 0.0) / (spp * (spp - 1))
     else:
         variance = np.full((n_pix, 3), np.inf)
+    inv3 = inv if counts is None else inv[:, None]
     passes = {
         "beauty": mean.reshape(*shape, 3),
-        "direct": (rgb(0) * inv).reshape(*shape, 3),
-        "indirect": (rgb(3) * inv).reshape(*shape, 3),
-        "albedo": (rgb(6) * inv).reshape(*shape, 3),
-        "normal": (rgb(9) * inv).reshape(*shape, 3),
+        "direct": (rgb(0) * inv3).reshape(*shape, 3),
+        "indirect": (rgb(3) * inv3).reshape(*shape, 3),
+        "albedo": (rgb(6) * inv3).reshape(*shape, 3),
+        "normal": (rgb(9) * inv3).reshape(*shape, 3),
         "depth": planes[20].reshape(shape).copy(),
-        "sample_count": np.full(shape, spp, dtype=np.int32),
+        "sample_count": (
+            np.full(shape, spp, dtype=np.int32)
+            if counts is None
+            else counts.astype(np.int32).reshape(shape)
+        ),
         "variance": variance.reshape(*shape, 3),
     }
     passes["depth"][passes["depth"] >= 3.0e38] = np.inf
@@ -703,16 +817,20 @@ def _frame(
         "mean_standard_error": float(err[lit].mean()) if measured else None,
         "mean_relative_error": float((err[lit] / lum[lit]).mean()) if measured else None,
     }
+    per_pixel = counts
     counts = {
         **{k: v for k, v in ray_counts.items() if k != "pass_through_rays"},
         "triangles": ps.triangle_count,
         "instances": len(ps.rs.instances),
         "lights": lights.count,
         "emissive_triangles": 0 if lights.emitters is None else lights.emitters.count,
-        "paths": int(n_pix * spp),
+        "paths": int(n_pix * spp if per_pixel is None else per_pixel.sum()),
         "samples_per_pixel": int(spp),
-        "pass_through_rays": ray_counts["pass_through_rays"],
     }
+    if per_pixel is not None:  # adaptive sampling (as the CPU path tracer reports it)
+        counts["samples_mean"] = float(per_pixel.mean())
+        counts["pixels_converged_early"] = int(np.count_nonzero(per_pixel < spp))
+    counts["pass_through_rays"] = ray_counts["pass_through_rays"]
     linear = passes["beauty"]
     passes = {k: v for k, v in passes.items()}
     return PathFrame(
@@ -729,7 +847,7 @@ def _frame(
 
 
 def random_numbers(
-    context: GPUContext, seed: int, width: int, height: int, sample: int
+    context: GPUContext, seed: int, width: int, height: int, sample: int, sampler: str = "random"
 ) -> np.ndarray:
     """Test hook: the kernel's random numbers for a few fixed decisions, ``(4, height, width)``.
 
@@ -744,9 +862,13 @@ def random_numbers(
         storage = wgpu.BufferUsage.STORAGE
         empty = np.zeros(64, np.uint32)  # at least one element of every binding's type
         bufs = [device.create_buffer_with_data(data=empty, usage=storage) for _ in range(4)]
-        scene = np.zeros(HEADER_WORDS + 4, np.uint32)
+        sobol = SOBOL_DIRECTIONS.reshape(-1).astype(np.uint32)
+        scene = np.zeros(HEADER_WORDS + sobol.size, np.uint32)
+        scene[11] = HEADER_WORDS  # H_SOBOL
+        scene[HEADER_WORDS:] = sobol
         bufs.append(device.create_buffer_with_data(data=scene, usage=storage))
         pr = Params()
+        pr.u(35, FLAG_SOBOL if sampler == "sobol" else 0)
         pr.u(36, seed & 0xFFFFFFFF)
         pr.u(37, seed >> 32)
         pr.u(38, width)

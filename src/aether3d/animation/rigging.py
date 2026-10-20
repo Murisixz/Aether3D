@@ -791,11 +791,37 @@ def _run_object_constraints(
             if c.type == "child_of" and c.p["inverse"] is None:
                 target_rest = _target_rest(c, scene)
                 c = _with_inverse(c, target_rest)
+            view = None
+            if c.type == "look_at" and c.p.get("screen") is not None:
+                view = _camera_view(system, pose, obj)
             out = apply_constraint(
-                c, world, target, None if target is None else target[:3, 3], parent=p_world
+                c,
+                world,
+                target,
+                None if target is None else target[:3, 3],
+                parent=p_world,
+                view=view,
             )
         world = blend_matrices(world, out, w)
     worlds.set_local(obj, np.linalg.solve(p_world, world))
+
+
+def _camera_view(system: AnimationSystem, pose: AnimationPose, obj: Any):
+    """``(hx, hy, ox, oy)`` of a camera object at this pose (its animated lens, the frame
+    shape of its aspect_ratio or the scene's render size), or ``None``."""
+    from ..rendering.scene_data import _with_fields
+
+    cam = obj.camera
+    if cam is None or not cam.is_perspective:
+        return None
+    values = pose.fields.get((obj._id, "camera"))
+    if values:
+        cam = _with_fields(cam, values)
+    r = system.scene.render_settings
+    aspect = cam.aspect_ratio or (r.width / r.height)
+    hx, hy = cam.half_extents(aspect)
+    ox, oy = cam.ndc_offset(aspect)
+    return hx, hy, ox, oy
 
 
 def _target_rest(c: Constraint, scene: Any) -> np.ndarray:

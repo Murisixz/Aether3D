@@ -439,3 +439,29 @@ def test_module_entry_point(project, tmp_path):
         [sys.executable, "-m", "aether3d", "render"], capture_output=True, text=True, check=False
     )
     assert usage.returncode == 2
+
+
+def test_render_writes_exr_and_16_bit_masters(tmp_path, capsys):
+    """0.20.0: ``-o x.exr`` (scene-linear OpenEXR with the path tracers' passes) and
+    ``--bits 16`` (a 16-bit PNG master of the view transform)."""
+    from aether3d.rendering.exr import read_exr
+
+    scene = Scene()
+    scene.add_sphere("Ball")
+    scene.add_camera("Cam", position=(0, -4, 0), look_at=(0, 0, 0))
+    project = tmp_path / "ball.aether"
+    scene.save(project)
+    exr = tmp_path / "ball.exr"
+    code, out = run_json(capsys, "render", str(project), "-o", str(exr), "--backend", "path",
+                         "--spp", "2", "--width", "24", "--height", "16")  # fmt: skip
+    assert code == 0 and out["output"] == str(exr.resolve())
+    assert {"R", "G", "B", "Z", "normal.X"} <= set(read_exr(exr))
+    png = tmp_path / "ball16.png"
+    code, out = run_json(capsys, "render", str(project), "-o", str(png), "--bits", "16",
+                         "--width", "24", "--height", "16", "--tonemap", "film")  # fmt: skip
+    with PIL.open(png) as image:
+        assert code == 0 and image.mode in ("I;16", "I", "RGB") and image.size == (24, 16)
+    assert png.read_bytes()[24] == 16  # (the IHDR bit depth)
+    code, out = run_json(capsys, "render", str(project), "-o", str(tmp_path / "x.hdr"),
+                         "--bits", "16")  # fmt: skip
+    assert code != 0 and "png" in out["error"]["message"]

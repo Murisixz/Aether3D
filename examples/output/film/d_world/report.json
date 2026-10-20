@@ -1,0 +1,149 @@
+{
+ "showcase": "D camera through a world",
+ "quick": false,
+ "world": {
+  "preset": "alpine_valley",
+  "seed": 7,
+  "regional": {
+   "domain": [
+    -4096.0,
+    -4096.0,
+    4096.0,
+    4096.0
+   ],
+   "cell": 16.0,
+   "nodes": 263169,
+   "rivers": 26,
+   "river_length_km": 15.459,
+   "lakes": 0,
+   "seconds": 7.118,
+   "timings": {
+    "base": 1.171,
+    "erosion": 5.687,
+    "water": 0.066,
+    "fields": 0.033
+   },
+   "native": true,
+   "iterations": 60,
+   "kept_lakes": 3,
+   "eroded_m3": 7452886506.0010605,
+   "deposited_m3": 631818106.0156188
+  }
+ },
+ "build_seconds": 7.3,
+ "camera": {
+  "control_points": 5,
+  "aims": 3,
+  "lens_mm": [
+   28.0,
+   40.0
+  ],
+  "lowest_clearance_m": 34.0,
+  "required_clearance_m": 12.0,
+  "attempts": [
+   {
+    "raised_m": 0.0,
+    "lowest_clearance_m": 34.0
+   }
+  ]
+ },
+ "camera_quality": [
+  "ACCELERATION_STEP"
+ ],
+ "hero": {
+  "path": "output/film/d_world/hero.png",
+  "seconds": 198.81,
+  "size": [
+   1920,
+   1080
+  ],
+  "backend": "gpu_path",
+  "device": "gpu",
+  "samples_per_pixel": 256,
+  "samples_mean": 123.596875,
+  "noise": 0.017417292745407736,
+  "codes": [
+   "DENOISED"
+  ]
+ },
+ "hero_preview": "output/film/d_world/hero_preview.png",
+ "sheet": "output/film/d_world/sheet.png",
+ "flight": {
+  "frames": 361,
+  "fps": 60,
+  "seconds": 651.4,
+  "seconds_per_frame": 1.8,
+  "resumed": 0,
+  "manifest": "output/film/d_world/frames/flight/frames.json",
+  "video": {
+   "mp4": {
+    "path": "output/film/d_world/flight_1080p.mp4",
+    "bytes": 33459225,
+    "command": "-y -framerate 60/1 -i output/film/d_world/frames/flight/frame_%05d.png -c:v libx264 -preset slow -crf 10 -vf pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -movflags +faststart output/film/d_world/flight_1080p.mp4"
+   },
+   "master": {
+    "path": "output/film/d_world/flight_master.mkv",
+    "bytes": 541851997
+   },
+   "preview": {
+    "path": "output/film/d_world/flight_preview.mp4",
+    "bytes": 867548
+   },
+   "verify": {
+    "psnr": "PSNR r:39.906629 g:41.582997 b:40.099728 average:40.467921 min:39.707373 max:41.821935",
+    "ssim": "SSIM R:0.980058 (17.002380) G:0.989443 (19.764460) B:0.980056 (17.001891) All:0.983186 (17.743207)"
+   },
+   "verify_master": {
+    "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+    "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+   }
+  }
+ },
+ "daynight": {
+  "duration_s": 8.0,
+  "sun_keys": 5,
+  "world_keys": 4,
+  "world_channels": 16,
+  "camera": "Timelapse",
+  "authored": "every value shown is a key or its interpolation; nothing simulates the sky",
+  "sheet": "output/film/d_world/daynight_sheet.png",
+  "video": {
+   "frames": 481,
+   "fps": 60,
+   "seconds": 685.5,
+   "seconds_per_frame": 1.43,
+   "resumed": 0,
+   "manifest": "output/film/d_world/frames/daynight/frames.json",
+   "video": {
+    "mp4": {
+     "path": "output/film/d_world/daynight_1080p.mp4",
+     "bytes": 14291039,
+     "command": "-y -framerate 60/1 -i output/film/d_world/frames/daynight/frame_%05d.png -c:v libx264 -preset slow -crf 10 -vf pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -movflags +faststart output/film/d_world/daynight_1080p.mp4"
+    },
+    "master": {
+     "path": "output/film/d_world/daynight_master.mkv",
+     "bytes": 374108483
+    },
+    "preview": {
+     "path": "output/film/d_world/daynight_preview.mp4",
+     "bytes": 350159
+    },
+    "verify": {
+     "psnr": "PSNR r:43.229978 g:43.966169 b:42.787697 average:43.301086 min:42.343067 max:45.707323",
+     "ssim": "SSIM R:0.987372 (18.986534) G:0.975487 (16.106112) B:0.984978 (18.232598) All:0.982612 (17.597558)"
+    },
+    "verify_master": {
+     "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+     "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+    }
+   }
+  }
+ },
+ "seconds": 1623.1,
+ "machine": {
+  "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+  "aether3d": "0.20.0",
+  "native": true,
+  "python": "3.14.8"
+ }
+}

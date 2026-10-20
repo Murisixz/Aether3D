@@ -118,6 +118,8 @@ class RenderMaterial:
     occlusion_strength: float
     double_sided: bool
     textures: dict[str, RenderTexture] = field(default_factory=dict)
+    transmission: float = 0.0  # standard: the transmitted share of the dielectric base
+    ior: float = 1.5
 
     @property
     def masked(self) -> bool:
@@ -420,6 +422,8 @@ def _resolve(
         occlusion_strength=float(values["occlusion_strength"]),
         double_sided=bool(values["double_sided"]),
         textures=textures,
+        transmission=float(values.get("transmission", 0.0)),
+        ior=float(values.get("ior", 1.5)),
     )
     return out
 

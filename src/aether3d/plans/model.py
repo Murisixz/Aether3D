@@ -145,8 +145,16 @@ SELECTOR_KEYS = (
     "created",
     "expect",
 )
-CAMERA_FIELDS = ("projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio")
-LIGHT_FIELDS = ("type", "color", "intensity", "range", "falloff", "radius", "angle")
+CAMERA_FIELDS = (
+    "projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio",
+    "sensor", "focal_length", "shift_x", "shift_y", "fstop", "focus_distance",
+    "aperture_blades", "aperture_rotation", "aperture_ratio",
+)  # fmt: skip
+LIGHT_FIELDS = (
+    "type", "color", "intensity", "range", "falloff", "radius", "angle", "spot_size",
+    "spot_blend", "shape", "size", "size_y", "spread", "units", "temperature", "use_temperature",
+    "exposure", "shadow",
+)  # fmt: skip
 _BAD = object()  # a value that failed validation (its issue is recorded)
 
 

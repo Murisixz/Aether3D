@@ -1,0 +1,84 @@
+{
+ "showcase": "F night street",
+ "quick": false,
+ "hero": {
+  "path": "output/film/f_night/hero.png",
+  "seconds": 138.77,
+  "size": [
+   1920,
+   1080
+  ],
+  "backend": "gpu_path",
+  "device": "gpu",
+  "samples_per_pixel": 384,
+  "samples_mean": 100.87674768518518,
+  "noise": 0.024388164315122477,
+  "codes": [
+   "DENOISED"
+  ]
+ },
+ "hero_preview": "output/film/f_night/hero_preview.png",
+ "emissive_proof": {
+  "emissive_on": {
+   "cobbles_mean_luminance": 0.0014091562929867043,
+   "cobbles_pixels": 181499
+  },
+  "emissive_off": {
+   "cobbles_mean_luminance": 0.0,
+   "cobbles_pixels": 181499
+  },
+  "ratio": null,
+  "lights_by_emission": true,
+  "note": "every light and the sky off; the windows and lamp glass emit: the cobbles are lit only by them (path-traced emissive sampling)"
+ },
+ "camera_quality": [],
+ "flicker_samples": [
+  8.696,
+  8.271,
+  9.413,
+  7.908,
+  8.837,
+  8.824,
+  7.465,
+  9.403,
+  8.856
+ ],
+ "truck": {
+  "frames": 121,
+  "fps": 60,
+  "seconds": 3088.7,
+  "seconds_per_frame": 25.53,
+  "resumed": 0,
+  "manifest": "output/film/f_night/frames/truck/frames.json",
+  "video": {
+   "mp4": {
+    "path": "output/film/f_night/truck_1080p.mp4",
+    "bytes": 10652230,
+    "command": "-y -framerate 60/1 -i output/film/f_night/frames/truck/frame_%05d.png -c:v libx264 -preset slow -crf 10 -vf pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -movflags +faststart output/film/f_night/truck_1080p.mp4"
+   },
+   "master": {
+    "path": "output/film/f_night/truck_master.mkv",
+    "bytes": 184813567
+   },
+   "preview": {
+    "path": "output/film/f_night/truck_preview.mp4",
+    "bytes": 108413
+   },
+   "verify": {
+    "psnr": "PSNR r:39.213701 g:42.996232 b:39.683782 average:40.337600 min:39.618324 max:41.015752",
+    "ssim": "SSIM R:0.915357 (10.724090) G:0.976682 (16.323091) B:0.948670 (12.896263) All:0.946903 (12.749293)"
+   },
+   "verify_master": {
+    "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+    "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+   }
+  }
+ },
+ "seconds": 3248.9,
+ "machine": {
+  "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+  "aether3d": "0.20.0",
+  "native": true,
+  "python": "3.14.8"
+ }
+}

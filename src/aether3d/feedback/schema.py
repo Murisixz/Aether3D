@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..rendering.light import LIGHT_TYPES
 from . import corrections, expectations, vision
 
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
@@ -127,6 +128,16 @@ def _check_schema(kind: str) -> dict[str, Any]:
     }
     types = {
         "objects": _SELECTOR,
+        "lights": {**_SELECTOR, "description": "lights that must reach the subject"},
+        "ratio": {**_RANGE, "description": "lighting ratio: key's lit side over its shadow side"},
+        "min_separation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 10,
+            "description": "L* difference of the outline from its surroundings",
+        },
+        "max_merged_fraction": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.25},
         "against": _SELECTOR,
         "support": _SELECTOR,
         "a": {"type": "string", "minLength": 1},
@@ -191,6 +202,29 @@ def _check_schema(kind: str) -> dict[str, Any]:
             "(elbow_bend_120.L, shoulder_raise_150.L, ...)",
         },  # fmt: skip
         "timeline": {"type": "boolean", "default": True},
+        "loop": {"type": "boolean", "default": False},
+        "joints": {
+            "anyOf": [
+                {"const": "all"},
+                {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                    "maxItems": 512,
+                },
+            ],
+            "description": "rig joints to measure too",
+        },
+        "subject": {
+            "anyOf": [{"type": "string", "minLength": 1}, _VEC3],
+            "description": "what cameras should frame: an object or a point",
+        },
+        "level": {"enum": ["info", "warning", "error"], "default": "warning"},
+        "thresholds": {
+            "type": "object",
+            "additionalProperties": {"type": "number"},
+            "description": "motion report thresholds to override",
+        },
         "ignore": {
             "type": "array",
             "items": {"type": "string", "minLength": 1},
@@ -306,7 +340,8 @@ def action_schema() -> dict[str, Any]:
         "near": {"type": "number", "exclusiveMinimum": 0},
         "far": {"type": "number", "exclusiveMinimum": 0},
         "intensity": {"type": "number", "minimum": 0, "maximum": 1e6},
-        "type": {"enum": ["directional", "point"]},
+        "size": {"type": "number", "exclusiveMinimum": 0, "maximum": 1e6},
+        "type": {"enum": list(LIGHT_TYPES)},
         "exposure": {"type": "number", "minimum": -20, "maximum": 20},
         "value": {"type": ["number", "string", "boolean"]},
         "armature": {"type": "string", "minLength": 1},
@@ -324,6 +359,15 @@ def action_schema() -> dict[str, Any]:
         },  # fmt: skip
         "keys": {"type": "array", "items": {"type": "integer"}, "minItems": 1},
         "handles": {"enum": ["auto_clamped", "auto"]},
+        "paths": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1,
+            "maxItems": 64,
+        },
+        "smoothing": {"enum": ["continuous", "blender", "local"]},
+        "sigma": {"type": "number", "exclusiveMinimum": 0, "maximum": 10},
+        "mode": {"enum": ["cycle", "cycle_offset"]},
         "fixes": {
             "anyOf": [
                 {"enum": ["safe", "verify"]},

@@ -18,7 +18,9 @@ const INSTANCE_HAS_COLORS: u32 = 16u;  // the mesh has vertex colours (after its
 
 struct Instance {
   model: array<vec4<f32>, 3>,   // rows of the camera-relative model matrix (3 x 4)
-  normal: array<vec4<f32>, 3>,  // rows of the normal matrix (inverse transpose), xyz
+  normal: array<vec4<f32>, 3>,  // rows of the normal matrix (inverse transpose), xyz;
+                                // w of rows 0, 1: light linking (bit l: light l does not
+                                // light this instance, lights 0-31 and 32-63)
   base_color: vec3<f32>,        // linear-light base color
   specular: f32,                // Blinn-Phong highlight strength
   shininess: f32,               // Blinn-Phong exponent

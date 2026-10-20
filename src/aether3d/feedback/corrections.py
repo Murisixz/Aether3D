@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from ..errors import AetherError, FeedbackError
+from ..rendering.light import LIGHT_TYPES
 from ._doc import BAD, Doc, join
 
 if TYPE_CHECKING:
@@ -126,10 +127,20 @@ ACTIONS: dict[str, dict[str, Any]] = {
         "summary": "change a light's intensity or color",
     },
     "add_light": {
-        "fields": ("type", "name", "direction", "position", "intensity", "color"),
+        "fields": (
+            "type",
+            "name",
+            "direction",
+            "position",
+            "look_at",
+            "size",
+            "intensity",
+            "color",
+        ),  # fmt: skip
         "required": ("type",),
         "category": "lighting",
-        "summary": "add a directional or point light",
+        "summary": "add a light: directional (direction), point (position), spot or area "
+        "(position and direction or look_at; an area light's size)",
     },
     "set_exposure": {
         "fields": ("exposure",),
@@ -171,6 +182,30 @@ ACTIONS: dict[str, dict[str, Any]] = {
         "category": "animation",
         "summary": "give keys of a channel of the object's action automatic handles "
         "(auto_clamped, default, or auto): no corners, no overshoot",
+    },
+    "curve_smoothing": {
+        "fields": ("object", "paths", "smoothing"),
+        "required": ("object",),
+        "category": "animation",
+        "summary": "compute the automatic handles of the object's action channels (every "
+        "scalar channel, or paths) with smoothing (continuous, default: acceleration "
+        "continuous at automatic keys; blender; local): keys and values are kept",
+    },
+    "smooth_motion": {
+        "fields": ("object", "paths", "sigma"),
+        "required": ("object",),
+        "category": "animation",
+        "summary": "average the key values of the object's action channels (every scalar "
+        "channel, or paths) with a Gaussian of sigma seconds (default 0.05; the ends kept): "
+        "removes jitter, and softens wanted detail too",
+    },
+    "make_cyclic": {
+        "fields": ("object", "paths", "mode"),
+        "required": ("object",),
+        "category": "animation",
+        "summary": "make the object's action channels (every scalar channel, or paths) loop: "
+        "cycle (or cycle_offset for motion that advances each loop), so automatic handles "
+        "see across the seam",
     },
 }
 
@@ -239,8 +274,10 @@ def check_action(doc: Doc, value: Any, ptr: str) -> dict[str, Any] | None:
             r = doc.number(v, p, lo=0.0, lo_open=True, hi=MAX_COORDINATE)
         elif key == "intensity":
             r = doc.number(v, p, lo=0.0, hi=1e6)
+        elif key == "size":
+            r = doc.number(v, p, lo=0.0, lo_open=True, hi=1e6)
         elif key == "type":
-            r = doc.enum(v, p, ("directional", "point"))
+            r = doc.enum(v, p, LIGHT_TYPES)
         elif key == "exposure":
             r = doc.number(v, p, lo=-20.0, hi=20.0)
         elif key == "value":
@@ -262,6 +299,18 @@ def check_action(doc: Doc, value: Any, ptr: str) -> dict[str, Any] | None:
             r = list(v) if ok else BAD
         elif key == "handles":
             r = doc.enum(v, p, ("auto_clamped", "auto"))
+        elif key == "paths":
+            ok = isinstance(v, list) and 1 <= len(v) <= 64
+            names = [doc.string(x, join(p, i)) for i, x in enumerate(v)] if ok else []
+            if not ok:
+                doc.issues.add("INVALID_VALUE", "paths is a list of 1 to 64 channel paths", p)
+            r = names if ok and not any(n is BAD for n in names) else BAD
+        elif key == "smoothing":
+            r = doc.enum(v, p, ("continuous", "blender", "local"))
+        elif key == "sigma":
+            r = doc.number(v, p, lo=0.0, lo_open=True, hi=10.0)
+        elif key == "mode":
+            r = doc.enum(v, p, ("cycle", "cycle_offset"))
         else:  # pragma: no cover - every field is handled above
             r = BAD
         if r is not BAD:
@@ -274,10 +323,19 @@ def check_action(doc: Doc, value: Any, ptr: str) -> dict[str, Any] | None:
         doc.issues.add("MISSING_KEY", "give intensity or color", ptr)
     if name == "set_ambient" and not ({"intensity", "color"} & set(obj)):
         doc.issues.add("MISSING_KEY", "give intensity or color", ptr)
-    if name == "add_light" and ("direction" in obj) == ("position" in obj):
-        doc.issues.add(
-            "INVALID_VALUE", "a light needs direction (directional) or position (point)", ptr
-        )
+    if name == "add_light":
+        kind = obj.get("type")
+        aimed = ("direction" in obj) + ("look_at" in obj)
+        if kind == "directional" and ("position" in obj or "direction" not in obj):
+            doc.issues.add("INVALID_VALUE", "a directional light needs direction (only)", ptr)
+        elif kind == "point" and ("position" not in obj or aimed):
+            doc.issues.add("INVALID_VALUE", "a point light needs position (only)", ptr)
+        elif kind in ("spot", "area") and ("position" not in obj or aimed != 1):
+            doc.issues.add(
+                "INVALID_VALUE", f"a {kind} light needs position and direction or look_at", ptr
+            )
+        if "size" in obj and kind != "area":
+            doc.issues.add("INVALID_VALUE", "size is an area light's", join(ptr, "size"))
     if doc.issues.total > before:
         return None
     return out
@@ -657,6 +715,8 @@ def _bind_animation(scene: Scene, action: dict[str, Any], category: str, ptr: st
     system = scene.animation
     if name == "rig_fix":
         return _bind_rig_fix(scene, action, category, ptr)
+    if name in ("curve_smoothing", "smooth_motion", "make_cyclic"):
+        return _bind_channels(scene, action, category, ptr)
     if name == "plant_feet":
         arm = _object(scene, action["armature"], "armature", f"{ptr}/armature")
         rig = system.rig(arm)
@@ -688,6 +748,50 @@ def _bind_animation(scene: Scene, action: dict[str, Any], category: str, ptr: st
                   "before": "corners", "after": action.get("handles", "auto_clamped")}  # fmt: skip
     script = {"format": "aether3d.animation-script", "version": 1, "operations": [op]}
     return Bound(action, category, target, [change], plan_op={"op": "animation", "script": script})
+
+
+def _bind_channels(scene: Scene, action: dict[str, Any], category: str, ptr: str) -> Bound:
+    """curve_smoothing, smooth_motion, make_cyclic: one key operation per channel."""
+    from ..animation.curves import FCurve
+
+    name = action["action"]
+    system = scene.animation
+    target = _object(scene, action["object"], "object", f"{ptr}/object")
+    clip = system.action(target)
+    if clip is None:
+        raise FeedbackError("INVALID_ACTION", f"{target.name!r} has no action", f"{ptr}/object")
+    curves = {path: ch for path, ch in clip.data.channels if isinstance(ch, FCurve)}
+    paths = action.get("paths") or sorted(curves)
+    for i, path in enumerate(paths):
+        if path not in curves:
+            raise FeedbackError("INVALID_ACTION", f"{target.name!r} has no curve {path}",
+                                f"{ptr}/paths/{i}")  # fmt: skip
+    if not paths:
+        raise FeedbackError("INVALID_ACTION", f"{target.name!r} has no curves", f"{ptr}/object")
+    ops = []
+    for path in paths:
+        op = {"op": "edit_keys", "target": target.id, "path": path}
+        if name == "curve_smoothing":
+            op.update(edit="smoothing", smoothing=action.get("smoothing", "continuous"))
+        elif name == "smooth_motion":
+            op.update(edit="smooth", sigma=action.get("sigma", 0.05))
+        else:
+            op.update(edit="extrapolation", extrapolation=action.get("mode", "cycle"))
+        ops.append(op)
+    before = {
+        "curve_smoothing": lambda c: c.smoothing,
+        "smooth_motion": lambda c: f"{len(c)} keys",
+        "make_cyclic": lambda c: "/".join(c.extrapolation),
+    }[name]
+    after = {
+        "curve_smoothing": action.get("smoothing", "continuous"),
+        "smooth_motion": f"values averaged over {action.get('sigma', 0.05):g} s",
+        "make_cyclic": action.get("mode", "cycle"),
+    }[name]
+    changes = [{"object": target.name, "id": target.id, "field": path,
+                "before": before(curves[path]), "after": after} for path in paths]  # fmt: skip
+    script = {"format": "aether3d.animation-script", "version": 1, "operations": ops}
+    return Bound(action, category, target, changes, plan_op={"op": "animation", "script": script})
 
 
 def _bind_rig_fix(scene: Scene, action: dict[str, Any], category: str, ptr: str) -> Bound:
@@ -853,7 +957,7 @@ def _bind_camera(scene: Scene, action: dict[str, Any], category: str, ptr: str) 
 def _bind_light(scene: Scene, action: dict[str, Any], category: str, ptr: str) -> Bound:
     if action["action"] == "add_light":
         op = {"op": "add_light", "type": action["type"]}
-        for key in ("name", "direction", "position", "intensity", "color"):
+        for key in ("name", "direction", "position", "look_at", "size", "intensity", "color"):
             if key in action:
                 op[key] = action[key]
         if action.get("name") and action["name"] in scene._by_name:

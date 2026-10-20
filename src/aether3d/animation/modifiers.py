@@ -23,8 +23,23 @@ Types (parameters):
   outside the points).
 * ``smooth`` (``sigma`` s): Gaussian smoothing, ``sum_j w_j v(t + tau_j)`` over 15
   fixed nodes within 3 sigma (seekable: no state between frames).
+* ``generator`` (``coefficients`` ``[c0, c1, ...]``, up to degree 10; ``additive`` = true):
+  ``v + sum_k c_k t^k`` (``additive: false`` replaces the value) -- drifts, ramps, trends.
+* ``function`` (``function``: ``sin``, ``cos``, ``sinc``, ``sqrt`` or ``ln``; ``amplitude``
+  = 1, ``phase_multiplier`` = 1, ``phase_offset`` = 0, ``value_offset`` = 0, ``additive`` =
+  true): ``v + amplitude * f(phase_multiplier * t + phase_offset) + value_offset``, as
+  Blender's *Built-In Function* modifier (``sinc(x) = sin(x) / x``; ``sqrt`` and ``ln`` give
+  0 outside their domain).
 * ``stepped`` (``step`` s, ``offset`` = 0 s): time held on steps of ``step`` -- sample and
   hold, on-twos/threes animation.
+* ``cycles`` (``before``, ``after``: ``repeat`` (default), ``repeat_offset``, ``mirror`` or
+  ``none``; ``count_before``, ``count_after``: whole cycles, 0 = without end): repeats the
+  curve's key range outside it, as Blender's *Cycles* modifier: each repetition of
+  ``repeat_offset`` is shifted by the keys' value change, ``mirror`` runs every other
+  repetition backwards, and after the counted cycles time passes through (the curve's own
+  extrapolation). The end of a cycle belongs to it. As in Blender, a ``cycles`` modifier
+  first in the chain, repeating without end on both sides (no range, full influence),
+  makes the automatic handles cycle-aware, like cyclic extrapolation.
 * ``time_offset`` (``offset`` s): ``c(t - offset)``.
 * ``time_scale`` (``factor``, ``pivot`` = 0 s): ``c(pivot + (t - pivot) * factor)``.
 
@@ -67,11 +82,30 @@ TYPES: dict[str, dict[str, Any]] = {
     },
     "envelope": {"required": ("points",), "optional": {"reference": 0.0}},
     "smooth": {"required": ("sigma",), "optional": {}},
+    "generator": {"required": ("coefficients",), "optional": {"additive": True}},
+    "function": {
+        "required": ("function",),
+        "optional": {
+            "amplitude": 1.0,
+            "phase_multiplier": 1.0,
+            "phase_offset": 0.0,
+            "value_offset": 0.0,
+            "additive": True,
+        },
+    },
     "stepped": {"required": ("step",), "optional": {"offset": 0.0}},
+    "cycles": {
+        "required": (),
+        "optional": {"before": "repeat", "after": "repeat", "count_before": 0, "count_after": 0},
+    },
     "time_offset": {"required": ("offset",), "optional": {}},
     "time_scale": {"required": ("factor",), "optional": {"pivot": 0.0}},
 }
-TIME_TYPES = ("stepped", "time_offset", "time_scale")
+TIME_TYPES = ("stepped", "time_offset", "time_scale", "cycles")
+FUNCTIONS = ("sin", "cos", "sinc", "sqrt", "ln")
+CYCLE_MODES = ("repeat", "repeat_offset", "mirror", "none")
+MAX_DEGREE = 10
+MAX_CYCLES = 1_000_000
 COMMON = ("type", "influence", "range", "blend_in", "blend_out", "mute")
 
 
@@ -219,6 +253,33 @@ def parse_modifier(raw: Any, location: str) -> Modifier:
     elif kind == "stepped":
         values["step"] = _num(values["step"], f"{loc}.step", positive=True)
         values["offset"] = _num(values["offset"], f"{loc}.offset")
+    elif kind == "generator":
+        coef = values["coefficients"]
+        if not isinstance(coef, (list, tuple)) or not 1 <= len(coef) <= MAX_DEGREE + 1:
+            raise _err(
+                f"coefficients must be a list of 1..{MAX_DEGREE + 1} numbers (c0 first)",
+                f"{loc}.coefficients",
+            )
+        values["coefficients"] = tuple(
+            _num(c, f"{loc}.coefficients[{i}]") for i, c in enumerate(coef)
+        )
+        if not isinstance(values["additive"], bool):
+            raise _err("additive must be true or false", f"{loc}.additive")
+    elif kind == "function":
+        if values["function"] not in FUNCTIONS:
+            raise _err(f"function must be one of {', '.join(FUNCTIONS)}", f"{loc}.function")
+        for k in ("amplitude", "phase_multiplier", "phase_offset", "value_offset"):
+            values[k] = _num(values[k], f"{loc}.{k}")
+        if not isinstance(values["additive"], bool):
+            raise _err("additive must be true or false", f"{loc}.additive")
+    elif kind == "cycles":
+        for k in ("before", "after"):
+            if values[k] not in CYCLE_MODES:
+                raise _err(f"{k} must be one of {', '.join(CYCLE_MODES)}", f"{loc}.{k}")
+        for k in ("count_before", "count_after"):
+            c = values[k]
+            if isinstance(c, bool) or not isinstance(c, int) or not 0 <= c <= MAX_CYCLES:
+                raise _err(f"{k} must be an integer 0..{MAX_CYCLES} (0: no end)", f"{loc}.{k}")
     elif kind == "time_offset":
         values["offset"] = _num(values["offset"], f"{loc}.offset")
     elif kind == "time_scale":
@@ -416,6 +477,28 @@ def _apply_value(m: Modifier, v: list[np.ndarray], t: np.ndarray, order: int) ->
             alpha, beta = -lam * alpha - omega * beta, -lam * beta + omega * alpha
             out.append(v[k] + amp * env * (alpha * s + beta * c))
         return out
+    if kind == "generator":
+        coef = m.p("coefficients")
+        # Horner's rule for the polynomial and its derivatives (a fixed order of operations).
+        poly = [np.zeros_like(t) for _ in range(order + 1)]
+        for c in reversed(coef):
+            for k in range(order, 0, -1):
+                poly[k] = poly[k] * t + k * poly[k - 1]
+            poly[0] = poly[0] * t + c
+        if m.p("additive"):
+            return [v[k] + poly[k] for k in range(order + 1)]
+        return poly
+    if kind == "function":
+        f = _function(m.p("function"), m.p("phase_multiplier") * t + m.p("phase_offset"), order)
+        amp, mult = m.p("amplitude"), m.p("phase_multiplier")
+        out = [amp * f[0] + m.p("value_offset")]
+        scale = amp
+        for k in range(1, order + 1):
+            scale = scale * mult
+            out.append(scale * f[k])
+        if m.p("additive"):
+            return [v[k] + out[k] for k in range(order + 1)]
+        return out
     if kind == "envelope":
         ref = m.p("reference")
         g, dg = _piecewise_linear(m.p("points"), 1, t)
@@ -429,6 +512,106 @@ def _apply_value(m: Modifier, v: list[np.ndarray], t: np.ndarray, order: int) ->
             out.append(3.0 * dg * v[2] + g * v[3])
         return out
     raise AssertionError(kind)  # pragma: no cover
+
+
+def _function(name: str, x: np.ndarray, order: int) -> list[np.ndarray]:
+    """A built-in function and its first ``order`` derivatives (0 outside the domains of
+    ``sqrt`` and ``ln``)."""
+    if name in ("sin", "cos"):
+        s, c = np.sin(x), np.cos(x)
+        seq = [s, c, -s, -c] if name == "sin" else [c, -s, -c, s]
+        return seq[: order + 1]
+    if name == "sinc":
+        s, c = np.sin(x), np.cos(x)
+        small = np.abs(x) < 1e-3
+        xs = np.where(small, 1.0, x)
+        x2 = x * x
+        # sin(x)/x and its derivatives; a Taylor series near 0 (no cancellation).
+        f = [np.where(small, 1.0 - x2 / 6.0 + x2 * x2 / 120.0, s / xs)]
+        if order >= 1:
+            f.append(np.where(small, -x / 3.0 + x * x2 / 30.0, (x * c - s) / (xs * xs)))
+        if order >= 2:
+            third = (-x2 * s - 2.0 * x * c + 2.0 * s) / (xs * xs * xs)
+            f.append(np.where(small, -1.0 / 3.0 + x2 / 10.0, third))
+        if order >= 3:
+            f.append(
+                np.where(
+                    small,
+                    x / 5.0,
+                    (-x2 * x * c + 3.0 * x2 * s + 6.0 * x * c - 6.0 * s) / (xs * xs * xs * xs),
+                )
+            )
+        return f
+    live = x > 0.0
+    xp = np.where(live, x, 1.0)
+    if name == "sqrt":
+        r = np.sqrt(xp)
+        f = [np.where(live, r, 0.0)]
+        terms = [0.5 / r, -0.25 / (r * xp), 0.375 / (r * xp * xp)]
+    else:  # ln
+        f = [np.where(live, np.log(xp), 0.0)]
+        terms = [1.0 / xp, -1.0 / (xp * xp), 2.0 / (xp * xp * xp)]
+    f.extend(np.where(live, terms[k], 0.0) for k in range(order))
+    return f
+
+
+def _cycle_map(m: Modifier, curve: FCurve, t: np.ndarray):
+    """Time inside the curve's key range, the value offset and the time direction of the
+    cycles modifier ``m`` at ``t`` (``None``: the keys span no time)."""
+    t0, t1 = curve.range
+    period = t1 - t0
+    if not period > 0.0:
+        return None
+    delta = float(curve.values[-1] - curve.values[0])
+    local = t.copy()
+    offset = np.zeros_like(t)
+    sign = np.ones_like(t)
+    for side, mode, count in (
+        ("before", m.p("before"), m.p("count_before")),
+        ("after", m.p("after"), m.p("count_after")),
+    ):
+        if mode == "none":
+            continue
+        sel = t > t1 if side == "after" else t < t0
+        if not np.any(sel):
+            continue
+        beyond = t[sel] - t1 if side == "after" else t0 - t[sel]
+        cycle = np.ceil(beyond / period)  # 1 for the first repetition (its end included)
+        u = beyond - (cycle - 1.0) * period  # (0, period] into the repetition
+        mirrored = (cycle % 2.0) == 1.0 if mode == "mirror" else np.zeros_like(cycle, bool)
+        if side == "after":
+            inside = np.where(mirrored, t1 - u, t0 + u)
+            shift = cycle * delta
+        else:
+            inside = np.where(mirrored, t0 + u, t1 - u)
+            shift = -cycle * delta
+        keep = np.ones_like(cycle, bool) if count == 0 else cycle <= count
+        local[sel] = np.where(keep, inside, t[sel])
+        if mode == "repeat_offset":
+            offset[sel] = np.where(keep, shift, 0.0)
+        sign[sel] = np.where(keep & mirrored, -1.0, 1.0)
+    return local, offset, sign
+
+
+def cyclic_handles(modifiers: tuple) -> tuple[int, int] | None:
+    """The extrapolation codes a leading endless ``cycles`` modifier gives the automatic
+    handles (Blender's rule), or ``None``."""
+    if not modifiers:
+        return None
+    m = modifiers[0]
+    if (
+        m.type != "cycles"
+        or m.mute
+        or m.range is not None
+        or m.influence != 1.0
+        or m.p("count_before")
+        or m.p("count_after")
+        or m.p("before") not in ("repeat", "repeat_offset")
+        or m.p("after") not in ("repeat", "repeat_offset")
+    ):
+        return None
+    code = {"repeat": 2, "repeat_offset": 3}
+    return code[m.p("before")], code[m.p("after")]
 
 
 _SMOOTH_CACHE: dict[int, tuple[np.ndarray, np.ndarray]] = {}
@@ -460,6 +643,15 @@ def evaluate_with_modifiers(curve: FCurve, t: np.ndarray, order: int) -> list[np
                 h = off + np.floor((tt - off) / step) * step
                 inner = chain(level - 1, h)
                 mod = [inner[0], *(np.zeros_like(tt) for _ in range(order))]
+            elif m.type == "cycles":
+                mapped = _cycle_map(m, curve, tt)
+                if mapped is None:
+                    mod = chain(level - 1, tt)
+                else:
+                    h, shift, sign = mapped
+                    inner = chain(level - 1, h)
+                    mod = [inner[0] + shift]
+                    mod.extend(inner[j] * (sign if j % 2 else 1.0) for j in range(1, order + 1))
             else:
                 if m.type == "time_offset":
                     h, k = tt - m.p("offset"), 1.0

@@ -92,8 +92,9 @@ def blocky(s: Scene, name: str = "Steve"):
 
 @pytest.mark.parametrize("mode", ["cycle", "cycle_offset"])
 def test_automatic_handles_are_smooth_across_a_loop(mode):
+    # Aether3D's local rule (the Blender-compatible modes: test_curve_smoothing.py).
     keys = [(0.0, 0.0), (0.3, 1.0), (0.5, 0.2), (0.8, -0.7), (1.0, 0.0 if mode == "cycle" else 0.5)]
-    c = FCurve.from_keys(keys, handles="auto").replace(extrapolation=mode)
+    c = FCurve.from_keys(keys, handles="auto", smoothing="local").replace(extrapolation=mode)
     v, d, a = c.evaluate(np.array([1.0 - 1e-9, 1.0 + 1e-9]), order=2)
     assert d[0] == pytest.approx(d[1], abs=1e-6)  # C1 across the wrap
     # The end keys take the slope of the parabola through their wrapped neighbours.
@@ -102,7 +103,7 @@ def test_automatic_handles_are_smooth_across_a_loop(mode):
     s1, s2 = (0.0 - v_prev) / (0.0 - t_prev), (1.0 - 0.0) / 0.3
     expect = (s1 * 0.3 + s2 * 0.2) / 0.5
     assert c.slope(0, "right") == pytest.approx(expect, rel=1e-12)
-    flat = FCurve.from_keys(keys, handles="auto")  # constant ends: one-sided slopes
+    flat = FCurve.from_keys(keys, handles="auto", smoothing="local")  # one-sided end slopes
     assert flat.slope(0, "right") == pytest.approx(1.0 / 0.3, rel=1e-12)
 
 

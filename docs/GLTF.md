@@ -42,6 +42,7 @@ $ aether3d geometry world.glb --json
 | Materials (`pbrMetallicRoughness`, alpha modes, double-sided, normal, occlusion, emission) | yes | yes |
 | PNG and JPEG textures, samplers | yes (original image bytes) | yes (decoded and embedded in the scene) |
 | `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_specular` | yes | yes |
+| `KHR_materials_transmission`, `KHR_materials_ior` (0.20.0) | yes (transmission other than 0, ior other than 1.5) | yes (factors; transmission textures are reported) |
 | `TANGENT` | MikkTSpace, for meshes with UV-mapped normal maps (vertices split where corners differ) | ignored (MikkTSpace is recomputed) |
 | Painted textures (0.14.0) | their composite, as an 8-bit PNG (layers stay in the project) | as image textures |
 | CAD items shown in the scene (0.15.0) | their display tessellations, as meshes with their materials (exact geometry: export STEP or IFC, [CAD.md](CAD.md)) | as plain meshes |
@@ -185,6 +186,8 @@ Aether3D material ([MATERIALS.md](MATERIALS.md)):
 | `alphaMode` `BLEND` | opaque, with `ALPHA_BLEND_UNSUPPORTED` (Aether3D draws no blended transparency) |
 | `doubleSided` | `double_sided` |
 | `KHR_materials_specular` | `specular = 0.5 × specularFactor × mean(specularColorFactor)`, clamped to [0, 1] (`SPECULAR_COLOR_APPROXIMATED` for colored factors; specular textures: `SPECULAR_TEXTURE_IGNORED`) |
+| `KHR_materials_transmission` (0.20.0) | `transmission = transmissionFactor` (a `transmissionTexture` is not imported: `TRANSMISSION_TEXTURE_IGNORED`) |
+| `KHR_materials_ior` (0.20.0) | `ior`, clamped to Aether3D's 1..3 (glTF's 0, an infinite index, or values beyond: `IOR_CLAMPED`, lossy) |
 | sampler `wrapS`/`wrapT`, `magFilter`/`minFilter` | `wrap`, `filter`, `mipmaps` (`SAMPLER_APPROXIMATED` when the filters differ) |
 | `KHR_texture_transform` | the binding's `offset`, `rotation`, `scale`, converted exactly to Aether3D's bottom-left uv origin |
 
@@ -213,6 +216,9 @@ an object without one exports its color.
   `KHR_materials_emissive_strength`.
 - **Specular.** Dielectric `specular` other than 0.5 is written with
   `KHR_materials_specular`.
+- **Glass** (0.20.0). `transmission` above 0 is written with
+  `KHR_materials_transmission` and an `ior` other than 1.5 with `KHR_materials_ior`
+  (validator-clean: `tests/test_glass.py`).
 - **Simple materials** are written as metallic-roughness, with roughness
   `(2 / (shininess + 2))^¼` from the Blinn-Phong exponent
   (`SIMPLE_MATERIAL_APPROXIMATED`, information).
@@ -371,13 +377,15 @@ The full model is in [ANIMATION.md](ANIMATION.md#gltf-interchange). In short:
 ## Limitations
 
 - Animations carry node transforms and morph weights only: no
-  `KHR_animation_pointer` (camera, light, material and visibility channels are lossy);
+  `KHR_animation_pointer` (camera, light, material, world and visibility channels are
+  lossy; since 0.20.0 material and world clips left out of `"clips"` and `"actions"`
+  exports are reported as such too);
   values are float32; jumps become 1e-4 s transitions; easings, weighted handles, Euler
   rotations, squad and modifiers are fitted within the stated tolerances (see the
   tables above).
-- **Materials** are glTF's core metallic-roughness model plus three
-  extensions. Other material extensions (clearcoat, transmission, sheen,
-  volume, IOR...) are not imported. Procedural textures exist in glTF only
+- **Materials** are glTF's core metallic-roughness model plus five
+  extensions (transmission and IOR since 0.20.0). Other material extensions
+  (clearcoat, sheen, volume, dispersion...) are not imported. Procedural textures exist in glTF only
   when baked. Only `TEXCOORD_0` is used.
 - **Exported cameras and lights (since 0.5.0)** are written as plain nodes:
   - their transforms, names and ids are kept, and the files pass the Khronos

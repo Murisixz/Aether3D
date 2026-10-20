@@ -1,0 +1,163 @@
+{
+ "showcase": "A rigid-part performance",
+ "quick": false,
+ "clips": {
+  "idle": {
+   "clips": 4,
+   "keys": 60,
+   "duration": 8.0,
+   "max_error": {
+    "degrees": 0.049962483337381514,
+    "units": 0.0
+   }
+  },
+  "wave": {
+   "clips": 4,
+   "keys": 103,
+   "duration": 2.2,
+   "max_error": {
+    "degrees": 0.04934847968705869,
+    "units": 0.0
+   }
+  },
+  "head_turn": {
+   "clips": 4,
+   "keys": 44,
+   "duration": 2.4,
+   "max_error": {
+    "degrees": 0.048117310883700526,
+    "units": 0.0
+   }
+  },
+  "jump": {
+   "clips": 6,
+   "keys": 338,
+   "duration": 1.9346230625870018,
+   "max_error": {
+    "degrees": 0.045958676130204504,
+    "units": 0.00011130698713390785
+   },
+   "takeoff": 0.66,
+   "landing": 1.1846230625870018
+  }
+ },
+ "strip_edges": [
+  0.6,
+  2.8000000000000003,
+  2.2,
+  4.6,
+  3.3,
+  5.234623062587001
+ ],
+ "blip": {
+  "keys": {
+   "transform.position.z": 11,
+   "transform.position.x": 8,
+   "transform.scale.z": 32
+  },
+  "squash_min": 0.7120541338228413,
+  "stretch_max": 1.1785667850971115
+ },
+ "shot": {
+  "preset": "full",
+  "distance": 3.877890773672858,
+  "focal_length": 35.0
+ },
+ "camera_quality": [
+  "FRAMING_DRIFT"
+ ],
+ "gestures_cuts": {
+  "findings": {
+   "JITTER": 3,
+   "VELOCITY_JUMP": 11,
+   "ROTATION_SNAP": 2
+  },
+  "count": 16,
+  "times": [
+   0.592,
+   2.2,
+   2.204,
+   2.796,
+   2.804,
+   4.596
+  ],
+  "jumps": 13
+ },
+ "gestures_crossfades": {
+  "findings": {
+   "JITTER": 1
+  },
+  "count": 1,
+  "times": [],
+  "jumps": 0
+ },
+ "performance_motion": {
+  "findings": {
+   "VELOCITY_JUMP": 13,
+   "ACCELERATION_STEP": 5,
+   "JITTER": 2
+  },
+  "count": 20,
+  "times": [
+   3.737,
+   3.958,
+   4.483,
+   4.604,
+   4.625
+  ]
+ },
+ "jump_events": {
+  "takeoff": 3.96,
+  "landing": 4.484623062587001
+ },
+ "blip_graph": "output/film/a_rigid/blip_graph.png",
+ "hero": {
+  "backend": "gpu",
+  "size": [
+   1920,
+   1080
+  ],
+  "codes": []
+ },
+ "hero_preview": "output/film/a_rigid/hero_preview.png",
+ "sheet": "output/film/a_rigid/sheet.png",
+ "performance": {
+  "frames": 301,
+  "fps": 60,
+  "seconds": 217.0,
+  "seconds_per_frame": 0.72,
+  "resumed": 0,
+  "manifest": "output/film/a_rigid/frames/performance/frames.json",
+  "video": {
+   "mp4": {
+    "path": "output/film/a_rigid/performance_1080p.mp4",
+    "bytes": 9899514,
+    "command": "-y -framerate 60/1 -i output/film/a_rigid/frames/performance/frame_%05d.png -c:v libx264 -preset slow -crf 10 -vf pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -movflags +faststart output/film/a_rigid/performance_1080p.mp4"
+   },
+   "master": {
+    "path": "output/film/a_rigid/performance_master.mkv",
+    "bytes": 161849515
+   },
+   "preview": {
+    "path": "output/film/a_rigid/performance_preview.mp4",
+    "bytes": 234709
+   },
+   "verify": {
+    "psnr": "PSNR r:42.563280 g:43.815619 b:41.093421 average:42.348274 min:41.950009 max:42.874772",
+    "ssim": "SSIM R:0.989299 (19.705588) G:0.994481 (22.581050) B:0.984584 (18.120368) All:0.989454 (19.769321)"
+   },
+   "verify_master": {
+    "psnr": "PSNR r:inf g:inf b:inf average:inf min:inf max:inf",
+    "ssim": "SSIM R:1.000000 (inf) G:1.000000 (inf) B:1.000000 (inf) All:1.000000 (inf)"
+   }
+  }
+ },
+ "bones": 0,
+ "seconds": 243.5,
+ "machine": {
+  "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+  "aether3d": "0.20.0",
+  "native": true,
+  "python": "3.14.8"
+ }
+}

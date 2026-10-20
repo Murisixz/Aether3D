@@ -1289,6 +1289,163 @@ class Diagnoser:
                     ),
                 )
 
+    def _check_lighting(self, check: Check, result: CheckResult) -> None:
+        from .lighting import DEFAULT_SEPARATION, measure
+
+        objs = self._geometry_objects(check, result)
+        if not objs:
+            return
+        obs = self.observation(check.view)
+        min_sep = check.params.get("min_separation", DEFAULT_SEPARATION)
+        lighting = measure(obs, objs, min_separation=min_sep)
+        summary = lighting.summary()
+        sep = summary.pop("separation")
+        subjects = [_ref(o, "subject") for o in objs]
+        base = {"view": check.view, "observation": obs.id}
+        result.measured = {**summary, "separation": None}
+        if sep is not None:
+            result.measured["separation"] = {
+                **{k: v for k, v in sep.items() if k != "sectors"},
+                "merged": [r for r in sep["sectors"] if r["merged"]],
+            }
+        if not lighting.count:
+            self.add(
+                result,
+                self.finding(
+                    check,
+                    "NOT_VISIBLE",
+                    "the subject shows no surface in the view to measure its light on",
+                    subjects,
+                    basis="render",
+                    hint="frame the camera on it",
+                    **base,
+                ),
+            )
+            return
+        ratio, method = lighting.ratio()
+        if "ratio" in check.params:
+            lo, hi = check.params["ratio"]["min"], check.params["ratio"]["max"]
+            evidence = {"ratio": ratio, "method": method, "key": summary["key"],
+                        "target": check.params["ratio"]}  # fmt: skip
+            if ratio is None:
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "UNLIT",
+                        "no light reaches the subject's visible surface",
+                        subjects,
+                        basis="geometry",
+                        exact=False,
+                        evidence=evidence,
+                        hint="add lights (light_rig) or aim the lights at it",
+                        **base,
+                    ),
+                )
+            elif hi is not None and ratio > hi:
+                unlit = math.isinf(ratio)
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "LIGHTING_RATIO_HIGH",
+                        "the shadow side gets no light (the key alone lights the subject)"
+                        if unlit
+                        else f"lighting ratio {ratio:.3g}:1 is above {hi:g}:1 "
+                        f"({math.log2(ratio / hi):.2f} stops)",
+                        subjects,
+                        basis="geometry",
+                        exact=False,
+                        evidence=evidence,
+                        magnitude=None if unlit else math.log2(ratio / hi),
+                        unit=None if unlit else "stops",
+                        hint="raise the fill (or the ambient light), or lower the key",
+                        **base,
+                    ),
+                )
+            elif lo is not None and ratio < lo:
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "LIGHTING_RATIO_LOW",
+                        f"lighting ratio {ratio:.3g}:1 is below {lo:g}:1 "
+                        f"({math.log2(lo / ratio):.2f} stops): flat lighting",
+                        subjects,
+                        basis="geometry",
+                        exact=False,
+                        evidence=evidence,
+                        magnitude=math.log2(lo / ratio),
+                        unit="stops",
+                        hint="lower the fill (or the ambient light), or raise the key",
+                        **base,
+                    ),
+                )
+        if "max_merged_fraction" in check.params or "min_separation" in check.params:
+            limit = check.params.get("max_merged_fraction", 0.25)
+            if sep is None:
+                result.note = "the subject has no outline in the image to measure separation on"
+            elif sep["merged_fraction"] > limit:
+                merged = [r for r in sep["sectors"] if r["merged"]]
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "POOR_SEPARATION",
+                        f"{sep['merged_fraction']:.0%} of the outline is within {min_sep:g} "
+                        f"L* of its surroundings (at most {limit:.0%} expected)",
+                        subjects,
+                        basis="render",
+                        evidence={
+                            "separation": {k: v for k, v in sep.items() if k != "sectors"},
+                            "merged": merged,
+                        },  # fmt: skip
+                        magnitude=sep["merged_fraction"] - limit,
+                        unit="fraction",
+                        hint="add or raise a rim light, or light the background apart",
+                        **base,
+                    ),
+                )
+        if "lights" in check.params:
+            wanted, unknown = self.select(check.params["lights"], f"{check.pointer}/lights")
+            if unknown:
+                self.missing(check, result, [str(u) for u in unknown])
+            columns = {info["id"]: k for k, info in enumerate(lighting.lights) if info["id"]}
+            rows = {row["id"]: row for row in summary["lights"] if row.get("id")}
+            for light in wanted:
+                if light.light is None:
+                    continue
+                k = columns.get(light.id)
+                row = rows.get(light.id)
+                if k is not None and row is not None and row["reach"] > 0.0:
+                    continue
+                if light.light.intensity <= 0.0:
+                    why = "its intensity is 0"
+                elif k is None:
+                    why = "it is hidden"
+                elif row.get("unlinked"):
+                    why = "light linking excludes the subject"
+                elif row["blocked"] > 0.0:
+                    names = row.get("blockers") or []
+                    why = "it is blocked" + (f" by {', '.join(map(repr, names))}" if names else "")
+                else:
+                    why = "it points away or the subject is outside its cone or range"
+                self.add(
+                    result,
+                    self.finding(
+                        check,
+                        "LIGHT_NO_EFFECT",
+                        f"{light.name!r} does not light the subject: {why}",
+                        [*subjects, _ref(light, "light")],
+                        basis="geometry",
+                        exact=False,
+                        evidence={"light": row, "reason": why},
+                        hint="aim it at the subject, move it, or remove what blocks it",
+                        qualifier=light.id,
+                        **base,
+                    ),
+                )
+
     def _check_mesh_validity(self, check: Check, result: CheckResult) -> None:
         from ..sculpt.validate import object_report, tier_index
 
@@ -1448,6 +1605,74 @@ class Diagnoser:
                             "where they touched down",
                         ),
                     )
+        result.measured = measured
+
+    def _check_motion_quality(self, check: Check, result: CheckResult) -> None:
+        system = self.scene.animation
+        p = check.params
+        rank = {"info": 0, "warning": 1, "error": 2}
+        level = rank[p.get("level", "warning")]
+        ignore = set(p.get("ignore", ()))
+        targets: list[Any] = []
+        objects = self._animated(check, result)
+        for obj in objects:
+            targets.append({"object": obj._id})
+            if p.get("joints") and system.rig(obj) is not None:
+                targets.append({"object": obj._id, "joints": p["joints"]})
+        if not targets:
+            return
+        subject = p.get("subject")
+        if isinstance(subject, str):
+            found, unknown = self.select(subject, f"{check.pointer}/subject")
+            if unknown or not found:
+                self.missing(check, result, [subject])
+                return
+            subject = found[0]._id
+        report = system.motion_report(
+            targets,
+            subject=subject,
+            loop=p.get("loop", False),
+            thresholds=p.get("thresholds"),
+            max_findings=500,
+        )
+        by_name = {o.name: o for o in objects}
+        measured: dict[str, Any] = {}
+        for t in report["targets"]:
+            key = t["target"] if "joint" not in t else f"{t['target']}.{t['joint']}"
+            measured[key] = {
+                "speed_max": round(t["speed"]["max"], 6),
+                "jitter_mm": round(t["jitter"]["position_mm"], 4),
+                "jitter_deg": round(t["jitter"]["angle_deg"], 4),
+                "acceleration_steps": t["acceleration_steps"],
+            }
+        for f in report["findings"]:
+            if rank[f["severity"]] < level or f["code"] in ignore:
+                continue
+            owner = f["location"].split(".joints[")[0].split(".constraints[")[0]
+            obj = by_name.get(owner)
+            subjects = [_ref(obj, "subject")] if obj is not None else []
+            self.add(
+                result,
+                self.finding(
+                    check,
+                    f["code"],
+                    f"{f['location']}: {f['message']}",
+                    subjects,
+                    evidence={
+                        "location": f["location"],
+                        "time": f["time"],
+                        "measured": f["magnitude"],
+                        "thresholds": {
+                            k: v for k, v in report["thresholds"].items() if v is not None
+                        },
+                    },  # fmt: skip
+                    magnitude=f["magnitude"],
+                    exact=False,
+                    basis="scene",
+                    qualifier=f"{f['location']}@{f['time']}",
+                    hint=_MOTION_HINTS.get(f["code"]),
+                ),
+            )
         result.measured = measured
 
     def _check_rig(self, check: Check, result: CheckResult) -> None:
@@ -1981,3 +2206,27 @@ def tally(findings: list[Finding]) -> tuple[int, int, float]:
     warnings = sum(1 for f in findings if f.severity == "warning")
     score = sum(SEVERITY_WEIGHT.get(f.severity, 0.0) for f in findings)
     return errors, warnings, score
+
+
+_MOTION_HINTS = {
+    "POSITION_JUMP": "a jump pair or a constant key moves it instantly; spread the keys apart "
+    "or give the key bezier interpolation, unless it is a cut",
+    "VELOCITY_JUMP": "a corner (linear keys, vector handles, a constant key): give the keys "
+    "automatic handles with continuous smoothing (curve_smoothing)",
+    "ACCELERATION_STEP": "automatic handles with continuous smoothing make the acceleration "
+    "continuous at the keys (curve_smoothing); clamped extrema stay C1",
+    "JITTER": "high-frequency motion: smooth the key values (smooth_motion) or remove a noise "
+    "modifier, unless the shake is meant",
+    "CAMERA_JITTER": "camera shake: smooth the camera's keys (smooth_motion), lower a noise "
+    "modifier's strength, or aim with a look-at constraint",
+    "ROTATION_SNAP": "an instant turn: spread the rotation keys or use slerp/squad",
+    "ANGULAR_VELOCITY_JUMP": "a turn that starts or stops abruptly: automatic handles on the "
+    "Euler channels or squad on the rotation track",
+    "POLE_FLIP": "the IK chain's bend plane turns over: key the pole target continuously or "
+    "move it out of the chain's plane",
+    "LOOP_SEAM": "the end does not continue into the start: make the channels cyclic "
+    "(make_cyclic), so the handles see across the seam",
+    "GROUND_PENETRATION": "raise the keys or the root; plant_feet pins feet where they touch",
+    "SUBJECT_OUT_OF_FRAME": "aim the camera at the subject (a look_at constraint) or frame it",
+    "SUBJECT_OBSTRUCTED": "move the camera or the obstruction out of the line of sight",
+}

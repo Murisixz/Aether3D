@@ -23,21 +23,33 @@ struct Frame {
   light_count: u32,
   pcf_radius: i32,         // shadow filter radius in texels
   shadow_texel: f32,       // one shadow-map texel in texture coordinates
-  _pad: u32,
+  env: u32,                // 1: the ambient light is an image environment's harmonics
   eye: vec4<f32>,          // xyz: the camera position in world space (for world coordinates)
   atmo: Atmo,              // scene.world.atmosphere (atmosphere.wgsl)
+  sh: array<vec4<f32>, 9>, // rgb: ambient harmonics (envimage.EnvironmentImage.ambient_sh)
 };
 
 struct Light {
   radiance: vec3<f32>,     // linear color x intensity
-  kind: u32,               // 0 directional, 1 point
-  vector: vec3<f32>,       // directional: direction of travel; point: camera-relative position
-  range: f32,              // point: distance where the light fades out, 0 = no range
-  falloff: u32,            // point: 1 inverse square, 0 none
+  kind: u32,               // 0 directional, 1 point, 2 spot, 3 area
+  vector: vec3<f32>,       // directional: direction of travel; others: camera-relative position
+  range: f32,              // point, spot: distance where the light fades out, 0 = no range
+  falloff: u32,            // point, spot: 1 inverse square, 0 none
   shadow: i32,             // first shadow-map layer, -1 = casts no shadow
   cascades: u32,           // consecutive layers of this light (cascades by view depth)
-  _pad1: u32,
+  shape: u32,              // area: 0 square or rectangle, 1 disk or ellipse
+  axis: vec3<f32>,         // spot: direction of travel; area: its normal (it emits that way)
+  cos_outer: f32,          // spot: cosine of the cone's half angle
+  axis_x: vec3<f32>,       // area: half extent along the light's local X
+  spot_smooth: f32,        // spot: the smoothstep's width in cos (0: a hard edge)
+  axis_y: vec3<f32>,       // area: half extent along its local Z
+  area: f32,               // area: emitting area (m^2)
+  spread: vec4<f32>,       // area: tan(spread / 2) (0: 180 degrees), its normalization
 };
+
+const AREA_POLYGON: u32 = 16u;  // corners of a disk or ellipse (surface.py)
+const AREA_SCALE: f32 = 1.0130016;  // their radius, for the ellipse's area (surface.AREA_SCALE)
+const SPREAD_QUADRATURE: u32 = 12u;  // grid points per side for spread lights (surface.py)
 
 struct ShadowMap {
   matrix: mat4x4<f32>,     // camera-relative world -> shadow clip (x, y in [-1, 1], depth in [0, 1])
@@ -149,19 +161,263 @@ fn light_at(light: Light, position: vec3<f32>) -> LightSample {
     let window = clamp(1.0 - ratio * ratio * ratio * ratio, 0.0, 1.0);
     attenuation = attenuation * window * window;
   }
+  if (light.kind == 2u) {
+    attenuation = attenuation * spot_mask(light, -dot(l, light.axis));
+  }
   return LightSample(l, attenuation);
+}
+
+// A spot's mask at the cosine between its axis and the direction from it (surface.py).
+fn spot_mask(light: Light, cos_t: f32) -> f32 {
+  if (cos_t <= light.cos_outer) {
+    return 0.0;
+  }
+  if (light.spot_smooth > 0.0) {
+    let x = clamp((cos_t - light.cos_outer) / light.spot_smooth, 0.0, 1.0);
+    return x * x * (3.0 - 2.0 * x);
+  }
+  return 1.0;
+}
+
+// Corner k of an area light's polygon, relative to `position` (surface.area_corners).
+fn area_corner(light: Light, k: u32, count: u32, position: vec3<f32>) -> vec3<f32> {
+  let c = light.vector - position;
+  if (count == 4u) {
+    let sx = select(-1.0, 1.0, k == 1u || k == 2u);
+    let sy = select(-1.0, 1.0, k >= 2u);
+    return c + sx * light.axis_x + sy * light.axis_y;
+  }
+  let t = f32(k) * (2.0 * PI / f32(AREA_POLYGON));
+  let scale = AREA_SCALE;
+  return c + (scale * cos(t)) * light.axis_x + (scale * sin(t)) * light.axis_y;
+}
+
+// theta (n . gamma) of the edge a -> b (Lambert's polygon formula).
+fn area_edge(a: vec3<f32>, b: vec3<f32>, n: vec3<f32>) -> f32 {
+  let g = cross(a, b);
+  let len = length(g);
+  if (len <= 0.0) {
+    return 0.0;
+  }
+  return atan2(len, dot(a, b)) * dot(g, n) / len;
+}
+
+// A spread area light's radiance factor toward cos_a from its normal (scene_data.py).
+fn spread_factor(light: Light, cos_a: f32) -> f32 {
+  if (!(cos_a > 0.0)) {
+    return 0.0;
+  }
+  if (light.spread.x <= 0.0) {
+    return 1.0;
+  }
+  let tan_a = sqrt(max(1.0 - cos_a * cos_a, 0.0)) / max(cos_a, 1e-30);
+  return max(1.0 - tan_a / light.spread.x, 0.0) * light.spread.y;
+}
+
+struct SpreadWindow {
+  lo: vec2<f32>,  // (u0, w0): the part of the light that reaches the point (half extents)
+  hi: vec2<f32>,  // (u1, w1)
+  area: f32,
+  ok: bool,
+};
+
+fn spread_window(light: Light, position: vec3<f32>) -> SpreadWindow {
+  let rel = position - light.vector;
+  let t = dot(rel, light.axis);
+  let lx = length(light.axis_x);
+  let ly = length(light.axis_y);
+  let qu = dot(rel, light.axis_x) / (lx * lx);
+  let qw = dot(rel, light.axis_y) / (ly * ly);
+  let reach = max(t, 0.0) * light.spread.x;
+  let lo = vec2<f32>(max(qu - reach / lx, -1.0), max(qw - reach / ly, -1.0));
+  let hi = vec2<f32>(min(qu + reach / lx, 1.0), min(qw + reach / ly, 1.0));
+  let ok = t > 0.0 && hi.x > lo.x && hi.y > lo.y;
+  var area = 0.0;
+  if (ok) {
+    area = (hi.x - lo.x) * lx * (hi.y - lo.y) * ly;
+  }
+  return SpreadWindow(lo, hi, area, ok);
+}
+
+// G of a spread area light, its radiance factor included: the midpoint rule over the part
+// of it that reaches the point (surface.spread_irradiance).
+fn spread_irradiance(light: Light, position: vec3<f32>, n: vec3<f32>) -> f32 {
+  let win = spread_window(light, position);
+  if (!win.ok) {
+    return 0.0;
+  }
+  let k = SPREAD_QUADRATURE;
+  let du = (win.hi.x - win.lo.x) / f32(k);
+  let dw = (win.hi.y - win.lo.y) / f32(k);
+  let c = light.vector - position;
+  var total = 0.0;
+  for (var i = 0u; i < k; i++) {
+    let u = win.lo.x + (f32(i) + 0.5) * du;
+    for (var j = 0u; j < k; j++) {
+      let w = win.lo.y + (f32(j) + 0.5) * dw;
+      let v = c + u * light.axis_x + w * light.axis_y;
+      let d2 = max(dot(v, v), MIN_LIGHT_DISTANCE * MIN_LIGHT_DISTANCE);
+      let d = sqrt(d2);
+      let cos_p = max(dot(v, n) / d, 0.0);
+      let cos_l = -dot(v, light.axis) / d;
+      var term = spread_factor(light, cos_l) * max(cos_l, 0.0) * cos_p / d2;
+      if (light.shape == 1u) {
+        let r = sqrt(u * u + w * w);
+        let rs = max(r, 1e-30);
+        let across = abs(u / rs) * du + abs(w / rs) * dw;
+        term = term * clamp(0.5 - (r - 1.0) / max(across, 1e-30), 0.0, 1.0);
+      }
+      total += term;
+    }
+  }
+  return total * (win.area / f32(k * k));
+}
+
+// Irradiance of an area light of unit radiance, unshadowed: the polygon clipped by the
+// tangent plane (surface.area_irradiance). Zero behind the one-sided light.
+fn area_irradiance(light: Light, position: vec3<f32>, n: vec3<f32>) -> f32 {
+  if (dot(position - light.vector, light.axis) <= 0.0) {
+    return 0.0;
+  }
+  if (light.spread.x > 0.0) {
+    return spread_irradiance(light, position, n);
+  }
+  let count = select(4u, AREA_POLYGON, light.shape == 1u);
+  var total = 0.0;
+  var exit_x = vec3<f32>(0.0);
+  var entry_x = vec3<f32>(0.0);
+  var clipped = false;
+  for (var i = 0u; i < count; i++) {
+    let a = area_corner(light, i, count, position);
+    let b = area_corner(light, (i + 1u) % count, count, position);
+    let da = dot(a, n);
+    let db = dot(b, n);
+    let above_a = da > 0.0;
+    let above_b = db > 0.0;
+    var f = 0.0;
+    if (above_a != above_b && da != db) {
+      f = da / (da - db);
+    }
+    let x = a + f * (b - a);
+    if (above_a || above_b) {
+      total += area_edge(select(x, a, above_a), select(x, b, above_b), n);
+    }
+    if (above_a && !above_b) {
+      exit_x = x;
+      clipped = true;
+    }
+    if (!above_a && above_b) {
+      entry_x = x;
+    }
+  }
+  if (clipped) {
+    total += area_edge(exit_x, entry_x, n);
+  }
+  return 0.5 * abs(total);
+}
+
+struct AreaHighlight {
+  l: vec3<f32>,      // unit direction to the representative point
+  weight: f32,       // cos at the light over the squared distance
+  distance: f32,
+};
+
+// The representative point of an area light for glossy highlights (surface.area_highlight).
+fn area_highlight(light: Light, position: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -> AreaHighlight {
+  let r = 2.0 * dot(n, v) * n - v;
+  let o = light.vector - position;  // point -> centre
+  let denom = dot(r, light.axis);
+  var den = denom;
+  if (abs(den) <= 1e-12) {
+    den = 1e-12;
+  }
+  var t = dot(o, light.axis) / den;
+  if (!(denom < -1e-12 && t > 0.0)) {
+    t = 0.0;
+  }
+  let q = r * t - o;
+  var u = dot(q, light.axis_x) / dot(light.axis_x, light.axis_x);
+  var w = dot(q, light.axis_y) / dot(light.axis_y, light.axis_y);
+  var win = SpreadWindow(vec2<f32>(-1.0), vec2<f32>(1.0), 0.0, true);
+  if (light.spread.x > 0.0) {
+    win = spread_window(light, position);
+    u = clamp(u, win.lo.x, win.hi.x);
+    w = clamp(w, win.lo.y, win.hi.y);
+  }
+  if (light.shape == 1u) {
+    let rr = sqrt(u * u + w * w);
+    if (rr > 1.0) {
+      u = u / rr;
+      w = w / rr;
+    }
+  } else {
+    u = clamp(u, -1.0, 1.0);
+    w = clamp(w, -1.0, 1.0);
+  }
+  let lv = o + u * light.axis_x + w * light.axis_y;
+  let d2 = max(dot(lv, lv), MIN_LIGHT_DISTANCE * MIN_LIGHT_DISTANCE);
+  let d = sqrt(d2);
+  let l = lv / d;
+  let cos_l = max(-dot(l, light.axis), 0.0);
+  if (light.spread.x > 0.0) {
+    return AreaHighlight(l, select(0.0, spread_factor(light, cos_l) * cos_l / d2, win.ok), d);
+  }
+  return AreaHighlight(l, cos_l / d2, d);
+}
+
+// The ambient light at normal n: an image environment's harmonics (envimage.sh_ambient),
+// else the atmosphere's hemisphere or the uniform ambient.
+fn ambient_light(n: vec3<f32>) -> vec3<f32> {
+  if (frame.env == 0u) {
+    return atmo_ambient(frame.atmo, frame.ambient.rgb, n);
+  }
+  let x = n.x;
+  let y = n.y;
+  let z = n.z;
+  let c = frame.sh[0].rgb * 0.282095
+    + frame.sh[1].rgb * (0.488603 * y) + frame.sh[2].rgb * (0.488603 * z)
+    + frame.sh[3].rgb * (0.488603 * x) + frame.sh[4].rgb * (1.092548 * x * y)
+    + frame.sh[5].rgb * (1.092548 * y * z) + frame.sh[6].rgb * (0.315392 * (3.0 * z * z - 1.0))
+    + frame.sh[7].rgb * (1.092548 * x * z) + frame.sh[8].rgb * (0.546274 * (x * x - y * y));
+  return max(c, vec3<f32>(0.0));
+}
+
+// Light linking: whether light i leaves this instance unlit (Instance.normal[0..1].w).
+fn unlinked(links: vec2<u32>, i: u32) -> bool {
+  if (i >= 64u) {
+    return false;
+  }
+  let word = select(links.y, links.x, i < 32u);
+  return ((word >> (i % 32u)) & 1u) != 0u;
 }
 
 // The simple model (Aether3D 0.5): Lambert plus an optional Blinn-Phong highlight.
 fn shade_simple(
   base: vec3<f32>, specular: f32, shininess: f32, occlusion: f32,
-  position: vec3<f32>, n: vec3<f32>, shadow_origin: vec3<f32>
+  position: vec3<f32>, n: vec3<f32>, shadow_origin: vec3<f32>, links: vec2<u32>
 ) -> vec3<f32> {
   let v = view_direction(position);
-  var diffuse = atmo_ambient(frame.atmo, frame.ambient.rgb, n) * occlusion;
+  var diffuse = ambient_light(n) * occlusion;
   var highlight = vec3<f32>(0.0);
   for (var i = 0u; i < frame.light_count; i++) {
     let light = lights[i];
+    if (unlinked(links, i)) {
+      continue;
+    }
+    if (light.kind == 3u) {  // an area light: the polygon's irradiance, a highlight
+      diffuse += light.radiance * (area_irradiance(light, position, n) / light.area);
+      if (specular > 0.0) {
+        let ah = area_highlight(light, position, n, v);
+        if (dot(n, ah.l) > 0.0) {
+          let h = ah.l + v;
+          let ndh = dot(n, h) / max(length(h), 1e-30);
+          if (ndh > 0.0) {
+            highlight += light.radiance * (specular * pow(ndh, shininess) * ah.weight);
+          }
+        }
+      }
+      continue;
+    }
     let ls = light_at(light, position);
     let ndl = dot(n, ls.l);
     if (ndl <= 0.0) {
@@ -196,20 +452,31 @@ fn env_brdf(roughness: f32, ndv: f32) -> vec2<f32> {
 
 // The standard model: glTF 2.0 metallic-roughness, times pi (see docs/MATERIALS.md).
 fn shade_standard(
-  sv: SurfaceValues, specular: f32, position: vec3<f32>, n: vec3<f32>, shadow_origin: vec3<f32>
+  sv: SurfaceValues, specular: f32, transmission: f32, position: vec3<f32>, n: vec3<f32>,
+  shadow_origin: vec3<f32>, links: vec2<u32>
 ) -> vec3<f32> {
   let v = view_direction(position);
   let metallic = clamp(sv.metallic, 0.0, 1.0);
   let rough = clamp(sv.roughness, MIN_ROUGHNESS, 1.0);
   let alpha = rough * rough;
   let a2 = alpha * alpha;
-  let c_diff = sv.base * (1.0 - metallic);
+  var c_diff = sv.base * (1.0 - metallic);
+  if (transmission > 0.0) {  // (not refracted on the rasterizers: dropped)
+    c_diff = c_diff * (1.0 - transmission);
+  }
   let f0 = vec3<f32>(0.08 * specular * (1.0 - metallic)) + sv.base * metallic;
   let ndv = max(dot(n, v), 1e-4);
   let ab = env_brdf(rough, ndv);
-  var out = atmo_ambient(frame.atmo, frame.ambient.rgb, n) * sv.occlusion * (c_diff + f0 * ab.x + ab.y);
+  var out = ambient_light(n) * sv.occlusion * (c_diff + f0 * ab.x + ab.y);
   for (var i = 0u; i < frame.light_count; i++) {
     let light = lights[i];
+    if (unlinked(links, i)) {
+      continue;
+    }
+    if (light.kind == 3u) {
+      out += area_standard(light, position, n, v, c_diff, f0, alpha, a2, ndv);
+      continue;
+    }
     let ls = light_at(light, position);
     let ndl = dot(n, ls.l);
     if (ndl <= 0.0) {
@@ -235,6 +502,37 @@ fn shade_standard(
     );
     let brdf = (1.0 - fresnel) * c_diff + PI * fresnel * distribution * vis;
     out += light.radiance * (ndl * ls.attenuation * visibility) * brdf;
+  }
+  return out;
+}
+
+// An area light on the metallic-roughness model (surface._area_standard).
+fn area_standard(
+  light: Light, position: vec3<f32>, n: vec3<f32>, v: vec3<f32>, c_diff: vec3<f32>,
+  f0: vec3<f32>, alpha: f32, a2: f32, ndv: f32
+) -> vec3<f32> {
+  let g = area_irradiance(light, position, n) / light.area;
+  let ah = area_highlight(light, position, n, v);
+  let h = safe_normalize(ah.l + v);
+  let ndl = max(dot(n, ah.l), 0.0);
+  let ndh = max(dot(n, h), 0.0);
+  let vdh = max(dot(v, h), 0.0);
+  let x = 1.0 - vdh;
+  let x2 = x * x;
+  let fresnel = f0 + (1.0 - f0) * (x2 * x2 * x);
+  let wide = clamp(alpha + sqrt(light.area / PI) / (2.0 * ah.distance), 0.0, 1.0);
+  let a2w = wide * wide;
+  let dd = ndh * ndh * (a2w - 1.0) + 1.0;
+  let distribution = a2w / (PI * dd * dd) * (alpha * alpha) / max(a2w, 1e-30);
+  let vis = 0.5 / max(
+    ndl * sqrt(ndv * ndv * (1.0 - a2) + a2) + ndv * sqrt(ndl * ndl * (1.0 - a2) + a2), 1e-30
+  );
+  let xv = 1.0 - ndv;
+  let xv2 = xv * xv;
+  let fresnel_v = f0 + (1.0 - f0) * (xv2 * xv2 * xv);
+  var out = light.radiance * ((1.0 - fresnel_v) * c_diff * g);
+  if (ndl > 0.0) {
+    out += light.radiance * (PI * fresnel * distribution * vis * ndl * ah.weight);
   }
   return out;
 }
@@ -286,11 +584,12 @@ fn fs_main(in: VertexOut, @builtin(front_facing) front: bool) -> FragmentOut {
   if (slot_binding(m, SLOT_NORMAL) != NO_BINDING && binding_usable(slot_binding(m, SLOT_NORMAL), has_uvs)) {
     n = sv.normal * toward;
   }
+  let links = vec2<u32>(bitcast<u32>(inst.normal[0].w), bitcast<u32>(inst.normal[1].w));
   var radiance: vec3<f32>;
   if ((flags & MATERIAL_STANDARD) != 0u) {
-    radiance = shade_standard(sv, wordf(mb + 8u), in.position, n, shadow_origin);
+    radiance = shade_standard(sv, wordf(mb + 8u), wordf(mb + 15u), in.position, n, shadow_origin, links);
   } else {
-    radiance = shade_simple(sv.base, wordf(mb + 8u), wordf(mb + 9u), sv.occlusion, in.position, n, shadow_origin);
+    radiance = shade_simple(sv.base, wordf(mb + 8u), wordf(mb + 9u), sv.occlusion, in.position, n, shadow_origin, links);
   }
   var color = radiance + sv.emissive;
   if (frame.atmo.fog.w > 0.5) {  // aerial perspective along the camera ray

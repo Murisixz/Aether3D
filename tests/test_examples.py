@@ -854,3 +854,78 @@ def test_committed_rigging_outputs():
     kit = Scene.load(RIGGING / "e_rigid" / "kit.aether")
     assert not any(kit.animation.rig(o) is not None for o in kit.objects)
     assert not any(kind == "skin" for kind, _ in kit.animation._owned)
+
+
+# --------------------------------------------------------------------------- #
+# Film: animation, lighting, path tracing and delivery (0.20.0)
+# --------------------------------------------------------------------------- #
+
+FILM = EXAMPLES / "output" / "film"
+
+
+def _run_film(name: str, out: Path) -> dict:
+    command = [sys.executable, str(EXAMPLES / name), "--quick", "--out", str(out)]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return json.loads((out / "report.json").read_text())
+
+
+def _blender_equal(r: dict) -> bool:
+    angles = r["quaternions"]["angles_at_quarter_half_three_quarters"]
+    return (max(r["largest_relative_difference"].values()) <= 2e-6
+            and angles["Aether3D"] == angles["Blender COMBINE"]
+            and angles["Blender REPLACE"] != angles["Aether3D"])  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("name", "checks"),
+    [
+        # (crossfades leave none of the cuts' jumps and snaps at the gestures' transitions)
+        ("film_a_rigid.py",
+         lambda r: r["bones"] == 0 and r["gestures_cuts"]["count"] >= 10
+         and not r["gestures_crossfades"]["times"]
+         and r["blip"]["squash_min"] < 0.8 and r["blip"]["stretch_max"] > 1.1),
+        # (masks keep the gestures off the legs: the planted feet stay within 2 mm)
+        ("film_b_character.py",
+         lambda r: r["gestures_cuts"]["jumps"] > 0 and r["gestures_crossfades"]["jumps"] == 0
+         and max(f["sliding_max_m"] for f in r["feet"].values()) < 0.002
+         and r["light_rig"]["ratio"] == 3.0),
+        ("film_c_graphs.py",
+         lambda r: _blender_equal(r) and r["smoothing"]["acceleration_steps"]["continuous"] == 0
+         and r["smoothing"]["acceleration_steps"]["local"] > 0),
+        # (and the day-night timelapse keys sixteen world channels)
+        pytest.param("film_d_world.py",
+                     lambda r: r["camera"]["lowest_clearance_m"] >= 12.0
+                     and not {"VELOCITY_JUMP", "CAMERA_JITTER"} & set(r["camera_quality"])
+                     and r["daynight"]["world_channels"] == 16
+                     and r["daynight"]["video"]["frames"] == 3,
+                     marks=_needs_native()),
+        # (a harsh rig found, corrected by one verified change, accepted; the camera clean)
+        pytest.param("film_i_mcp_agent.py",
+                     lambda r: r["first"]["ratio"] > 6 and not r["first"]["accepted"]
+                     and r["applied"]["decision"] == "kept" and r["final"]["accepted"]
+                     and not r["camera_motion"]["findings"],
+                     marks=pytest.mark.skipif(importlib.util.find_spec("mcp") is None,
+                                              reason="needs the MCP SDK")),
+        # (the cut: a title, six shots dissolving into each other, an end card)
+        ("film_h_trailer.py",
+         lambda r: not r["missing"] and len(r["shots"]) == 8 and r["fps"] == 60
+         and r["frames"] == round(r["duration_s"] * 60) > 60 * 15),
+        # (without git history the before run is skipped; the after runs still compare)
+        ("film_g_renderer.py",
+         lambda r: r["variants"]["full"]["relative_rmse"]
+         < r["variants"]["after_default"]["relative_rmse"]),
+        pytest.param("film_e_studio.py",
+                     lambda r: all(not codes for codes in r["camera_quality"].values())
+                     and r["presets"]["three_point"]["ratio"] == 4.0
+                     and r["presets"]["silhouette"]["removed"] == ["Key", "Fill", "Rim"],
+                     marks=pytest.mark.skipif(importlib.util.find_spec("manifold3d") is None,
+                                              reason="the vase is a boolean (manifold3d)")),
+        # (the windows and lamp glass light the street on their own: off, it is black)
+        ("film_f_night.py",
+         lambda r: r["emissive_proof"]["lights_by_emission"] and not r["camera_quality"]),
+    ],
+)  # fmt: skip
+def test_film_showcases_run(tmp_path, name, checks):
+    report = _run_film(name, tmp_path)
+    assert report["quick"] and checks(report)

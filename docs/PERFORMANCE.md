@@ -645,6 +645,16 @@ prototype is kept for that) after shading is restructured -- a wavefront path tr
 sorting hits by material, where traversal could dominate -- or when wgpu-native's C API
 gains acceleration structures, which would remove the second device.
 
+**Re-examined in Stage 19 (0.20.0).** The installed wgpu-py 0.32.0 ships wgpu-native
+29.0.1.1. Its headers (`wgpu.h`) declare the native features `RayQuery` and
+`AccelerationStructureBindingArray` and a ray-query initialization check, but no function
+creates, builds or binds a bottom- or top-level acceleration structure, so a Python host
+still cannot use ray queries. The conditions above therefore still hold, and the decision
+stands: the GPU path tracer traverses its BVH in software on the shader cores, and no
+report or document claims hardware ray tracing. Stage 19's new features (glass, spot and
+area lights, image environments, Sobol', filters, adaptive sampling) went into that
+kernel.
+
 ## Visual feedback (0.12.0)
 
 Stage 12 added no kernel: observations reuse the renderers, the retained render world and
@@ -1099,3 +1109,79 @@ showed otherwise. Known slow spots: weight transfer still finds closest points i
 (1.3 s for a 10,000-vertex jacket); bone heat's factorization grows with the mesh (0.77 s
 at 41,000 vertices); the stress suite and verified fixes deform every bound mesh in every
 pose (1-4 s).
+
+## Film, lighting and path tracing (0.20)
+
+Stage 19 ([research/2026-10-stage19/DESIGN.md](../research/2026-10-stage19/DESIGN.md),
+Part eight) kept its new code in NumPy (curves, smoothing, motion quality, lights,
+environments, the lighting check, the denoiser, view transforms, EXR, motion vectors) and
+WGSL (the GPU rasterizer's lights and the GPU path tracer's features), and added no
+native kernel. What the new NumPy code costs at the sizes it is used at
+(`research/2026-10-stage19/measurements/profile.py`, best of three, one process;
+`profile.json`):
+
+| Work | Size | Time |
+| --- | --- | ---: |
+| curve build, smoothing `local` / `blender` / `continuous` | 100 keys | 0.20 / 0.26 / 0.89 ms |
+| the same | 10,000 keys | 0.61 / 1.29 / 7.8 ms |
+| curve evaluation (any mode), value and two derivatives | 100,000 samples | 9-20 ms |
+| `motion_report` | 100 objects, 10 s at 240 samples a second | 2.4 s |
+| the lighting check: measure / diagnose (with its 640 x 360 render) | | 49 ms / 0.68 s |
+| denoiser / `film` view transform / EXR, 7 channels | 1920 x 1080 | 4.9 / 0.58 / 0.35 s |
+| motion-vector pass (on top of a 1.2 s CPU raster) | 1920 x 1080 | 3.6 s |
+| image environment: built-in drawn / sampling tables / raster lighting | 2048 x 1024 | 0.11 / 0.03 / 0.21 s |
+
+The largest per-frame costs are opt-in and small against what they serve: a 1080p
+path-traced film frame took 25.5-68 s on the GPU in showcases F and E, so the denoiser
+adds 7-19 %. Curve solves are linear in the keys. Their measured cost is the per-call overhead on
+small curves (below). A scalar path or a kernel for small curves, and the denoiser and
+motion pass on the GPU, are the candidates if these costs matter later.
+
+**v0.19.1 against 0.20.0.** v0.19.1 was benchmarked before any change
+(`benchmarks/results/stage19-baseline-*.json`). The same commands ran again at the end, one
+at a time on the same machine (i9-12900H laptop, RTX 4060 Laptop GPU;
+`stage19-final-*.json`). `research/2026-10-stage19/measurements/compare_benchmarks.py`
+pairs every number of the two runs by its path, so nothing was selected or left out:
+
+| Benchmark | End-to-end timings | Median, 0.20.0 / v0.19.1 speed | Range |
+| --- | ---: | ---: | ---: |
+| `bench_animation.py` | 62 | 0.84x | 0.33-1.15x |
+| `bench_engine.py` (extract, frame, raytrace, images) | 44 | 0.95x | 0.80-1.08x |
+| `bench_gpu.py --quick --no-4k` | 48 | 0.95x | 0.54-1.40x |
+| `bench_gpu_pathtrace.py` (ray rates and times) | 12 | 0.88x | 0.81-1.31x |
+| `bench_pathtrace.py` (CPU) | 53 | 0.88x | 0.70-0.98x |
+| `bench_raytrace.py` | 4 | 1.05x | 0.93-1.11x |
+| `bench_render.py --quick` (CPU rasterizer) | 16 | 0.95x | 0.92-0.96x |
+
+The final run came straight after hours of GPU rendering, so the machine itself was slower.
+Code Stage 19 did not touch measured 3-10 % slower in it (PNG encoding and decoding, BVH
+builds), so differences of that size are the machine's state, not the code. The outliers
+were measured again with v0.19.1 run from a git worktree immediately before or after
+0.20.0:
+
+- **Animation, back to back:** median 0.94x over the 62 timings. Two regressions remain:
+  - Building animated objects takes 0.36-0.39x the speed (1,000 objects with three
+    automatic-handle curves each: 0.62 -> 1.72 s). The cause is the new default smoothing,
+    the C2 solve, whose cost on a four-key curve is NumPy's per-call overhead: 0.50 ms a
+    curve against 0.16 ms with `smoothing="local"`, which keeps v0.19.1's cost.
+  - Fifty rigs' rigging pass per frame goes from 0.37 to 0.87 ms. Not yet analysed.
+- **GPU rasterizer, back to back:** every case is within this GPU's run-to-run noise
+  except one. The castle (procedural materials) supersampled at 1920 x 1080 takes
+  30.6 ms of GPU time against 10.8 ms: its scene pass goes from 5.3 to 7.3 ms and its
+  final pass from 0.50 to 4.9 ms. `finalize.wgsl` and the renderer did not change, while
+  the scene shader grew by the new light types. The cause is not identified. The castle
+  at 640 x 360, with MSAA, or with shadows, and the other scenes, are unchanged.
+- **Path tracers, against the morning baseline:**
+  - The CPU path tracer gives v0.19.1's images bit for bit (checked on the Cornell room of
+    `examples/film_g_scene.py` and a scene with a sized sun and point light, an emitter,
+    metal, a dielectric and the sky). It runs at 0.88x the speed in the median.
+  - The GPU path tracer's ray rate is 0.82-0.93x on its five scenes. Its kernel now
+    carries glass, Sobol' samples, pixel filters, adaptive rounds and environment and
+    area-light sampling.
+
+  Both include the machine's state above. They were not measured back to back.
+
+`bench_gpu_pathtrace.py`'s CPU times come from earlier stages' render records and are not
+compared. Adaptive sampling's gain at equal samples and at equal time is in
+[RENDER_QUALITY.md](RENDER_QUALITY.md#samplers-pixel-filters-and-adaptive-sampling-0200)
+(`measurements/adaptive.py`).

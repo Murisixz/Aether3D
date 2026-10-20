@@ -138,6 +138,28 @@ CHANGES = {
     "detach geometry": lambda s: by(s, "Tower").set_geometry(None),
     "add a procedural object": lambda s: s.add_procedural("Pillar", "box", position=(0, 5, 0)),
     "procedural undo": lambda s: s.procedural.undo(),  # undoes the parameter of the setup
+    # 0.20.0: lenses, spot and area lights, units, linking, rigs, image environments, glass,
+    # keys of the world, shot framing
+    "lens": lambda s: by(s, "Cam").camera.configure(fstop=2.8, focus_distance=3.0, shift_x=0.1),
+    "add a spot light": lambda s: s.add_spot_light(
+        "Spot", position=(1, 1, 4), look_at=(0, 0, 0), spot_size=40
+    ),
+    "add an area light": lambda s: s.add_area_light(
+        "Panel", position=(0, -3, 3), look_at=(0, 0, 1), shape="disk", size=1.5
+    ),
+    "light units and temperature": lambda s: by(s, "Lamp").light.configure(
+        units="watts", intensity=100, temperature=3200, use_temperature=True
+    ),
+    "light linking": lambda s: by(s, "Lamp").light.configure(include=(by(s, "Ball").id,)),
+    "light rig": lambda s: s.light_rig("Cube", "three_point"),
+    "image environment": lambda s: s.world.configure(
+        environment={"type": "image", "image": "builtin:studio", "rotation": 30}
+    ),
+    "glass": lambda s: s.materials["Stone"].configure(transmission=1.0, ior=1.45),
+    "keyframe the world": lambda s: s.animation.keyframe(
+        {"world": True}, "ambient_intensity", 1.0, 0.4
+    ),  # fmt: skip
+    "frame a shot": lambda s: s.animation.frame_shot("Cam", "Cube", "medium"),
     # grouped
     "transaction": _transaction,
 }

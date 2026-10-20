@@ -91,6 +91,10 @@ def test_document_layout():
             "zenith_color": [0.22, 0.42, 0.78],
             "horizon_color": [0.78, 0.85, 0.93],
             "ground_color": [0.32, 0.3, 0.27],
+            # (0.20.0: image environments)
+            "image": None,
+            "rotation": 0.0,
+            "visible": True,
         },
         # (Stage 16: the world's atmosphere -- sky, sun glow, height fog, hemisphere
         # ambient -- off by default.)
@@ -131,6 +135,20 @@ def test_document_layout():
         "falloff": "none",
         "radius": 0.0,
         "angle": 0.0,
+        # (0.20.0: spot and area lights, units, temperature, exposure, shadows)
+        "spot_size": 45.0,
+        "spot_blend": 0.15,
+        "shape": "square",
+        "size": 1.0,
+        "size_y": 1.0,
+        "spread": 180.0,
+        "units": "aether",
+        "temperature": 6500.0,
+        "use_temperature": False,
+        "exposure": 0.0,
+        "shadow": True,
+        "include": [],
+        "exclude": [],
     }
     assert objects["Crate"]["appearance"]["specular"] == 0.4
     assert objects["Rig"]["appearance"] is None  # defaults are not written
@@ -199,7 +217,7 @@ def obj(doc, name):
         (lambda d: obj(d, "Wide")["camera"].update(projection="fisheye"), "projection"),
         (lambda d: obj(d, "Wide")["camera"].pop("near"), "missing near"),
         (lambda d: obj(d, "Wide")["camera"].update(zoom=2), "unknown zoom"),
-        (lambda d: obj(d, "Bulb")["light"].update(type="spot"), "type"),
+        (lambda d: obj(d, "Bulb")["light"].update(type="laser"), "type"),
         (lambda d: obj(d, "Bulb")["light"].update(intensity=-1), "intensity"),
         (lambda d: obj(d, "Bulb")["light"].update(color="red"), "hex color"),
         (lambda d: obj(d, "Crate")["appearance"].update(specular=2), "specular"),

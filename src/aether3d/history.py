@@ -638,15 +638,26 @@ APPEARANCE = _Fields("appearance", "_appearance", ("color", "specular", "shinine
 CAMERA = _Fields(
     "camera",
     "_camera",
-    ("projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio"),
+    (
+        "projection", "fov", "fov_axis", "ortho_scale", "near", "far", "aspect_ratio",
+        # the lens (0.20.0)
+        "sensor", "shift_x", "shift_y", "fstop", "focus_distance", "focus_object",
+        "aperture_blades", "aperture_rotation", "aperture_ratio",
+    ),
     _camera,
-)
+)  # fmt: skip
 LIGHT = _Fields(
     "light",
     "_light",
-    ("type", "color", "intensity", "range", "falloff", "radius", "angle"),
+    (
+        "type", "color", "intensity", "range", "falloff", "radius", "angle",
+        # spot and area lights, units, temperature (0.20.0)
+        "spot_size", "spot_blend", "shape", "size", "size_y", "spread", "units", "temperature",
+        "include", "exclude",
+        "use_temperature", "exposure", "shadow",
+    ),
     _light,
-)
+)  # fmt: skip
 DATA = _Data("geometry")
 MATERIALS = _Materials("material", (_LIBRARY,))
 PARENT = _Attr("parent", "_parent")

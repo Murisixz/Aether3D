@@ -1,0 +1,177 @@
+{
+  "label": "v0.19.1",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900H",
+    "logical_cpus": 20,
+    "platform": "Linux-7.2.9-arch1-1-x86_64-with-glibc2.44",
+    "python": "3.14.8",
+    "numpy": "2.5.4",
+    "aether3d": "0.19.1",
+    "switches": {
+      "AETHER3D_EDITING_BULK": true,
+      "AETHER3D_GPU_PERSISTENT_BUFFERS": true,
+      "AETHER3D_MATERIAL_CACHE": true,
+      "AETHER3D_NATIVE": true,
+      "AETHER3D_RETAINED_RENDER_WORLD": true,
+      "AETHER3D_RIG_LAZY_FK": true
+    },
+    "native": {
+      "available": true,
+      "enabled": true,
+      "version": "0.19.1",
+      "reason": "loaded"
+    },
+    "git": "7752729",
+    "wgpu": "0.32.0"
+  },
+  "groups": {
+    "extract": {
+      "extract_unchanged_ms": 0.237,
+      "extract_unchanged_full_ms": 50.18,
+      "extract_one_moved_ms": 0.642,
+      "extract_one_moved_full_ms": 49.688,
+      "extract_one_added_ms": 8.754,
+      "extract_one_added_full_ms": 50.19,
+      "extract_all_moved_ms": 24.977,
+      "extract_all_moved_full_ms": 52.534,
+      "extract_camera_moved_ms": 0.284,
+      "extract_camera_moved_full_ms": 50.732,
+      "retained_bytes_per_object": 1849,
+      "peak_rss_mib": 207.8
+    },
+    "frame": {
+      "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "unchanged_wall_ms": 15.076,
+      "unchanged_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.001,
+        "extract": 0.324,
+        "init": 0.019,
+        "upload": 0.135,
+        "prepare": 0.373,
+        "gpu": 4.472,
+        "readback": 8.066,
+        "total": 13.84
+      },
+      "unchanged_gpu_passes_ms": {
+        "scene": 1.61,
+        "finalize": 0.226
+      },
+      "one_moved_wall_ms": 17.156,
+      "one_moved_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.001,
+        "extract": 1.142,
+        "init": 0.02,
+        "upload": 0.874,
+        "prepare": 0.37,
+        "gpu": 4.419,
+        "readback": 8.416,
+        "total": 15.325
+      },
+      "one_moved_gpu_passes_ms": {
+        "scene": 1.562,
+        "finalize": 0.182
+      },
+      "one_added_wall_ms": 24.589,
+      "one_added_stages_ms": {
+        "evaluate": 0.001,
+        "textures": 0.001,
+        "extract": 8.496,
+        "init": 0.022,
+        "upload": 2.461,
+        "prepare": 0.385,
+        "gpu": 4.19,
+        "readback": 6.063,
+        "total": 22.065
+      },
+      "one_added_gpu_passes_ms": {
+        "scene": 1.56,
+        "finalize": 0.183
+      },
+      "all_moved_wall_ms": 42.209,
+      "all_moved_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.002,
+        "extract": 26.392,
+        "init": 0.026,
+        "upload": 2.995,
+        "prepare": 0.396,
+        "gpu": 4.338,
+        "readback": 5.939,
+        "total": 40.451
+      },
+      "all_moved_gpu_passes_ms": {
+        "scene": 1.56,
+        "finalize": 0.183
+      },
+      "camera_moved_wall_ms": 14.383,
+      "camera_moved_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.001,
+        "extract": 0.361,
+        "init": 0.018,
+        "upload": 1.198,
+        "prepare": 0.337,
+        "gpu": 4.398,
+        "readback": 5.966,
+        "total": 12.562
+      },
+      "camera_moved_gpu_passes_ms": {
+        "scene": 1.562,
+        "finalize": 0.184
+      },
+      "unchanged_image_only_wall_ms": 7.637,
+      "unchanged_image_only_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.001,
+        "extract": 0.276,
+        "init": 0.015,
+        "upload": 0.117,
+        "prepare": 0.326,
+        "gpu": 2.656,
+        "readback": 2.684,
+        "total": 6.272
+      },
+      "one_moved_image_only_wall_ms": 9.027,
+      "one_moved_image_only_stages_ms": {
+        "evaluate": 0.0,
+        "textures": 0.001,
+        "extract": 0.868,
+        "init": 0.016,
+        "upload": 0.76,
+        "prepare": 0.335,
+        "gpu": 2.683,
+        "readback": 2.665,
+        "total": 7.612
+      },
+      "preview_640x360_png_ms": 10.261,
+      "preview_framed_unchanged_640x360_png_ms": 36.991,
+      "preview_framed_one_moved_640x360_png_ms": 49.003,
+      "peak_rss_mib": 466.1
+    },
+    "raytrace": {
+      "blas_build_100k_tris_ms": 263.125,
+      "closest_camera_mrays_s": 3.086,
+      "closest_bounce_mrays_s": 0.798,
+      "any_bounce_mrays_s": 0.822,
+      "closest_camera_numpy_mrays_s": 0.311,
+      "closest_bounce_numpy_mrays_s": 0.109,
+      "any_bounce_numpy_mrays_s": 0.112,
+      "closest_camera_8_threads_mrays_s": 14.838,
+      "closest_bounce_8_threads_mrays_s": 4.613,
+      "any_bounce_8_threads_mrays_s": 4.106,
+      "peak_rss_mib": 172.0
+    },
+    "images": {
+      "png_decode_1080p_ms": 45.597,
+      "png_decode_mpix_s": 45.48,
+      "png_encode_1080p_level6_ms": 425.64,
+      "png_encode_1080p_level1_ms": 104.838,
+      "png_decode_1080p_numpy_ms": 334.366,
+      "png_encode_1080p_level6_numpy_ms": 501.33,
+      "png_encode_1080p_level1_numpy_ms": 179.191,
+      "peak_rss_mib": 122.6
+    }
+  }
+}

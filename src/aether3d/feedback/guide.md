@@ -52,8 +52,16 @@ overlapping UV triangles, optional stretch, texel-density and gap limits:
 `{"check": "uv_quality", "objects": "Crate", "max_density_spread": 0.2}`),
 `foot_contacts` (planted feet slide and sink at most `max_sliding` / `max_penetration`
 over the timeline: `{"check": "foot_contacts", "objects": "Hero", "feet": ["Foot.L",
-"Foot.R"]}`), `animation_continuity` (no unintended jump of value, velocity or, with
-`order: 2`, acceleration at any key of the objects' actions) (schema:
+"Foot.R"]}`), `motion_quality` (world-space motion of objects, joints and cameras: jumps,
+acceleration steps, jitter, snaps, loop seams, framing and focus of a `subject`:
+`{"check": "motion_quality", "objects": "Crane", "level": "warning"}`; corrections
+`curve_smoothing`, `make_cyclic`, `smooth_motion` with `allow_animation`),
+`animation_continuity` (no unintended jump of value, velocity or, with
+`order: 2`, acceleration at any key of the objects' actions), `lighting` (how a subject is
+lit, measured from the scene's lights at its visible surface: `{"check": "lighting",
+"objects": "Hero", "ratio": {"min": 2, "max": 8}, "max_merged_fraction": 0.25, "lights":
+["Key", "Rim"]}` -- the key's lit side over its shadow side, the share of the outline
+within `min_separation` (10) L* of the background, lights that must reach it) (schema:
 `aether3d://schema/expectations`; `capabilities {"topic": "feedback"}` summarizes them).
 `objects` takes ids, names or selectors (`{"tags": [...]}`, `{"name_glob": "Chair*"}`).
 `severity: "warning"` makes a check advisory. `fix` states which side may move
@@ -105,10 +113,13 @@ observation made before the scene changed are marked stale.
 
 Actions (the only changes possible): `translate` (world offset), `place`, `rotate`,
 `scale`, `set_visibility`, `assign_material`, `set_color`, `frame_camera`, `aim_camera`,
-`dolly_camera`, `set_camera` (fov, near, far), `set_light`, `add_light`, `set_exposure`,
-`set_ambient`, `set_parameter`, and for animation `plant_feet` (keyed IK pins each
-contact; `verify`) and `smooth_keys` (automatic handles; `approval`) -- both only with the
-policy's `allow_animation: true`. No deletion, no mesh editing, no files.
+`dolly_camera`, `set_camera` (fov, near, far), `set_light`, `add_light` (directional:
+`direction`; point: `position`; spot or area: `position` and `look_at` or `direction`, an
+area light's `size`), `set_exposure`, `set_ambient`, `set_parameter`, and for animation `plant_feet` (keyed IK pins each
+contact; `verify`), `smooth_keys` (automatic handles; `approval`), `curve_smoothing`
+(handles continuous in acceleration; `verify`), `make_cyclic` (`verify`) and `smooth_motion`
+(a Gaussian over key values; `approval`) -- all only with the policy's
+`allow_animation: true`. No deletion, no mesh editing, no files.
 
 Safety: `safe` (exact repair of a stated expectation -- applied automatically),
 `verify` (applied when the policy allows it, kept only if it measurably helps),

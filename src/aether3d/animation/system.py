@@ -365,11 +365,21 @@ class AnimationSystem:
 
     def _target(self, ref: Any, location: str = "target") -> tuple[str, str]:
         """``("object" | "material", id)`` of a scene object, material, id or name; a
-        ``{"material": ...}`` dict names a material explicitly."""
+        ``{"material": ...}`` dict names a material explicitly; the scene's world
+        (``scene.world`` or ``{"world": true}``) is ``("world", "world")``."""
         from ..materials import Material
+        from ..rendering.settings import World
         from ..scene import SceneObject
 
         scene = self.scene
+        if isinstance(ref, World):
+            if ref is not scene.world:
+                raise _err("TARGET_MISSING", "that is not this scene's world", location)
+            return (P.WORLD, P.WORLD_ID)
+        if isinstance(ref, dict) and set(ref) == {"world"}:
+            if ref["world"] not in (True, P.WORLD_ID):
+                raise _err("TARGET_MISSING", 'the world is {"world": true}', location)
+            return (P.WORLD, P.WORLD_ID)
         if isinstance(ref, SceneObject):
             if ref.scene is not scene:
                 raise _err("TARGET_MISSING", f"object {ref.name!r} is not in this scene", location)
@@ -389,6 +399,8 @@ class AnimationSystem:
             )
         if isinstance(ref, (list, tuple)) and len(ref) == 2 and ref[0] in (P.OBJECT, P.MATERIAL):
             return self._target({ref[0]: ref[1]}, location)
+        if isinstance(ref, (list, tuple)) and tuple(ref) == (P.WORLD, P.WORLD_ID):
+            return (P.WORLD, P.WORLD_ID)
         if isinstance(ref, str):
             obj = scene._objects.get(ref) or scene._by_name.get(ref)
             if obj is not None:
@@ -397,7 +409,7 @@ class AnimationSystem:
                 "TARGET_MISSING",
                 f"no object {ref!r} (by id or name)",
                 location,
-                hint='name a material as {"material": NAME}',
+                hint='name a material as {"material": NAME}, the world as {"world": true}',
             )
         raise _err("TARGET_MISSING", f"cannot animate {ref!r}", location)
 
@@ -498,6 +510,8 @@ class AnimationSystem:
         kind, tid = key
         if kind == P.OBJECT:
             return self.scene._objects[tid].name
+        if kind == P.WORLD:
+            return "World"
         m = self.scene.materials.find_material(tid)
         return m.name if m is not None else tid
 
@@ -759,7 +773,9 @@ class AnimationSystem:
 
     def edit_keys(self, target: Any, path: str, op: str, *, clip: Any = None, **args: Any) -> None:
         """A key operation (``set``, ``delete``, ``handle``, ``move``, ``scale_time``,
-        ``reverse``, ``quantize``, ...; see :mod:`.clip`) on a scalar channel."""
+        ``reverse``, ``quantize``, ``ease``, ``anticipate``, ``overshoot``, ...; see
+        :mod:`.clip`) on a scalar channel, or on every component of a grouped path
+        (``transform.position``: the same operation, one undo step)."""
         if clip is not None:
             item = self._clip_item(clip)
             kind = item._definition.target
@@ -769,18 +785,25 @@ class AnimationSystem:
             kind = key[0]
             if item is None:
                 raise _err("CHANNEL_MISSING", f"{self._target_name(key)!r} has no action", "target")
-        spec = P.parse(path, kind, location="path")
-        assert not isinstance(spec, list)
-        curve = item._definition.channel(spec.path)
-        if curve is None:
-            raise _err("CHANNEL_MISSING", f"no channel {spec.path}", "path")
-        if not isinstance(curve, FCurve):
-            raise _err(
-                "INVALID_CHANNEL", f"{spec.path} is a rotation track: use set_channel", "path"
-            )
-        new = edit_curve(curve, op, args, f"operations[{op}]")
-        with self._op(f"{op.replace('_', ' ').capitalize()} keys of {spec.path}"):
-            self._set(item, definition=item._definition.with_channel(spec.path, new))
+        parsed = P.parse(path, kind, grouped=True, location="path")
+        specs = parsed if isinstance(parsed, list) else [parsed]
+        definition = item._definition
+        for spec in specs:
+            curve = definition.channel(spec.path)
+            if curve is None:
+                if len(specs) > 1:
+                    continue  # a grouped path edits the components that are keyed
+                raise _err("CHANNEL_MISSING", f"no channel {spec.path}", "path")
+            if not isinstance(curve, FCurve):
+                raise _err(
+                    "INVALID_CHANNEL", f"{spec.path} is a rotation track: use set_channel", "path"
+                )
+            new = edit_curve(curve, op, args, f"operations[{op}]")
+            definition = definition.with_channel(spec.path, new)
+        if definition is item._definition:
+            raise _err("CHANNEL_MISSING", f"no keyed component of {path}", "path")
+        with self._op(f"{op.replace('_', ' ').capitalize()} keys of {path}"):
+            self._set(item, definition=definition)
 
     # ------------------------------------------------------------------ #
     # Rigs, attachments, constraints, skins
@@ -1805,6 +1828,14 @@ class AnimationSystem:
 
         return diagnose(self, **options)
 
+    def motion_report(self, targets: Any = None, **options: Any) -> dict[str, Any]:
+        """World-space motion quality of objects, joints and cameras as the evaluated scene
+        moves them: jumps, acceleration steps, jitter, snaps, pauses, pole flips, loop
+        seams, ground penetration, camera framing (see :func:`.quality.motion_report`)."""
+        from .quality import motion_report
+
+        return motion_report(self, targets, **options)
+
     def simplify(
         self, target: Any, path: str, tolerance: float, *, clip: Any = None, **options: Any
     ) -> dict[str, Any]:
@@ -1885,6 +1916,18 @@ class AnimationSystem:
         from .rigid import convert_character
 
         return convert_character(self, source, to, **options)
+
+    def frame_shot(
+        self, camera: Any, subject: Any, preset: str = "medium", **options: Any
+    ) -> dict[str, Any]:
+        """Place ``camera`` for a named shot of ``subject`` -- ``extreme_wide``, ``wide``,
+        ``full``, ``medium``, ``medium_close``, ``close_up``, ``extreme_close_up``,
+        ``low_angle``, ``high_angle`` -- measured on the subject (``time``, ``azimuth``,
+        ``elevation``, ``screen``, ``fill``, ``focal_length``, ``fstop``); one undo step
+        (see :func:`.shots.frame_shot`)."""
+        from .shots import frame_shot
+
+        return frame_shot(self, camera, subject, preset, **options)
 
     def follow_camera(self, camera: Any, target: Any, **options: Any) -> dict[str, Any]:
         """Key a camera to follow a target with lag, aimed at it (see
@@ -2023,6 +2066,10 @@ class AnimationSystem:
                     m.configure(
                         **{k: (tuple(v) if isinstance(v, list) else v) for k, v in values.items()}
                     )
+            if pose.world:
+                from .evaluate import world_changes
+
+                scene.world.configure(**world_changes(pose.world))
         return count
 
     # ------------------------------------------------------------------ #
@@ -2414,6 +2461,26 @@ def _overlay_of(pose: AnimationPose, scene: Any) -> Any:
             dropped.append((oid, group, str(exc)))
             continue
         fields[(oid, group)] = values
+    world: dict[str, Any] = {}
+    if pose.world:
+        from .evaluate import world_changes
+
+        world = world_changes(pose.world)
+        try:  # the combination must be valid, as for the objects' fields
+            trial = scene.world.copy()
+            trial._owner = None
+            trial.configure(**world)
+        except Exception as exc:  # noqa: BLE001 - reported, not raised: renders go on
+            world = {}
+            pose.extra.setdefault("overlay_diagnostics", []).append(
+                Diagnostic(
+                    "ANIMATED_VALUE_INVALID",
+                    WARNING,
+                    f"the animated world values are invalid together ({exc}); this "
+                    "evaluation uses the authored ones",
+                    "world",
+                )
+            )
     if dropped:
         extra = pose.extra.setdefault("overlay_diagnostics", [])
         for oid, group, why in dropped:
@@ -2433,6 +2500,7 @@ def _overlay_of(pose: AnimationPose, scene: Any) -> Any:
         fields=fields,
         materials=dict(pose.materials),
         meshes=dict(rigging.meshes),
+        world=world,
         time=pose.time,
     )
     if ("sequence", "sequence") in system._owned:
@@ -2448,6 +2516,7 @@ def _overlay_of(pose: AnimationPose, scene: Any) -> Any:
                 fields=fields,
                 materials=overlay.materials,
                 meshes=overlay.meshes,
+                world=overlay.world,
                 camera=camera,
                 time=pose.time,
             )
@@ -2456,8 +2525,10 @@ def _overlay_of(pose: AnimationPose, scene: Any) -> Any:
 
 def _clip_from(data: Any, target: str, location: str) -> Clip:
     if data is None:
-        if target not in (P.OBJECT, P.MATERIAL):
-            raise _err("INVALID_CLIP", "target is 'object' or 'material'", f"{location}.target")
+        if target not in (P.OBJECT, P.MATERIAL, P.WORLD):
+            raise _err(
+                "INVALID_CLIP", "target is 'object', 'material' or 'world'", f"{location}.target"
+            )
         return Clip(target)
     if isinstance(data, Clip):
         return data
@@ -2539,6 +2610,12 @@ def _channel_from(
     if keys is None:
         return None
     if spec.kind == P.ROTATION:
+        if "smoothing" in options:
+            raise _err(
+                "INVALID_ARGUMENT",
+                "smoothing applies to scalar channels (rotation tracks interpolate on the sphere)",
+                location,
+            )
         if isinstance(keys, RotationTrack):
             return keys
         if isinstance(keys, dict):

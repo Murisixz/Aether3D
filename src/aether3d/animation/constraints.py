@@ -23,7 +23,11 @@ Types:
 * ``look_at`` (object or joint): point ``axis`` (``-y`` by default: cameras and lights
   look along local -Y; bones point along ``+y``) at the target, keeping ``up`` (owner
   axis, ``+z``) toward ``world_up`` (``[0, 0, 1]``); ``target_offset`` (world axes) moves
-  the aim point off the target's origin (a character's chest rather than its feet).
+  the aim point off the target's origin (a character's chest rather than its feet). On a
+  camera, ``screen`` ``[x, y]`` (NDC, -1..1, x right and y up; ``[0, 0]``: the centre)
+  places the target there instead of in the middle -- composition, e.g. on a third, at
+  every frame and exactly for the camera's animated field of view, frame shape and lens
+  shift (no roll: the right axis stays level with ``world_up``).
 * ``copy_location`` / ``copy_rotation`` / ``copy_scale`` / ``copy_transforms``: the
   target's world values (``axes``: which of ``xyz``; ``offset``: added in world space).
 * ``child_of``: follow the target as if parented to it, from where it was when the
@@ -105,6 +109,7 @@ _PARAMS: dict[str, dict[str, Any]] = {
             "up": "+z",
             "world_up": [0.0, 0.0, 1.0],
             "target_offset": [0.0, 0.0, 0.0],
+            "screen": None,
         },
     },
     "copy_location": {
@@ -319,6 +324,15 @@ def parse_constraint(raw: Any, location: str, *, joints: bool) -> Constraint:
         p["target_offset"] = [
             _num(v, f"{location}.target_offset[{i}]", "target_offset") for i, v in enumerate(off)
         ]
+        scr = p["screen"]
+        if scr is not None:
+            if not isinstance(scr, (list, tuple)) or len(scr) != 2:
+                raise _err("INVALID_CONSTRAINT", "screen is [x, y] or null", f"{location}.screen")
+            p["screen"] = [_num(v, f"{location}.screen[{i}]", "screen") for i, v in enumerate(scr)]
+            if max(abs(v) for v in p["screen"]) > 1.0:
+                raise _err(
+                    "INVALID_CONSTRAINT", "screen positions are within -1..1", f"{location}.screen"
+                )
     if kind in ("copy_location", "copy_scale"):
         axes = p["axes"]
         if (
@@ -469,6 +483,46 @@ def look_rotation(forward: np.ndarray, up_hint: np.ndarray, axis: str, up: str) 
     return np.stack(cols, axis=1)
 
 
+def screen_aim(
+    direction: np.ndarray,
+    world_up: np.ndarray,
+    screen: list[float],
+    view: tuple[float, float, float, float],
+) -> np.ndarray:
+    """The forward direction of a level camera (right axis perpendicular to ``world_up``)
+    that sees ``direction`` at NDC ``screen`` -- a pinhole ray through ``(x + ox) hx,
+    (y + oy) hy`` -- solved in closed form: the pitch from the direction's vertical
+    component, then the yaw from its horizontal one."""
+    d = np.asarray(direction, np.float64)
+    n = float(np.linalg.norm(d))
+    if n < 1e-12:
+        return d
+    d = d / n
+    w = np.asarray(world_up, np.float64)
+    w = w / np.linalg.norm(w)
+    hx, hy, ox, oy = view
+    a = (screen[0] + ox) * hx
+    b = (screen[1] + oy) * hy
+    norm = math.sqrt(a * a + b * b + 1.0)
+    c_r, c_u, c_f = a / norm, b / norm, 1.0 / norm
+    # vertical: c_u cos(t) + c_f sin(t) = d . w
+    dw = float(d @ w)
+    r0 = math.hypot(c_u, c_f)
+    phi = math.atan2(c_u, c_f)
+    theta = math.asin(max(-1.0, min(1.0, dw / r0))) - phi
+    # horizontal: d_h = k h + c_r (h x w), k = c_f cos(t) - c_u sin(t): h is d_h turned by
+    # beta = atan2(c_r, k) about w.
+    k = c_f * math.cos(theta) - c_u * math.sin(theta)
+    beta = math.atan2(c_r, k)
+    dh = d - dw * w
+    if np.linalg.norm(dh) < 1e-12:  # straight up or down: any heading
+        return d
+    e1 = dh / np.linalg.norm(dh)
+    e2 = np.cross(w, e1)
+    h = math.cos(beta) * e1 + math.sin(beta) * e2
+    return math.cos(theta) * h + math.sin(theta) * w
+
+
 def apply_constraint(
     c: Constraint,
     owner: np.ndarray,
@@ -477,16 +531,22 @@ def apply_constraint(
     *,
     parent: np.ndarray | None = None,
     rest_local: np.ndarray | None = None,
+    view: tuple[float, float, float, float] | None = None,
 ) -> np.ndarray:
     """The owner's world matrix after a non-IK constraint (``target``: the target's world
     matrix, ``target_pos``: its position; ``parent``: the owner's parent world matrix,
-    for local limits)."""
+    for local limits; ``view``: a camera owner's ``(hx, hy, ox, oy)`` -- half-extent
+    tangents and lens shift -- for ``look_at``'s ``screen``)."""
     p = c.p
     kind = c.type
     if kind == "look_at":
         pos = owner[:3, 3]
         aim = target_pos + np.asarray(p["target_offset"], np.float64)
-        rot = look_rotation(aim - pos, np.asarray(p["world_up"]), p["axis"], p["up"])
+        direction = aim - pos
+        screen = p.get("screen")
+        if screen is not None and view is not None:
+            direction = screen_aim(direction, np.asarray(p["world_up"]), screen, view)
+        rot = look_rotation(direction, np.asarray(p["world_up"]), p["axis"], p["up"])
         _, _, s = decompose(owner)
         out = owner.copy()
         out[:3, :3] = rot * s
